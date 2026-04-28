@@ -1,66 +1,137 @@
 # Bilibili Danmu Robot RS
 
-Rust + Slint rewrite of `xbclub/BilibiliDanmuRobot`.
+这是一个使用 Rust + Slint 重写的 B 站直播弹幕机器人。当前目标是先完成
+`xbclub/BilibiliDanmuRobot` 的常用机器人能力，再逐步吸收
+`Bilibili-MagicalDanmaku` 中更高级的直播间管理、数据分析和可编程扩展能力。
 
-## Current Scope
+## 当前已实现
 
-Implemented:
+- Slint 桌面端 UI。
+- 与原 `etc/bilidanmaku-api.yaml` 字段名兼容的 YAML 配置。
+- B 站二维码登录链接生成、登录轮询、登录状态检查。
+- Token 持久化到 `token/bili_token.txt` 和 `token/bili_token.json`。
+- 直播间状态检测与轮询。
+- B 站直播 WebSocket 连接与协议解析，协议已拆成独立包 `bilibili-live-protocol`。
+- 弹幕、礼物、进场、关注、分享、进场特效、大航海、禁言、PK、红包、天选等事件解析。
+- 手动发送弹幕。
+- 启动/停止监听，停止时取消房间轮询、WebSocket、发送队列、定时任务和礼物聚合任务。
+- 发送队列、弹幕长度切分和限速发送。
+- 自动欢迎、关键词回复、关注/分享/礼物答谢、抽签、签到。
+- QingYunKe 和 ChatGPT 兼容接口的 AI 回复。
+- Cron 定时弹幕。
+- SQLite 持久化签到、弹幕计数、盲盒盈亏。
+- 延迟礼物聚合和盲盒盈亏汇总。
+- 弹幕计数统计与 `查询弹幕` 回复。
+- UI 中可编辑常用列表配置：欢迎语、答谢语、黑名单、关键词回复、定时弹幕、抽签结果。
+- 自动更新元数据检查、更新器下载入口。
 
-- Slint desktop UI.
-- YAML config compatible with the original `etc/bilidanmaku-api.yaml` field names.
-- Bilibili QR login URL generation and polling.
-- Token persistence in `token/bili_token.txt` and `token/bili_token.json`.
-- Login status check.
-- Room live status polling through `room_init`.
-- Live danmu websocket connection and packet parsing for danmu, gift and entry events.
-- Manual danmu sending through `msg/send`.
-- Start/stop monitor loop and UI log output.
-- Runtime cancellation for room polling, websocket and send queue.
-- Automatic welcome, keyword reply, focus/share/gift thanks, draw-by-lot and sign-in rules.
-- QingYunKe and ChatGPT-compatible AI robot replies.
-- Timed barrage cron dispatch.
-- Slint text editors for common list configs.
-- SQLite-backed sign-in persistence.
-- Delayed gift aggregation and blind-box profit/loss persistence/summaries.
-- Danmu count tracking and `查询弹幕` response.
-- Auto-update metadata check with changelog/link display.
+## 参考项目补充 TODO
 
-Still in progress:
+以下 TODO 来自对 `/Users/lee/workspaces/clang/Bilibili-MagicalDanmaku` 的功能梳理。优先级按当前项目定位排序，不代表一次性全部实现。
 
-- Full PK opponent details, red-pocket and anchor-lottery parity.
-- Auto-update download/apply flow.
-- Rich table-style UI editors; current list editors use multiline text formats.
+### P0：补齐弹幕机器人核心体验
 
-## Run
+- [ ] 结构化保存完整直播事件：弹幕、礼物、大航海、进场/关注/分享、命令事件，字段包含房间号、UID、昵称、粉丝牌、舰长等级、时间。
+- [ ] 增加直播数据概览：本场弹幕数、进场人数、关注数、礼物金额、大航海人数、最高/平均人气。
+- [ ] 增加用户详情查询：最近弹幕、累计弹幕、最近礼物、累计礼物、进场次数、粉丝牌信息。
+- [ ] 完善 PK 能力：识别对面直播间、拉取对手信息、最佳助攻、PK 进度、PK 历史和连胜提示。
+- [ ] 增加新人发言识别、特别关心高亮、专属昵称、永久黑名单。
+- [ ] 增加弹幕过滤器：敏感词、重复刷屏、疑似机器人、小号风险、条件禁言。
+- [ ] 增加礼物别名、指定礼物答谢模板、礼物总结答谢。
+- [ ] 增加 UI 表格编辑器，替代当前多行文本格式编辑。
+
+### P1：直播间管理能力
+
+- [ ] 一键开播、下播。
+- [ ] 修改直播间标题、分区、简介、公告、标签、封面。
+- [ ] 查询直播间封面、人气、小时榜、总榜、热门榜、看过人数。
+- [ ] 查询舰长列表、在线舰长、高能榜。
+- [ ] 房管操作：任命房管、取消房管、禁言、解除禁言、查看禁言列表。
+- [ ] 自动切换粉丝勋章、检测勋章升级。
+- [ ] 多直播间状态监测，包括是否开播、是否 PK、PK 剩余时间。
+
+### P2：AI 与数据分析
+
+- [ ] 支持更多 AI 提供方配置，例如 DeepSeek、OpenAI 兼容模型、多模型切换。
+- [ ] 增加 AI 弹幕分类：闲聊、问答、翻译、点歌、风险弹幕、感谢类弹幕。
+- [ ] 增加 AI 粉丝档案：根据历史弹幕和送礼记录生成观众偏好、性格、互动建议。
+- [ ] 增加自然语言查询 SQLite，例如“近 30 天送礼 TOP10”“最近活跃老粉”。
+- [ ] 增加 AI 直播建议：根据本场互动、礼物、观众情绪生成运营建议。
+- [ ] 增加知识卡片：识别专业问题并生成简短说明。
+
+### P3：可编程规则与扩展系统
+
+- [ ] 增加可编程规则引擎，支持事件、条件、动作三段式规则。
+- [ ] 支持脚本语言或安全 DSL，用于自定义回复、变量计算、HTTP 请求、配置读写。
+- [ ] 支持规则导入/导出和默认规则模板升级。
+- [ ] 增加远程控制命令，例如开关欢迎、切换配置、执行自定义命令。
+- [ ] 增加内部 WebSocket/HTTP 服务，供 OBS 网页源、扩展页面和外部脚本订阅事件。
+- [ ] 增加网页插件目录：弹幕展示、礼物墙、抽奖页、投票页、等待礼物/舰长/语音页面。
+
+### P4：互动工具
+
+- [ ] 点歌系统：弹幕点歌、队列、切歌、黑名单、预计等待时长。
+- [ ] 多音源搜索和切换：网易云、QQ、咪咕、酷狗、本地音乐。
+- [ ] 弹幕抽奖窗口：按指定弹幕或指定礼物参与，支持倒计时、仅保留最后 N 次、移除半数。
+- [ ] 投票工具：弹幕投票、实时结果页面。
+- [ ] 弹幕语音朗读：本地 TTS、微软/讯飞/自定义 HTTP 语音接口、队列播放。
+- [ ] 私信处理：刷新未读私信、读取私信、向指定用户发送私信。
+- [ ] 自动参与天选、每日签到、领取或赠送即将过期的背包礼物。
+
+### P5：视频、录播与素材工具
+
+- [ ] 获取直播流地址并提供预览。
+- [ ] PK 对面视频预览和对面弹幕同步。
+- [ ] 快速截图、定时截图、截图管理。
+- [ ] 自动录播、断线重录、按大小或时长切分。
+- [ ] 弹幕全屏滚动、背景图轮播、OBS 网页源样式配置。
+
+### P6：多平台与工程化
+
+- [ ] 设计平台抽象层，为后续抖音、虎牙、斗鱼等平台预留事件模型和发送接口。
+- [ ] 增加配置导入/导出、配置版本迁移。
+- [ ] 增加数据库备份、清理和导出。
+- [ ] 增加崩溃日志、运行日志和问题诊断包。
+- [ ] 增加 Windows/macOS 打包、签名、升级器完整流程。
+
+## 运行
 
 ```bash
 cargo run
 ```
 
-On first launch the app creates:
+首次启动会创建：
 
 - `etc/bilidanmaku-api.yaml`
 - `token/`
 - `logs/`
 
-## Build
+## 构建
 
 ```bash
 cargo build --release
 ```
 
-## Source Mapping
+## 验证
 
-The original repository is mostly a Wails shell around `BilibiliDanmuRobot-Core`.
-This rewrite maps the core surfaces into Rust modules:
+```bash
+cargo fmt --check
+cargo check --workspace
+cargo test --workspace
+```
 
-- `src/config.rs`: original `config.Config` YAML shape.
-- `src/api.rs`: original HTTP login, room, user and send-danmu calls.
-- `src/token.rs`: original `token/bili_token.*` persistence.
-- `ui/main.slint`: replacement for Wails/Vue UI.
-- `crates/bilibili-live-protocol`: reusable Bilibili live websocket protocol package.
+## 项目结构
 
-The rewrite now covers the original core behavior in Rust: websocket packet
-parsing, runtime cancellation, send queue, welcome dispatch, thanks dispatch,
-AI replies, timed barrage, SQLite statistics, activity notices and update
-metadata/download flow.
+- `src/config.rs`：兼容原配置字段的 YAML 配置。
+- `src/api.rs`：B 站 HTTP API、登录、房间、用户、发送弹幕、AI 请求、更新检查。
+- `src/token.rs`：Cookie/Token 持久化。
+- `src/storage/mod.rs`：SQLite 表结构与持久化逻辑。
+- `src/bot/`：机器人规则、发送队列、礼物聚合、定时弹幕。
+- `src/main.rs`：Slint UI 事件绑定、运行时任务编排。
+- `ui/main.slint`：桌面 UI。
+- `crates/bilibili-live-protocol`：B 站直播 WebSocket 协议包。
+
+## 参考来源
+
+- `xbclub/BilibiliDanmuRobot`：当前重写的主要功能基线。
+- `/Users/lee/workspaces/clang/Bilibili-MagicalDanmaku`：后续 TODO 的高级功能参考，包括直播间管理、AI 分析、粉丝档案、点歌、网页插件、语音、录播和多平台抽象。
