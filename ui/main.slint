@@ -1,0 +1,263 @@
+import { Button, CheckBox, ComboBox, GroupBox, HorizontalBox, LineEdit, ScrollView, SpinBox, TextEdit, VerticalBox } from "std-widgets.slint";
+
+export component MainWindow inherits Window {
+    title: "Bilibili Danmu Robot";
+    width: 1060px;
+    height: 760px;
+
+    in-out property <string> room-id: "3";
+    in-out property <int> danmu-len: 20;
+    in-out property <string> entry-msg: "花花机器人进入直播间";
+    in-out property <string> goodbye-info: "下播啦~ 感谢大家的陪伴~ 下次见哦~";
+    in-out property <bool> pk-notice: true;
+    in-out property <bool> welcome-enabled: true;
+    in-out property <bool> entry-effect: true;
+    in-out property <bool> thanks-gift: true;
+    in-out property <bool> thanks-focus: true;
+    in-out property <bool> thanks-share: true;
+    in-out property <bool> cron-danmu: false;
+    in-out property <bool> keyword-reply: false;
+    in-out property <bool> draw-by-lot: true;
+    in-out property <bool> sign-in-enable: true;
+    in-out property <string> robot-name: "花花";
+    in-out property <string> talk-robot-cmd: "花花";
+    in-out property <int> robot-mode-index: 0;
+    in-out property <string> chatgpt-token: "";
+    in-out property <string> chatgpt-api-url: "";
+    in-out property <string> chatgpt-prompt: "你是一个非常幽默的机器人助理，可以使用emoji表情，可以使用颜文字";
+    in-out property <string> welcome-list-text: "";
+    in-out property <string> focus-list-text: "";
+    in-out property <string> blacklist-wide-text: "";
+    in-out property <string> blacklist-exact-text: "";
+    in-out property <string> keyword-reply-text: "";
+    in-out property <string> cron-danmu-text: "";
+    in-out property <string> draw-list-text: "";
+    in-out property <string> manual-danmu: "";
+    in-out property <string> login-url: "";
+    in-out property <string> user-info: "未登录";
+    in-out property <string> room-status: "未检测";
+    in-out property <string> run-status: "已停止";
+    in-out property <string> update-link: "";
+    in-out property <string> log-text: "";
+
+    callback load-config();
+    callback save-config(
+        string, int, string, string, bool, bool, bool, bool, bool, bool, bool, bool, bool, bool,
+        string, string, int, string, string, string, string, string, string, string, string, string, string
+    );
+    callback start-login();
+    callback check-login();
+    callback check-room();
+    callback start-monitor();
+    callback stop-monitor();
+    callback send-danmu(string);
+    callback check-update();
+    callback download-update(string);
+
+    background: #f6f7fb;
+
+    VerticalBox {
+        padding: 18px;
+        spacing: 14px;
+
+        HorizontalBox {
+            spacing: 12px;
+            Text {
+                text: "弹幕机器人";
+                font-size: 26px;
+                font-weight: 700;
+                color: #182033;
+                vertical-alignment: center;
+            }
+            Rectangle { width: 1px; }
+            Text {
+                text: root.run-status;
+                color: root.run-status == "运行中" ? #117a37 : #8a3b12;
+                font-size: 16px;
+                vertical-alignment: center;
+            }
+        }
+
+        HorizontalBox {
+            spacing: 14px;
+
+            VerticalBox {
+                width: 520px;
+                spacing: 12px;
+
+                GroupBox {
+                    title: "基础配置";
+                    VerticalBox {
+                        padding: 12px;
+                        spacing: 10px;
+
+                        HorizontalBox {
+                            spacing: 10px;
+                            Text { text: "房间号"; width: 82px; vertical-alignment: center; }
+                            LineEdit { text <=> root.room-id; placeholder-text: "直播间 ID"; }
+                            Text { text: "弹幕长度"; width: 72px; vertical-alignment: center; }
+                            SpinBox { value <=> root.danmu-len; minimum: 1; maximum: 100; width: 96px; }
+                        }
+
+                        Text { text: "进房弹幕"; color: #566070; }
+                        LineEdit { text <=> root.entry-msg; }
+                        Text { text: "下播公告"; color: #566070; }
+                        LineEdit { text <=> root.goodbye-info; }
+
+                        HorizontalBox {
+                            spacing: 10px;
+                            CheckBox { text: "PK 提醒"; checked <=> root.pk-notice; }
+                            CheckBox { text: "欢迎"; checked <=> root.welcome-enabled; }
+                            CheckBox { text: "特效欢迎"; checked <=> root.entry-effect; }
+                            CheckBox { text: "礼物答谢"; checked <=> root.thanks-gift; }
+                        }
+                        HorizontalBox {
+                            spacing: 10px;
+                            CheckBox { text: "关注答谢"; checked <=> root.thanks-focus; }
+                            CheckBox { text: "分享答谢"; checked <=> root.thanks-share; }
+                            CheckBox { text: "定时弹幕"; checked <=> root.cron-danmu; }
+                            CheckBox { text: "关键词回复"; checked <=> root.keyword-reply; }
+                        }
+                        HorizontalBox {
+                            spacing: 10px;
+                            CheckBox { text: "抽签"; checked <=> root.draw-by-lot; }
+                            CheckBox { text: "签到"; checked <=> root.sign-in-enable; }
+                        }
+                    }
+                }
+
+                GroupBox {
+                    title: "机器人";
+                    VerticalBox {
+                        padding: 12px;
+                        spacing: 10px;
+                        HorizontalBox {
+                            spacing: 10px;
+                            Text { text: "名称"; width: 82px; vertical-alignment: center; }
+                            LineEdit { text <=> root.robot-name; }
+                            Text { text: "触发词"; width: 72px; vertical-alignment: center; }
+                            LineEdit { text <=> root.talk-robot-cmd; width: 150px; }
+                        }
+                        HorizontalBox {
+                            spacing: 10px;
+                            Text { text: "模式"; width: 82px; vertical-alignment: center; }
+                            ComboBox {
+                                model: ["QingYunKe", "ChatGPT"];
+                                current-index <=> root.robot-mode-index;
+                            }
+                        }
+                        LineEdit { text <=> root.chatgpt-api-url; placeholder-text: "ChatGPT API URL，可留空"; }
+                        LineEdit { text <=> root.chatgpt-token; placeholder-text: "ChatGPT API Token"; }
+                        LineEdit { text <=> root.chatgpt-prompt; placeholder-text: "ChatGPT Prompt"; }
+                    }
+                }
+
+                HorizontalBox {
+                    spacing: 10px;
+                    Button { text: "读取配置"; clicked => { root.load-config(); } }
+                    Button {
+                        text: "保存配置";
+                        clicked => {
+                            root.save-config(
+                                root.room-id, root.danmu-len, root.entry-msg, root.goodbye-info,
+                                root.pk-notice, root.welcome-enabled, root.entry-effect, root.thanks-gift,
+                                root.thanks-focus, root.thanks-share, root.cron-danmu, root.keyword-reply,
+                                root.draw-by-lot, root.sign-in-enable, root.robot-name, root.talk-robot-cmd,
+                                root.robot-mode-index, root.chatgpt-token, root.chatgpt-api-url, root.chatgpt-prompt,
+                                root.welcome-list-text, root.focus-list-text, root.blacklist-wide-text,
+                                root.blacklist-exact-text, root.keyword-reply-text, root.cron-danmu-text,
+                                root.draw-list-text
+                            );
+                        }
+                    }
+                    Button { text: "检测房间"; clicked => { root.check-room(); } }
+                    Button { text: "启动监听"; clicked => { root.start-monitor(); } }
+                    Button { text: "停止"; clicked => { root.stop-monitor(); } }
+                    Button { text: "检查更新"; clicked => { root.check-update(); } }
+                    Button {
+                        text: "下载更新器";
+                        enabled: root.update-link != "";
+                        clicked => { root.download-update(root.update-link); }
+                    }
+                }
+            }
+
+            VerticalBox {
+                spacing: 12px;
+
+                GroupBox {
+                    title: "登录";
+                    VerticalBox {
+                        padding: 12px;
+                        spacing: 10px;
+                        Text { text: root.user-info; color: #263044; }
+                        LineEdit { text <=> root.login-url; placeholder-text: "扫码登录 URL"; read-only: true; }
+                        HorizontalBox {
+                            spacing: 10px;
+                            Button { text: "生成登录二维码链接"; clicked => { root.start-login(); } }
+                            Button { text: "检查登录"; clicked => { root.check-login(); } }
+                        }
+                    }
+                }
+
+                GroupBox {
+                    title: "列表配置";
+                    ScrollView {
+                        height: 280px;
+                        VerticalBox {
+                            padding: 12px;
+                            spacing: 10px;
+                            Text { text: "欢迎语（每行一条，支持 {user}）"; color: #566070; }
+                            TextEdit { text <=> root.welcome-list-text; height: 86px; wrap: word-wrap; }
+                            Text { text: "关注/分享附加答谢（每行一条）"; color: #566070; }
+                            TextEdit { text <=> root.focus-list-text; height: 72px; wrap: word-wrap; }
+                            Text { text: "模糊黑名单（每行一条）"; color: #566070; }
+                            TextEdit { text <=> root.blacklist-wide-text; height: 64px; wrap: word-wrap; }
+                            Text { text: "精确黑名单（每行一条）"; color: #566070; }
+                            TextEdit { text <=> root.blacklist-exact-text; height: 64px; wrap: word-wrap; }
+                            Text { text: "关键词回复（每行 keyword=reply）"; color: #566070; }
+                            TextEdit { text <=> root.keyword-reply-text; height: 92px; wrap: word-wrap; }
+                            Text { text: "定时弹幕（每行 cron|random|弹幕1;弹幕2）"; color: #566070; }
+                            TextEdit { text <=> root.cron-danmu-text; height: 92px; wrap: word-wrap; }
+                            Text { text: "抽签结果（每行一条）"; color: #566070; }
+                            TextEdit { text <=> root.draw-list-text; height: 92px; wrap: word-wrap; }
+                        }
+                    }
+                }
+
+                GroupBox {
+                    title: "手动弹幕";
+                    VerticalBox {
+                        padding: 12px;
+                        spacing: 10px;
+                        LineEdit { text <=> root.manual-danmu; placeholder-text: "输入要发送的弹幕"; }
+                        Button { text: "发送"; clicked => { root.send-danmu(root.manual-danmu); } }
+                    }
+                }
+
+                GroupBox {
+                    title: "状态";
+                    VerticalBox {
+                        padding: 12px;
+                        spacing: 8px;
+                        Text { text: "房间: " + root.room-status; color: #263044; }
+                        Text { text: "运行: " + root.run-status; color: #263044; }
+                    }
+                }
+
+                GroupBox {
+                    title: "日志";
+                    ScrollView {
+                        height: 300px;
+                        Text {
+                            text: root.log-text;
+                            color: #1f2937;
+                            font-size: 13px;
+                            wrap: word-wrap;
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
