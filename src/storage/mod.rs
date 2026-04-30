@@ -21,6 +21,7 @@ pub struct LiveSessionSummary {
     pub gift_value: i64,
     pub interact_count: i64,
     pub guard_buy_count: i64,
+    pub guard_buyer_count: i64,
     pub unknown_count: i64,
 }
 
@@ -354,6 +355,20 @@ impl Storage {
     }
 
     #[allow(dead_code)]
+    pub fn session_guard_buyer_count(&self, session_id: &str) -> Result<i64> {
+        let conn = self.conn.lock().expect("storage mutex poisoned");
+        Ok(conn.query_row(
+            "
+            select count(distinct uid)
+            from interaction_records
+            where session_id = ?1 and event_type = 'guard_buy' and uid is not null
+            ",
+            params![session_id],
+            |row| row.get(0),
+        )?)
+    }
+
+    #[allow(dead_code)]
     pub fn user_interaction_danmu_count(&self, uid: i64) -> Result<i64> {
         let conn = self.conn.lock().expect("storage mutex poisoned");
         Ok(conn.query_row(
@@ -388,6 +403,7 @@ impl Storage {
             gift_value: self.session_gift_value(session_id)?,
             interact_count: self.session_interact_count(session_id)?,
             guard_buy_count: self.session_guard_buy_count(session_id)?,
+            guard_buyer_count: self.session_guard_buyer_count(session_id)?,
             unknown_count: self.unknown_interaction_count(session_id)?,
         })
     }
@@ -760,5 +776,38 @@ mod tests {
         assert_eq!(summary.interact_count, 1);
         assert_eq!(summary.guard_buy_count, 1);
         assert_eq!(summary.unknown_count, 1);
+    }
+
+    #[test]
+    fn live_session_summary_counts_unique_guard_buyers() {
+        let storage = Storage::open_in_memory().unwrap();
+        let session_id = storage
+            .start_observed_live_session(
+                8792912,
+                Local.with_ymd_and_hms(2026, 5, 1, 20, 0, 0).unwrap(),
+            )
+            .unwrap();
+
+        for gift in ["舰长", "提督"] {
+            storage
+                .record_interaction(
+                    &session_id,
+                    8792912,
+                    &ParsedLiveEvent {
+                        event: LiveEvent::GuardBuy {
+                            user_id: 42,
+                            user: "alice".to_string(),
+                            gift: gift.to_string(),
+                        },
+                        raw: json!({"cmd": "GUARD_BUY"}),
+                    },
+                )
+                .unwrap();
+        }
+
+        let summary = storage.live_session_summary(&session_id).unwrap();
+
+        assert_eq!(summary.guard_buy_count, 2);
+        assert_eq!(summary.guard_buyer_count, 1);
     }
 }
