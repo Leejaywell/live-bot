@@ -1,11 +1,362 @@
-import { Button, CheckBox, ComboBox, GroupBox, HorizontalBox, LineEdit, ScrollView, SpinBox, TextEdit, VerticalBox } from "std-widgets.slint";
+import { CheckBox, ComboBox, LineEdit, ScrollView, SpinBox, TextEdit } from "std-widgets.slint";
+
+component ActionButton inherits Rectangle {
+    in property <string> label;
+    in property <bool> primary: false;
+    in property <bool> enabled: true;
+    in property <color> accent;
+    in property <color> fill;
+    in property <color> text-color;
+    in property <color> line-color;
+    callback clicked();
+
+    height: 40px;
+    border-radius: 14px;
+    background: !root.enabled ? root.line-color : (root.primary ? root.accent : root.fill);
+    border-width: root.primary ? 0px : 1px;
+    border-color: root.primary ? root.accent : root.line-color;
+
+    Text {
+        text: root.label;
+        color: !root.enabled ? #94a3b8 : (root.primary ? #ffffff : root.text-color);
+        font-size: 12px;
+        font-weight: 800;
+        horizontal-alignment: center;
+        vertical-alignment: center;
+    }
+
+    TouchArea {
+        enabled: root.enabled;
+        clicked => { root.clicked(); }
+    }
+}
+
+component SidebarEntry inherits Rectangle {
+    in property <string> icon;
+    in property <string> title;
+    in property <string> subtitle;
+    in property <string> badge: "";
+    in property <bool> active: false;
+    in property <color> accent;
+    in property <color> base-bg;
+    in property <color> text-color;
+    in property <color> muted-color;
+    in property <color> outline-color;
+
+    height: 54px;
+    border-radius: 14px;
+    background: root.active ? root.accent : root.base-bg;
+    border-width: root.active ? 0px : 1px;
+    border-color: root.active ? root.accent : root.outline-color;
+
+    HorizontalLayout {
+        padding-left: 12px;
+        padding-right: 12px;
+        padding-top: 8px;
+        padding-bottom: 8px;
+        spacing: 10px;
+
+        Rectangle {
+            width: 34px;
+            height: 34px;
+            border-radius: 10px;
+            background: root.active ? #ffffff22 : root.accent;
+
+            Text {
+                text: root.icon;
+                color: #ffffff;
+                font-size: 12px;
+                font-weight: 800;
+                horizontal-alignment: center;
+                vertical-alignment: center;
+            }
+        }
+
+        VerticalLayout {
+            spacing: 1px;
+            Text {
+                text: root.title;
+                color: root.active ? #ffffff : root.text-color;
+                font-size: 13px;
+                font-weight: 800;
+            }
+            Text {
+                text: root.subtitle;
+                color: root.active ? #dbeafe : root.muted-color;
+                font-size: 11px;
+            }
+        }
+
+        Rectangle { }
+
+        if root.badge != "" : Rectangle {
+            width: 48px;
+            height: 20px;
+            border-radius: 10px;
+            background: root.active ? #ffffff22 : root.accent;
+
+            Text {
+                text: root.badge;
+                color: #ffffff;
+                font-size: 10px;
+                font-weight: 700;
+                horizontal-alignment: center;
+                vertical-alignment: center;
+            }
+        }
+    }
+}
+
+component StatusCard inherits Rectangle {
+    in property <string> label;
+    in property <string> value;
+    in property <string> icon;
+    in property <color> accent;
+    in property <color> base-bg;
+    in property <color> outline-color;
+    in property <color> text-color;
+    in property <color> muted-color;
+
+    border-radius: 18px;
+    border-width: 1px;
+    border-color: root.outline-color;
+    background: root.base-bg;
+
+    VerticalLayout {
+        padding: 16px;
+        spacing: 10px;
+
+        HorizontalLayout {
+            Text {
+                text: root.label;
+                color: root.muted-color;
+                font-size: 12px;
+                font-weight: 700;
+            }
+            Rectangle { }
+            Rectangle {
+                width: 30px;
+                height: 30px;
+                border-radius: 10px;
+                background: root.accent;
+
+                Text {
+                    text: root.icon;
+                    color: #ffffff;
+                    font-size: 11px;
+                    font-weight: 800;
+                    horizontal-alignment: center;
+                    vertical-alignment: center;
+                }
+            }
+        }
+
+        Text {
+            text: root.value;
+            color: root.text-color;
+            font-size: 18px;
+            font-weight: 800;
+        }
+    }
+}
+
+component FeatureCard inherits Rectangle {
+    in property <string> title;
+    in property <string> desc;
+    in property <string> meta;
+    in property <bool> enabled: true;
+    in property <color> accent;
+    in property <color> base-bg;
+    in property <color> outline-color;
+    in property <color> text-color;
+    in property <color> muted-color;
+
+    border-radius: 16px;
+    border-width: 1px;
+    border-color: root.outline-color;
+    background: root.base-bg;
+
+    HorizontalLayout {
+        padding: 14px;
+        spacing: 12px;
+
+        Rectangle {
+            width: 38px;
+            height: 22px;
+            border-radius: 11px;
+            background: root.enabled ? root.accent : root.border-color;
+
+            Rectangle {
+                y: 3px;
+                x: root.enabled ? 19px : 3px;
+                width: 16px;
+                height: 16px;
+                border-radius: 8px;
+                background: #ffffff;
+            }
+        }
+
+        VerticalLayout {
+            spacing: 4px;
+            HorizontalLayout {
+                spacing: 8px;
+                Text {
+                    text: root.title;
+                    color: root.text-color;
+                    font-size: 13px;
+                    font-weight: 800;
+                }
+                if root.enabled : Rectangle {
+                    width: 34px;
+                    height: 18px;
+                    border-radius: 9px;
+                    background: root.accent;
+
+                    Text {
+                        text: "启用";
+                        color: #ffffff;
+                        font-size: 9px;
+                        font-weight: 700;
+                        horizontal-alignment: center;
+                        vertical-alignment: center;
+                    }
+                }
+            }
+            Text {
+                text: root.desc;
+                color: root.muted-color;
+                font-size: 11px;
+            }
+            Text {
+                text: root.meta;
+                color: root.accent;
+                font-size: 11px;
+                font-weight: 700;
+            }
+        }
+    }
+}
+
+component PlanCard inherits Rectangle {
+    in property <string> title;
+    in property <string> desc;
+    in property <string> tags;
+    in property <color> accent;
+    in property <color> base-bg;
+    in property <color> outline-color;
+    in property <color> text-color;
+    in property <color> muted-color;
+
+    border-radius: 16px;
+    border-width: 1px;
+    border-color: root.outline-color;
+    background: root.base-bg;
+
+    VerticalLayout {
+        padding: 14px;
+        spacing: 8px;
+
+        HorizontalLayout {
+            Text {
+                text: root.title;
+                color: root.text-color;
+                font-size: 13px;
+                font-weight: 800;
+            }
+            Rectangle { }
+            Rectangle {
+                width: 44px;
+                height: 18px;
+                border-radius: 9px;
+                background: root.accent;
+
+                Text {
+                    text: "规划中";
+                    color: #ffffff;
+                    font-size: 9px;
+                    font-weight: 700;
+                    horizontal-alignment: center;
+                    vertical-alignment: center;
+                }
+            }
+        }
+
+        Text {
+            text: root.desc;
+            color: root.muted-color;
+            font-size: 11px;
+            wrap: word-wrap;
+        }
+
+        Rectangle {
+            height: 28px;
+            border-radius: 10px;
+            background: root.border-color;
+
+            Text {
+                text: root.tags;
+                color: root.muted-color;
+                font-size: 10px;
+                horizontal-alignment: center;
+                vertical-alignment: center;
+            }
+        }
+    }
+}
+
+component ThemeSwatch inherits Rectangle {
+    in property <color> swatch;
+    in property <string> label;
+    in property <bool> selected: false;
+    in property <color> fill;
+    in property <color> text-color;
+    in property <color> line-color;
+    callback activate();
+
+    height: 70px;
+    border-radius: 14px;
+    border-width: 1px;
+    border-color: root.selected ? root.swatch : root.line-color;
+    background: root.fill;
+
+    VerticalLayout {
+        padding: 8px;
+        spacing: 6px;
+
+        Rectangle {
+            height: 34px;
+            border-radius: 10px;
+            background: root.swatch;
+
+            if root.selected : Text {
+                text: "OK";
+                color: #ffffff;
+                font-size: 10px;
+                font-weight: 800;
+                horizontal-alignment: center;
+                vertical-alignment: center;
+            }
+        }
+
+        Text {
+            text: root.label;
+            color: root.text-color;
+            font-size: 10px;
+            horizontal-alignment: center;
+        }
+    }
+
+    TouchArea {
+        clicked => { root.activate(); }
+    }
+}
 
 export component MainWindow inherits Window {
     title: "Bilibili Danmu Robot";
-    width: 1060px;
-    height: 760px;
+    width: 1560px;
+    height: 980px;
 
-    in-out property <string> room-id: "3";
+    in-out property <string> room-id: "8792912";
     in-out property <int> danmu-len: 20;
     in-out property <string> entry-msg: "花花机器人进入直播间";
     in-out property <string> goodbye-info: "下播啦~ 感谢大家的陪伴~ 下次见哦~";
@@ -34,11 +385,43 @@ export component MainWindow inherits Window {
     in-out property <string> draw-list-text: "";
     in-out property <string> manual-danmu: "";
     in-out property <string> login-url: "";
-    in-out property <string> user-info: "未登录";
-    in-out property <string> room-status: "未检测";
-    in-out property <string> run-status: "已停止";
+    in-out property <string> user-info: "夜莺工作室";
+    in-out property <string> room-status: "8792912 / 直播中";
+    in-out property <string> run-status: "运行中";
     in-out property <string> update-link: "";
     in-out property <string> log-text: "";
+
+    in-out property <bool> theme-popup-open: true;
+    in-out property <bool> dark-mode: false;
+    in-out property <int> theme-choice: 0;
+
+    property <color> theme-primary:
+        root.theme-choice == 0 ? #0ea5e9 :
+        root.theme-choice == 1 ? #10b981 :
+        root.theme-choice == 2 ? #f97316 :
+        root.theme-choice == 3 ? #ec4899 :
+        root.theme-choice == 4 ? #64748b :
+        root.theme-choice == 5 ? #f59e0b :
+        root.theme-choice == 6 ? #8b5cf6 :
+        root.theme-choice == 7 ? #ef4444 :
+        root.theme-choice == 8 ? #14b8a6 :
+        root.theme-choice == 9 ? #a855f7 :
+        root.theme-choice == 10 ? #22c55e :
+        #2563eb;
+
+    property <color> app-bg: root.dark-mode ? #0a0f16 : #eef4fb;
+    property <color> panel-bg: root.dark-mode ? #121823 : #fcfdff;
+    property <color> panel-soft-bg: root.dark-mode ? #19202c : #f6f9fd;
+    property <color> panel-strong-bg: root.dark-mode ? #0d131c : #101826;
+    property <color> line-color: root.dark-mode ? #273142 : #dbe4f0;
+    property <color> text-color: root.dark-mode ? #f4f7fb : #0f172a;
+    property <color> muted-color: root.dark-mode ? #9fb0c5 : #526072;
+    property <color> card-alt-bg: root.dark-mode ? #161f2b : #f7fafe;
+    property <color> success-bg: root.dark-mode ? #173225 : #ecfdf5;
+    property <color> success-text: root.dark-mode ? #7bf1b6 : #047857;
+    property <color> warning-bg: root.dark-mode ? #3a2812 : #fff7ed;
+    property <color> warning-text: root.dark-mode ? #f7bc69 : #9a3412;
+    property <color> popup-bg: root.dark-mode ? #11151c : #ffffff;
 
     callback load-config();
     callback save-config(
@@ -54,209 +437,732 @@ export component MainWindow inherits Window {
     callback check-update();
     callback download-update(string);
 
-    background: #f6f7fb;
+    background: root.app-bg;
 
-    VerticalBox {
-        padding: 18px;
-        spacing: 14px;
+    Rectangle {
+        background: root.app-bg;
 
-        HorizontalBox {
-            spacing: 12px;
-            Text {
-                text: "弹幕机器人";
-                font-size: 26px;
-                font-weight: 700;
-                color: #182033;
-                vertical-alignment: center;
+        HorizontalLayout {
+            spacing: 0px;
+
+            Rectangle {
+                width: 256px;
+                background: root.panel-bg;
+                border-width: 1px;
+                border-color: root.line-color;
+
+                VerticalLayout {
+                    padding-left: 16px;
+                    padding-right: 16px;
+                    padding-top: 18px;
+                    padding-bottom: 18px;
+                    spacing: 12px;
+
+                    HorizontalLayout {
+                        spacing: 10px;
+                        Rectangle {
+                            width: 40px;
+                            height: 40px;
+                            border-radius: 12px;
+                            background: root.theme-primary;
+
+                            Text {
+                                text: "LB";
+                                color: #ffffff;
+                                font-size: 13px;
+                                font-weight: 900;
+                                horizontal-alignment: center;
+                                vertical-alignment: center;
+                            }
+                        }
+                        VerticalLayout {
+                            spacing: 2px;
+                            Text { text: "Live Bot"; color: root.text-color; font-size: 18px; font-weight: 900; }
+                            Text { text: "直播运营助手"; color: root.muted-color; font-size: 11px; font-weight: 700; }
+                        }
+                    }
+
+                    Rectangle { height: 1px; background: root.line-color; }
+
+                    Text { text: "工作区"; color: root.muted-color; font-size: 11px; font-weight: 800; }
+                    SidebarEntry { icon: "总"; title: "总览"; subtitle: "运营中心"; active: true; accent: root.theme-primary; base-bg: root.panel-soft-bg; text-color: root.text-color; muted-color: root.muted-color; outline-color: root.line-color; }
+                    SidebarEntry { icon: "登"; title: "登录与房间"; subtitle: "账号管理"; accent: root.theme-primary; base-bg: root.panel-soft-bg; text-color: root.text-color; muted-color: root.muted-color; outline-color: root.line-color; }
+                    SidebarEntry { icon: "听"; title: "监听与发送"; subtitle: "弹幕控制"; accent: root.theme-primary; base-bg: root.panel-soft-bg; text-color: root.text-color; muted-color: root.muted-color; outline-color: root.line-color; }
+                    SidebarEntry { icon: "规"; title: "自动回复规则"; subtitle: "互动策略"; accent: root.theme-primary; base-bg: root.panel-soft-bg; text-color: root.text-color; muted-color: root.muted-color; outline-color: root.line-color; }
+                    SidebarEntry { icon: "AI"; title: "AI 机器人"; subtitle: "智能对话"; accent: root.theme-primary; base-bg: root.panel-soft-bg; text-color: root.text-color; muted-color: root.muted-color; outline-color: root.line-color; }
+                    SidebarEntry { icon: "数"; title: "数据统计"; subtitle: "运营分析"; accent: root.theme-primary; base-bg: root.panel-soft-bg; text-color: root.text-color; muted-color: root.muted-color; outline-color: root.line-color; }
+                    SidebarEntry { icon: "PK"; title: "PK 与活动"; subtitle: "赛事管理"; accent: root.theme-primary; base-bg: root.panel-soft-bg; text-color: root.text-color; muted-color: root.muted-color; outline-color: root.line-color; }
+                    SidebarEntry { icon: "房"; title: "直播间管理"; subtitle: "房间配置"; badge: "规划中"; accent: root.theme-primary; base-bg: root.panel-soft-bg; text-color: root.text-color; muted-color: root.muted-color; outline-color: root.line-color; }
+                    SidebarEntry { icon: "扩"; title: "高级扩展"; subtitle: "插件生态"; badge: "规划中"; accent: root.theme-primary; base-bg: root.panel-soft-bg; text-color: root.text-color; muted-color: root.muted-color; outline-color: root.line-color; }
+                    SidebarEntry { icon: "录"; title: "录播与素材"; subtitle: "内容存档"; badge: "规划中"; accent: root.theme-primary; base-bg: root.panel-soft-bg; text-color: root.text-color; muted-color: root.muted-color; outline-color: root.line-color; }
+                    SidebarEntry { icon: "系"; title: "系统与更新"; subtitle: "版本管理"; accent: root.theme-primary; base-bg: root.panel-soft-bg; text-color: root.text-color; muted-color: root.muted-color; outline-color: root.line-color; }
+
+                    Rectangle { height: 1px; background: root.line-color; }
+
+                    Rectangle {
+                        height: 74px;
+                        border-radius: 16px;
+                        background: root.panel-strong-bg;
+
+                        VerticalLayout {
+                            padding: 12px;
+                            spacing: 4px;
+                            Text {
+                                text: root.run-status == "运行中" ? "监听正在运行" : "监听未启动";
+                                color: #f8fafc;
+                                font-size: 13px;
+                                font-weight: 900;
+                            }
+                            Text {
+                                text: "房间 " + root.room-id + " · " + root.room-status;
+                                color: #cbd5e1;
+                                font-size: 11px;
+                            }
+                            Text {
+                                text: "主题弹窗默认展开，可即时切换亮暗与配色";
+                                color: #93c5fd;
+                                font-size: 10px;
+                            }
+                        }
+                    }
+                }
             }
-            Rectangle { width: 1px; }
-            Text {
-                text: root.run-status;
-                color: root.run-status == "运行中" ? #117a37 : #8a3b12;
-                font-size: 16px;
-                vertical-alignment: center;
+
+            VerticalLayout {
+                spacing: 0px;
+
+                Rectangle {
+                    height: 68px;
+                    background: root.panel-bg;
+                    border-width: 1px;
+                    border-color: root.line-color;
+
+                    HorizontalLayout {
+                        padding-left: 22px;
+                        padding-right: 22px;
+                        padding-top: 14px;
+                        padding-bottom: 14px;
+                        spacing: 16px;
+
+                        VerticalLayout {
+                            spacing: 2px;
+                            Text { text: "直播间 #" + root.room-id; color: root.text-color; font-size: 16px; font-weight: 900; }
+                            Text { text: "主播账号: " + root.user-info; color: root.muted-color; font-size: 12px; }
+                        }
+
+                        Rectangle { width: 1px; background: root.line-color; }
+
+                        Rectangle {
+                            width: 96px;
+                            height: 34px;
+                            border-radius: 17px;
+                            background: root.run-status == "运行中" ? root.success-bg : root.warning-bg;
+                            border-width: 1px;
+                            border-color: root.run-status == "运行中" ? root.success-text : root.warning-text;
+
+                            Text {
+                                text: root.run-status;
+                                color: root.run-status == "运行中" ? root.success-text : root.warning-text;
+                                font-size: 12px;
+                                font-weight: 800;
+                                horizontal-alignment: center;
+                                vertical-alignment: center;
+                            }
+                        }
+
+                        Rectangle { }
+
+                        Rectangle {
+                            width: 280px;
+                            height: 40px;
+                            border-radius: 14px;
+                            background: root.card-alt-bg;
+                            border-width: 1px;
+                            border-color: root.line-color;
+
+                            LineEdit {
+                                text: "";
+                                placeholder-text: "搜索功能或执行命令...";
+                                x: 12px;
+                                y: 8px;
+                                width: parent.width - 24px;
+                                height: 24px;
+                            }
+                        }
+
+                        Rectangle {
+                            width: 42px;
+                            height: 42px;
+                            border-radius: 14px;
+                            background: root.card-alt-bg;
+                            border-width: 1px;
+                            border-color: root.line-color;
+
+                            Text {
+                                text: "调";
+                                color: root.text-color;
+                                font-size: 13px;
+                                font-weight: 900;
+                                horizontal-alignment: center;
+                                vertical-alignment: center;
+                            }
+
+                            TouchArea {
+                                clicked => {
+                                    root.theme-popup-open = !root.theme-popup-open;
+                                }
+                            }
+                        }
+                    }
+                }
+
+                HorizontalLayout {
+                    spacing: 18px;
+                    padding: 18px;
+
+                    ScrollView {
+                        width: 950px;
+
+                        VerticalLayout {
+                            spacing: 16px;
+
+                            Text { text: "运营总览"; color: root.text-color; font-size: 20px; font-weight: 900; }
+                            Text { text: "实时监控直播间状态、规则运行情况和互动数据"; color: root.muted-color; font-size: 12px; }
+
+                            HorizontalLayout {
+                                spacing: 12px;
+                                StatusCard { width: 220px; height: 92px; label: "登录状态"; value: "已登录"; icon: "登"; accent: #10b981; base-bg: root.panel-bg; outline-color: root.line-color; text-color: root.text-color; muted-color: root.muted-color; }
+                                StatusCard { width: 220px; height: 92px; label: "房间状态"; value: "直播中"; icon: "房"; accent: #10b981; base-bg: root.panel-bg; outline-color: root.line-color; text-color: root.text-color; muted-color: root.muted-color; }
+                                StatusCard { width: 220px; height: 92px; label: "监听状态"; value: root.run-status; icon: "听"; accent: root.theme-primary; base-bg: root.panel-bg; outline-color: root.line-color; text-color: root.text-color; muted-color: root.muted-color; }
+                                StatusCard { width: 220px; height: 92px; label: "WebSocket"; value: "已连接"; icon: "WS"; accent: root.theme-primary; base-bg: root.panel-bg; outline-color: root.line-color; text-color: root.text-color; muted-color: root.muted-color; }
+                            }
+
+                            HorizontalLayout {
+                                spacing: 12px;
+                                StatusCard { width: 220px; height: 92px; label: "AI 状态"; value: "就绪"; icon: "AI"; accent: #8b5cf6; base-bg: root.panel-bg; outline-color: root.line-color; text-color: root.text-color; muted-color: root.muted-color; }
+                                StatusCard { width: 220px; height: 92px; label: "发送队列"; value: "3 条"; icon: "发"; accent: #f59e0b; base-bg: root.panel-bg; outline-color: root.line-color; text-color: root.text-color; muted-color: root.muted-color; }
+                                StatusCard { width: 220px; height: 92px; label: "今日弹幕数"; value: "1247"; icon: "弹"; accent: #06b6d4; base-bg: root.panel-bg; outline-color: root.line-color; text-color: root.text-color; muted-color: root.muted-color; }
+                                StatusCard { width: 220px; height: 92px; label: "更新状态"; value: "有新版本"; icon: "更"; accent: #ec4899; base-bg: root.panel-bg; outline-color: root.line-color; text-color: root.text-color; muted-color: root.muted-color; }
+                            }
+
+                            Rectangle {
+                                background: root.panel-bg;
+                                border-radius: 20px;
+                                border-width: 1px;
+                                border-color: root.line-color;
+
+                                VerticalLayout {
+                                    padding: 18px;
+                                    spacing: 14px;
+
+                                    Text { text: "快速操作"; color: root.text-color; font-size: 16px; font-weight: 900; }
+
+                                    HorizontalLayout {
+                                        spacing: 10px;
+                                        ActionButton { label: "生成登录链接"; primary: true; accent: root.theme-primary; fill: root.card-alt-bg; text-color: root.text-color; line-color: root.line-color; clicked => { root.start-login(); } }
+                                        ActionButton { label: "检查登录"; accent: root.theme-primary; fill: root.card-alt-bg; text-color: root.text-color; line-color: root.line-color; clicked => { root.check-login(); } }
+                                        ActionButton { label: "检测房间"; accent: root.theme-primary; fill: root.card-alt-bg; text-color: root.text-color; line-color: root.line-color; clicked => { root.check-room(); } }
+                                        ActionButton { label: "启动监听"; primary: true; accent: root.theme-primary; fill: root.card-alt-bg; text-color: root.text-color; line-color: root.line-color; clicked => { root.start-monitor(); } }
+                                    }
+
+                                    HorizontalLayout {
+                                        spacing: 10px;
+                                        ActionButton { label: "停止监听"; accent: root.theme-primary; fill: root.card-alt-bg; text-color: root.text-color; line-color: root.line-color; clicked => { root.stop-monitor(); } }
+                                        ActionButton { label: "读取配置"; accent: root.theme-primary; fill: root.card-alt-bg; text-color: root.text-color; line-color: root.line-color; clicked => { root.load-config(); } }
+                                        ActionButton {
+                                            label: "保存配置"; primary: true; accent: root.theme-primary; fill: root.card-alt-bg; text-color: root.text-color; line-color: root.line-color;
+                                            clicked => {
+                                                root.save-config(
+                                                    root.room-id, root.danmu-len, root.entry-msg, root.goodbye-info,
+                                                    root.pk-notice, root.welcome-enabled, root.entry-effect, root.thanks-gift,
+                                                    root.thanks-focus, root.thanks-share, root.cron-danmu, root.keyword-reply,
+                                                    root.draw-by-lot, root.sign-in-enable, root.robot-name, root.talk-robot-cmd,
+                                                    root.robot-mode-index, root.chatgpt-token, root.chatgpt-api-url, root.chatgpt-prompt,
+                                                    root.welcome-list-text, root.focus-list-text, root.blacklist-wide-text,
+                                                    root.blacklist-exact-text, root.keyword-reply-text, root.cron-danmu-text,
+                                                    root.draw-list-text
+                                                );
+                                            }
+                                        }
+                                        ActionButton { label: "检查更新"; accent: root.theme-primary; fill: root.card-alt-bg; text-color: root.text-color; line-color: root.line-color; clicked => { root.check-update(); } }
+                                    }
+
+                                    HorizontalLayout {
+                                        spacing: 10px;
+                                        Rectangle {
+                                            height: 42px;
+                                            border-radius: 14px;
+                                            background: root.card-alt-bg;
+                                            border-width: 1px;
+                                            border-color: root.line-color;
+
+                                            LineEdit {
+                                                text <=> root.manual-danmu;
+                                                placeholder-text: "输入手动弹幕内容...";
+                                                x: 12px;
+                                                y: 8px;
+                                                width: parent.width - 24px;
+                                                height: 24px;
+                                            }
+                                        }
+                                        ActionButton { label: "发送弹幕"; primary: true; accent: root.theme-primary; fill: root.card-alt-bg; text-color: root.text-color; line-color: root.line-color; clicked => { root.send-danmu(root.manual-danmu); } }
+                                        ActionButton {
+                                            label: "下载更新器";
+                                            enabled: root.update-link != "";
+                                            accent: root.theme-primary; fill: root.card-alt-bg; text-color: root.text-color; line-color: root.line-color;
+                                            clicked => { root.download-update(root.update-link); }
+                                        }
+                                    }
+                                }
+                            }
+
+                            Rectangle {
+                                background: root.panel-bg;
+                                border-radius: 20px;
+                                border-width: 1px;
+                                border-color: root.line-color;
+
+                                VerticalLayout {
+                                    padding: 18px;
+                                    spacing: 12px;
+
+                                    Text { text: "自动化功能"; color: root.text-color; font-size: 16px; font-weight: 900; }
+
+                                    HorizontalLayout {
+                                        spacing: 12px;
+                                        FeatureCard { width: 440px; title: "弹幕欢迎"; desc: "普通用户进入直播间"; meta: "12 条规则"; enabled: root.welcome-enabled; accent: root.theme-primary; base-bg: root.card-alt-bg; outline-color: root.line-color; text-color: root.text-color; muted-color: root.muted-color; }
+                                        FeatureCard { width: 440px; title: "舰长欢迎"; desc: "舰长/提督/总督进入"; meta: "3 种模板"; enabled: root.entry-effect; accent: root.theme-primary; base-bg: root.card-alt-bg; outline-color: root.line-color; text-color: root.text-color; muted-color: root.muted-color; }
+                                    }
+                                    HorizontalLayout {
+                                        spacing: 12px;
+                                        FeatureCard { width: 440px; title: "礼物答谢"; desc: "收到礼物自动感谢"; meta: "15s 聚合"; enabled: root.thanks-gift; accent: root.theme-primary; base-bg: root.card-alt-bg; outline-color: root.line-color; text-color: root.text-color; muted-color: root.muted-color; }
+                                        FeatureCard { width: 440px; title: "AI 机器人"; desc: "智能弹幕对话"; meta: root.robot-mode-index == 1 ? "ChatGPT 模式" : "QingYunKe 模式"; enabled: true; accent: #8b5cf6; base-bg: root.card-alt-bg; outline-color: root.line-color; text-color: root.text-color; muted-color: root.muted-color; }
+                                    }
+                                    HorizontalLayout {
+                                        spacing: 12px;
+                                        FeatureCard { width: 440px; title: "秒级定时弹幕"; desc: "按 Cron 精确发送"; meta: root.cron-danmu ? "2 个任务运行中" : "当前关闭"; enabled: root.cron-danmu; accent: #06b6d4; base-bg: root.card-alt-bg; outline-color: root.line-color; text-color: root.text-color; muted-color: root.muted-color; }
+                                        FeatureCard { width: 440px; title: "抽签与签到"; desc: "互动命令自动响应"; meta: "抽签 / 签到 / 查询弹幕"; enabled: root.draw-by-lot || root.sign-in-enable; accent: #f59e0b; base-bg: root.card-alt-bg; outline-color: root.line-color; text-color: root.text-color; muted-color: root.muted-color; }
+                                    }
+                                }
+                            }
+
+                            HorizontalLayout {
+                                spacing: 16px;
+
+                                Rectangle {
+                                    width: 452px;
+                                    background: root.panel-bg;
+                                    border-radius: 20px;
+                                    border-width: 1px;
+                                    border-color: root.line-color;
+
+                                    VerticalLayout {
+                                        padding: 18px;
+                                        spacing: 10px;
+                                        Text { text: "今日弹幕趋势"; color: root.text-color; font-size: 16px; font-weight: 900; }
+                                        Text { text: "10:00 - 15:00"; color: root.muted-color; font-size: 11px; }
+                                        HorizontalLayout {
+                                            spacing: 10px;
+                                            Rectangle { width: 40px; height: 96px; border-radius: 12px; background: root.line-color; }
+                                            Rectangle { width: 40px; height: 120px; border-radius: 12px; background: root.theme-primary; y: 18px; }
+                                            Rectangle { width: 40px; height: 142px; border-radius: 12px; background: root.theme-primary; y: 0px; }
+                                            Rectangle { width: 40px; height: 112px; border-radius: 12px; background: root.line-color; y: 28px; }
+                                            Rectangle { width: 40px; height: 150px; border-radius: 12px; background: root.theme-primary; y: 0px; }
+                                            Rectangle { width: 40px; height: 170px; border-radius: 12px; background: root.theme-primary; y: 0px; }
+                                        }
+                                    }
+                                }
+
+                                Rectangle {
+                                    width: 452px;
+                                    background: root.panel-bg;
+                                    border-radius: 20px;
+                                    border-width: 1px;
+                                    border-color: root.line-color;
+
+                                    VerticalLayout {
+                                        padding: 18px;
+                                        spacing: 12px;
+                                        Text { text: "互动分布"; color: root.text-color; font-size: 16px; font-weight: 900; }
+                                        Rectangle { height: 26px; border-radius: 13px; background: root.line-color; }
+                                        Rectangle { height: 26px; width: 360px; border-radius: 13px; background: root.theme-primary; }
+                                        Rectangle { height: 26px; width: 180px; border-radius: 13px; background: #ec4899; }
+                                        Rectangle { height: 26px; width: 120px; border-radius: 13px; background: #10b981; }
+                                        Rectangle { height: 26px; width: 74px; border-radius: 13px; background: #f59e0b; }
+                                        Text { text: "弹幕 1247 · 礼物 89 · 关注 34 · 分享 12"; color: root.muted-color; font-size: 11px; }
+                                    }
+                                }
+                            }
+
+                            Rectangle {
+                                background: root.panel-bg;
+                                border-radius: 20px;
+                                border-width: 1px;
+                                border-color: root.line-color;
+
+                                VerticalLayout {
+                                    padding: 18px;
+                                    spacing: 14px;
+
+                                    Text { text: "规则编辑工作区"; color: root.text-color; font-size: 16px; font-weight: 900; }
+
+                                    HorizontalLayout {
+                                        spacing: 10px;
+                                        Rectangle { height: 32px; width: 96px; border-radius: 16px; background: root.theme-primary; Text { text: "基础配置"; color: #ffffff; font-size: 11px; font-weight: 800; horizontal-alignment: center; vertical-alignment: center; } }
+                                        Rectangle { height: 32px; width: 84px; border-radius: 16px; background: root.card-alt-bg; border-width: 1px; border-color: root.line-color; Text { text: "AI 配置"; color: root.text-color; font-size: 11px; font-weight: 700; horizontal-alignment: center; vertical-alignment: center; } }
+                                        Rectangle { height: 32px; width: 96px; border-radius: 16px; background: root.card-alt-bg; border-width: 1px; border-color: root.line-color; Text { text: "列表规则"; color: root.text-color; font-size: 11px; font-weight: 700; horizontal-alignment: center; vertical-alignment: center; } }
+                                        Rectangle { height: 32px; width: 96px; border-radius: 16px; background: root.card-alt-bg; border-width: 1px; border-color: root.line-color; Text { text: "运行策略"; color: root.text-color; font-size: 11px; font-weight: 700; horizontal-alignment: center; vertical-alignment: center; } }
+                                    }
+
+                                    HorizontalLayout {
+                                        spacing: 14px;
+                                        VerticalLayout {
+                                            spacing: 8px;
+                                            Text { text: "直播间 ID"; color: root.muted-color; font-size: 11px; font-weight: 700; }
+                                            LineEdit { text <=> root.room-id; placeholder-text: "直播间 ID"; }
+                                            Text { text: "进房弹幕"; color: root.muted-color; font-size: 11px; font-weight: 700; }
+                                            LineEdit { text <=> root.entry-msg; }
+                                            Text { text: "下播公告"; color: root.muted-color; font-size: 11px; font-weight: 700; }
+                                            LineEdit { text <=> root.goodbye-info; }
+                                            Text { text: "弹幕长度"; color: root.muted-color; font-size: 11px; font-weight: 700; }
+                                            SpinBox { value <=> root.danmu-len; minimum: 1; maximum: 100; }
+                                        }
+
+                                        VerticalLayout {
+                                            spacing: 8px;
+                                            Text { text: "自动化开关"; color: root.text-color; font-size: 13px; font-weight: 800; }
+                                            CheckBox { text: "PK 提醒"; checked <=> root.pk-notice; }
+                                            CheckBox { text: "欢迎"; checked <=> root.welcome-enabled; }
+                                            CheckBox { text: "特效欢迎"; checked <=> root.entry-effect; }
+                                            CheckBox { text: "礼物答谢"; checked <=> root.thanks-gift; }
+                                            CheckBox { text: "关注答谢"; checked <=> root.thanks-focus; }
+                                            CheckBox { text: "分享答谢"; checked <=> root.thanks-share; }
+                                            CheckBox { text: "定时弹幕"; checked <=> root.cron-danmu; }
+                                            CheckBox { text: "关键词回复"; checked <=> root.keyword-reply; }
+                                        }
+
+                                        VerticalLayout {
+                                            spacing: 8px;
+                                            Text { text: "AI 机器人"; color: root.text-color; font-size: 13px; font-weight: 800; }
+                                            LineEdit { text <=> root.robot-name; placeholder-text: "机器人名称"; }
+                                            LineEdit { text <=> root.talk-robot-cmd; placeholder-text: "触发词"; }
+                                            ComboBox { model: ["QingYunKe", "ChatGPT"]; current-index <=> root.robot-mode-index; }
+                                            LineEdit { text <=> root.chatgpt-api-url; placeholder-text: "ChatGPT API URL"; }
+                                            LineEdit { text <=> root.chatgpt-token; placeholder-text: "ChatGPT API Token"; }
+                                            LineEdit { text <=> root.chatgpt-prompt; placeholder-text: "Prompt"; }
+                                        }
+                                    }
+                                }
+                            }
+
+                            Rectangle {
+                                background: root.panel-bg;
+                                border-radius: 20px;
+                                border-width: 1px;
+                                border-color: root.line-color;
+
+                                VerticalLayout {
+                                    padding: 18px;
+                                    spacing: 12px;
+
+                                    Text { text: "列表规则配置"; color: root.text-color; font-size: 16px; font-weight: 900; }
+                                    Text { text: "沿用当前功能字段，但改成更像桌面工作台的排版"; color: root.muted-color; font-size: 11px; }
+
+                                    Text { text: "欢迎语（每行一条，支持 {user}）"; color: root.muted-color; font-size: 11px; font-weight: 700; }
+                                    TextEdit { text <=> root.welcome-list-text; height: 82px; wrap: word-wrap; }
+                                    Text { text: "关注 / 分享附加答谢"; color: root.muted-color; font-size: 11px; font-weight: 700; }
+                                    TextEdit { text <=> root.focus-list-text; height: 64px; wrap: word-wrap; }
+                                    Text { text: "黑名单与关键词回复"; color: root.muted-color; font-size: 11px; font-weight: 700; }
+
+                                    HorizontalLayout {
+                                        spacing: 10px;
+                                        TextEdit { text <=> root.blacklist-wide-text; height: 74px; wrap: word-wrap; }
+                                        TextEdit { text <=> root.blacklist-exact-text; height: 74px; wrap: word-wrap; }
+                                    }
+
+                                    TextEdit { text <=> root.keyword-reply-text; height: 84px; wrap: word-wrap; }
+                                    TextEdit { text <=> root.cron-danmu-text; height: 84px; wrap: word-wrap; }
+                                    TextEdit { text <=> root.draw-list-text; height: 84px; wrap: word-wrap; }
+                                }
+                            }
+
+                            Rectangle {
+                                background: root.panel-bg;
+                                border-radius: 20px;
+                                border-width: 1px;
+                                border-color: root.line-color;
+
+                                VerticalLayout {
+                                    padding: 18px;
+                                    spacing: 12px;
+
+                                    Text { text: "功能规划"; color: root.text-color; font-size: 16px; font-weight: 900; }
+
+                                    HorizontalLayout {
+                                        spacing: 12px;
+                                        PlanCard { width: 288px; title: "多房间监测"; desc: "同时监控多个直播间状态、弹幕和 PK 活动。"; tags: "多账号 · 批量管理"; accent: root.theme-primary; base-bg: root.card-alt-bg; outline-color: root.line-color; text-color: root.text-color; muted-color: root.muted-color; }
+                                        PlanCard { width: 288px; title: "用户详情查询"; desc: "拉取观众最近弹幕、送礼和粉丝牌画像。"; tags: "UID 查询 · 粉丝分析"; accent: root.theme-primary; base-bg: root.card-alt-bg; outline-color: root.line-color; text-color: root.text-color; muted-color: root.muted-color; }
+                                        PlanCard { width: 288px; title: "更强 PK 分析"; desc: "展示对手房间、助攻数据和 PK 历史。"; tags: "胜率预测 · 对手分析"; accent: root.theme-primary; base-bg: root.card-alt-bg; outline-color: root.line-color; text-color: root.text-color; muted-color: root.muted-color; }
+                                    }
+
+                                    HorizontalLayout {
+                                        spacing: 12px;
+                                        PlanCard { width: 288px; title: "弹幕过滤器"; desc: "识别刷屏、敏感词、疑似机器人和风险账号。"; tags: "内容审核 · 条件禁言"; accent: root.theme-primary; base-bg: root.card-alt-bg; outline-color: root.line-color; text-color: root.text-color; muted-color: root.muted-color; }
+                                        PlanCard { width: 288px; title: "点歌系统"; desc: "弹幕点歌、排队、黑名单和多音源切换。"; tags: "互动工具 · 音乐播放"; accent: root.theme-primary; base-bg: root.card-alt-bg; outline-color: root.line-color; text-color: root.text-color; muted-color: root.muted-color; }
+                                        PlanCard { width: 288px; title: "录播与素材"; desc: "自动录播、截图、OBS 网页源和素材管理。"; tags: "视频存档 · 网页源"; accent: root.theme-primary; base-bg: root.card-alt-bg; outline-color: root.line-color; text-color: root.text-color; muted-color: root.muted-color; }
+                                    }
+                                }
+                            }
+                        }
+                    }
+
+                    Rectangle {
+                        width: 304px;
+                        background: root.panel-bg;
+                        border-radius: 22px;
+                        border-width: 1px;
+                        border-color: root.line-color;
+
+                        VerticalLayout {
+                            padding: 16px;
+                            spacing: 12px;
+
+                            Rectangle {
+                                background: root.card-alt-bg;
+                                border-radius: 16px;
+                                border-width: 1px;
+                                border-color: root.line-color;
+
+                                VerticalLayout {
+                                    padding: 14px;
+                                    spacing: 8px;
+                                    Text { text: "账号与连接"; color: root.text-color; font-size: 14px; font-weight: 900; }
+                                    Text { text: "当前账号  " + root.user-info; color: root.text-color; font-size: 12px; }
+                                    Text { text: "Token 状态  有效"; color: #10b981; font-size: 12px; }
+                                    Text { text: "房间 ID  " + root.room-id; color: root.text-color; font-size: 12px; }
+                                    Text { text: "心跳状态  正常"; color: root.muted-color; font-size: 12px; }
+                                }
+                            }
+
+                            Rectangle {
+                                background: root.card-alt-bg;
+                                border-radius: 16px;
+                                border-width: 1px;
+                                border-color: root.line-color;
+
+                                VerticalLayout {
+                                    padding: 14px;
+                                    spacing: 8px;
+                                    Text { text: "运行状态"; color: root.text-color; font-size: 14px; font-weight: 900; }
+                                    Text { text: "当前监听  活跃"; color: root.text-color; font-size: 12px; }
+                                    Text { text: "发送队列  3 条待发"; color: root.text-color; font-size: 12px; }
+                                    Text { text: "定时任务  2 个运行"; color: root.text-color; font-size: 12px; }
+                                    Text { text: "AI 请求  就绪"; color: #10b981; font-size: 12px; }
+                                    Text { text: "礼物聚合  15s 延迟"; color: root.muted-color; font-size: 12px; }
+                                }
+                            }
+
+                            Rectangle {
+                                background: root.panel-strong-bg;
+                                border-radius: 18px;
+                                border-width: 1px;
+                                border-color: root.line-color;
+
+                                VerticalLayout {
+                                    padding: 14px;
+                                    spacing: 10px;
+                                    Text { text: "实时日志"; color: #f8fafc; font-size: 15px; font-weight: 900; }
+                                    ScrollView {
+                                        height: 560px;
+                                        Text {
+                                            text:
+                                                "14:32:18  已连接直播间 " + root.room-id + "\n"
+                                                + "14:32:19  检测到弹幕：主播你好\n"
+                                                + "14:32:19  自动回复已发送\n"
+                                                + "14:32:25  收到礼物：辣条 x 3\n"
+                                                + "14:32:30  PK 事件：检测到对手房间\n"
+                                                + "14:32:45  红包活动开始，已临时关闭欢迎\n"
+                                                + "14:33:02  AI 回复耗时 1.3s\n"
+                                                + "14:33:15  定时弹幕已发送\n"
+                                                + "14:33:28  发现新版本\n"
+                                                + (root.log-text == "" ? "" : "\n" + root.log-text);
+                                            color: #cbd5e1;
+                                            font-size: 12px;
+                                            wrap: word-wrap;
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
             }
         }
 
-        HorizontalBox {
-            spacing: 14px;
+        if root.theme-popup-open : Rectangle {
+            x: 1160px;
+            y: 78px;
+            width: 332px;
+            height: 530px;
+            border-radius: 22px;
+            background: root.popup-bg;
+            border-width: 1px;
+            border-color: root.line-color;
 
-            VerticalBox {
-                width: 520px;
-                spacing: 12px;
+            VerticalLayout {
+                padding: 18px;
+                spacing: 14px;
 
-                GroupBox {
-                    title: "基础配置";
-                    VerticalBox {
-                        padding: 12px;
-                        spacing: 10px;
+                HorizontalLayout {
+                    Text { text: "主题设置"; color: root.text-color; font-size: 16px; font-weight: 900; }
+                    Rectangle { }
+                    Rectangle {
+                        width: 28px;
+                        height: 28px;
+                        border-radius: 14px;
+                        background: root.card-alt-bg;
+                        border-width: 1px;
+                        border-color: root.line-color;
 
-                        HorizontalBox {
-                            spacing: 10px;
-                            Text { text: "房间号"; width: 82px; vertical-alignment: center; }
-                            LineEdit { text <=> root.room-id; placeholder-text: "直播间 ID"; }
-                            Text { text: "弹幕长度"; width: 72px; vertical-alignment: center; }
-                            SpinBox { value <=> root.danmu-len; minimum: 1; maximum: 100; width: 96px; }
+                        Text {
+                            text: "X";
+                            color: root.text-color;
+                            font-size: 11px;
+                            font-weight: 900;
+                            horizontal-alignment: center;
+                            vertical-alignment: center;
                         }
 
-                        Text { text: "进房弹幕"; color: #566070; }
-                        LineEdit { text <=> root.entry-msg; }
-                        Text { text: "下播公告"; color: #566070; }
-                        LineEdit { text <=> root.goodbye-info; }
-
-                        HorizontalBox {
-                            spacing: 10px;
-                            CheckBox { text: "PK 提醒"; checked <=> root.pk-notice; }
-                            CheckBox { text: "欢迎"; checked <=> root.welcome-enabled; }
-                            CheckBox { text: "特效欢迎"; checked <=> root.entry-effect; }
-                            CheckBox { text: "礼物答谢"; checked <=> root.thanks-gift; }
-                        }
-                        HorizontalBox {
-                            spacing: 10px;
-                            CheckBox { text: "关注答谢"; checked <=> root.thanks-focus; }
-                            CheckBox { text: "分享答谢"; checked <=> root.thanks-share; }
-                            CheckBox { text: "定时弹幕"; checked <=> root.cron-danmu; }
-                            CheckBox { text: "关键词回复"; checked <=> root.keyword-reply; }
-                        }
-                        HorizontalBox {
-                            spacing: 10px;
-                            CheckBox { text: "抽签"; checked <=> root.draw-by-lot; }
-                            CheckBox { text: "签到"; checked <=> root.sign-in-enable; }
-                        }
-                    }
-                }
-
-                GroupBox {
-                    title: "机器人";
-                    VerticalBox {
-                        padding: 12px;
-                        spacing: 10px;
-                        HorizontalBox {
-                            spacing: 10px;
-                            Text { text: "名称"; width: 82px; vertical-alignment: center; }
-                            LineEdit { text <=> root.robot-name; }
-                            Text { text: "触发词"; width: 72px; vertical-alignment: center; }
-                            LineEdit { text <=> root.talk-robot-cmd; width: 150px; }
-                        }
-                        HorizontalBox {
-                            spacing: 10px;
-                            Text { text: "模式"; width: 82px; vertical-alignment: center; }
-                            ComboBox {
-                                model: ["QingYunKe", "ChatGPT"];
-                                current-index <=> root.robot-mode-index;
+                        TouchArea {
+                            clicked => {
+                                root.theme-popup-open = false;
                             }
                         }
-                        LineEdit { text <=> root.chatgpt-api-url; placeholder-text: "ChatGPT API URL，可留空"; }
-                        LineEdit { text <=> root.chatgpt-token; placeholder-text: "ChatGPT API Token"; }
-                        LineEdit { text <=> root.chatgpt-prompt; placeholder-text: "ChatGPT Prompt"; }
                     }
                 }
 
-                HorizontalBox {
+                Text { text: "外观模式"; color: root.text-color; font-size: 13px; font-weight: 800; }
+                HorizontalLayout {
                     spacing: 10px;
-                    Button { text: "读取配置"; clicked => { root.load-config(); } }
-                    Button {
-                        text: "保存配置";
-                        clicked => {
-                            root.save-config(
-                                root.room-id, root.danmu-len, root.entry-msg, root.goodbye-info,
-                                root.pk-notice, root.welcome-enabled, root.entry-effect, root.thanks-gift,
-                                root.thanks-focus, root.thanks-share, root.cron-danmu, root.keyword-reply,
-                                root.draw-by-lot, root.sign-in-enable, root.robot-name, root.talk-robot-cmd,
-                                root.robot-mode-index, root.chatgpt-token, root.chatgpt-api-url, root.chatgpt-prompt,
-                                root.welcome-list-text, root.focus-list-text, root.blacklist-wide-text,
-                                root.blacklist-exact-text, root.keyword-reply-text, root.cron-danmu-text,
-                                root.draw-list-text
-                            );
-                        }
-                    }
-                    Button { text: "检测房间"; clicked => { root.check-room(); } }
-                    Button { text: "启动监听"; clicked => { root.start-monitor(); } }
-                    Button { text: "停止"; clicked => { root.stop-monitor(); } }
-                    Button { text: "检查更新"; clicked => { root.check-update(); } }
-                    Button {
-                        text: "下载更新器";
-                        enabled: root.update-link != "";
-                        clicked => { root.download-update(root.update-link); }
-                    }
-                }
-            }
+                    Rectangle {
+                        height: 42px;
+                        border-radius: 14px;
+                        background: !root.dark-mode ? root.theme-primary : root.card-alt-bg;
+                        border-width: 1px;
+                        border-color: !root.dark-mode ? root.theme-primary : root.line-color;
 
-            VerticalBox {
-                spacing: 12px;
-
-                GroupBox {
-                    title: "登录";
-                    VerticalBox {
-                        padding: 12px;
-                        spacing: 10px;
-                        Text { text: root.user-info; color: #263044; }
-                        LineEdit { text <=> root.login-url; placeholder-text: "扫码登录 URL"; read-only: true; }
-                        HorizontalBox {
-                            spacing: 10px;
-                            Button { text: "生成登录二维码链接"; clicked => { root.start-login(); } }
-                            Button { text: "检查登录"; clicked => { root.check-login(); } }
-                        }
-                    }
-                }
-
-                GroupBox {
-                    title: "列表配置";
-                    ScrollView {
-                        height: 280px;
-                        VerticalBox {
-                            padding: 12px;
-                            spacing: 10px;
-                            Text { text: "欢迎语（每行一条，支持 {user}）"; color: #566070; }
-                            TextEdit { text <=> root.welcome-list-text; height: 86px; wrap: word-wrap; }
-                            Text { text: "关注/分享附加答谢（每行一条）"; color: #566070; }
-                            TextEdit { text <=> root.focus-list-text; height: 72px; wrap: word-wrap; }
-                            Text { text: "模糊黑名单（每行一条）"; color: #566070; }
-                            TextEdit { text <=> root.blacklist-wide-text; height: 64px; wrap: word-wrap; }
-                            Text { text: "精确黑名单（每行一条）"; color: #566070; }
-                            TextEdit { text <=> root.blacklist-exact-text; height: 64px; wrap: word-wrap; }
-                            Text { text: "关键词回复（每行 keyword=reply）"; color: #566070; }
-                            TextEdit { text <=> root.keyword-reply-text; height: 92px; wrap: word-wrap; }
-                            Text { text: "定时弹幕（每行 cron|random|弹幕1;弹幕2）"; color: #566070; }
-                            TextEdit { text <=> root.cron-danmu-text; height: 92px; wrap: word-wrap; }
-                            Text { text: "抽签结果（每行一条）"; color: #566070; }
-                            TextEdit { text <=> root.draw-list-text; height: 92px; wrap: word-wrap; }
-                        }
-                    }
-                }
-
-                GroupBox {
-                    title: "手动弹幕";
-                    VerticalBox {
-                        padding: 12px;
-                        spacing: 10px;
-                        LineEdit { text <=> root.manual-danmu; placeholder-text: "输入要发送的弹幕"; }
-                        Button { text: "发送"; clicked => { root.send-danmu(root.manual-danmu); } }
-                    }
-                }
-
-                GroupBox {
-                    title: "状态";
-                    VerticalBox {
-                        padding: 12px;
-                        spacing: 8px;
-                        Text { text: "房间: " + root.room-status; color: #263044; }
-                        Text { text: "运行: " + root.run-status; color: #263044; }
-                    }
-                }
-
-                GroupBox {
-                    title: "日志";
-                    ScrollView {
-                        height: 300px;
                         Text {
-                            text: root.log-text;
-                            color: #1f2937;
-                            font-size: 13px;
-                            wrap: word-wrap;
+                            text: "浅色";
+                            color: !root.dark-mode ? #ffffff : root.text-color;
+                            font-size: 12px;
+                            font-weight: 800;
+                            horizontal-alignment: center;
+                            vertical-alignment: center;
+                        }
+
+                        TouchArea { clicked => { root.dark-mode = false; } }
+                    }
+                    Rectangle {
+                        height: 42px;
+                        border-radius: 14px;
+                        background: root.dark-mode ? root.theme-primary : root.card-alt-bg;
+                        border-width: 1px;
+                        border-color: root.dark-mode ? root.theme-primary : root.line-color;
+
+                        Text {
+                            text: "深色";
+                            color: root.dark-mode ? #ffffff : root.text-color;
+                            font-size: 12px;
+                            font-weight: 800;
+                            horizontal-alignment: center;
+                            vertical-alignment: center;
+                        }
+
+                        TouchArea { clicked => { root.dark-mode = true; } }
+                    }
+                }
+
+                Text { text: "6 种主题颜色"; color: root.text-color; font-size: 13px; font-weight: 800; }
+                HorizontalLayout {
+                    spacing: 8px;
+                    ThemeSwatch { width: 98px; swatch: #0ea5e9; label: "海洋蓝"; selected: root.theme-choice == 0; fill: root.card-alt-bg; text-color: root.text-color; line-color: root.line-color; activate => { root.theme-choice = 0; } }
+                    ThemeSwatch { width: 98px; swatch: #10b981; label: "翡翠绿"; selected: root.theme-choice == 1; fill: root.card-alt-bg; text-color: root.text-color; line-color: root.line-color; activate => { root.theme-choice = 1; } }
+                    ThemeSwatch { width: 98px; swatch: #f97316; label: "日落橙"; selected: root.theme-choice == 2; fill: root.card-alt-bg; text-color: root.text-color; line-color: root.line-color; activate => { root.theme-choice = 2; } }
+                }
+                HorizontalLayout {
+                    spacing: 8px;
+                    ThemeSwatch { width: 98px; swatch: #ec4899; label: "兰花粉"; selected: root.theme-choice == 3; fill: root.card-alt-bg; text-color: root.text-color; line-color: root.line-color; activate => { root.theme-choice = 3; } }
+                    ThemeSwatch { width: 98px; swatch: #64748b; label: "石板灰"; selected: root.theme-choice == 4; fill: root.card-alt-bg; text-color: root.text-color; line-color: root.line-color; activate => { root.theme-choice = 4; } }
+                    ThemeSwatch { width: 98px; swatch: #f59e0b; label: "琥珀金"; selected: root.theme-choice == 5; fill: root.card-alt-bg; text-color: root.text-color; line-color: root.line-color; activate => { root.theme-choice = 5; } }
+                }
+
+                Text { text: "自定义色板"; color: root.text-color; font-size: 13px; font-weight: 800; }
+                HorizontalLayout {
+                    spacing: 8px;
+                    ThemeSwatch { width: 68px; swatch: #8b5cf6; label: "紫"; selected: root.theme-choice == 6; fill: root.card-alt-bg; text-color: root.text-color; line-color: root.line-color; activate => { root.theme-choice = 6; } }
+                    ThemeSwatch { width: 68px; swatch: #ef4444; label: "红"; selected: root.theme-choice == 7; fill: root.card-alt-bg; text-color: root.text-color; line-color: root.line-color; activate => { root.theme-choice = 7; } }
+                    ThemeSwatch { width: 68px; swatch: #14b8a6; label: "青"; selected: root.theme-choice == 8; fill: root.card-alt-bg; text-color: root.text-color; line-color: root.line-color; activate => { root.theme-choice = 8; } }
+                    ThemeSwatch { width: 68px; swatch: #a855f7; label: "紫粉"; selected: root.theme-choice == 9; fill: root.card-alt-bg; text-color: root.text-color; line-color: root.line-color; activate => { root.theme-choice = 9; } }
+                }
+                HorizontalLayout {
+                    spacing: 8px;
+                    ThemeSwatch { width: 68px; swatch: #22c55e; label: "草绿"; selected: root.theme-choice == 10; fill: root.card-alt-bg; text-color: root.text-color; line-color: root.line-color; activate => { root.theme-choice = 10; } }
+                    ThemeSwatch { width: 68px; swatch: #2563eb; label: "靛蓝"; selected: root.theme-choice == 11; fill: root.card-alt-bg; text-color: root.text-color; line-color: root.line-color; activate => { root.theme-choice = 11; } }
+                    Rectangle { }
+                    Rectangle { }
+                }
+
+                Rectangle {
+                    border-radius: 18px;
+                    background: root.card-alt-bg;
+                    border-width: 1px;
+                    border-color: root.line-color;
+
+                    VerticalLayout {
+                        padding: 14px;
+                        spacing: 10px;
+                        Text { text: "预览效果"; color: root.text-color; font-size: 12px; font-weight: 800; }
+                        Rectangle {
+                            height: 36px;
+                            border-radius: 12px;
+                            background: root.theme-primary;
+                            Text {
+                                text: "主要按钮";
+                                color: #ffffff;
+                                font-size: 12px;
+                                font-weight: 800;
+                                horizontal-alignment: center;
+                                vertical-alignment: center;
+                            }
+                        }
+                        HorizontalLayout {
+                            spacing: 10px;
+                            Rectangle {
+                                width: 40px;
+                                height: 22px;
+                                border-radius: 11px;
+                                background: root.theme-primary;
+                                Rectangle { x: 20px; y: 3px; width: 16px; height: 16px; border-radius: 8px; background: #ffffff; }
+                            }
+                            Rectangle {
+                                width: 74px;
+                                height: 22px;
+                                border-radius: 11px;
+                                background: root.theme-primary;
+                                Text {
+                                    text: "状态标签";
+                                    color: #ffffff;
+                                    font-size: 10px;
+                                    font-weight: 700;
+                                    horizontal-alignment: center;
+                                    vertical-alignment: center;
+                                }
+                            }
                         }
                     }
                 }
+
+                ActionButton { label: "恢复默认"; accent: root.theme-primary; fill: root.card-alt-bg; text-color: root.text-color; line-color: root.line-color; clicked => { root.theme-choice = 0; root.dark-mode = false; } }
             }
         }
     }
