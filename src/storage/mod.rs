@@ -235,6 +235,19 @@ impl Storage {
                 None,
                 None,
             ),
+            LiveEvent::GuardBuy {
+                user_id,
+                user,
+                gift,
+            } => (
+                "guard_buy",
+                Some(*user_id),
+                Some(user.as_str()),
+                None,
+                Some(gift.as_str()),
+                None,
+                None,
+            ),
             _ => ("unknown", None, None, None, None, None, None),
         };
         let raw_json = serde_json::to_string(&parsed.raw)?;
@@ -311,6 +324,20 @@ impl Storage {
             select count(*)
             from interaction_records
             where session_id = ?1 and event_type = 'interact'
+            ",
+            params![session_id],
+            |row| row.get(0),
+        )?)
+    }
+
+    #[allow(dead_code)]
+    pub fn session_guard_buy_count(&self, session_id: &str) -> Result<i64> {
+        let conn = self.conn.lock().expect("storage mutex poisoned");
+        Ok(conn.query_row(
+            "
+            select count(*)
+            from interaction_records
+            where session_id = ?1 and event_type = 'guard_buy'
             ",
             params![session_id],
             |row| row.get(0),
@@ -610,6 +637,39 @@ mod tests {
             .unwrap();
 
         assert_eq!(storage.session_interact_count(&session_id).unwrap(), 1);
+        assert_eq!(storage.unknown_interaction_count(&session_id).unwrap(), 0);
+    }
+
+    #[test]
+    fn records_guard_buy_event_separately_from_unknown() {
+        let storage = Storage::open_in_memory().unwrap();
+        let session_id = storage
+            .start_observed_live_session(
+                8792912,
+                Local.with_ymd_and_hms(2026, 5, 1, 20, 0, 0).unwrap(),
+            )
+            .unwrap();
+        let event = ParsedLiveEvent {
+            event: LiveEvent::GuardBuy {
+                user_id: 42,
+                user: "alice".to_string(),
+                gift: "舰长".to_string(),
+            },
+            raw: json!({
+                "cmd": "GUARD_BUY",
+                "data": {
+                    "uid": 42,
+                    "username": "alice",
+                    "gift_name": "舰长"
+                }
+            }),
+        };
+
+        storage
+            .record_interaction(&session_id, 8792912, &event)
+            .unwrap();
+
+        assert_eq!(storage.session_guard_buy_count(&session_id).unwrap(), 1);
         assert_eq!(storage.unknown_interaction_count(&session_id).unwrap(), 0);
     }
 }
