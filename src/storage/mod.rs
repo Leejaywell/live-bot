@@ -15,6 +15,15 @@ pub struct SignInResult {
     pub already_signed: bool,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct LiveSessionSummary {
+    pub danmu_count: i64,
+    pub gift_value: i64,
+    pub interact_count: i64,
+    pub guard_buy_count: i64,
+    pub unknown_count: i64,
+}
+
 impl Storage {
     pub fn open(path: &str) -> Result<Self> {
         std::fs::create_dir_all(
@@ -372,6 +381,17 @@ impl Storage {
         )?)
     }
 
+    #[allow(dead_code)]
+    pub fn live_session_summary(&self, session_id: &str) -> Result<LiveSessionSummary> {
+        Ok(LiveSessionSummary {
+            danmu_count: self.session_danmu_count(session_id)?,
+            gift_value: self.session_gift_value(session_id)?,
+            interact_count: self.session_interact_count(session_id)?,
+            guard_buy_count: self.session_guard_buy_count(session_id)?,
+            unknown_count: self.unknown_interaction_count(session_id)?,
+        })
+    }
+
     pub fn record_blind_box_stat(
         &self,
         uid: i64,
@@ -671,5 +691,74 @@ mod tests {
 
         assert_eq!(storage.session_guard_buy_count(&session_id).unwrap(), 1);
         assert_eq!(storage.unknown_interaction_count(&session_id).unwrap(), 0);
+    }
+
+    #[test]
+    fn live_session_summary_aggregates_recorded_interactions() {
+        let storage = Storage::open_in_memory().unwrap();
+        let session_id = storage
+            .start_observed_live_session(
+                8792912,
+                Local.with_ymd_and_hms(2026, 5, 1, 20, 0, 0).unwrap(),
+            )
+            .unwrap();
+        let events = [
+            ParsedLiveEvent {
+                event: LiveEvent::Danmu {
+                    user_id: 1,
+                    user: "alice".to_string(),
+                    text: "hello".to_string(),
+                },
+                raw: json!({"cmd": "DANMU_MSG"}),
+            },
+            ParsedLiveEvent {
+                event: LiveEvent::Gift {
+                    user_id: 2,
+                    user: "bob".to_string(),
+                    gift: "辣条".to_string(),
+                    count: 2,
+                    price: 100,
+                    original_gift_name: None,
+                    original_gift_price: 0,
+                },
+                raw: json!({"cmd": "SEND_GIFT"}),
+            },
+            ParsedLiveEvent {
+                event: LiveEvent::Interact {
+                    kind: InteractKind::Entry,
+                    user_id: 3,
+                    user: "carol".to_string(),
+                },
+                raw: json!({"cmd": "INTERACT_WORD"}),
+            },
+            ParsedLiveEvent {
+                event: LiveEvent::GuardBuy {
+                    user_id: 4,
+                    user: "dave".to_string(),
+                    gift: "舰长".to_string(),
+                },
+                raw: json!({"cmd": "GUARD_BUY"}),
+            },
+            ParsedLiveEvent {
+                event: LiveEvent::Command {
+                    name: "NEW_ACTIVITY_EVENT".to_string(),
+                },
+                raw: json!({"cmd": "NEW_ACTIVITY_EVENT"}),
+            },
+        ];
+
+        for event in events {
+            storage
+                .record_interaction(&session_id, 8792912, &event)
+                .unwrap();
+        }
+
+        let summary = storage.live_session_summary(&session_id).unwrap();
+
+        assert_eq!(summary.danmu_count, 1);
+        assert_eq!(summary.gift_value, 200);
+        assert_eq!(summary.interact_count, 1);
+        assert_eq!(summary.guard_buy_count, 1);
+        assert_eq!(summary.unknown_count, 1);
     }
 }
