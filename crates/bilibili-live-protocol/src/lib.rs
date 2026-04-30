@@ -83,6 +83,12 @@ pub enum LiveEvent {
     },
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ParsedLiveEvent {
+    pub event: LiveEvent,
+    pub raw: Value,
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum InteractKind {
     Entry,
@@ -159,6 +165,13 @@ pub async fn run_client<F>(config: ConnectConfig, mut on_event: F) -> Result<()>
 where
     F: FnMut(LiveEvent) + Send + 'static,
 {
+    run_parsed_client(config, move |parsed| on_event(parsed.event)).await
+}
+
+pub async fn run_parsed_client<F>(config: ConnectConfig, mut on_event: F) -> Result<()>
+where
+    F: FnMut(ParsedLiveEvent) + Send + 'static,
+{
     let url = config.first_ws_url();
     let (mut socket, _) = connect_async(&url).await?;
     socket
@@ -176,7 +189,7 @@ where
             message = socket.next() => {
                 match message {
                     Some(Ok(Message::Binary(data))) => {
-                        for event in parse_events(&data)? {
+                        for event in parse_parsed_events(&data)? {
                             on_event(event);
                         }
                     }
@@ -207,6 +220,13 @@ pub fn build_heartbeat_packet() -> Vec<u8> {
 }
 
 pub fn parse_events(data: &[u8]) -> Result<Vec<LiveEvent>> {
+    Ok(parse_parsed_events(data)?
+        .into_iter()
+        .map(|event| event.event)
+        .collect())
+}
+
+pub fn parse_parsed_events(data: &[u8]) -> Result<Vec<ParsedLiveEvent>> {
     let mut events = Vec::new();
     for packet in split_packets(data)? {
         match packet.protocol {
@@ -215,13 +235,13 @@ pub fn parse_events(data: &[u8]) -> Result<Vec<LiveEvent>> {
                 let mut decoder = ZlibDecoder::new(packet.body);
                 let mut decoded = Vec::new();
                 decoder.read_to_end(&mut decoded)?;
-                events.extend(parse_events(&decoded)?);
+                events.extend(parse_parsed_events(&decoded)?);
             }
             PROTOCOL_BROTLI => {
                 let mut decoded = Vec::new();
                 let mut decompressor = brotli::Decompressor::new(packet.body, 4096);
                 decompressor.read_to_end(&mut decoded)?;
-                events.extend(parse_events(&decoded)?);
+                events.extend(parse_parsed_events(&decoded)?);
             }
             _ => {}
         }
@@ -263,7 +283,7 @@ fn split_packets(data: &[u8]) -> Result<Vec<Packet<'_>>> {
     Ok(packets)
 }
 
-fn collect_notification(packet: Packet<'_>, events: &mut Vec<LiveEvent>) -> Result<()> {
+fn collect_notification(packet: Packet<'_>, events: &mut Vec<ParsedLiveEvent>) -> Result<()> {
     if packet.operation != OP_NOTIFICATION || packet.body.is_empty() {
         return Ok(());
     }
@@ -287,11 +307,14 @@ fn collect_notification(packet: Packet<'_>, events: &mut Vec<LiveEvent>) -> Resu
                 .pointer("/info/1")
                 .and_then(Value::as_str)
                 .unwrap_or("");
-            events.push(LiveEvent::Danmu {
-                user_id,
-                user: user.to_string(),
-                text: text.to_string(),
-            });
+            events.push(parsed(
+                LiveEvent::Danmu {
+                    user_id,
+                    user: user.to_string(),
+                    text: text.to_string(),
+                },
+                &json,
+            ));
         }
         "SEND_GIFT" => {
             let user_id = json
@@ -324,15 +347,18 @@ fn collect_notification(packet: Packet<'_>, events: &mut Vec<LiveEvent>) -> Resu
                 .pointer("/data/blind_gift/original_gift_price")
                 .and_then(Value::as_i64)
                 .unwrap_or(0);
-            events.push(LiveEvent::Gift {
-                user_id,
-                user: user.to_string(),
-                gift: gift.to_string(),
-                count,
-                price,
-                original_gift_name,
-                original_gift_price,
-            });
+            events.push(parsed(
+                LiveEvent::Gift {
+                    user_id,
+                    user: user.to_string(),
+                    gift: gift.to_string(),
+                    count,
+                    price,
+                    original_gift_name,
+                    original_gift_price,
+                },
+                &json,
+            ));
         }
         "INTERACT_WORD" => {
             let msg_type = json
@@ -347,17 +373,20 @@ fn collect_notification(packet: Packet<'_>, events: &mut Vec<LiveEvent>) -> Resu
                 .pointer("/data/uname")
                 .and_then(Value::as_str)
                 .unwrap_or("用户");
-            events.push(LiveEvent::Interact {
-                kind: match msg_type {
-                    1 => InteractKind::Entry,
-                    2 => InteractKind::Follow,
-                    3 => InteractKind::Share,
-                    5 => InteractKind::MutualFollow,
-                    other => InteractKind::Unknown(other),
+            events.push(parsed(
+                LiveEvent::Interact {
+                    kind: match msg_type {
+                        1 => InteractKind::Entry,
+                        2 => InteractKind::Follow,
+                        3 => InteractKind::Share,
+                        5 => InteractKind::MutualFollow,
+                        other => InteractKind::Unknown(other),
+                    },
+                    user_id,
+                    user: user.to_string(),
                 },
-                user_id,
-                user: user.to_string(),
-            });
+                &json,
+            ));
         }
         "ENTRY_EFFECT" | "ENTRY_EFFECT_MUST_RECEIVE" => {
             let user_id = json
@@ -377,12 +406,15 @@ fn collect_notification(packet: Packet<'_>, events: &mut Vec<LiveEvent>) -> Resu
                 .pointer("/data/uinfo/wealth/level")
                 .and_then(Value::as_i64)
                 .unwrap_or(0);
-            events.push(LiveEvent::EntryEffect {
-                user_id,
-                user: user.to_string(),
-                guard_level,
-                wealth_level,
-            });
+            events.push(parsed(
+                LiveEvent::EntryEffect {
+                    user_id,
+                    user: user.to_string(),
+                    guard_level,
+                    wealth_level,
+                },
+                &json,
+            ));
         }
         "GUARD_BUY" => {
             let user_id = json
@@ -397,49 +429,67 @@ fn collect_notification(packet: Packet<'_>, events: &mut Vec<LiveEvent>) -> Resu
                 .pointer("/data/gift_name")
                 .and_then(Value::as_str)
                 .unwrap_or("大航海");
-            events.push(LiveEvent::GuardBuy {
-                user_id,
-                user: user.to_string(),
-                gift: gift.to_string(),
-            });
+            events.push(parsed(
+                LiveEvent::GuardBuy {
+                    user_id,
+                    user: user.to_string(),
+                    gift: gift.to_string(),
+                },
+                &json,
+            ));
         }
         "ROOM_BLOCK_MSG" => {
             let user = json
                 .pointer("/data/uname")
                 .and_then(Value::as_str)
                 .unwrap_or("用户");
-            events.push(LiveEvent::Block {
-                user: user.to_string(),
-            });
+            events.push(parsed(
+                LiveEvent::Block {
+                    user: user.to_string(),
+                },
+                &json,
+            ));
         }
         "PK_BATTLE_START" | "PK_BATTLE_START_NEW" => {
-            events.push(LiveEvent::Pk {
-                kind: PkEventKind::Start {
-                    init_room_id: json
-                        .pointer("/data/init_info/room_id")
-                        .and_then(Value::as_i64)
-                        .unwrap_or(0),
-                    match_room_id: json
-                        .pointer("/data/match_info/room_id")
-                        .and_then(Value::as_i64)
-                        .unwrap_or(0),
+            events.push(parsed(
+                LiveEvent::Pk {
+                    kind: PkEventKind::Start {
+                        init_room_id: json
+                            .pointer("/data/init_info/room_id")
+                            .and_then(Value::as_i64)
+                            .unwrap_or(0),
+                        match_room_id: json
+                            .pointer("/data/match_info/room_id")
+                            .and_then(Value::as_i64)
+                            .unwrap_or(0),
+                    },
                 },
-            });
+                &json,
+            ));
         }
         "PK_BATTLE_END" | "PK_BATTLE_SETTLE" | "PK_BATTLE_SETTLE_NEW" => {
-            events.push(LiveEvent::Pk {
-                kind: PkEventKind::End,
-            });
+            events.push(parsed(
+                LiveEvent::Pk {
+                    kind: PkEventKind::End,
+                },
+                &json,
+            ));
         }
         "PK_BATTLE_PROCESS" | "PK_BATTLE_PROCESS_NEW" => {
-            events.push(LiveEvent::Pk {
-                kind: PkEventKind::Process,
-            });
+            events.push(parsed(
+                LiveEvent::Pk {
+                    kind: PkEventKind::Process,
+                },
+                &json,
+            ));
         }
         other if other.starts_with("PK_BATTLE_") => {
-            events.push(LiveEvent::Pk {
-                kind: PkEventKind::Other(other.to_string()),
-            });
+            events.push(parsed(
+                LiveEvent::Pk {
+                    kind: PkEventKind::Other(other.to_string()),
+                },
+                &json,
+            ));
         }
         "POPULARITY_RED_POCKET_NEW" => {
             let user_id = json
@@ -461,56 +511,90 @@ fn collect_notification(packet: Packet<'_>, events: &mut Vec<LiveEvent>) -> Resu
                 .or_else(|| json.pointer("/data/gift_price"))
                 .and_then(Value::as_i64)
                 .unwrap_or(0);
-            events.push(LiveEvent::RedPocket {
-                kind: RedPocketKind::New {
-                    user_id,
-                    user: user.to_string(),
-                    gift: gift.to_string(),
-                    price,
+            events.push(parsed(
+                LiveEvent::RedPocket {
+                    kind: RedPocketKind::New {
+                        user_id,
+                        user: user.to_string(),
+                        gift: gift.to_string(),
+                        price,
+                    },
                 },
-            });
+                &json,
+            ));
         }
         "POPULARITY_RED_POCKET_WINNER_LIST" => {
-            events.push(LiveEvent::RedPocket {
-                kind: RedPocketKind::WinnerList,
-            });
+            events.push(parsed(
+                LiveEvent::RedPocket {
+                    kind: RedPocketKind::WinnerList,
+                },
+                &json,
+            ));
         }
         "RED_POCKET_START" | "POPULARITY_RED_POCKET_START" => {
-            events.push(LiveEvent::RedPocket {
-                kind: RedPocketKind::Start,
-            });
+            events.push(parsed(
+                LiveEvent::RedPocket {
+                    kind: RedPocketKind::Start,
+                },
+                &json,
+            ));
         }
         other if other.contains("RED_POCKET") => {
-            events.push(LiveEvent::RedPocket {
-                kind: RedPocketKind::Other(other.to_string()),
-            });
+            events.push(parsed(
+                LiveEvent::RedPocket {
+                    kind: RedPocketKind::Other(other.to_string()),
+                },
+                &json,
+            ));
         }
         "ANCHOR_LOT_START" => {
-            events.push(LiveEvent::AnchorLottery {
-                kind: AnchorLotteryKind::Start,
-            });
+            events.push(parsed(
+                LiveEvent::AnchorLottery {
+                    kind: AnchorLotteryKind::Start,
+                },
+                &json,
+            ));
         }
         "ANCHOR_LOT_AWARD" => {
-            events.push(LiveEvent::AnchorLottery {
-                kind: AnchorLotteryKind::Award,
-            });
+            events.push(parsed(
+                LiveEvent::AnchorLottery {
+                    kind: AnchorLotteryKind::Award,
+                },
+                &json,
+            ));
         }
         "ANCHOR_LOT_END" => {
-            events.push(LiveEvent::AnchorLottery {
-                kind: AnchorLotteryKind::End,
-            });
+            events.push(parsed(
+                LiveEvent::AnchorLottery {
+                    kind: AnchorLotteryKind::End,
+                },
+                &json,
+            ));
         }
         other if other.starts_with("ANCHOR_LOT_") => {
-            events.push(LiveEvent::AnchorLottery {
-                kind: AnchorLotteryKind::Other(other.to_string()),
-            });
+            events.push(parsed(
+                LiveEvent::AnchorLottery {
+                    kind: AnchorLotteryKind::Other(other.to_string()),
+                },
+                &json,
+            ));
         }
         "WATCHED_CHANGE" => {}
-        other => events.push(LiveEvent::Command {
-            name: other.to_string(),
-        }),
+        other => events.push(parsed(
+            LiveEvent::Command {
+                name: other.to_string(),
+            },
+            &json,
+        )),
     }
     Ok(())
+}
+
+fn parsed(event: LiveEvent, raw: &Value) -> ParsedLiveEvent {
+    ParsedLiveEvent {
+        event,
+        raw: raw.clone(),
+    }
 }
 
 #[cfg(test)]
@@ -544,6 +628,68 @@ mod tests {
                 text: "hello".to_string(),
             }]
         );
+    }
+
+    #[test]
+    fn parses_danmu_with_raw_payload() {
+        let body = serde_json::json!({
+            "cmd": "DANMU_MSG",
+            "info": [[], "hello", [42, "alice"]]
+        });
+        let raw = build_packet(0, OP_NOTIFICATION, body.to_string().as_bytes());
+
+        let events = parse_parsed_events(&raw).unwrap();
+
+        assert_eq!(events.len(), 1);
+        assert_eq!(
+            events[0].event,
+            LiveEvent::Danmu {
+                user_id: 42,
+                user: "alice".to_string(),
+                text: "hello".to_string(),
+            }
+        );
+        assert_eq!(
+            events[0].raw.pointer("/cmd").and_then(Value::as_str),
+            Some("DANMU_MSG")
+        );
+        assert_eq!(
+            events[0].raw.pointer("/info/1").and_then(Value::as_str),
+            Some("hello")
+        );
+    }
+
+    #[test]
+    fn preserves_unknown_command_raw_payload() {
+        let body = serde_json::json!({
+            "cmd": "NEW_ACTIVITY_EVENT",
+            "data": {
+                "activity_id": 99
+            }
+        });
+        let raw = build_packet(0, OP_NOTIFICATION, body.to_string().as_bytes());
+
+        let events = parse_parsed_events(&raw).unwrap();
+
+        assert_eq!(events.len(), 1);
+        assert_eq!(
+            events[0].event,
+            LiveEvent::Command {
+                name: "NEW_ACTIVITY_EVENT".to_string(),
+            }
+        );
+        assert_eq!(
+            events[0]
+                .raw
+                .pointer("/data/activity_id")
+                .and_then(Value::as_i64),
+            Some(99)
+        );
+    }
+
+    #[test]
+    fn exposes_parsed_client_callback_api() {
+        let _ = run_parsed_client::<fn(ParsedLiveEvent)>;
     }
 
     #[test]
