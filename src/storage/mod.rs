@@ -226,6 +226,15 @@ impl Storage {
                 Some(*count),
                 Some(*price),
             ),
+            LiveEvent::Interact { user_id, user, .. } => (
+                "interact",
+                Some(*user_id),
+                Some(user.as_str()),
+                None,
+                None,
+                None,
+                None,
+            ),
             _ => ("unknown", None, None, None, None, None, None),
         };
         let raw_json = serde_json::to_string(&parsed.raw)?;
@@ -288,6 +297,20 @@ impl Storage {
             select coalesce(sum(gift_count * gift_price), 0)
             from interaction_records
             where session_id = ?1 and event_type = 'gift'
+            ",
+            params![session_id],
+            |row| row.get(0),
+        )?)
+    }
+
+    #[allow(dead_code)]
+    pub fn session_interact_count(&self, session_id: &str) -> Result<i64> {
+        let conn = self.conn.lock().expect("storage mutex poisoned");
+        Ok(conn.query_row(
+            "
+            select count(*)
+            from interaction_records
+            where session_id = ?1 and event_type = 'interact'
             ",
             params![session_id],
             |row| row.get(0),
@@ -367,7 +390,7 @@ fn today_key() -> String {
 
 #[cfg(test)]
 mod tests {
-    use bilibili_live_protocol::{LiveEvent, ParsedLiveEvent};
+    use bilibili_live_protocol::{InteractKind, LiveEvent, ParsedLiveEvent};
     use chrono::{Local, TimeZone};
     use serde_json::json;
 
@@ -555,5 +578,38 @@ mod tests {
             .unwrap();
 
         assert_eq!(storage.unknown_interaction_count(&session_id).unwrap(), 1);
+    }
+
+    #[test]
+    fn records_interact_event_separately_from_unknown() {
+        let storage = Storage::open_in_memory().unwrap();
+        let session_id = storage
+            .start_observed_live_session(
+                8792912,
+                Local.with_ymd_and_hms(2026, 5, 1, 20, 0, 0).unwrap(),
+            )
+            .unwrap();
+        let event = ParsedLiveEvent {
+            event: LiveEvent::Interact {
+                kind: InteractKind::Entry,
+                user_id: 42,
+                user: "alice".to_string(),
+            },
+            raw: json!({
+                "cmd": "INTERACT_WORD",
+                "data": {
+                    "msg_type": 1,
+                    "uid": 42,
+                    "uname": "alice"
+                }
+            }),
+        };
+
+        storage
+            .record_interaction(&session_id, 8792912, &event)
+            .unwrap();
+
+        assert_eq!(storage.session_interact_count(&session_id).unwrap(), 1);
+        assert_eq!(storage.unknown_interaction_count(&session_id).unwrap(), 0);
     }
 }
