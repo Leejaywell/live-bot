@@ -270,6 +270,7 @@ fn wire_callbacks(app: &MainWindow, state: SharedState) {
 
             let (send_tx, send_rx) = mpsc::channel::<String>(1000);
             let (gift_tx, gift_rx) = mpsc::channel::<bilibili_live_protocol::LiveEvent>(1000);
+            let current_session_id = Arc::new(Mutex::new(None::<String>));
             let send_cookie = token::read_cookie_string().ok();
             let sender_http = state.http.clone();
             let sender_weak = weak_for_task.clone();
@@ -358,6 +359,8 @@ fn wire_callbacks(app: &MainWindow, state: SharedState) {
             let poll_http = state.http.clone();
             let poll_weak = weak_for_task.clone();
             let poll_cancel = task_cancel.clone();
+            let poll_storage = storage.clone();
+            let poll_session = current_session_id.clone();
             let poll_task = tokio::spawn(async move {
                 let mut last_status = -1;
                 loop {
@@ -369,9 +372,33 @@ fn wire_callbacks(app: &MainWindow, state: SharedState) {
                                     if room.live_status != last_status {
                                         last_status = room.live_status;
                                         let status = if room.live_status == 1 { "直播中" } else { "未开播" };
+                                        let session_change = {
+                                            let mut session = poll_session
+                                                .lock()
+                                                .expect("session mutex poisoned");
+                                            bot::update_observed_session_for_room_status(
+                                                &poll_storage,
+                                                &mut session,
+                                                room_id,
+                                                room.live_status,
+                                                chrono::Local::now(),
+                                            )
+                                        };
                                         update_ui(&poll_weak, move |app| {
                                             app.set_room_status(format!("{room_id} / {status}").into());
                                             append_log(app, &format!("直播状态变更: {status}"));
+                                            match session_change {
+                                                Ok(bot::SessionStatusChange::Started(session_id)) => {
+                                                    append_log(app, &format!("直播场次已开始: {session_id}"));
+                                                }
+                                                Ok(bot::SessionStatusChange::Ended(session_id)) => {
+                                                    append_log(app, &format!("直播场次已结束: {session_id}"));
+                                                }
+                                                Ok(bot::SessionStatusChange::Unchanged) => {}
+                                                Err(err) => {
+                                                    append_log(app, &format!("直播场次状态更新失败: {err}"));
+                                                }
+                                            }
                                         });
                                     }
                                 }
@@ -387,6 +414,7 @@ fn wire_callbacks(app: &MainWindow, state: SharedState) {
             let ws_http = state.http.clone();
             let ws_weak = weak_for_task.clone();
             let ws_cancel = task_cancel.clone();
+            let ws_session = current_session_id.clone();
             let ws_task = tokio::spawn(async move {
                 let cookie = match token::read_cookie_string() {
                     Ok(cookie) => cookie,
@@ -399,8 +427,15 @@ fn wire_callbacks(app: &MainWindow, state: SharedState) {
                 loop {
                     let result = async {
                         let room = ws_http.room_init(room_id).await?;
-                        let session_id =
-                            storage.start_observed_live_session(room_id, chrono::Local::now())?;
+                        let session_id = {
+                            let mut session = ws_session.lock().expect("session mutex poisoned");
+                            if session.is_none() {
+                                let session_id = storage
+                                    .start_observed_live_session(room_id, chrono::Local::now())?;
+                                *session = Some(session_id);
+                            }
+                            session.clone().expect("session just initialized")
+                        };
                         let danmu = ws_http.danmu_info(room.room_id, &cookie).await?;
                         let connect_config = ConnectConfig {
                             room_id: room.room_id,
