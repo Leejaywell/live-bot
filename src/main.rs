@@ -399,6 +399,8 @@ fn wire_callbacks(app: &MainWindow, state: SharedState) {
                 loop {
                     let result = async {
                         let room = ws_http.room_init(room_id).await?;
+                        let session_id =
+                            storage.start_observed_live_session(room_id, chrono::Local::now())?;
                         let danmu = ws_http.danmu_info(room.room_id, &cookie).await?;
                         let connect_config = ConnectConfig {
                             room_id: room.room_id,
@@ -415,15 +417,31 @@ fn wire_callbacks(app: &MainWindow, state: SharedState) {
                         let event_storage = storage.clone();
                         let ai_http = ws_http.clone();
                         let ai_config = bot_config.clone();
-                        bilibili_live_protocol::run_client(connect_config, move |event| {
+                        bilibili_live_protocol::run_parsed_client(connect_config, move |parsed| {
+                            let event = &parsed.event;
                             let line = event.to_string();
                             if matches!(event, bilibili_live_protocol::LiveEvent::Gift { .. }) {
                                 let _ = event_gift_tx.try_send(event.clone());
                             }
-                            for message in event_engine.handle_event(&event, Some(&event_storage)) {
+                            let replies = match bot::record_and_handle_event(
+                                &event_storage,
+                                &session_id,
+                                room_id,
+                                &parsed,
+                                &event_engine,
+                            ) {
+                                Ok(replies) => replies,
+                                Err(err) => {
+                                    update_ui(&event_weak, move |app| {
+                                        append_log(app, &format!("事件记录失败: {err}"))
+                                    });
+                                    event_engine.handle_event(event, Some(&event_storage))
+                                }
+                            };
+                            for message in replies {
                                 let _ = event_tx.try_send(message);
                             }
-                            if let Some(prompt) = event_engine.ai_prompt(&event) {
+                            if let Some(prompt) = event_engine.ai_prompt(event) {
                                 let ai_http = ai_http.clone();
                                 let ai_config = ai_config.clone();
                                 let ai_tx = event_tx.clone();
