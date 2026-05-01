@@ -47,6 +47,10 @@ pub struct AppConfig {
     pub thanks_min_cost: i32,
     pub blind_box_profit_loss_stat: bool,
     pub thanks_gift_use_at: bool,
+    #[serde(default)]
+    pub gift_aliases: BTreeMap<String, String>,
+    #[serde(default)]
+    pub gift_thanks_templates: BTreeMap<String, String>,
     pub cron_danmu: bool,
     pub cron_danmu_list: Vec<CronDanmu>,
     pub draw_by_lot: bool,
@@ -166,6 +170,8 @@ impl Default for AppConfig {
             thanks_min_cost: 0,
             blind_box_profit_loss_stat: true,
             thanks_gift_use_at: false,
+            gift_aliases: BTreeMap::new(),
+            gift_thanks_templates: BTreeMap::new(),
             cron_danmu: false,
             cron_danmu_list: vec![CronDanmu {
                 cron: "*/2 * * * *".to_string(),
