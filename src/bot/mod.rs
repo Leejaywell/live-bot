@@ -98,6 +98,41 @@ mod tests {
     }
 
     #[test]
+    fn first_danmu_emits_newcomer_notice() {
+        let storage = Storage::open_in_memory().unwrap();
+        let session_id = storage
+            .start_observed_live_session(
+                8792912,
+                Local.with_ymd_and_hms(2026, 5, 1, 20, 0, 0).unwrap(),
+            )
+            .unwrap();
+        let mut config = test_config();
+        config.newcomer_danmu_enable = true;
+        config.newcomer_danmu_template = "欢迎新朋友 {user} 首次发言".to_string();
+        let engine = BotEngine::new(config);
+        let event = ParsedLiveEvent {
+            event: LiveEvent::Danmu {
+                user_id: 42,
+                user: "alice".to_string(),
+                text: "hello".to_string(),
+            },
+            raw: json!({
+                "cmd": "DANMU_MSG",
+                "info": [[], "hello", [42, "alice"]]
+            }),
+        };
+
+        let first = super::record_and_handle_event(&storage, &session_id, 8792912, &event, &engine)
+            .unwrap();
+        let second =
+            super::record_and_handle_event(&storage, &session_id, 8792912, &event, &engine)
+                .unwrap();
+
+        assert_eq!(first, vec!["欢迎新朋友 alice 首次发言"]);
+        assert!(second.is_empty());
+    }
+
+    #[test]
     fn observed_session_follows_live_status_boundary() {
         let storage = Storage::open_in_memory().unwrap();
         let mut current_session_id = None;

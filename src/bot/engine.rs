@@ -23,12 +23,16 @@ impl BotEngine {
     }
 
     pub fn handle_event(&self, event: &LiveEvent, storage: Option<&Storage>) -> Vec<String> {
+        if self.is_permanently_blacklisted(event) {
+            return Vec::new();
+        }
         if self.is_filtered_danmu(event) {
             return Vec::new();
         }
 
         let mut out = Vec::new();
         self.track_danmu(event, storage);
+        out.extend(self.newcomer_notice(event, storage));
         out.extend(self.help(event));
         out.extend(self.keyword_reply(event));
         out.extend(self.draw_by_lot(event));
@@ -37,6 +41,24 @@ impl BotEngine {
         out.extend(self.thanks(event));
         out.extend(self.pk_and_activity_notice(event));
         out
+    }
+
+    fn is_permanently_blacklisted(&self, event: &LiveEvent) -> bool {
+        let (user_id, user) = match event {
+            LiveEvent::Danmu { user_id, user, .. }
+            | LiveEvent::Interact { user_id, user, .. }
+            | LiveEvent::EntryEffect { user_id, user, .. }
+            | LiveEvent::Gift { user_id, user, .. }
+            | LiveEvent::GuardBuy { user_id, user, .. } => (*user_id, user.as_str()),
+            _ => return false,
+        };
+
+        self.config.permanent_blacklist_users.contains(&user_id)
+            || self
+                .config
+                .permanent_blacklist_names
+                .iter()
+                .any(|name| name == user)
     }
 
     fn is_filtered_danmu(&self, event: &LiveEvent) -> bool {
@@ -75,6 +97,26 @@ impl BotEngine {
         };
         if let Some(storage) = storage {
             let _ = storage.increment_danmu_count(*user_id, user);
+        }
+    }
+
+    fn newcomer_notice(&self, event: &LiveEvent, storage: Option<&Storage>) -> Vec<String> {
+        if !self.config.newcomer_danmu_enable {
+            return Vec::new();
+        }
+        let LiveEvent::Danmu { user_id, user, .. } = event else {
+            return Vec::new();
+        };
+        let Some(storage) = storage else {
+            return Vec::new();
+        };
+        match storage.user_interaction_danmu_count(*user_id) {
+            Ok(1) => vec![
+                self.config
+                    .newcomer_danmu_template
+                    .replace("{user}", &self.display_name(*user_id, user)),
+            ],
+            _ => Vec::new(),
         }
     }
 
@@ -327,7 +369,9 @@ impl BotEngine {
         if !self.config.interact_word || self.is_welcome_blacklisted(user) {
             return Vec::new();
         }
-        self.render_welcome(user).into_iter().collect()
+        self.render_welcome(&self.display_name(user_id, user))
+            .into_iter()
+            .collect()
     }
 
     fn specified_welcome(&self, user_id: i64) -> Option<String> {
@@ -371,6 +415,14 @@ impl BotEngine {
                 .welcome_blacklist_wide
                 .iter()
                 .any(|item| user.contains(item))
+    }
+
+    fn display_name(&self, user_id: i64, user: &str) -> String {
+        self.config
+            .special_nicknames
+            .get(&user_id.to_string())
+            .cloned()
+            .unwrap_or_else(|| user.to_string())
     }
 }
 
@@ -452,6 +504,50 @@ mod tests {
         );
 
         assert_eq!(replies, vec!["你好呀"]);
+    }
+
+    #[test]
+    fn permanent_blacklist_blocks_danmu_automation() {
+        let mut config = test_config();
+        config.keyword_reply = true;
+        config
+            .keyword_reply_list
+            .insert("你好".to_string(), "你好呀".to_string());
+        config.permanent_blacklist_users = vec![42];
+        let engine = BotEngine::new(config);
+
+        let replies = engine.handle_event(
+            &LiveEvent::Danmu {
+                user_id: 42,
+                user: "u".to_string(),
+                text: "你好".to_string(),
+            },
+            None,
+        );
+
+        assert!(replies.is_empty());
+    }
+
+    #[test]
+    fn welcome_uses_special_nickname() {
+        let mut config = test_config();
+        config.welcome_string.clear();
+        config.welcome_danmu = vec!["欢迎 {user}".to_string()];
+        config
+            .special_nicknames
+            .insert("42".to_string(), "榜一".to_string());
+        let engine = BotEngine::new(config);
+
+        let replies = engine.handle_event(
+            &LiveEvent::Interact {
+                kind: InteractKind::Entry,
+                user_id: 42,
+                user: "alice".to_string(),
+            },
+            None,
+        );
+
+        assert_eq!(replies, vec!["欢迎 榜一"]);
     }
 
     #[test]

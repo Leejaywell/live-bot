@@ -47,6 +47,16 @@ pub struct AppConfig {
     pub welcome_string: BTreeMap<String, String>,
     pub welcome_blacklist_wide: Vec<String>,
     pub welcome_blacklist: Vec<String>,
+    #[serde(default)]
+    pub permanent_blacklist_users: Vec<i64>,
+    #[serde(default)]
+    pub permanent_blacklist_names: Vec<String>,
+    #[serde(default)]
+    pub special_nicknames: BTreeMap<String, String>,
+    #[serde(default)]
+    pub newcomer_danmu_enable: bool,
+    #[serde(default = "default_newcomer_danmu_template")]
+    pub newcomer_danmu_template: String,
     pub thanks_gift: bool,
     pub thanks_gift_timeout: i32,
     pub thanks_blind_box_timeout: i32,
@@ -173,6 +183,11 @@ impl Default for AppConfig {
             )]),
             welcome_blacklist_wide: vec!["小妖网".to_string(), "朲芞".to_string()],
             welcome_blacklist: vec!["小妖网玩".to_string(), "独家朲芞".to_string()],
+            permanent_blacklist_users: Vec::new(),
+            permanent_blacklist_names: Vec::new(),
+            special_nicknames: BTreeMap::new(),
+            newcomer_danmu_enable: false,
+            newcomer_danmu_template: default_newcomer_danmu_template(),
             thanks_gift: true,
             thanks_gift_timeout: 3,
             thanks_blind_box_timeout: 6,
@@ -242,4 +257,8 @@ fn default_time_welcome() -> Vec<TimeWelcome> {
 
 fn default_danmu_filter_repeat_threshold() -> i32 {
     3
+}
+
+fn default_newcomer_danmu_template() -> String {
+    "欢迎新朋友 {user} 首次发言".to_string()
 }
