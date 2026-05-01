@@ -10,17 +10,17 @@ component ActionButton inherits Rectangle {
     in property <color> line-color;
     callback clicked();
 
-    height: 40px;
-    border-radius: 14px;
+    height: 32px;
+    border-radius: 7px;
     background: !root.enabled ? root.line-color : (root.primary ? root.accent : root.fill);
-    border-width: root.primary ? 0px : 1px;
+    border-width: 1px;
     border-color: root.primary ? root.accent : root.line-color;
 
     Text {
         text: root.label;
         color: !root.enabled ? #94a3b8 : (root.primary ? #ffffff : root.text-color);
         font-size: 12px;
-        font-weight: 800;
+        font-weight: 600;
         horizontal-alignment: center;
         vertical-alignment: center;
     }
@@ -43,30 +43,30 @@ component SidebarEntry inherits Rectangle {
     in property <color> muted-color;
     in property <color> outline-color;
 
-    height: 54px;
-    border-radius: 14px;
-    background: root.active ? root.accent : root.base-bg;
-    border-width: root.active ? 0px : 1px;
-    border-color: root.active ? root.accent : root.outline-color;
+    height: 44px;
+    border-radius: 8px;
+    background: root.active ? root.base-bg : #00000000;
+    border-width: root.active ? 1px : 0px;
+    border-color: root.active ? root.outline-color : #00000000;
 
     HorizontalLayout {
-        padding-left: 12px;
-        padding-right: 12px;
-        padding-top: 8px;
-        padding-bottom: 8px;
-        spacing: 10px;
+        padding-left: 10px;
+        padding-right: 10px;
+        padding-top: 6px;
+        padding-bottom: 6px;
+        spacing: 9px;
 
         Rectangle {
-            width: 34px;
-            height: 34px;
-            border-radius: 10px;
-            background: root.active ? #ffffff22 : root.accent;
+            width: 28px;
+            height: 28px;
+            border-radius: 7px;
+            background: root.active ? root.accent : root.base-bg;
 
             Text {
                 text: root.icon;
-                color: #ffffff;
+                color: root.active ? #ffffff : root.text-color;
                 font-size: 12px;
-                font-weight: 800;
+                font-weight: 600;
                 horizontal-alignment: center;
                 vertical-alignment: center;
             }
@@ -76,13 +76,13 @@ component SidebarEntry inherits Rectangle {
             spacing: 1px;
             Text {
                 text: root.title;
-                color: root.active ? #ffffff : root.text-color;
+                color: root.text-color;
                 font-size: 13px;
-                font-weight: 800;
+                font-weight: 600;
             }
             Text {
                 text: root.subtitle;
-                color: root.active ? #dbeafe : root.muted-color;
+                color: root.muted-color;
                 font-size: 11px;
             }
         }
@@ -92,14 +92,14 @@ component SidebarEntry inherits Rectangle {
         if root.badge != "" : Rectangle {
             width: 48px;
             height: 20px;
-            border-radius: 10px;
-            background: root.active ? #ffffff22 : root.accent;
+            border-radius: 8px;
+            background: root.accent;
 
             Text {
                 text: root.badge;
                 color: #ffffff;
                 font-size: 10px;
-                font-weight: 700;
+                font-weight: 600;
                 horizontal-alignment: center;
                 vertical-alignment: center;
             }
@@ -117,34 +117,34 @@ component StatusCard inherits Rectangle {
     in property <color> text-color;
     in property <color> muted-color;
 
-    border-radius: 18px;
+    border-radius: 8px;
     border-width: 1px;
     border-color: root.outline-color;
     background: root.base-bg;
 
     VerticalLayout {
-        padding: 16px;
-        spacing: 10px;
+        padding: 12px;
+        spacing: 8px;
 
         HorizontalLayout {
             Text {
                 text: root.label;
                 color: root.muted-color;
                 font-size: 12px;
-                font-weight: 700;
+                font-weight: 600;
             }
             Rectangle { }
             Rectangle {
-                width: 30px;
-                height: 30px;
-                border-radius: 10px;
+                width: 24px;
+                height: 24px;
+                border-radius: 6px;
                 background: root.accent;
 
                 Text {
                     text: root.icon;
                     color: #ffffff;
                     font-size: 11px;
-                    font-weight: 800;
+                    font-weight: 600;
                     horizontal-alignment: center;
                     vertical-alignment: center;
                 }
@@ -154,8 +154,8 @@ component StatusCard inherits Rectangle {
         Text {
             text: root.value;
             color: root.text-color;
-            font-size: 18px;
-            font-weight: 800;
+            font-size: 17px;
+            font-weight: 600;
         }
     }
 }
@@ -171,19 +171,19 @@ component FeatureCard inherits Rectangle {
     in property <color> text-color;
     in property <color> muted-color;
 
-    border-radius: 16px;
+    border-radius: 8px;
     border-width: 1px;
     border-color: root.outline-color;
     background: root.base-bg;
 
     HorizontalLayout {
-        padding: 14px;
+        padding: 12px;
         spacing: 12px;
 
         Rectangle {
             width: 38px;
             height: 22px;
-            border-radius: 11px;
+            border-radius: 8px;
             background: root.enabled ? root.accent : root.border-color;
 
             Rectangle {
@@ -191,7 +191,7 @@ component FeatureCard inherits Rectangle {
                 x: root.enabled ? 19px : 3px;
                 width: 16px;
                 height: 16px;
-                border-radius: 8px;
+                border-radius: 6px;
                 background: #ffffff;
             }
         }
@@ -204,19 +204,19 @@ component FeatureCard inherits Rectangle {
                     text: root.title;
                     color: root.text-color;
                     font-size: 13px;
-                    font-weight: 800;
+                    font-weight: 600;
                 }
                 if root.enabled : Rectangle {
                     width: 34px;
                     height: 18px;
-                    border-radius: 9px;
+                    border-radius: 8px;
                     background: root.accent;
 
                     Text {
                         text: "启用";
                         color: #ffffff;
                         font-size: 9px;
-                        font-weight: 700;
+                        font-weight: 600;
                         horizontal-alignment: center;
                         vertical-alignment: center;
                     }
@@ -231,7 +231,7 @@ component FeatureCard inherits Rectangle {
                 text: root.meta;
                 color: root.accent;
                 font-size: 11px;
-                font-weight: 700;
+                font-weight: 600;
             }
         }
     }
@@ -247,13 +247,13 @@ component PlanCard inherits Rectangle {
     in property <color> text-color;
     in property <color> muted-color;
 
-    border-radius: 16px;
+    border-radius: 8px;
     border-width: 1px;
     border-color: root.outline-color;
     background: root.base-bg;
 
     VerticalLayout {
-        padding: 14px;
+        padding: 12px;
         spacing: 8px;
 
         HorizontalLayout {
@@ -261,20 +261,20 @@ component PlanCard inherits Rectangle {
                 text: root.title;
                 color: root.text-color;
                 font-size: 13px;
-                font-weight: 800;
+                font-weight: 600;
             }
             Rectangle { }
             Rectangle {
                 width: 44px;
                 height: 18px;
-                border-radius: 9px;
+                border-radius: 8px;
                 background: root.accent;
 
                 Text {
                     text: "规划中";
                     color: #ffffff;
                     font-size: 9px;
-                    font-weight: 700;
+                    font-weight: 600;
                     horizontal-alignment: center;
                     vertical-alignment: center;
                 }
@@ -290,7 +290,7 @@ component PlanCard inherits Rectangle {
 
         Rectangle {
             height: 28px;
-            border-radius: 10px;
+            border-radius: 8px;
             background: root.border-color;
 
             Text {
@@ -313,8 +313,8 @@ component ThemeSwatch inherits Rectangle {
     in property <color> line-color;
     callback activate();
 
-    height: 70px;
-    border-radius: 14px;
+    height: 64px;
+    border-radius: 8px;
     border-width: 1px;
     border-color: root.selected ? root.swatch : root.line-color;
     background: root.fill;
@@ -325,14 +325,14 @@ component ThemeSwatch inherits Rectangle {
 
         Rectangle {
             height: 34px;
-            border-radius: 10px;
+            border-radius: 7px;
             background: root.swatch;
 
             if root.selected : Text {
                 text: "OK";
                 color: #ffffff;
                 font-size: 10px;
-                font-weight: 800;
+                font-weight: 600;
                 horizontal-alignment: center;
                 vertical-alignment: center;
             }
@@ -353,8 +353,8 @@ component ThemeSwatch inherits Rectangle {
 
 export component MainWindow inherits Window {
     title: "Bilibili Danmu Robot";
-    width: 1560px;
-    height: 980px;
+    width: 1440px;
+    height: 920px;
 
     in-out property <string> room-id: "8792912";
     in-out property <int> danmu-len: 20;
@@ -412,37 +412,37 @@ export component MainWindow inherits Window {
     in-out property <string> user-query-uid: "";
     in-out property <string> user-detail-text: "输入 UID 查询观众详情";
 
-    in-out property <bool> theme-popup-open: true;
+    in-out property <bool> theme-popup-open: false;
     in-out property <bool> dark-mode: false;
     in-out property <int> theme-choice: 0;
 
     property <color> theme-primary:
-        root.theme-choice == 0 ? #0ea5e9 :
-        root.theme-choice == 1 ? #10b981 :
-        root.theme-choice == 2 ? #f97316 :
-        root.theme-choice == 3 ? #ec4899 :
-        root.theme-choice == 4 ? #64748b :
-        root.theme-choice == 5 ? #f59e0b :
-        root.theme-choice == 6 ? #8b5cf6 :
-        root.theme-choice == 7 ? #ef4444 :
-        root.theme-choice == 8 ? #14b8a6 :
-        root.theme-choice == 9 ? #a855f7 :
-        root.theme-choice == 10 ? #22c55e :
-        #2563eb;
+        root.theme-choice == 1 ? #34c759 :
+        root.theme-choice == 2 ? #ff9500 :
+        root.theme-choice == 3 ? #ff2d55 :
+        root.theme-choice == 4 ? #8e8e93 :
+        root.theme-choice == 5 ? #ffcc00 :
+        root.theme-choice == 6 ? #af52de :
+        root.theme-choice == 7 ? #ff3b30 :
+        root.theme-choice == 8 ? #5ac8fa :
+        root.theme-choice == 9 ? #af52de :
+        root.theme-choice == 10 ? #30d158 :
+        root.theme-choice == 11 ? #5856d6 :
+        #007aff;
 
-    property <color> app-bg: root.dark-mode ? #0a0f16 : #eef4fb;
-    property <color> panel-bg: root.dark-mode ? #121823 : #fcfdff;
-    property <color> panel-soft-bg: root.dark-mode ? #19202c : #f6f9fd;
-    property <color> panel-strong-bg: root.dark-mode ? #0d131c : #101826;
-    property <color> line-color: root.dark-mode ? #273142 : #dbe4f0;
-    property <color> text-color: root.dark-mode ? #f4f7fb : #0f172a;
-    property <color> muted-color: root.dark-mode ? #9fb0c5 : #526072;
-    property <color> card-alt-bg: root.dark-mode ? #161f2b : #f7fafe;
-    property <color> success-bg: root.dark-mode ? #173225 : #ecfdf5;
-    property <color> success-text: root.dark-mode ? #7bf1b6 : #047857;
-    property <color> warning-bg: root.dark-mode ? #3a2812 : #fff7ed;
-    property <color> warning-text: root.dark-mode ? #f7bc69 : #9a3412;
-    property <color> popup-bg: root.dark-mode ? #11151c : #ffffff;
+    property <color> app-bg: root.dark-mode ? #1c1c1e : #f5f5f7;
+    property <color> panel-bg: root.dark-mode ? #2c2c2e : #ffffff;
+    property <color> panel-soft-bg: root.dark-mode ? #3a3a3c : #f2f2f7;
+    property <color> panel-strong-bg: root.dark-mode ? #111113 : #e5e5ea;
+    property <color> line-color: root.dark-mode ? #48484a : #d1d1d6;
+    property <color> text-color: root.dark-mode ? #f5f5f7 : #1d1d1f;
+    property <color> muted-color: root.dark-mode ? #a1a1a6 : #6e6e73;
+    property <color> card-alt-bg: root.dark-mode ? #3a3a3c : #f9f9fb;
+    property <color> success-bg: root.dark-mode ? #10351f : #e8f7ee;
+    property <color> success-text: root.dark-mode ? #30d158 : #248a3d;
+    property <color> warning-bg: root.dark-mode ? #3a2a08 : #fff4d8;
+    property <color> warning-text: root.dark-mode ? #ffd60a : #946800;
+    property <color> popup-bg: root.dark-mode ? #2c2c2e : #ffffff;
 
     callback load-config();
     callback save-config(
@@ -470,8 +470,8 @@ export component MainWindow inherits Window {
             spacing: 0px;
 
             Rectangle {
-                width: 256px;
-                background: root.panel-bg;
+                width: 244px;
+                background: root.panel-soft-bg;
                 border-width: 1px;
                 border-color: root.line-color;
 
@@ -487,28 +487,28 @@ export component MainWindow inherits Window {
                         Rectangle {
                             width: 40px;
                             height: 40px;
-                            border-radius: 12px;
+                            border-radius: 8px;
                             background: root.theme-primary;
 
                             Text {
                                 text: "LB";
                                 color: #ffffff;
                                 font-size: 13px;
-                                font-weight: 900;
+                                font-weight: 600;
                                 horizontal-alignment: center;
                                 vertical-alignment: center;
                             }
                         }
                         VerticalLayout {
                             spacing: 2px;
-                            Text { text: "Live Bot"; color: root.text-color; font-size: 18px; font-weight: 900; }
-                            Text { text: "直播运营助手"; color: root.muted-color; font-size: 11px; font-weight: 700; }
+                            Text { text: "Live Bot"; color: root.text-color; font-size: 18px; font-weight: 600; }
+                            Text { text: "直播运营助手"; color: root.muted-color; font-size: 11px; font-weight: 600; }
                         }
                     }
 
                     Rectangle { height: 1px; background: root.line-color; }
 
-                    Text { text: "工作区"; color: root.muted-color; font-size: 11px; font-weight: 800; }
+                    Text { text: "工作区"; color: root.muted-color; font-size: 11px; font-weight: 600; }
                     SidebarEntry { icon: "总"; title: "总览"; subtitle: "运营中心"; active: true; accent: root.theme-primary; base-bg: root.panel-soft-bg; text-color: root.text-color; muted-color: root.muted-color; outline-color: root.line-color; }
                     SidebarEntry { icon: "登"; title: "登录与房间"; subtitle: "账号管理"; accent: root.theme-primary; base-bg: root.panel-soft-bg; text-color: root.text-color; muted-color: root.muted-color; outline-color: root.line-color; }
                     SidebarEntry { icon: "听"; title: "监听与发送"; subtitle: "弹幕控制"; accent: root.theme-primary; base-bg: root.panel-soft-bg; text-color: root.text-color; muted-color: root.muted-color; outline-color: root.line-color; }
@@ -525,26 +525,28 @@ export component MainWindow inherits Window {
 
                     Rectangle {
                         height: 74px;
-                        border-radius: 16px;
-                        background: root.panel-strong-bg;
+                        border-radius: 8px;
+                        background: root.panel-bg;
+                        border-width: 1px;
+                        border-color: root.line-color;
 
                         VerticalLayout {
                             padding: 12px;
                             spacing: 4px;
                             Text {
                                 text: root.run-status == "运行中" ? "监听正在运行" : "监听未启动";
-                                color: #f8fafc;
+                                color: root.text-color;
                                 font-size: 13px;
-                                font-weight: 900;
+                                font-weight: 600;
                             }
                             Text {
                                 text: "房间 " + root.room-id + " · " + root.room-status;
-                                color: #cbd5e1;
+                                color: root.muted-color;
                                 font-size: 11px;
                             }
                             Text {
                                 text: "主题弹窗默认展开，可即时切换亮暗与配色";
-                                color: #93c5fd;
+                                color: root.muted-color;
                                 font-size: 10px;
                             }
                         }
@@ -556,7 +558,7 @@ export component MainWindow inherits Window {
                 spacing: 0px;
 
                 Rectangle {
-                    height: 68px;
+                    height: 64px;
                     background: root.panel-bg;
                     border-width: 1px;
                     border-color: root.line-color;
@@ -570,7 +572,7 @@ export component MainWindow inherits Window {
 
                         VerticalLayout {
                             spacing: 2px;
-                            Text { text: "直播间 #" + root.room-id; color: root.text-color; font-size: 16px; font-weight: 900; }
+                            Text { text: "直播间 #" + root.room-id; color: root.text-color; font-size: 16px; font-weight: 600; }
                             Text { text: "主播账号: " + root.user-info; color: root.muted-color; font-size: 12px; }
                         }
 
@@ -579,7 +581,7 @@ export component MainWindow inherits Window {
                         Rectangle {
                             width: 96px;
                             height: 34px;
-                            border-radius: 17px;
+                            border-radius: 8px;
                             background: root.run-status == "运行中" ? root.success-bg : root.warning-bg;
                             border-width: 1px;
                             border-color: root.run-status == "运行中" ? root.success-text : root.warning-text;
@@ -588,7 +590,7 @@ export component MainWindow inherits Window {
                                 text: root.run-status;
                                 color: root.run-status == "运行中" ? root.success-text : root.warning-text;
                                 font-size: 12px;
-                                font-weight: 800;
+                                font-weight: 600;
                                 horizontal-alignment: center;
                                 vertical-alignment: center;
                             }
@@ -599,7 +601,7 @@ export component MainWindow inherits Window {
                         Rectangle {
                             width: 280px;
                             height: 40px;
-                            border-radius: 14px;
+                            border-radius: 8px;
                             background: root.card-alt-bg;
                             border-width: 1px;
                             border-color: root.line-color;
@@ -617,7 +619,7 @@ export component MainWindow inherits Window {
                         Rectangle {
                             width: 42px;
                             height: 42px;
-                            border-radius: 14px;
+                            border-radius: 8px;
                             background: root.card-alt-bg;
                             border-width: 1px;
                             border-color: root.line-color;
@@ -626,7 +628,7 @@ export component MainWindow inherits Window {
                                 text: "调";
                                 color: root.text-color;
                                 font-size: 13px;
-                                font-weight: 900;
+                                font-weight: 600;
                                 horizontal-alignment: center;
                                 vertical-alignment: center;
                             }
@@ -641,8 +643,8 @@ export component MainWindow inherits Window {
                 }
 
                 HorizontalLayout {
-                    spacing: 18px;
-                    padding: 18px;
+                    spacing: 16px;
+                    padding: 16px;
 
                     ScrollView {
                         width: 950px;
@@ -650,36 +652,36 @@ export component MainWindow inherits Window {
                         VerticalLayout {
                             spacing: 16px;
 
-                            Text { text: "运营总览"; color: root.text-color; font-size: 20px; font-weight: 900; }
+                            Text { text: "运营总览"; color: root.text-color; font-size: 20px; font-weight: 600; }
                             Text { text: "实时监控直播间状态、规则运行情况和互动数据"; color: root.muted-color; font-size: 12px; }
 
                             HorizontalLayout {
                                 spacing: 12px;
-                                StatusCard { width: 220px; height: 92px; label: "登录状态"; value: "已登录"; icon: "登"; accent: #10b981; base-bg: root.panel-bg; outline-color: root.line-color; text-color: root.text-color; muted-color: root.muted-color; }
-                                StatusCard { width: 220px; height: 92px; label: "房间状态"; value: "直播中"; icon: "房"; accent: #10b981; base-bg: root.panel-bg; outline-color: root.line-color; text-color: root.text-color; muted-color: root.muted-color; }
+                                StatusCard { width: 220px; height: 92px; label: "登录状态"; value: "已登录"; icon: "登"; accent: #34c759; base-bg: root.panel-bg; outline-color: root.line-color; text-color: root.text-color; muted-color: root.muted-color; }
+                                StatusCard { width: 220px; height: 92px; label: "房间状态"; value: "直播中"; icon: "房"; accent: #34c759; base-bg: root.panel-bg; outline-color: root.line-color; text-color: root.text-color; muted-color: root.muted-color; }
                                 StatusCard { width: 220px; height: 92px; label: "监听状态"; value: root.run-status; icon: "听"; accent: root.theme-primary; base-bg: root.panel-bg; outline-color: root.line-color; text-color: root.text-color; muted-color: root.muted-color; }
                                 StatusCard { width: 220px; height: 92px; label: "WebSocket"; value: "已连接"; icon: "WS"; accent: root.theme-primary; base-bg: root.panel-bg; outline-color: root.line-color; text-color: root.text-color; muted-color: root.muted-color; }
                             }
 
                             HorizontalLayout {
                                 spacing: 12px;
-                                StatusCard { width: 220px; height: 92px; label: "AI 状态"; value: "就绪"; icon: "AI"; accent: #8b5cf6; base-bg: root.panel-bg; outline-color: root.line-color; text-color: root.text-color; muted-color: root.muted-color; }
-                                StatusCard { width: 220px; height: 92px; label: "本场弹幕"; value: root.session-danmu-count; icon: "弹"; accent: #06b6d4; base-bg: root.panel-bg; outline-color: root.line-color; text-color: root.text-color; muted-color: root.muted-color; }
-                                StatusCard { width: 220px; height: 92px; label: "礼物价值"; value: root.session-gift-value; icon: "礼"; accent: #f59e0b; base-bg: root.panel-bg; outline-color: root.line-color; text-color: root.text-color; muted-color: root.muted-color; }
-                                StatusCard { width: 220px; height: 92px; label: "更新状态"; value: root.update-link == "" ? "已是最新" : "有新版本"; icon: "更"; accent: #ec4899; base-bg: root.panel-bg; outline-color: root.line-color; text-color: root.text-color; muted-color: root.muted-color; }
+                                StatusCard { width: 220px; height: 92px; label: "AI 状态"; value: "就绪"; icon: "AI"; accent: #af52de; base-bg: root.panel-bg; outline-color: root.line-color; text-color: root.text-color; muted-color: root.muted-color; }
+                                StatusCard { width: 220px; height: 92px; label: "本场弹幕"; value: root.session-danmu-count; icon: "弹"; accent: #5ac8fa; base-bg: root.panel-bg; outline-color: root.line-color; text-color: root.text-color; muted-color: root.muted-color; }
+                                StatusCard { width: 220px; height: 92px; label: "礼物价值"; value: root.session-gift-value; icon: "礼"; accent: #ffcc00; base-bg: root.panel-bg; outline-color: root.line-color; text-color: root.text-color; muted-color: root.muted-color; }
+                                StatusCard { width: 220px; height: 92px; label: "更新状态"; value: root.update-link == "" ? "已是最新" : "有新版本"; icon: "更"; accent: #ff2d55; base-bg: root.panel-bg; outline-color: root.line-color; text-color: root.text-color; muted-color: root.muted-color; }
                             }
 
                             HorizontalLayout {
                                 spacing: 14px;
-                                StatusCard { width: 220px; height: 92px; label: "进场 / 关注"; value: root.session-entry-count + " / " + root.session-follow-count; icon: "进"; accent: #14b8a6; base-bg: root.panel-bg; outline-color: root.line-color; text-color: root.text-color; muted-color: root.muted-color; }
-                                StatusCard { width: 220px; height: 92px; label: "大航海人数"; value: root.session-guard-buyer-count; icon: "舰"; accent: #8b5cf6; base-bg: root.panel-bg; outline-color: root.line-color; text-color: root.text-color; muted-color: root.muted-color; }
-                                StatusCard { width: 220px; height: 92px; label: "人气峰值 / 均值"; value: root.session-popularity; icon: "人"; accent: #ef4444; base-bg: root.panel-bg; outline-color: root.line-color; text-color: root.text-color; muted-color: root.muted-color; }
-                                StatusCard { width: 220px; height: 92px; label: "PK 概览"; value: root.session-pk-summary; icon: "PK"; accent: #f97316; base-bg: root.panel-bg; outline-color: root.line-color; text-color: root.text-color; muted-color: root.muted-color; }
+                                StatusCard { width: 220px; height: 92px; label: "进场 / 关注"; value: root.session-entry-count + " / " + root.session-follow-count; icon: "进"; accent: #5ac8fa; base-bg: root.panel-bg; outline-color: root.line-color; text-color: root.text-color; muted-color: root.muted-color; }
+                                StatusCard { width: 220px; height: 92px; label: "大航海人数"; value: root.session-guard-buyer-count; icon: "舰"; accent: #af52de; base-bg: root.panel-bg; outline-color: root.line-color; text-color: root.text-color; muted-color: root.muted-color; }
+                                StatusCard { width: 220px; height: 92px; label: "人气峰值 / 均值"; value: root.session-popularity; icon: "人"; accent: #ff3b30; base-bg: root.panel-bg; outline-color: root.line-color; text-color: root.text-color; muted-color: root.muted-color; }
+                                StatusCard { width: 220px; height: 92px; label: "PK 概览"; value: root.session-pk-summary; icon: "PK"; accent: #ff9500; base-bg: root.panel-bg; outline-color: root.line-color; text-color: root.text-color; muted-color: root.muted-color; }
                             }
 
                             Rectangle {
                                 background: root.panel-bg;
-                                border-radius: 20px;
+                                border-radius: 8px;
                                 border-width: 1px;
                                 border-color: root.line-color;
 
@@ -687,7 +689,7 @@ export component MainWindow inherits Window {
                                     padding: 18px;
                                     spacing: 12px;
 
-                                    Text { text: "用户详情查询"; color: root.text-color; font-size: 16px; font-weight: 900; }
+                                    Text { text: "用户详情查询"; color: root.text-color; font-size: 16px; font-weight: 600; }
 
                                     HorizontalLayout {
                                         spacing: 10px;
@@ -710,7 +712,7 @@ export component MainWindow inherits Window {
 
                             Rectangle {
                                 background: root.panel-bg;
-                                border-radius: 20px;
+                                border-radius: 8px;
                                 border-width: 1px;
                                 border-color: root.line-color;
 
@@ -718,7 +720,7 @@ export component MainWindow inherits Window {
                                     padding: 18px;
                                     spacing: 14px;
 
-                                    Text { text: "快速操作"; color: root.text-color; font-size: 16px; font-weight: 900; }
+                                    Text { text: "快速操作"; color: root.text-color; font-size: 16px; font-weight: 600; }
 
                                     HorizontalLayout {
                                         spacing: 10px;
@@ -761,7 +763,7 @@ export component MainWindow inherits Window {
                                         spacing: 10px;
                                         Rectangle {
                                             height: 42px;
-                                            border-radius: 14px;
+                                            border-radius: 8px;
                                             background: root.card-alt-bg;
                                             border-width: 1px;
                                             border-color: root.line-color;
@@ -788,7 +790,7 @@ export component MainWindow inherits Window {
 
                             Rectangle {
                                 background: root.panel-bg;
-                                border-radius: 20px;
+                                border-radius: 8px;
                                 border-width: 1px;
                                 border-color: root.line-color;
 
@@ -796,7 +798,7 @@ export component MainWindow inherits Window {
                                     padding: 18px;
                                     spacing: 12px;
 
-                                    Text { text: "自动化功能"; color: root.text-color; font-size: 16px; font-weight: 900; }
+                                    Text { text: "自动化功能"; color: root.text-color; font-size: 16px; font-weight: 600; }
 
                                     HorizontalLayout {
                                         spacing: 12px;
@@ -806,12 +808,12 @@ export component MainWindow inherits Window {
                                     HorizontalLayout {
                                         spacing: 12px;
                                         FeatureCard { width: 440px; title: "礼物答谢"; desc: "收到礼物自动感谢"; meta: "15s 聚合"; enabled: root.thanks-gift; accent: root.theme-primary; base-bg: root.card-alt-bg; outline-color: root.line-color; text-color: root.text-color; muted-color: root.muted-color; }
-                                        FeatureCard { width: 440px; title: "AI 机器人"; desc: "智能弹幕对话"; meta: root.robot-mode-index == 1 ? "ChatGPT 模式" : "QingYunKe 模式"; enabled: true; accent: #8b5cf6; base-bg: root.card-alt-bg; outline-color: root.line-color; text-color: root.text-color; muted-color: root.muted-color; }
+                                        FeatureCard { width: 440px; title: "AI 机器人"; desc: "智能弹幕对话"; meta: root.robot-mode-index == 1 ? "ChatGPT 模式" : "QingYunKe 模式"; enabled: true; accent: #af52de; base-bg: root.card-alt-bg; outline-color: root.line-color; text-color: root.text-color; muted-color: root.muted-color; }
                                     }
                                     HorizontalLayout {
                                         spacing: 12px;
-                                        FeatureCard { width: 440px; title: "秒级定时弹幕"; desc: "按 Cron 精确发送"; meta: root.cron-danmu ? "2 个任务运行中" : "当前关闭"; enabled: root.cron-danmu; accent: #06b6d4; base-bg: root.card-alt-bg; outline-color: root.line-color; text-color: root.text-color; muted-color: root.muted-color; }
-                                        FeatureCard { width: 440px; title: "抽签与签到"; desc: "互动命令自动响应"; meta: "抽签 / 签到 / 查询弹幕"; enabled: root.draw-by-lot || root.sign-in-enable; accent: #f59e0b; base-bg: root.card-alt-bg; outline-color: root.line-color; text-color: root.text-color; muted-color: root.muted-color; }
+                                        FeatureCard { width: 440px; title: "秒级定时弹幕"; desc: "按 Cron 精确发送"; meta: root.cron-danmu ? "2 个任务运行中" : "当前关闭"; enabled: root.cron-danmu; accent: #5ac8fa; base-bg: root.card-alt-bg; outline-color: root.line-color; text-color: root.text-color; muted-color: root.muted-color; }
+                                        FeatureCard { width: 440px; title: "抽签与签到"; desc: "互动命令自动响应"; meta: "抽签 / 签到 / 查询弹幕"; enabled: root.draw-by-lot || root.sign-in-enable; accent: #ffcc00; base-bg: root.card-alt-bg; outline-color: root.line-color; text-color: root.text-color; muted-color: root.muted-color; }
                                     }
                                 }
                             }
@@ -822,23 +824,23 @@ export component MainWindow inherits Window {
                                 Rectangle {
                                     width: 452px;
                                     background: root.panel-bg;
-                                    border-radius: 20px;
+                                    border-radius: 8px;
                                     border-width: 1px;
                                     border-color: root.line-color;
 
                                     VerticalLayout {
                                         padding: 18px;
                                         spacing: 10px;
-                                        Text { text: "今日弹幕趋势"; color: root.text-color; font-size: 16px; font-weight: 900; }
+                                        Text { text: "今日弹幕趋势"; color: root.text-color; font-size: 16px; font-weight: 600; }
                                         Text { text: "10:00 - 15:00"; color: root.muted-color; font-size: 11px; }
                                         HorizontalLayout {
                                             spacing: 10px;
-                                            Rectangle { width: 40px; height: 96px; border-radius: 12px; background: root.line-color; }
-                                            Rectangle { width: 40px; height: 120px; border-radius: 12px; background: root.theme-primary; y: 18px; }
-                                            Rectangle { width: 40px; height: 142px; border-radius: 12px; background: root.theme-primary; y: 0px; }
-                                            Rectangle { width: 40px; height: 112px; border-radius: 12px; background: root.line-color; y: 28px; }
-                                            Rectangle { width: 40px; height: 150px; border-radius: 12px; background: root.theme-primary; y: 0px; }
-                                            Rectangle { width: 40px; height: 170px; border-radius: 12px; background: root.theme-primary; y: 0px; }
+                                            Rectangle { width: 40px; height: 96px; border-radius: 8px; background: root.line-color; }
+                                            Rectangle { width: 40px; height: 120px; border-radius: 8px; background: root.theme-primary; y: 18px; }
+                                            Rectangle { width: 40px; height: 142px; border-radius: 8px; background: root.theme-primary; y: 0px; }
+                                            Rectangle { width: 40px; height: 112px; border-radius: 8px; background: root.line-color; y: 28px; }
+                                            Rectangle { width: 40px; height: 150px; border-radius: 8px; background: root.theme-primary; y: 0px; }
+                                            Rectangle { width: 40px; height: 170px; border-radius: 8px; background: root.theme-primary; y: 0px; }
                                         }
                                     }
                                 }
@@ -846,19 +848,19 @@ export component MainWindow inherits Window {
                                 Rectangle {
                                     width: 452px;
                                     background: root.panel-bg;
-                                    border-radius: 20px;
+                                    border-radius: 8px;
                                     border-width: 1px;
                                     border-color: root.line-color;
 
                                     VerticalLayout {
                                         padding: 18px;
                                         spacing: 12px;
-                                        Text { text: "互动分布"; color: root.text-color; font-size: 16px; font-weight: 900; }
+                                        Text { text: "互动分布"; color: root.text-color; font-size: 16px; font-weight: 600; }
                                         Rectangle { height: 26px; border-radius: 13px; background: root.line-color; }
                                         Rectangle { height: 26px; width: 360px; border-radius: 13px; background: root.theme-primary; }
-                                        Rectangle { height: 26px; width: 180px; border-radius: 13px; background: #ec4899; }
-                                        Rectangle { height: 26px; width: 120px; border-radius: 13px; background: #10b981; }
-                                        Rectangle { height: 26px; width: 74px; border-radius: 13px; background: #f59e0b; }
+                                        Rectangle { height: 26px; width: 180px; border-radius: 13px; background: #ff2d55; }
+                                        Rectangle { height: 26px; width: 120px; border-radius: 13px; background: #34c759; }
+                                        Rectangle { height: 26px; width: 74px; border-radius: 13px; background: #ffcc00; }
                                         Text { text: "弹幕 1247 · 礼物 89 · 关注 34 · 分享 12"; color: root.muted-color; font-size: 11px; }
                                     }
                                 }
@@ -866,7 +868,7 @@ export component MainWindow inherits Window {
 
                             Rectangle {
                                 background: root.panel-bg;
-                                border-radius: 20px;
+                                border-radius: 8px;
                                 border-width: 1px;
                                 border-color: root.line-color;
 
@@ -874,33 +876,33 @@ export component MainWindow inherits Window {
                                     padding: 18px;
                                     spacing: 14px;
 
-                                    Text { text: "规则编辑工作区"; color: root.text-color; font-size: 16px; font-weight: 900; }
+                                    Text { text: "规则编辑工作区"; color: root.text-color; font-size: 16px; font-weight: 600; }
 
                                     HorizontalLayout {
                                         spacing: 10px;
-                                        Rectangle { height: 32px; width: 96px; border-radius: 16px; background: root.theme-primary; Text { text: "基础配置"; color: #ffffff; font-size: 11px; font-weight: 800; horizontal-alignment: center; vertical-alignment: center; } }
-                                        Rectangle { height: 32px; width: 84px; border-radius: 16px; background: root.card-alt-bg; border-width: 1px; border-color: root.line-color; Text { text: "AI 配置"; color: root.text-color; font-size: 11px; font-weight: 700; horizontal-alignment: center; vertical-alignment: center; } }
-                                        Rectangle { height: 32px; width: 96px; border-radius: 16px; background: root.card-alt-bg; border-width: 1px; border-color: root.line-color; Text { text: "列表规则"; color: root.text-color; font-size: 11px; font-weight: 700; horizontal-alignment: center; vertical-alignment: center; } }
-                                        Rectangle { height: 32px; width: 96px; border-radius: 16px; background: root.card-alt-bg; border-width: 1px; border-color: root.line-color; Text { text: "运行策略"; color: root.text-color; font-size: 11px; font-weight: 700; horizontal-alignment: center; vertical-alignment: center; } }
+                                        Rectangle { height: 32px; width: 96px; border-radius: 8px; background: root.theme-primary; Text { text: "基础配置"; color: #ffffff; font-size: 11px; font-weight: 600; horizontal-alignment: center; vertical-alignment: center; } }
+                                        Rectangle { height: 32px; width: 84px; border-radius: 8px; background: root.card-alt-bg; border-width: 1px; border-color: root.line-color; Text { text: "AI 配置"; color: root.text-color; font-size: 11px; font-weight: 600; horizontal-alignment: center; vertical-alignment: center; } }
+                                        Rectangle { height: 32px; width: 96px; border-radius: 8px; background: root.card-alt-bg; border-width: 1px; border-color: root.line-color; Text { text: "列表规则"; color: root.text-color; font-size: 11px; font-weight: 600; horizontal-alignment: center; vertical-alignment: center; } }
+                                        Rectangle { height: 32px; width: 96px; border-radius: 8px; background: root.card-alt-bg; border-width: 1px; border-color: root.line-color; Text { text: "运行策略"; color: root.text-color; font-size: 11px; font-weight: 600; horizontal-alignment: center; vertical-alignment: center; } }
                                     }
 
                                     HorizontalLayout {
                                         spacing: 14px;
                                         VerticalLayout {
                                             spacing: 8px;
-                                            Text { text: "直播间 ID"; color: root.muted-color; font-size: 11px; font-weight: 700; }
+                                            Text { text: "直播间 ID"; color: root.muted-color; font-size: 11px; font-weight: 600; }
                                             LineEdit { text <=> root.room-id; placeholder-text: "直播间 ID"; }
-                                            Text { text: "进房弹幕"; color: root.muted-color; font-size: 11px; font-weight: 700; }
+                                            Text { text: "进房弹幕"; color: root.muted-color; font-size: 11px; font-weight: 600; }
                                             LineEdit { text <=> root.entry-msg; }
-                                            Text { text: "下播公告"; color: root.muted-color; font-size: 11px; font-weight: 700; }
+                                            Text { text: "下播公告"; color: root.muted-color; font-size: 11px; font-weight: 600; }
                                             LineEdit { text <=> root.goodbye-info; }
-                                            Text { text: "弹幕长度"; color: root.muted-color; font-size: 11px; font-weight: 700; }
+                                            Text { text: "弹幕长度"; color: root.muted-color; font-size: 11px; font-weight: 600; }
                                             SpinBox { value <=> root.danmu-len; minimum: 1; maximum: 100; }
                                         }
 
                                         VerticalLayout {
                                             spacing: 8px;
-                                            Text { text: "自动化开关"; color: root.text-color; font-size: 13px; font-weight: 800; }
+                                            Text { text: "自动化开关"; color: root.text-color; font-size: 13px; font-weight: 600; }
                                             CheckBox { text: "PK 提醒"; checked <=> root.pk-notice; }
                                             CheckBox { text: "欢迎"; checked <=> root.welcome-enabled; }
                                             CheckBox { text: "特效欢迎"; checked <=> root.entry-effect; }
@@ -916,7 +918,7 @@ export component MainWindow inherits Window {
 
                                         VerticalLayout {
                                             spacing: 8px;
-                                            Text { text: "AI 机器人"; color: root.text-color; font-size: 13px; font-weight: 800; }
+                                            Text { text: "AI 机器人"; color: root.text-color; font-size: 13px; font-weight: 600; }
                                             LineEdit { text <=> root.robot-name; placeholder-text: "机器人名称"; }
                                             LineEdit { text <=> root.talk-robot-cmd; placeholder-text: "触发词"; }
                                             ComboBox { model: ["QingYunKe", "ChatGPT"]; current-index <=> root.robot-mode-index; }
@@ -930,7 +932,7 @@ export component MainWindow inherits Window {
 
                             Rectangle {
                                 background: root.panel-bg;
-                                border-radius: 20px;
+                                border-radius: 8px;
                                 border-width: 1px;
                                 border-color: root.line-color;
 
@@ -938,14 +940,14 @@ export component MainWindow inherits Window {
                                     padding: 18px;
                                     spacing: 12px;
 
-                                    Text { text: "列表规则配置"; color: root.text-color; font-size: 16px; font-weight: 900; }
+                                    Text { text: "列表规则配置"; color: root.text-color; font-size: 16px; font-weight: 600; }
                                     Text { text: "沿用当前功能字段，但改成更像桌面工作台的排版"; color: root.muted-color; font-size: 11px; }
 
-                                    Text { text: "欢迎语（每行一条，支持 {user}）"; color: root.muted-color; font-size: 11px; font-weight: 700; }
+                                    Text { text: "欢迎语（每行一条，支持 {user}）"; color: root.muted-color; font-size: 11px; font-weight: 600; }
                                     TextEdit { text <=> root.welcome-list-text; height: 82px; wrap: word-wrap; }
-                                    Text { text: "关注 / 分享附加答谢"; color: root.muted-color; font-size: 11px; font-weight: 700; }
+                                    Text { text: "关注 / 分享附加答谢"; color: root.muted-color; font-size: 11px; font-weight: 600; }
                                     TextEdit { text <=> root.focus-list-text; height: 64px; wrap: word-wrap; }
-                                    Text { text: "黑名单与关键词回复"; color: root.muted-color; font-size: 11px; font-weight: 700; }
+                                    Text { text: "黑名单与关键词回复"; color: root.muted-color; font-size: 11px; font-weight: 600; }
 
                                     HorizontalLayout {
                                         spacing: 10px;
@@ -954,19 +956,19 @@ export component MainWindow inherits Window {
                                     }
 
                                     TextEdit { text <=> root.keyword-reply-text; height: 84px; wrap: word-wrap; }
-                                    Text { text: "弹幕过滤词与重复阈值"; color: root.muted-color; font-size: 11px; font-weight: 700; }
+                                    Text { text: "弹幕过滤词与重复阈值"; color: root.muted-color; font-size: 11px; font-weight: 600; }
                                     HorizontalLayout {
                                         spacing: 10px;
                                         TextEdit { text <=> root.danmu-filter-words-text; height: 74px; wrap: word-wrap; }
                                         SpinBox { value <=> root.danmu-filter-repeat-threshold; minimum: 2; maximum: 20; }
                                     }
-                                    Text { text: "礼物别名与指定答谢模板（每行 key=value）"; color: root.muted-color; font-size: 11px; font-weight: 700; }
+                                    Text { text: "礼物别名与指定答谢模板（每行 key=value）"; color: root.muted-color; font-size: 11px; font-weight: 600; }
                                     HorizontalLayout {
                                         spacing: 10px;
                                         TextEdit { text <=> root.gift-aliases-text; height: 74px; wrap: word-wrap; }
                                         TextEdit { text <=> root.gift-thanks-templates-text; height: 74px; wrap: word-wrap; }
                                     }
-                                    Text { text: "新人提示、礼物总结与观众规则"; color: root.muted-color; font-size: 11px; font-weight: 700; }
+                                    Text { text: "新人提示、礼物总结与观众规则"; color: root.muted-color; font-size: 11px; font-weight: 600; }
                                     HorizontalLayout {
                                         spacing: 10px;
                                         LineEdit { text <=> root.newcomer-danmu-template; placeholder-text: "新人提示模板"; }
@@ -985,7 +987,7 @@ export component MainWindow inherits Window {
 
                             Rectangle {
                                 background: root.panel-bg;
-                                border-radius: 20px;
+                                border-radius: 8px;
                                 border-width: 1px;
                                 border-color: root.line-color;
 
@@ -993,7 +995,7 @@ export component MainWindow inherits Window {
                                     padding: 18px;
                                     spacing: 12px;
 
-                                    Text { text: "功能规划"; color: root.text-color; font-size: 16px; font-weight: 900; }
+                                    Text { text: "功能规划"; color: root.text-color; font-size: 16px; font-weight: 600; }
 
                                     HorizontalLayout {
                                         spacing: 12px;
@@ -1016,7 +1018,7 @@ export component MainWindow inherits Window {
                     Rectangle {
                         width: 304px;
                         background: root.panel-bg;
-                        border-radius: 22px;
+                        border-radius: 8px;
                         border-width: 1px;
                         border-color: root.line-color;
 
@@ -1026,16 +1028,16 @@ export component MainWindow inherits Window {
 
                             Rectangle {
                                 background: root.card-alt-bg;
-                                border-radius: 16px;
+                                border-radius: 8px;
                                 border-width: 1px;
                                 border-color: root.line-color;
 
                                 VerticalLayout {
                                     padding: 14px;
                                     spacing: 8px;
-                                    Text { text: "账号与连接"; color: root.text-color; font-size: 14px; font-weight: 900; }
+                                    Text { text: "账号与连接"; color: root.text-color; font-size: 14px; font-weight: 600; }
                                     Text { text: "当前账号  " + root.user-info; color: root.text-color; font-size: 12px; }
-                                    Text { text: "Token 状态  有效"; color: #10b981; font-size: 12px; }
+                                    Text { text: "Token 状态  有效"; color: #34c759; font-size: 12px; }
                                     Text { text: "房间 ID  " + root.room-id; color: root.text-color; font-size: 12px; }
                                     Text { text: "心跳状态  正常"; color: root.muted-color; font-size: 12px; }
                                 }
@@ -1043,37 +1045,37 @@ export component MainWindow inherits Window {
 
                             Rectangle {
                                 background: root.card-alt-bg;
-                                border-radius: 16px;
+                                border-radius: 8px;
                                 border-width: 1px;
                                 border-color: root.line-color;
 
                                 VerticalLayout {
                                     padding: 14px;
                                     spacing: 8px;
-                                    Text { text: "运行状态"; color: root.text-color; font-size: 14px; font-weight: 900; }
+                                    Text { text: "运行状态"; color: root.text-color; font-size: 14px; font-weight: 600; }
                                     Text { text: "当前监听  活跃"; color: root.text-color; font-size: 12px; }
                                     Text { text: "发送队列  3 条待发"; color: root.text-color; font-size: 12px; }
                                     Text { text: "定时任务  2 个运行"; color: root.text-color; font-size: 12px; }
-                                    Text { text: "AI 请求  就绪"; color: #10b981; font-size: 12px; }
+                                    Text { text: "AI 请求  就绪"; color: #34c759; font-size: 12px; }
                                     Text { text: "礼物聚合  15s 延迟"; color: root.muted-color; font-size: 12px; }
                                 }
                             }
 
                             Rectangle {
                                 background: root.panel-strong-bg;
-                                border-radius: 18px;
+                                border-radius: 8px;
                                 border-width: 1px;
                                 border-color: root.line-color;
 
                                 VerticalLayout {
                                     padding: 14px;
                                     spacing: 10px;
-                                    Text { text: "实时日志"; color: #f8fafc; font-size: 15px; font-weight: 900; }
+                                    Text { text: "实时日志"; color: #f8fafc; font-size: 15px; font-weight: 600; }
                                     ScrollView {
                                         height: 560px;
                                         Text {
                                             text: root.log-text == "" ? "暂无运行日志" : root.log-text;
-                                            color: #cbd5e1;
+                                            color: root.muted-color;
                                             font-size: 12px;
                                             wrap: word-wrap;
                                         }
@@ -1091,7 +1093,7 @@ export component MainWindow inherits Window {
             y: 78px;
             width: 332px;
             height: 530px;
-            border-radius: 22px;
+            border-radius: 8px;
             background: root.popup-bg;
             border-width: 1px;
             border-color: root.line-color;
@@ -1101,12 +1103,12 @@ export component MainWindow inherits Window {
                 spacing: 14px;
 
                 HorizontalLayout {
-                    Text { text: "主题设置"; color: root.text-color; font-size: 16px; font-weight: 900; }
+                    Text { text: "主题设置"; color: root.text-color; font-size: 16px; font-weight: 600; }
                     Rectangle { }
                     Rectangle {
                         width: 28px;
                         height: 28px;
-                        border-radius: 14px;
+                        border-radius: 8px;
                         background: root.card-alt-bg;
                         border-width: 1px;
                         border-color: root.line-color;
@@ -1115,7 +1117,7 @@ export component MainWindow inherits Window {
                             text: "X";
                             color: root.text-color;
                             font-size: 11px;
-                            font-weight: 900;
+                            font-weight: 600;
                             horizontal-alignment: center;
                             vertical-alignment: center;
                         }
@@ -1128,12 +1130,12 @@ export component MainWindow inherits Window {
                     }
                 }
 
-                Text { text: "外观模式"; color: root.text-color; font-size: 13px; font-weight: 800; }
+                Text { text: "外观模式"; color: root.text-color; font-size: 13px; font-weight: 600; }
                 HorizontalLayout {
                     spacing: 10px;
                     Rectangle {
                         height: 42px;
-                        border-radius: 14px;
+                        border-radius: 8px;
                         background: !root.dark-mode ? root.theme-primary : root.card-alt-bg;
                         border-width: 1px;
                         border-color: !root.dark-mode ? root.theme-primary : root.line-color;
@@ -1142,7 +1144,7 @@ export component MainWindow inherits Window {
                             text: "浅色";
                             color: !root.dark-mode ? #ffffff : root.text-color;
                             font-size: 12px;
-                            font-weight: 800;
+                            font-weight: 600;
                             horizontal-alignment: center;
                             vertical-alignment: center;
                         }
@@ -1151,7 +1153,7 @@ export component MainWindow inherits Window {
                     }
                     Rectangle {
                         height: 42px;
-                        border-radius: 14px;
+                        border-radius: 8px;
                         background: root.dark-mode ? root.theme-primary : root.card-alt-bg;
                         border-width: 1px;
                         border-color: root.dark-mode ? root.theme-primary : root.line-color;
@@ -1160,7 +1162,7 @@ export component MainWindow inherits Window {
                             text: "深色";
                             color: root.dark-mode ? #ffffff : root.text-color;
                             font-size: 12px;
-                            font-weight: 800;
+                            font-weight: 600;
                             horizontal-alignment: center;
                             vertical-alignment: center;
                         }
@@ -1169,38 +1171,38 @@ export component MainWindow inherits Window {
                     }
                 }
 
-                Text { text: "6 种主题颜色"; color: root.text-color; font-size: 13px; font-weight: 800; }
+                Text { text: "6 种主题颜色"; color: root.text-color; font-size: 13px; font-weight: 600; }
                 HorizontalLayout {
                     spacing: 8px;
-                    ThemeSwatch { width: 98px; swatch: #0ea5e9; label: "海洋蓝"; selected: root.theme-choice == 0; fill: root.card-alt-bg; text-color: root.text-color; line-color: root.line-color; activate => { root.theme-choice = 0; } }
-                    ThemeSwatch { width: 98px; swatch: #10b981; label: "翡翠绿"; selected: root.theme-choice == 1; fill: root.card-alt-bg; text-color: root.text-color; line-color: root.line-color; activate => { root.theme-choice = 1; } }
-                    ThemeSwatch { width: 98px; swatch: #f97316; label: "日落橙"; selected: root.theme-choice == 2; fill: root.card-alt-bg; text-color: root.text-color; line-color: root.line-color; activate => { root.theme-choice = 2; } }
+                    ThemeSwatch { width: 98px; swatch: #007aff; label: "系统蓝"; selected: root.theme-choice == 0; fill: root.card-alt-bg; text-color: root.text-color; line-color: root.line-color; activate => { root.theme-choice = 0; } }
+                    ThemeSwatch { width: 98px; swatch: #34c759; label: "翡翠绿"; selected: root.theme-choice == 1; fill: root.card-alt-bg; text-color: root.text-color; line-color: root.line-color; activate => { root.theme-choice = 1; } }
+                    ThemeSwatch { width: 98px; swatch: #ff9500; label: "日落橙"; selected: root.theme-choice == 2; fill: root.card-alt-bg; text-color: root.text-color; line-color: root.line-color; activate => { root.theme-choice = 2; } }
                 }
                 HorizontalLayout {
                     spacing: 8px;
-                    ThemeSwatch { width: 98px; swatch: #ec4899; label: "兰花粉"; selected: root.theme-choice == 3; fill: root.card-alt-bg; text-color: root.text-color; line-color: root.line-color; activate => { root.theme-choice = 3; } }
-                    ThemeSwatch { width: 98px; swatch: #64748b; label: "石板灰"; selected: root.theme-choice == 4; fill: root.card-alt-bg; text-color: root.text-color; line-color: root.line-color; activate => { root.theme-choice = 4; } }
-                    ThemeSwatch { width: 98px; swatch: #f59e0b; label: "琥珀金"; selected: root.theme-choice == 5; fill: root.card-alt-bg; text-color: root.text-color; line-color: root.line-color; activate => { root.theme-choice = 5; } }
+                    ThemeSwatch { width: 98px; swatch: #ff2d55; label: "兰花粉"; selected: root.theme-choice == 3; fill: root.card-alt-bg; text-color: root.text-color; line-color: root.line-color; activate => { root.theme-choice = 3; } }
+                    ThemeSwatch { width: 98px; swatch: #8e8e93; label: "系统灰"; selected: root.theme-choice == 4; fill: root.card-alt-bg; text-color: root.text-color; line-color: root.line-color; activate => { root.theme-choice = 4; } }
+                    ThemeSwatch { width: 98px; swatch: #ffcc00; label: "琥珀金"; selected: root.theme-choice == 5; fill: root.card-alt-bg; text-color: root.text-color; line-color: root.line-color; activate => { root.theme-choice = 5; } }
                 }
 
-                Text { text: "自定义色板"; color: root.text-color; font-size: 13px; font-weight: 800; }
+                Text { text: "自定义色板"; color: root.text-color; font-size: 13px; font-weight: 600; }
                 HorizontalLayout {
                     spacing: 8px;
-                    ThemeSwatch { width: 68px; swatch: #8b5cf6; label: "紫"; selected: root.theme-choice == 6; fill: root.card-alt-bg; text-color: root.text-color; line-color: root.line-color; activate => { root.theme-choice = 6; } }
-                    ThemeSwatch { width: 68px; swatch: #ef4444; label: "红"; selected: root.theme-choice == 7; fill: root.card-alt-bg; text-color: root.text-color; line-color: root.line-color; activate => { root.theme-choice = 7; } }
-                    ThemeSwatch { width: 68px; swatch: #14b8a6; label: "青"; selected: root.theme-choice == 8; fill: root.card-alt-bg; text-color: root.text-color; line-color: root.line-color; activate => { root.theme-choice = 8; } }
-                    ThemeSwatch { width: 68px; swatch: #a855f7; label: "紫粉"; selected: root.theme-choice == 9; fill: root.card-alt-bg; text-color: root.text-color; line-color: root.line-color; activate => { root.theme-choice = 9; } }
+                    ThemeSwatch { width: 68px; swatch: #af52de; label: "紫"; selected: root.theme-choice == 6; fill: root.card-alt-bg; text-color: root.text-color; line-color: root.line-color; activate => { root.theme-choice = 6; } }
+                    ThemeSwatch { width: 68px; swatch: #ff3b30; label: "红"; selected: root.theme-choice == 7; fill: root.card-alt-bg; text-color: root.text-color; line-color: root.line-color; activate => { root.theme-choice = 7; } }
+                    ThemeSwatch { width: 68px; swatch: #5ac8fa; label: "青"; selected: root.theme-choice == 8; fill: root.card-alt-bg; text-color: root.text-color; line-color: root.line-color; activate => { root.theme-choice = 8; } }
+                    ThemeSwatch { width: 68px; swatch: #af52de; label: "紫"; selected: root.theme-choice == 9; fill: root.card-alt-bg; text-color: root.text-color; line-color: root.line-color; activate => { root.theme-choice = 9; } }
                 }
                 HorizontalLayout {
                     spacing: 8px;
                     ThemeSwatch { width: 68px; swatch: #22c55e; label: "草绿"; selected: root.theme-choice == 10; fill: root.card-alt-bg; text-color: root.text-color; line-color: root.line-color; activate => { root.theme-choice = 10; } }
-                    ThemeSwatch { width: 68px; swatch: #2563eb; label: "靛蓝"; selected: root.theme-choice == 11; fill: root.card-alt-bg; text-color: root.text-color; line-color: root.line-color; activate => { root.theme-choice = 11; } }
+                    ThemeSwatch { width: 68px; swatch: #5856d6; label: "靛蓝"; selected: root.theme-choice == 11; fill: root.card-alt-bg; text-color: root.text-color; line-color: root.line-color; activate => { root.theme-choice = 11; } }
                     Rectangle { }
                     Rectangle { }
                 }
 
                 Rectangle {
-                    border-radius: 18px;
+                    border-radius: 8px;
                     background: root.card-alt-bg;
                     border-width: 1px;
                     border-color: root.line-color;
@@ -1208,16 +1210,16 @@ export component MainWindow inherits Window {
                     VerticalLayout {
                         padding: 14px;
                         spacing: 10px;
-                        Text { text: "预览效果"; color: root.text-color; font-size: 12px; font-weight: 800; }
+                        Text { text: "预览效果"; color: root.text-color; font-size: 12px; font-weight: 600; }
                         Rectangle {
                             height: 36px;
-                            border-radius: 12px;
+                            border-radius: 8px;
                             background: root.theme-primary;
                             Text {
                                 text: "主要按钮";
                                 color: #ffffff;
                                 font-size: 12px;
-                                font-weight: 800;
+                                font-weight: 600;
                                 horizontal-alignment: center;
                                 vertical-alignment: center;
                             }
@@ -1240,7 +1242,7 @@ export component MainWindow inherits Window {
                                     text: "状态标签";
                                     color: #ffffff;
                                     font-size: 10px;
-                                    font-weight: 700;
+                                    font-weight: 600;
                                     horizontal-alignment: center;
                                     vertical-alignment: center;
                                 }
