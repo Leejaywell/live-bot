@@ -38,6 +38,10 @@ pub struct UserDetail {
     pub gift_value: i64,
     pub recent_gift: Option<String>,
     pub entry_count: i64,
+    pub medal_name: Option<String>,
+    pub medal_level: Option<i64>,
+    pub guard_level: Option<i64>,
+    pub wealth_level: Option<i64>,
 }
 
 impl Storage {
@@ -99,12 +103,20 @@ impl Storage {
                 gift_name text,
                 gift_count integer,
                 gift_price integer,
+                medal_name text,
+                medal_level integer,
+                guard_level integer,
+                wealth_level integer,
                 raw_json text not null,
                 occurred_at text not null
             );
             ",
         )?;
         ensure_column(&conn, "interaction_records", "event_subtype", "text")?;
+        ensure_column(&conn, "interaction_records", "medal_name", "text")?;
+        ensure_column(&conn, "interaction_records", "medal_level", "integer")?;
+        ensure_column(&conn, "interaction_records", "guard_level", "integer")?;
+        ensure_column(&conn, "interaction_records", "wealth_level", "integer")?;
         Ok(Self {
             conn: Mutex::new(conn),
         })
@@ -283,9 +295,23 @@ impl Storage {
                     None,
                     None,
                 ),
+                LiveEvent::EntryEffect { user_id, user, .. } => (
+                    "entry_effect",
+                    None,
+                    Some(*user_id),
+                    Some(user.as_str()),
+                    None,
+                    None,
+                    None,
+                    None,
+                ),
                 _ => ("unknown", None, None, None, None, None, None, None),
             };
         let raw_json = serde_json::to_string(&parsed.raw)?;
+        let medal_name = extract_medal_name(&parsed.raw);
+        let medal_level = extract_medal_level(&parsed.raw);
+        let guard_level = extract_guard_level(parsed);
+        let wealth_level = extract_wealth_level(parsed);
         let occurred_at = Local::now().to_rfc3339();
         let conn = self.conn.lock().expect("storage mutex poisoned");
         conn.execute(
@@ -302,10 +328,14 @@ impl Storage {
                     gift_name,
                     gift_count,
                     gift_price,
+                    medal_name,
+                    medal_level,
+                    guard_level,
+                    wealth_level,
                     raw_json,
                     occurred_at
                 )
-            values (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12)
+            values (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16)
             ",
             params![
                 session_id,
@@ -318,6 +348,10 @@ impl Storage {
                 gift_name,
                 gift_count,
                 gift_price,
+                medal_name,
+                medal_level,
+                guard_level,
+                wealth_level,
                 raw_json,
                 occurred_at
             ],
@@ -494,6 +528,10 @@ impl Storage {
             params![uid],
             |row| row.get(0),
         )?;
+        let medal_name = latest_optional_string(&conn, uid, "medal_name")?;
+        let medal_level = latest_optional_i64(&conn, uid, "medal_level")?;
+        let guard_level = latest_optional_i64(&conn, uid, "guard_level")?;
+        let wealth_level = latest_optional_i64(&conn, uid, "wealth_level")?;
         Ok(UserDetail {
             uid,
             uname,
@@ -503,6 +541,10 @@ impl Storage {
             gift_value,
             recent_gift,
             entry_count,
+            medal_name,
+            medal_level,
+            guard_level,
+            wealth_level,
         })
     }
 
@@ -600,6 +642,73 @@ fn interact_kind_name(kind: InteractKind) -> &'static str {
         InteractKind::Share => "share",
         InteractKind::Unknown(_) => "unknown",
     }
+}
+
+fn extract_medal_name(raw: &serde_json::Value) -> Option<String> {
+    raw.pointer("/info/3/1")
+        .and_then(serde_json::Value::as_str)
+        .filter(|value| !value.is_empty())
+        .map(str::to_string)
+}
+
+fn extract_medal_level(raw: &serde_json::Value) -> Option<i64> {
+    raw.pointer("/info/3/0").and_then(serde_json::Value::as_i64)
+}
+
+fn extract_guard_level(parsed: &ParsedLiveEvent) -> Option<i64> {
+    match &parsed.event {
+        LiveEvent::EntryEffect { guard_level, .. } => Some(*guard_level),
+        _ => parsed
+            .raw
+            .pointer("/data/uinfo/guard/level")
+            .and_then(serde_json::Value::as_i64),
+    }
+}
+
+fn extract_wealth_level(parsed: &ParsedLiveEvent) -> Option<i64> {
+    match &parsed.event {
+        LiveEvent::EntryEffect { wealth_level, .. } => Some(*wealth_level),
+        _ => parsed
+            .raw
+            .pointer("/data/uinfo/wealth/level")
+            .and_then(serde_json::Value::as_i64),
+    }
+}
+
+fn latest_optional_string(conn: &Connection, uid: i64, column: &str) -> Result<Option<String>> {
+    Ok(conn
+        .query_row(
+            &format!(
+                "
+                select {column}
+                from interaction_records
+                where uid = ?1 and {column} is not null
+                order by id desc
+                limit 1
+                "
+            ),
+            params![uid],
+            |row| row.get(0),
+        )
+        .optional()?)
+}
+
+fn latest_optional_i64(conn: &Connection, uid: i64, column: &str) -> Result<Option<i64>> {
+    Ok(conn
+        .query_row(
+            &format!(
+                "
+                select {column}
+                from interaction_records
+                where uid = ?1 and {column} is not null
+                order by id desc
+                limit 1
+                "
+            ),
+            params![uid],
+            |row| row.get(0),
+        )
+        .optional()?)
 }
 
 #[cfg(test)]
@@ -1084,5 +1193,64 @@ mod tests {
         assert_eq!(detail.gift_value, 300);
         assert_eq!(detail.recent_gift.as_deref(), Some("辣条"));
         assert_eq!(detail.entry_count, 1);
+    }
+
+    #[test]
+    fn user_detail_includes_latest_medal_and_guard_fields() {
+        let storage = Storage::open_in_memory().unwrap();
+        let session_id = storage
+            .start_observed_live_session(
+                8792912,
+                Local.with_ymd_and_hms(2026, 5, 1, 20, 0, 0).unwrap(),
+            )
+            .unwrap();
+        let danmu = ParsedLiveEvent {
+            event: LiveEvent::Danmu {
+                user_id: 42,
+                user: "alice".to_string(),
+                text: "hello".to_string(),
+            },
+            raw: json!({
+                "cmd": "DANMU_MSG",
+                "info": [
+                    [],
+                    "hello",
+                    [42, "alice"],
+                    [21, "舰团牌"]
+                ]
+            }),
+        };
+        let entry_effect = ParsedLiveEvent {
+            event: LiveEvent::EntryEffect {
+                user_id: 42,
+                user: "alice".to_string(),
+                guard_level: 3,
+                wealth_level: 18,
+            },
+            raw: json!({
+                "cmd": "ENTRY_EFFECT",
+                "data": {
+                    "uid": 42,
+                    "uinfo": {
+                        "guard": { "level": 3 },
+                        "wealth": { "level": 18 }
+                    }
+                }
+            }),
+        };
+
+        storage
+            .record_interaction(&session_id, 8792912, &danmu)
+            .unwrap();
+        storage
+            .record_interaction(&session_id, 8792912, &entry_effect)
+            .unwrap();
+
+        let detail = storage.user_detail(42).unwrap();
+
+        assert_eq!(detail.medal_name.as_deref(), Some("舰团牌"));
+        assert_eq!(detail.medal_level, Some(21));
+        assert_eq!(detail.guard_level, Some(3));
+        assert_eq!(detail.wealth_level, Some(18));
     }
 }
