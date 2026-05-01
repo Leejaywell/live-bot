@@ -1,5 +1,5 @@
 use anyhow::Result;
-use bilibili_live_protocol::{InteractKind, LiveEvent, ParsedLiveEvent};
+use bilibili_live_protocol::{InteractKind, LiveEvent, ParsedLiveEvent, PkEventKind};
 use chrono::{DateTime, Datelike, Local};
 use rusqlite::{Connection, OptionalExtension, params};
 use std::sync::Mutex;
@@ -42,6 +42,13 @@ pub struct UserDetail {
     pub medal_level: Option<i64>,
     pub guard_level: Option<i64>,
     pub wealth_level: Option<i64>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct PkHistoryRecord {
+    pub event_subtype: Option<String>,
+    pub init_room_id: Option<i64>,
+    pub match_room_id: Option<i64>,
 }
 
 impl Storage {
@@ -107,6 +114,8 @@ impl Storage {
                 medal_level integer,
                 guard_level integer,
                 wealth_level integer,
+                pk_init_room_id integer,
+                pk_match_room_id integer,
                 raw_json text not null,
                 occurred_at text not null
             );
@@ -117,6 +126,8 @@ impl Storage {
         ensure_column(&conn, "interaction_records", "medal_level", "integer")?;
         ensure_column(&conn, "interaction_records", "guard_level", "integer")?;
         ensure_column(&conn, "interaction_records", "wealth_level", "integer")?;
+        ensure_column(&conn, "interaction_records", "pk_init_room_id", "integer")?;
+        ensure_column(&conn, "interaction_records", "pk_match_room_id", "integer")?;
         Ok(Self {
             conn: Mutex::new(conn),
         })
@@ -234,79 +245,154 @@ impl Storage {
         room_id: i64,
         parsed: &ParsedLiveEvent,
     ) -> Result<()> {
-        let (event_type, event_subtype, uid, uname, text, gift_name, gift_count, gift_price) =
-            match &parsed.event {
-                LiveEvent::Danmu {
-                    user_id,
-                    user,
-                    text,
+        let (
+            event_type,
+            event_subtype,
+            uid,
+            uname,
+            text,
+            gift_name,
+            gift_count,
+            gift_price,
+            pk_init_room_id,
+            pk_match_room_id,
+        ) = match &parsed.event {
+            LiveEvent::Danmu {
+                user_id,
+                user,
+                text,
+            } => (
+                "danmu",
+                None,
+                Some(*user_id),
+                Some(user.as_str()),
+                Some(text.as_str()),
+                None,
+                None,
+                None,
+                None,
+                None,
+            ),
+            LiveEvent::Gift {
+                user_id,
+                user,
+                gift,
+                count,
+                price,
+                ..
+            } => (
+                "gift",
+                None,
+                Some(*user_id),
+                Some(user.as_str()),
+                None,
+                Some(gift.as_str()),
+                Some(*count),
+                Some(*price),
+                None,
+                None,
+            ),
+            LiveEvent::Interact {
+                kind,
+                user_id,
+                user,
+            } => (
+                "interact",
+                Some(interact_kind_name(*kind)),
+                Some(*user_id),
+                Some(user.as_str()),
+                None,
+                None,
+                None,
+                None,
+                None,
+                None,
+            ),
+            LiveEvent::GuardBuy {
+                user_id,
+                user,
+                gift,
+            } => (
+                "guard_buy",
+                None,
+                Some(*user_id),
+                Some(user.as_str()),
+                None,
+                Some(gift.as_str()),
+                None,
+                None,
+                None,
+                None,
+            ),
+            LiveEvent::EntryEffect { user_id, user, .. } => (
+                "entry_effect",
+                None,
+                Some(*user_id),
+                Some(user.as_str()),
+                None,
+                None,
+                None,
+                None,
+                None,
+                None,
+            ),
+            LiveEvent::Pk { kind } => match kind {
+                PkEventKind::Start {
+                    init_room_id,
+                    match_room_id,
                 } => (
-                    "danmu",
-                    None,
-                    Some(*user_id),
-                    Some(user.as_str()),
-                    Some(text.as_str()),
+                    "pk",
+                    Some("start"),
                     None,
                     None,
                     None,
+                    None,
+                    None,
+                    None,
+                    Some(*init_room_id),
+                    Some(*match_room_id),
                 ),
-                LiveEvent::Gift {
-                    user_id,
-                    user,
-                    gift,
-                    count,
-                    price,
-                    ..
-                } => (
-                    "gift",
+                PkEventKind::End => (
+                    "pk",
+                    Some("end"),
                     None,
-                    Some(*user_id),
-                    Some(user.as_str()),
                     None,
-                    Some(gift.as_str()),
-                    Some(*count),
-                    Some(*price),
-                ),
-                LiveEvent::Interact {
-                    kind,
-                    user_id,
-                    user,
-                } => (
-                    "interact",
-                    Some(interact_kind_name(*kind)),
-                    Some(*user_id),
-                    Some(user.as_str()),
+                    None,
+                    None,
                     None,
                     None,
                     None,
                     None,
                 ),
-                LiveEvent::GuardBuy {
-                    user_id,
-                    user,
-                    gift,
-                } => (
-                    "guard_buy",
-                    None,
-                    Some(*user_id),
-                    Some(user.as_str()),
-                    None,
-                    Some(gift.as_str()),
+                PkEventKind::Process => (
+                    "pk",
+                    Some("process"),
                     None,
                     None,
-                ),
-                LiveEvent::EntryEffect { user_id, user, .. } => (
-                    "entry_effect",
                     None,
-                    Some(*user_id),
-                    Some(user.as_str()),
+                    None,
                     None,
                     None,
                     None,
                     None,
                 ),
-                _ => ("unknown", None, None, None, None, None, None, None),
-            };
+                PkEventKind::Other(command) => (
+                    "pk",
+                    Some("other"),
+                    None,
+                    None,
+                    Some(command.as_str()),
+                    None,
+                    None,
+                    None,
+                    None,
+                    None,
+                ),
+            },
+            _ => (
+                "unknown", None, None, None, None, None, None, None, None, None,
+            ),
+        };
         let raw_json = serde_json::to_string(&parsed.raw)?;
         let medal_name = extract_medal_name(&parsed.raw);
         let medal_level = extract_medal_level(&parsed.raw);
@@ -332,10 +418,12 @@ impl Storage {
                     medal_level,
                     guard_level,
                     wealth_level,
+                    pk_init_room_id,
+                    pk_match_room_id,
                     raw_json,
                     occurred_at
                 )
-            values (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16)
+            values (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17, ?18)
             ",
             params![
                 session_id,
@@ -352,6 +440,8 @@ impl Storage {
                 medal_level,
                 guard_level,
                 wealth_level,
+                pk_init_room_id,
+                pk_match_room_id,
                 raw_json,
                 occurred_at
             ],
@@ -563,6 +653,28 @@ impl Storage {
     }
 
     #[allow(dead_code)]
+    pub fn session_pk_history(&self, session_id: &str) -> Result<Vec<PkHistoryRecord>> {
+        let conn = self.conn.lock().expect("storage mutex poisoned");
+        let mut stmt = conn.prepare(
+            "
+            select event_subtype, pk_init_room_id, pk_match_room_id
+            from interaction_records
+            where session_id = ?1 and event_type = 'pk'
+            order by id asc
+            ",
+        )?;
+        let rows = stmt.query_map(params![session_id], |row| {
+            Ok(PkHistoryRecord {
+                event_subtype: row.get(0)?,
+                init_room_id: row.get(1)?,
+                match_room_id: row.get(2)?,
+            })
+        })?;
+        rows.collect::<rusqlite::Result<Vec<_>>>()
+            .map_err(Into::into)
+    }
+
+    #[allow(dead_code)]
     pub fn live_session_summary(&self, session_id: &str) -> Result<LiveSessionSummary> {
         Ok(LiveSessionSummary {
             danmu_count: self.session_danmu_count(session_id)?,
@@ -713,7 +825,7 @@ fn latest_optional_i64(conn: &Connection, uid: i64, column: &str) -> Result<Opti
 
 #[cfg(test)]
 mod tests {
-    use bilibili_live_protocol::{InteractKind, LiveEvent, ParsedLiveEvent};
+    use bilibili_live_protocol::{InteractKind, LiveEvent, ParsedLiveEvent, PkEventKind};
     use chrono::{Local, TimeZone};
     use serde_json::json;
 
@@ -966,6 +1078,43 @@ mod tests {
             .unwrap();
 
         assert_eq!(storage.session_guard_buy_count(&session_id).unwrap(), 1);
+        assert_eq!(storage.unknown_interaction_count(&session_id).unwrap(), 0);
+    }
+
+    #[test]
+    fn records_pk_start_with_opponent_rooms() {
+        let storage = Storage::open_in_memory().unwrap();
+        let session_id = storage
+            .start_observed_live_session(
+                8792912,
+                Local.with_ymd_and_hms(2026, 5, 1, 20, 0, 0).unwrap(),
+            )
+            .unwrap();
+        let event = ParsedLiveEvent {
+            event: LiveEvent::Pk {
+                kind: PkEventKind::Start {
+                    init_room_id: 100,
+                    match_room_id: 200,
+                },
+            },
+            raw: json!({
+                "cmd": "PK_BATTLE_START_NEW",
+                "data": {
+                    "init_info": { "room_id": 100 },
+                    "match_info": { "room_id": 200 }
+                }
+            }),
+        };
+
+        storage
+            .record_interaction(&session_id, 8792912, &event)
+            .unwrap();
+
+        let history = storage.session_pk_history(&session_id).unwrap();
+        assert_eq!(history.len(), 1);
+        assert_eq!(history[0].event_subtype.as_deref(), Some("start"));
+        assert_eq!(history[0].init_room_id, Some(100));
+        assert_eq!(history[0].match_room_id, Some(200));
         assert_eq!(storage.unknown_interaction_count(&session_id).unwrap(), 0);
     }
 
