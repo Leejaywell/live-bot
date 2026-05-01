@@ -569,6 +569,21 @@ fn wire_callbacks(app: &MainWindow, state: SharedState) {
     });
 
     let weak = app.as_weak();
+    app.on_query_user_detail(move |uid_text| {
+        let result = query_user_detail_from_storage(uid_text.trim());
+        update_ui(&weak, move |app| match result {
+            Ok(text) => {
+                app.set_user_detail_text(text.into());
+                append_log(app, "用户详情查询完成");
+            }
+            Err(err) => {
+                app.set_user_detail_text(format!("查询失败: {err}").into());
+                append_log(app, &format!("用户详情查询失败: {err}"));
+            }
+        });
+    });
+
+    let weak = app.as_weak();
     let state_for_send = state.clone();
     app.on_send_danmu(move |msg| {
         let room_id = app_room_id(&weak);
@@ -778,6 +793,50 @@ fn apply_pk_summary(app: &MainWindow, summary: &storage::PkSessionSummary) {
         )
         .into(),
     );
+}
+
+fn query_user_detail_from_storage(uid_text: &str) -> Result<String> {
+    let uid = uid_text.parse::<i64>()?;
+    let config = AppConfig::load_or_default()?;
+    let storage_path = format!(
+        "{}/{}",
+        config.db_path.trim_end_matches('/'),
+        config.db_name
+    );
+    let storage = storage::Storage::open(&storage_path)?;
+    let detail = storage.user_detail(uid)?;
+    Ok(format_user_detail(&detail))
+}
+
+fn format_user_detail(detail: &storage::UserDetail) -> String {
+    let medal_level = detail
+        .medal_level
+        .map(|level| format!("Lv.{level}"))
+        .unwrap_or_else(|| "-".to_string());
+    let guard_level = detail
+        .guard_level
+        .map(|level| level.to_string())
+        .unwrap_or_else(|| "-".to_string());
+    let wealth_level = detail
+        .wealth_level
+        .map(|level| level.to_string())
+        .unwrap_or_else(|| "-".to_string());
+
+    format!(
+        "UID: {}\n昵称: {}\n累计弹幕: {}\n最近弹幕: {}\n累计礼物: {} 件 / {} 电池\n最近礼物: {}\n进场次数: {}\n粉丝牌: {} {}\n舰长等级: {}\n财富等级: {}",
+        detail.uid,
+        detail.uname.as_deref().unwrap_or("-"),
+        detail.danmu_count,
+        detail.recent_danmu.as_deref().unwrap_or("-"),
+        detail.gift_count,
+        detail.gift_value,
+        detail.recent_gift.as_deref().unwrap_or("-"),
+        detail.entry_count,
+        detail.medal_name.as_deref().unwrap_or("-"),
+        medal_level,
+        guard_level,
+        wealth_level
+    )
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -1014,5 +1073,29 @@ mod tests {
             super::parse_i64_lines("42\n 100 \nnot-a-uid"),
             vec![42, 100]
         );
+    }
+
+    #[test]
+    fn formats_user_detail_for_ui() {
+        let detail = crate::storage::UserDetail {
+            uid: 42,
+            uname: Some("alice".to_string()),
+            danmu_count: 2,
+            recent_danmu: Some("hello".to_string()),
+            gift_count: 3,
+            gift_value: 300,
+            recent_gift: Some("辣条".to_string()),
+            entry_count: 1,
+            medal_name: Some("舰团牌".to_string()),
+            medal_level: Some(21),
+            guard_level: Some(3),
+            wealth_level: Some(18),
+        };
+
+        let text = super::format_user_detail(&detail);
+
+        assert!(text.contains("UID: 42"));
+        assert!(text.contains("昵称: alice"));
+        assert!(text.contains("粉丝牌: 舰团牌 Lv.21"));
     }
 }

@@ -409,6 +409,8 @@ export component MainWindow inherits Window {
     in-out property <string> session-guard-buyer-count: "0";
     in-out property <string> session-popularity: "0 / 0";
     in-out property <string> session-pk-summary: "暂无 PK";
+    in-out property <string> user-query-uid: "";
+    in-out property <string> user-detail-text: "输入 UID 查询观众详情";
 
     in-out property <bool> theme-popup-open: true;
     in-out property <bool> dark-mode: false;
@@ -455,6 +457,7 @@ export component MainWindow inherits Window {
     callback start-monitor();
     callback stop-monitor();
     callback send-danmu(string);
+    callback query-user-detail(string);
     callback check-update();
     callback download-update(string);
 
@@ -672,6 +675,37 @@ export component MainWindow inherits Window {
                                 StatusCard { width: 220px; height: 92px; label: "大航海人数"; value: root.session-guard-buyer-count; icon: "舰"; accent: #8b5cf6; base-bg: root.panel-bg; outline-color: root.line-color; text-color: root.text-color; muted-color: root.muted-color; }
                                 StatusCard { width: 220px; height: 92px; label: "人气峰值 / 均值"; value: root.session-popularity; icon: "人"; accent: #ef4444; base-bg: root.panel-bg; outline-color: root.line-color; text-color: root.text-color; muted-color: root.muted-color; }
                                 StatusCard { width: 220px; height: 92px; label: "PK 概览"; value: root.session-pk-summary; icon: "PK"; accent: #f97316; base-bg: root.panel-bg; outline-color: root.line-color; text-color: root.text-color; muted-color: root.muted-color; }
+                            }
+
+                            Rectangle {
+                                background: root.panel-bg;
+                                border-radius: 20px;
+                                border-width: 1px;
+                                border-color: root.line-color;
+
+                                VerticalLayout {
+                                    padding: 18px;
+                                    spacing: 12px;
+
+                                    Text { text: "用户详情查询"; color: root.text-color; font-size: 16px; font-weight: 900; }
+
+                                    HorizontalLayout {
+                                        spacing: 10px;
+                                        LineEdit { text <=> root.user-query-uid; placeholder-text: "输入 UID"; }
+                                        ActionButton {
+                                            width: 120px;
+                                            label: "查询用户"; primary: true; accent: root.theme-primary; fill: root.card-alt-bg; text-color: root.text-color; line-color: root.line-color;
+                                            clicked => { root.query-user-detail(root.user-query-uid); }
+                                        }
+                                    }
+
+                                    Text {
+                                        text: root.user-detail-text;
+                                        color: root.text-color;
+                                        font-size: 12px;
+                                        wrap: word-wrap;
+                                    }
+                                }
                             }
 
                             Rectangle {
