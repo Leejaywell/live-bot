@@ -37,11 +37,13 @@ component SidebarEntry inherits Rectangle {
     in property <string> subtitle;
     in property <string> badge: "";
     in property <bool> active: false;
+    in property <bool> compact: false;
     in property <color> accent;
     in property <color> base-bg;
     in property <color> text-color;
     in property <color> muted-color;
     in property <color> outline-color;
+    callback clicked();
 
     height: 44px;
     border-radius: 8px;
@@ -72,7 +74,7 @@ component SidebarEntry inherits Rectangle {
             }
         }
 
-        VerticalLayout {
+        if !root.compact : VerticalLayout {
             spacing: 1px;
             Text {
                 text: root.title;
@@ -87,9 +89,9 @@ component SidebarEntry inherits Rectangle {
             }
         }
 
-        Rectangle { }
+        if !root.compact : Rectangle { }
 
-        if root.badge != "" : Rectangle {
+        if !root.compact && root.badge != "" : Rectangle {
             width: 48px;
             height: 20px;
             border-radius: 8px;
@@ -104,6 +106,10 @@ component SidebarEntry inherits Rectangle {
                 vertical-alignment: center;
             }
         }
+    }
+
+    TouchArea {
+        clicked => { root.clicked(); }
     }
 }
 
@@ -415,6 +421,34 @@ export component MainWindow inherits Window {
     in-out property <bool> theme-popup-open: false;
     in-out property <bool> dark-mode: false;
     in-out property <int> theme-choice: 0;
+    in-out property <bool> sidebar-collapsed: false;
+    in-out property <int> current-page: 0;
+
+    property <string> current-page-title:
+        root.current-page == 0 ? "运营总览" :
+        root.current-page == 1 ? "登录与房间" :
+        root.current-page == 2 ? "监听与发送" :
+        root.current-page == 3 ? "自动回复规则" :
+        root.current-page == 4 ? "AI 机器人" :
+        root.current-page == 5 ? "数据统计" :
+        root.current-page == 6 ? "PK 与活动" :
+        root.current-page == 7 ? "直播间管理" :
+        root.current-page == 8 ? "高级扩展" :
+        root.current-page == 9 ? "录播与素材" :
+        "系统与更新";
+
+    property <string> current-page-subtitle:
+        root.current-page == 0 ? "直播间 #" + root.room-id + " · 主播账号: " + root.user-info :
+        root.current-page == 1 ? "账号登录、房间检测和连接状态" :
+        root.current-page == 2 ? "监听开关、手动弹幕和实时日志" :
+        root.current-page == 3 ? "欢迎语、关键词、定时弹幕和抽奖规则" :
+        root.current-page == 4 ? "机器人名称、指令、模型和提示词" :
+        root.current-page == 5 ? "会话指标、互动趋势和观众详情" :
+        root.current-page == 6 ? "PK 通知、活动配置和抽奖名单" :
+        root.current-page == 7 ? "房间配置能力正在规划中" :
+        root.current-page == 8 ? "插件生态能力正在规划中" :
+        root.current-page == 9 ? "录播与素材能力正在规划中" :
+        "版本检查、更新下载和外观设置";
 
     property <color> theme-primary:
         root.theme-choice == 1 ? #34c759 :
@@ -470,7 +504,7 @@ export component MainWindow inherits Window {
             spacing: 0px;
 
             Rectangle {
-                width: 244px;
+                width: root.sidebar-collapsed ? 72px : 244px;
                 background: root.panel-soft-bg;
                 border-width: 1px;
                 border-color: root.line-color;
@@ -484,7 +518,7 @@ export component MainWindow inherits Window {
 
                     HorizontalLayout {
                         spacing: 10px;
-                        Rectangle {
+                        if !root.sidebar-collapsed : Rectangle {
                             width: 40px;
                             height: 40px;
                             border-radius: 8px;
@@ -499,31 +533,55 @@ export component MainWindow inherits Window {
                                 vertical-alignment: center;
                             }
                         }
-                        VerticalLayout {
+                        if !root.sidebar-collapsed : VerticalLayout {
                             spacing: 2px;
                             Text { text: "Live Bot"; color: root.text-color; font-size: 18px; font-weight: 600; }
                             Text { text: "直播运营助手"; color: root.muted-color; font-size: 11px; font-weight: 600; }
+                        }
+                        if !root.sidebar-collapsed : Rectangle { }
+                        Rectangle {
+                            width: root.sidebar-collapsed ? 40px : 28px;
+                            height: root.sidebar-collapsed ? 40px : 28px;
+                            border-radius: 8px;
+                            background: root.card-alt-bg;
+                            border-width: 1px;
+                            border-color: root.line-color;
+
+                            Text {
+                                text: root.sidebar-collapsed ? ">" : "<";
+                                color: root.text-color;
+                                font-size: 13px;
+                                font-weight: 600;
+                                horizontal-alignment: center;
+                                vertical-alignment: center;
+                            }
+
+                            TouchArea {
+                                clicked => {
+                                    root.sidebar-collapsed = !root.sidebar-collapsed;
+                                }
+                            }
                         }
                     }
 
                     Rectangle { height: 1px; background: root.line-color; }
 
-                    Text { text: "工作区"; color: root.muted-color; font-size: 11px; font-weight: 600; }
-                    SidebarEntry { icon: "总"; title: "总览"; subtitle: "运营中心"; active: true; accent: root.theme-primary; base-bg: root.panel-soft-bg; text-color: root.text-color; muted-color: root.muted-color; outline-color: root.line-color; }
-                    SidebarEntry { icon: "登"; title: "登录与房间"; subtitle: "账号管理"; accent: root.theme-primary; base-bg: root.panel-soft-bg; text-color: root.text-color; muted-color: root.muted-color; outline-color: root.line-color; }
-                    SidebarEntry { icon: "听"; title: "监听与发送"; subtitle: "弹幕控制"; accent: root.theme-primary; base-bg: root.panel-soft-bg; text-color: root.text-color; muted-color: root.muted-color; outline-color: root.line-color; }
-                    SidebarEntry { icon: "规"; title: "自动回复规则"; subtitle: "互动策略"; accent: root.theme-primary; base-bg: root.panel-soft-bg; text-color: root.text-color; muted-color: root.muted-color; outline-color: root.line-color; }
-                    SidebarEntry { icon: "AI"; title: "AI 机器人"; subtitle: "智能对话"; accent: root.theme-primary; base-bg: root.panel-soft-bg; text-color: root.text-color; muted-color: root.muted-color; outline-color: root.line-color; }
-                    SidebarEntry { icon: "数"; title: "数据统计"; subtitle: "运营分析"; accent: root.theme-primary; base-bg: root.panel-soft-bg; text-color: root.text-color; muted-color: root.muted-color; outline-color: root.line-color; }
-                    SidebarEntry { icon: "PK"; title: "PK 与活动"; subtitle: "赛事管理"; accent: root.theme-primary; base-bg: root.panel-soft-bg; text-color: root.text-color; muted-color: root.muted-color; outline-color: root.line-color; }
-                    SidebarEntry { icon: "房"; title: "直播间管理"; subtitle: "房间配置"; badge: "规划中"; accent: root.theme-primary; base-bg: root.panel-soft-bg; text-color: root.text-color; muted-color: root.muted-color; outline-color: root.line-color; }
-                    SidebarEntry { icon: "扩"; title: "高级扩展"; subtitle: "插件生态"; badge: "规划中"; accent: root.theme-primary; base-bg: root.panel-soft-bg; text-color: root.text-color; muted-color: root.muted-color; outline-color: root.line-color; }
-                    SidebarEntry { icon: "录"; title: "录播与素材"; subtitle: "内容存档"; badge: "规划中"; accent: root.theme-primary; base-bg: root.panel-soft-bg; text-color: root.text-color; muted-color: root.muted-color; outline-color: root.line-color; }
-                    SidebarEntry { icon: "系"; title: "系统与更新"; subtitle: "版本管理"; accent: root.theme-primary; base-bg: root.panel-soft-bg; text-color: root.text-color; muted-color: root.muted-color; outline-color: root.line-color; }
+                    if !root.sidebar-collapsed : Text { text: "工作区"; color: root.muted-color; font-size: 11px; font-weight: 600; }
+                    SidebarEntry { icon: "总"; title: "总览"; subtitle: "运营中心"; active: root.current-page == 0; compact: root.sidebar-collapsed; accent: root.theme-primary; base-bg: root.panel-soft-bg; text-color: root.text-color; muted-color: root.muted-color; outline-color: root.line-color; clicked => { root.current-page = 0; } }
+                    SidebarEntry { icon: "登"; title: "登录与房间"; subtitle: "账号管理"; active: root.current-page == 1; compact: root.sidebar-collapsed; accent: root.theme-primary; base-bg: root.panel-soft-bg; text-color: root.text-color; muted-color: root.muted-color; outline-color: root.line-color; clicked => { root.current-page = 1; } }
+                    SidebarEntry { icon: "听"; title: "监听与发送"; subtitle: "弹幕控制"; active: root.current-page == 2; compact: root.sidebar-collapsed; accent: root.theme-primary; base-bg: root.panel-soft-bg; text-color: root.text-color; muted-color: root.muted-color; outline-color: root.line-color; clicked => { root.current-page = 2; } }
+                    SidebarEntry { icon: "规"; title: "自动回复规则"; subtitle: "互动策略"; active: root.current-page == 3; compact: root.sidebar-collapsed; accent: root.theme-primary; base-bg: root.panel-soft-bg; text-color: root.text-color; muted-color: root.muted-color; outline-color: root.line-color; clicked => { root.current-page = 3; } }
+                    SidebarEntry { icon: "AI"; title: "AI 机器人"; subtitle: "智能对话"; active: root.current-page == 4; compact: root.sidebar-collapsed; accent: root.theme-primary; base-bg: root.panel-soft-bg; text-color: root.text-color; muted-color: root.muted-color; outline-color: root.line-color; clicked => { root.current-page = 4; } }
+                    SidebarEntry { icon: "数"; title: "数据统计"; subtitle: "运营分析"; active: root.current-page == 5; compact: root.sidebar-collapsed; accent: root.theme-primary; base-bg: root.panel-soft-bg; text-color: root.text-color; muted-color: root.muted-color; outline-color: root.line-color; clicked => { root.current-page = 5; } }
+                    SidebarEntry { icon: "PK"; title: "PK 与活动"; subtitle: "赛事管理"; active: root.current-page == 6; compact: root.sidebar-collapsed; accent: root.theme-primary; base-bg: root.panel-soft-bg; text-color: root.text-color; muted-color: root.muted-color; outline-color: root.line-color; clicked => { root.current-page = 6; } }
+                    SidebarEntry { icon: "房"; title: "直播间管理"; subtitle: "房间配置"; badge: "规划中"; active: root.current-page == 7; compact: root.sidebar-collapsed; accent: root.theme-primary; base-bg: root.panel-soft-bg; text-color: root.text-color; muted-color: root.muted-color; outline-color: root.line-color; clicked => { root.current-page = 7; } }
+                    SidebarEntry { icon: "扩"; title: "高级扩展"; subtitle: "插件生态"; badge: "规划中"; active: root.current-page == 8; compact: root.sidebar-collapsed; accent: root.theme-primary; base-bg: root.panel-soft-bg; text-color: root.text-color; muted-color: root.muted-color; outline-color: root.line-color; clicked => { root.current-page = 8; } }
+                    SidebarEntry { icon: "录"; title: "录播与素材"; subtitle: "内容存档"; badge: "规划中"; active: root.current-page == 9; compact: root.sidebar-collapsed; accent: root.theme-primary; base-bg: root.panel-soft-bg; text-color: root.text-color; muted-color: root.muted-color; outline-color: root.line-color; clicked => { root.current-page = 9; } }
+                    SidebarEntry { icon: "系"; title: "系统与更新"; subtitle: "版本管理"; active: root.current-page == 10; compact: root.sidebar-collapsed; accent: root.theme-primary; base-bg: root.panel-soft-bg; text-color: root.text-color; muted-color: root.muted-color; outline-color: root.line-color; clicked => { root.current-page = 10; } }
 
                     Rectangle { height: 1px; background: root.line-color; }
 
-                    Rectangle {
+                    if !root.sidebar-collapsed : Rectangle {
                         height: 74px;
                         border-radius: 8px;
                         background: root.panel-bg;
@@ -545,7 +603,7 @@ export component MainWindow inherits Window {
                                 font-size: 11px;
                             }
                             Text {
-                                text: "主题弹窗默认展开，可即时切换亮暗与配色";
+                                text: "主题弹窗默认隐藏，点击右上角调出";
                                 color: root.muted-color;
                                 font-size: 10px;
                             }
@@ -572,8 +630,8 @@ export component MainWindow inherits Window {
 
                         VerticalLayout {
                             spacing: 2px;
-                            Text { text: "直播间 #" + root.room-id; color: root.text-color; font-size: 16px; font-weight: 600; }
-                            Text { text: "主播账号: " + root.user-info; color: root.muted-color; font-size: 12px; }
+                            Text { text: root.current-page-title; color: root.text-color; font-size: 16px; font-weight: 600; }
+                            Text { text: root.current-page-subtitle; color: root.muted-color; font-size: 12px; }
                         }
 
                         Rectangle { width: 1px; background: root.line-color; }
@@ -1089,7 +1147,7 @@ export component MainWindow inherits Window {
         }
 
         if root.theme-popup-open : Rectangle {
-            x: 1160px;
+            x: root.width - 360px;
             y: 78px;
             width: 332px;
             height: 530px;
