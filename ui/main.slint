@@ -370,6 +370,11 @@ export component MainWindow inherits Window {
     in-out property <bool> keyword-reply: false;
     in-out property <bool> draw-by-lot: true;
     in-out property <bool> sign-in-enable: true;
+    in-out property <bool> danmu-filter-enable: false;
+    in-out property <string> danmu-filter-words-text: "";
+    in-out property <int> danmu-filter-repeat-threshold: 3;
+    in-out property <string> gift-aliases-text: "";
+    in-out property <string> gift-thanks-templates-text: "";
     in-out property <string> robot-name: "花花";
     in-out property <string> talk-robot-cmd: "花花";
     in-out property <int> robot-mode-index: 0;
@@ -425,8 +430,10 @@ export component MainWindow inherits Window {
 
     callback load-config();
     callback save-config(
-        string, int, string, string, bool, bool, bool, bool, bool, bool, bool, bool, bool, bool,
-        string, string, int, string, string, string, string, string, string, string, string, string, string
+        string, int, string, string,
+        bool, bool, bool, bool, bool, bool, bool, bool, bool, bool, bool,
+        string, int, string, string, string, string, int,
+        string, string, string, string, string, string, string, string, string, string
     );
     callback start-login();
     callback check-login();
@@ -676,7 +683,10 @@ export component MainWindow inherits Window {
                                                     root.room-id, root.danmu-len, root.entry-msg, root.goodbye-info,
                                                     root.pk-notice, root.welcome-enabled, root.entry-effect, root.thanks-gift,
                                                     root.thanks-focus, root.thanks-share, root.cron-danmu, root.keyword-reply,
-                                                    root.draw-by-lot, root.sign-in-enable, root.robot-name, root.talk-robot-cmd,
+                                                    root.draw-by-lot, root.sign-in-enable,
+                                                    root.danmu-filter-enable, root.danmu-filter-words-text,
+                                                    root.danmu-filter-repeat-threshold, root.gift-aliases-text,
+                                                    root.gift-thanks-templates-text, root.robot-name, root.talk-robot-cmd,
                                                     root.robot-mode-index, root.chatgpt-token, root.chatgpt-api-url, root.chatgpt-prompt,
                                                     root.welcome-list-text, root.focus-list-text, root.blacklist-wide-text,
                                                     root.blacklist-exact-text, root.keyword-reply-text, root.cron-danmu-text,
@@ -839,6 +849,7 @@ export component MainWindow inherits Window {
                                             CheckBox { text: "分享答谢"; checked <=> root.thanks-share; }
                                             CheckBox { text: "定时弹幕"; checked <=> root.cron-danmu; }
                                             CheckBox { text: "关键词回复"; checked <=> root.keyword-reply; }
+                                            CheckBox { text: "弹幕过滤"; checked <=> root.danmu-filter-enable; }
                                         }
 
                                         VerticalLayout {
@@ -881,6 +892,18 @@ export component MainWindow inherits Window {
                                     }
 
                                     TextEdit { text <=> root.keyword-reply-text; height: 84px; wrap: word-wrap; }
+                                    Text { text: "弹幕过滤词与重复阈值"; color: root.muted-color; font-size: 11px; font-weight: 700; }
+                                    HorizontalLayout {
+                                        spacing: 10px;
+                                        TextEdit { text <=> root.danmu-filter-words-text; height: 74px; wrap: word-wrap; }
+                                        SpinBox { value <=> root.danmu-filter-repeat-threshold; minimum: 2; maximum: 20; }
+                                    }
+                                    Text { text: "礼物别名与指定答谢模板（每行 key=value）"; color: root.muted-color; font-size: 11px; font-weight: 700; }
+                                    HorizontalLayout {
+                                        spacing: 10px;
+                                        TextEdit { text <=> root.gift-aliases-text; height: 74px; wrap: word-wrap; }
+                                        TextEdit { text <=> root.gift-thanks-templates-text; height: 74px; wrap: word-wrap; }
+                                    }
                                     TextEdit { text <=> root.cron-danmu-text; height: 84px; wrap: word-wrap; }
                                     TextEdit { text <=> root.draw-list-text; height: 84px; wrap: word-wrap; }
                                 }

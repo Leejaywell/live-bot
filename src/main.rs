@@ -88,6 +88,11 @@ fn wire_callbacks(app: &MainWindow, state: SharedState) {
               keyword_reply,
               draw_by_lot,
               sign_in_enable,
+              danmu_filter_enable,
+              danmu_filter_words_text,
+              danmu_filter_repeat_threshold,
+              gift_aliases_text,
+              gift_thanks_templates_text,
               robot_name,
               talk_robot_cmd,
               robot_mode_index,
@@ -116,6 +121,11 @@ fn wire_callbacks(app: &MainWindow, state: SharedState) {
                 keyword_reply,
                 draw_by_lot,
                 sign_in_enable,
+                danmu_filter_enable,
+                danmu_filter_words_text,
+                danmu_filter_repeat_threshold,
+                gift_aliases_text,
+                gift_thanks_templates_text,
                 robot_name,
                 talk_robot_cmd,
                 robot_mode_index,
@@ -675,6 +685,11 @@ fn hydrate_ui(app: &MainWindow, config: &AppConfig) -> Result<()> {
     app.set_keyword_reply(config.keyword_reply);
     app.set_draw_by_lot(config.draw_by_lot);
     app.set_sign_in_enable(config.sign_in_enable);
+    app.set_danmu_filter_enable(config.danmu_filter_enable);
+    app.set_danmu_filter_words_text(join_lines(&config.danmu_filter_words).into());
+    app.set_danmu_filter_repeat_threshold(config.danmu_filter_repeat_threshold);
+    app.set_gift_aliases_text(format_key_value_map(&config.gift_aliases).into());
+    app.set_gift_thanks_templates_text(format_key_value_map(&config.gift_thanks_templates).into());
     app.set_robot_name(config.robot_name.clone().into());
     app.set_talk_robot_cmd(config.talk_robot_cmd.clone().into());
     app.set_robot_mode_index(if config.robot_mode == "ChatGPT" { 1 } else { 0 });
@@ -707,6 +722,11 @@ fn config_from_ui(
     keyword_reply: bool,
     draw_by_lot: bool,
     sign_in_enable: bool,
+    danmu_filter_enable: bool,
+    danmu_filter_words_text: SharedString,
+    danmu_filter_repeat_threshold: i32,
+    gift_aliases_text: SharedString,
+    gift_thanks_templates_text: SharedString,
     robot_name: SharedString,
     talk_robot_cmd: SharedString,
     robot_mode_index: i32,
@@ -736,6 +756,11 @@ fn config_from_ui(
     config.keyword_reply = keyword_reply;
     config.draw_by_lot = draw_by_lot;
     config.sign_in_enable = sign_in_enable;
+    config.danmu_filter_enable = danmu_filter_enable;
+    config.danmu_filter_words = parse_lines(&danmu_filter_words_text);
+    config.danmu_filter_repeat_threshold = danmu_filter_repeat_threshold.max(2);
+    config.gift_aliases = parse_key_value_map(&gift_aliases_text);
+    config.gift_thanks_templates = parse_key_value_map(&gift_thanks_templates_text);
     config.robot_name = robot_name.to_string();
     config.talk_robot_cmd = talk_robot_cmd.to_string();
     config.robot_mode = if robot_mode_index == 1 {
@@ -771,6 +796,10 @@ fn parse_lines(value: &str) -> Vec<String> {
 }
 
 fn format_keyword_reply(items: &std::collections::BTreeMap<String, String>) -> String {
+    format_key_value_map(items)
+}
+
+fn format_key_value_map(items: &std::collections::BTreeMap<String, String>) -> String {
     items
         .iter()
         .map(|(keyword, reply)| format!("{keyword}={reply}"))
@@ -779,6 +808,10 @@ fn format_keyword_reply(items: &std::collections::BTreeMap<String, String>) -> S
 }
 
 fn parse_keyword_reply(value: &str) -> std::collections::BTreeMap<String, String> {
+    parse_key_value_map(value)
+}
+
+fn parse_key_value_map(value: &str) -> std::collections::BTreeMap<String, String> {
     value
         .lines()
         .filter_map(|line| {
@@ -860,4 +893,15 @@ fn ensure_dirs() -> Result<()> {
     std::fs::create_dir_all("token")?;
     std::fs::create_dir_all("logs")?;
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    #[test]
+    fn parses_key_value_text_for_config_maps() {
+        let parsed = super::parse_key_value_map("辣条 = 小零食\n舰长=大航海");
+
+        assert_eq!(parsed.get("辣条").map(String::as_str), Some("小零食"));
+        assert_eq!(parsed.get("舰长").map(String::as_str), Some("大航海"));
+    }
 }
