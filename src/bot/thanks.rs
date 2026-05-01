@@ -15,6 +15,8 @@ pub struct GiftAggregator {
     blind_box_profit_loss_stat: bool,
     gift_aliases: BTreeMap<String, String>,
     gift_thanks_templates: BTreeMap<String, String>,
+    gift_summary_thanks: bool,
+    gift_summary_template: String,
     gifts: BTreeMap<String, BTreeMap<String, GiftSummary>>,
     blind_boxes: BTreeMap<String, BTreeMap<String, BlindBoxSummary>>,
 }
@@ -40,6 +42,8 @@ impl GiftAggregator {
             blind_box_profit_loss_stat: config.blind_box_profit_loss_stat,
             gift_aliases: config.gift_aliases.clone(),
             gift_thanks_templates: config.gift_thanks_templates.clone(),
+            gift_summary_thanks: config.gift_summary_thanks,
+            gift_summary_template: config.gift_summary_template.clone(),
             gifts: BTreeMap::new(),
             blind_boxes: BTreeMap::new(),
         }
@@ -115,11 +119,15 @@ impl GiftAggregator {
     fn flush_gifts(&mut self) -> Vec<String> {
         let gifts = std::mem::take(&mut self.gifts);
         let mut out = Vec::new();
+        let mut summary_count = 0;
+        let mut summary_value = 0;
         for (user, by_gift) in gifts {
             let total_cost = by_gift.values().map(|summary| summary.cost).sum::<i64>();
             if total_cost < self.thanks_min_cost as i64 {
                 continue;
             }
+            summary_count += by_gift.values().map(|summary| summary.count).sum::<i64>();
+            summary_value += total_cost;
             let gift_text = by_gift
                 .into_iter()
                 .map(|(gift, summary)| self.render_gift_thanks(&user, &gift, &summary))
@@ -136,6 +144,13 @@ impl GiftAggregator {
             } else {
                 out.push(msg);
             }
+        }
+        if self.gift_summary_thanks && summary_count > 0 {
+            out.push(
+                self.gift_summary_template
+                    .replace("{count}", &summary_count.to_string())
+                    .replace("{value}", &summary_value.to_string()),
+            );
         }
         out
     }
@@ -309,5 +324,47 @@ mod tests {
         );
 
         assert_eq!(aggregator.flush(), vec!["谢谢alice投喂2份小零食"]);
+    }
+
+    #[test]
+    fn appends_gift_summary_thanks() {
+        let mut config = test_config();
+        config.gift_summary_thanks = true;
+        config.gift_summary_template = "本轮共收到{count}件礼物，价值{value}电池".to_string();
+        let mut aggregator = GiftAggregator::new(&config);
+
+        aggregator.record(
+            &LiveEvent::Gift {
+                user_id: 1,
+                user: "alice".to_string(),
+                gift: "辣条".to_string(),
+                count: 2,
+                price: 100,
+                original_gift_name: None,
+                original_gift_price: 0,
+            },
+            None,
+        );
+        aggregator.record(
+            &LiveEvent::Gift {
+                user_id: 2,
+                user: "bob".to_string(),
+                gift: "小心心".to_string(),
+                count: 1,
+                price: 50,
+                original_gift_name: None,
+                original_gift_price: 0,
+            },
+            None,
+        );
+
+        assert_eq!(
+            aggregator.flush(),
+            vec![
+                "感谢alice的2个辣条",
+                "感谢bob的1个小心心",
+                "本轮共收到3件礼物，价值250电池"
+            ]
+        );
     }
 }

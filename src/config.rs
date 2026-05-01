@@ -67,6 +67,10 @@ pub struct AppConfig {
     pub gift_aliases: BTreeMap<String, String>,
     #[serde(default)]
     pub gift_thanks_templates: BTreeMap<String, String>,
+    #[serde(default)]
+    pub gift_summary_thanks: bool,
+    #[serde(default = "default_gift_summary_template")]
+    pub gift_summary_template: String,
     pub cron_danmu: bool,
     pub cron_danmu_list: Vec<CronDanmu>,
     pub draw_by_lot: bool,
@@ -196,6 +200,8 @@ impl Default for AppConfig {
             thanks_gift_use_at: false,
             gift_aliases: BTreeMap::new(),
             gift_thanks_templates: BTreeMap::new(),
+            gift_summary_thanks: false,
+            gift_summary_template: default_gift_summary_template(),
             cron_danmu: false,
             cron_danmu_list: vec![CronDanmu {
                 cron: "*/2 * * * *".to_string(),
@@ -261,4 +267,8 @@ fn default_danmu_filter_repeat_threshold() -> i32 {
 
 fn default_newcomer_danmu_template() -> String {
     "欢迎新朋友 {user} 首次发言".to_string()
+}
+
+fn default_gift_summary_template() -> String {
+    "本轮共收到{count}件礼物，价值{value}电池".to_string()
 }
