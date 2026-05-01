@@ -1,5 +1,5 @@
 use anyhow::Result;
-use bilibili_live_protocol::{LiveEvent, ParsedLiveEvent};
+use bilibili_live_protocol::{InteractKind, LiveEvent, ParsedLiveEvent};
 use chrono::{DateTime, Datelike, Local};
 use rusqlite::{Connection, OptionalExtension, params};
 use std::sync::Mutex;
@@ -20,6 +20,9 @@ pub struct LiveSessionSummary {
     pub danmu_count: i64,
     pub gift_value: i64,
     pub interact_count: i64,
+    pub entry_count: i64,
+    pub follow_count: i64,
+    pub share_count: i64,
     pub guard_buy_count: i64,
     pub guard_buyer_count: i64,
     pub unknown_count: i64,
@@ -77,6 +80,7 @@ impl Storage {
                 session_id text not null,
                 room_id integer not null,
                 event_type text not null,
+                event_subtype text,
                 uid integer,
                 uname text,
                 text text,
@@ -88,6 +92,7 @@ impl Storage {
             );
             ",
         )?;
+        ensure_column(&conn, "interaction_records", "event_subtype", "text")?;
         Ok(Self {
             conn: Mutex::new(conn),
         })
@@ -205,61 +210,69 @@ impl Storage {
         room_id: i64,
         parsed: &ParsedLiveEvent,
     ) -> Result<()> {
-        let (event_type, uid, uname, text, gift_name, gift_count, gift_price) = match &parsed.event
-        {
-            LiveEvent::Danmu {
-                user_id,
-                user,
-                text,
-            } => (
-                "danmu",
-                Some(*user_id),
-                Some(user.as_str()),
-                Some(text.as_str()),
-                None,
-                None,
-                None,
-            ),
-            LiveEvent::Gift {
-                user_id,
-                user,
-                gift,
-                count,
-                price,
-                ..
-            } => (
-                "gift",
-                Some(*user_id),
-                Some(user.as_str()),
-                None,
-                Some(gift.as_str()),
-                Some(*count),
-                Some(*price),
-            ),
-            LiveEvent::Interact { user_id, user, .. } => (
-                "interact",
-                Some(*user_id),
-                Some(user.as_str()),
-                None,
-                None,
-                None,
-                None,
-            ),
-            LiveEvent::GuardBuy {
-                user_id,
-                user,
-                gift,
-            } => (
-                "guard_buy",
-                Some(*user_id),
-                Some(user.as_str()),
-                None,
-                Some(gift.as_str()),
-                None,
-                None,
-            ),
-            _ => ("unknown", None, None, None, None, None, None),
-        };
+        let (event_type, event_subtype, uid, uname, text, gift_name, gift_count, gift_price) =
+            match &parsed.event {
+                LiveEvent::Danmu {
+                    user_id,
+                    user,
+                    text,
+                } => (
+                    "danmu",
+                    None,
+                    Some(*user_id),
+                    Some(user.as_str()),
+                    Some(text.as_str()),
+                    None,
+                    None,
+                    None,
+                ),
+                LiveEvent::Gift {
+                    user_id,
+                    user,
+                    gift,
+                    count,
+                    price,
+                    ..
+                } => (
+                    "gift",
+                    None,
+                    Some(*user_id),
+                    Some(user.as_str()),
+                    None,
+                    Some(gift.as_str()),
+                    Some(*count),
+                    Some(*price),
+                ),
+                LiveEvent::Interact {
+                    kind,
+                    user_id,
+                    user,
+                } => (
+                    "interact",
+                    Some(interact_kind_name(*kind)),
+                    Some(*user_id),
+                    Some(user.as_str()),
+                    None,
+                    None,
+                    None,
+                    None,
+                ),
+                LiveEvent::GuardBuy {
+                    user_id,
+                    user,
+                    gift,
+                } => (
+                    "guard_buy",
+                    None,
+                    Some(*user_id),
+                    Some(user.as_str()),
+                    None,
+                    Some(gift.as_str()),
+                    None,
+                    None,
+                ),
+                _ => ("unknown", None, None, None, None, None, None, None),
+            };
         let raw_json = serde_json::to_string(&parsed.raw)?;
         let occurred_at = Local::now().to_rfc3339();
         let conn = self.conn.lock().expect("storage mutex poisoned");
@@ -270,6 +283,7 @@ impl Storage {
                     session_id,
                     room_id,
                     event_type,
+                    event_subtype,
                     uid,
                     uname,
                     text,
@@ -279,12 +293,13 @@ impl Storage {
                     raw_json,
                     occurred_at
                 )
-            values (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11)
+            values (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12)
             ",
             params![
                 session_id,
                 room_id,
                 event_type,
+                event_subtype,
                 uid,
                 uname,
                 text,
@@ -336,6 +351,20 @@ impl Storage {
             where session_id = ?1 and event_type = 'interact'
             ",
             params![session_id],
+            |row| row.get(0),
+        )?)
+    }
+
+    #[allow(dead_code)]
+    pub fn session_interact_subtype_count(&self, session_id: &str, subtype: &str) -> Result<i64> {
+        let conn = self.conn.lock().expect("storage mutex poisoned");
+        Ok(conn.query_row(
+            "
+            select count(*)
+            from interaction_records
+            where session_id = ?1 and event_type = 'interact' and event_subtype = ?2
+            ",
+            params![session_id, subtype],
             |row| row.get(0),
         )?)
     }
@@ -402,6 +431,9 @@ impl Storage {
             danmu_count: self.session_danmu_count(session_id)?,
             gift_value: self.session_gift_value(session_id)?,
             interact_count: self.session_interact_count(session_id)?,
+            entry_count: self.session_interact_subtype_count(session_id, "entry")?,
+            follow_count: self.session_interact_subtype_count(session_id, "follow")?,
+            share_count: self.session_interact_subtype_count(session_id, "share")?,
             guard_buy_count: self.session_guard_buy_count(session_id)?,
             guard_buyer_count: self.session_guard_buyer_count(session_id)?,
             unknown_count: self.unknown_interaction_count(session_id)?,
@@ -449,6 +481,30 @@ impl Storage {
 fn today_key() -> String {
     let now = Local::now();
     format!("{:04}-{:02}-{:02}", now.year(), now.month(), now.day())
+}
+
+fn ensure_column(conn: &Connection, table: &str, column: &str, definition: &str) -> Result<()> {
+    let mut stmt = conn.prepare(&format!("pragma table_info({table})"))?;
+    let columns = stmt.query_map([], |row| row.get::<_, String>(1))?;
+    for existing in columns {
+        if existing? == column {
+            return Ok(());
+        }
+    }
+    conn.execute(
+        &format!("alter table {table} add column {column} {definition}"),
+        [],
+    )?;
+    Ok(())
+}
+
+fn interact_kind_name(kind: InteractKind) -> &'static str {
+    match kind {
+        InteractKind::Entry => "entry",
+        InteractKind::Follow | InteractKind::MutualFollow => "follow",
+        InteractKind::Share => "share",
+        InteractKind::Unknown(_) => "unknown",
+    }
 }
 
 #[cfg(test)]
@@ -776,6 +832,45 @@ mod tests {
         assert_eq!(summary.interact_count, 1);
         assert_eq!(summary.guard_buy_count, 1);
         assert_eq!(summary.unknown_count, 1);
+    }
+
+    #[test]
+    fn live_session_summary_breaks_down_interact_kinds() {
+        let storage = Storage::open_in_memory().unwrap();
+        let session_id = storage
+            .start_observed_live_session(
+                8792912,
+                Local.with_ymd_and_hms(2026, 5, 1, 20, 0, 0).unwrap(),
+            )
+            .unwrap();
+        let events = [
+            (InteractKind::Entry, 1, "alice"),
+            (InteractKind::Follow, 2, "bob"),
+            (InteractKind::Share, 3, "carol"),
+        ];
+
+        for (kind, user_id, user) in events {
+            storage
+                .record_interaction(
+                    &session_id,
+                    8792912,
+                    &ParsedLiveEvent {
+                        event: LiveEvent::Interact {
+                            kind,
+                            user_id,
+                            user: user.to_string(),
+                        },
+                        raw: json!({"cmd": "INTERACT_WORD"}),
+                    },
+                )
+                .unwrap();
+        }
+
+        let summary = storage.live_session_summary(&session_id).unwrap();
+
+        assert_eq!(summary.entry_count, 1);
+        assert_eq!(summary.follow_count, 1);
+        assert_eq!(summary.share_count, 1);
     }
 
     #[test]
