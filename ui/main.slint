@@ -375,6 +375,13 @@ export component MainWindow inherits Window {
     in-out property <int> danmu-filter-repeat-threshold: 3;
     in-out property <string> gift-aliases-text: "";
     in-out property <string> gift-thanks-templates-text: "";
+    in-out property <bool> gift-summary-thanks: false;
+    in-out property <string> gift-summary-template: "本轮共收到{count}件礼物，价值{value}电池";
+    in-out property <bool> newcomer-danmu-enable: false;
+    in-out property <string> newcomer-danmu-template: "欢迎新朋友 {user} 首次发言";
+    in-out property <string> permanent-blacklist-users-text: "";
+    in-out property <string> permanent-blacklist-names-text: "";
+    in-out property <string> special-nicknames-text: "";
     in-out property <string> robot-name: "花花";
     in-out property <string> talk-robot-cmd: "花花";
     in-out property <int> robot-mode-index: 0;
@@ -432,7 +439,7 @@ export component MainWindow inherits Window {
     callback save-config(
         string, int, string, string,
         bool, bool, bool, bool, bool, bool, bool, bool, bool, bool, bool,
-        string, int, string, string, string, string, int,
+        string, int, string, string, bool, string, bool, string, string, string, string, string, string, int,
         string, string, string, string, string, string, string, string, string, string
     );
     callback start-login();
@@ -686,7 +693,11 @@ export component MainWindow inherits Window {
                                                     root.draw-by-lot, root.sign-in-enable,
                                                     root.danmu-filter-enable, root.danmu-filter-words-text,
                                                     root.danmu-filter-repeat-threshold, root.gift-aliases-text,
-                                                    root.gift-thanks-templates-text, root.robot-name, root.talk-robot-cmd,
+                                                    root.gift-thanks-templates-text, root.gift-summary-thanks,
+                                                    root.gift-summary-template, root.newcomer-danmu-enable,
+                                                    root.newcomer-danmu-template, root.permanent-blacklist-users-text,
+                                                    root.permanent-blacklist-names-text, root.special-nicknames-text,
+                                                    root.robot-name, root.talk-robot-cmd,
                                                     root.robot-mode-index, root.chatgpt-token, root.chatgpt-api-url, root.chatgpt-prompt,
                                                     root.welcome-list-text, root.focus-list-text, root.blacklist-wide-text,
                                                     root.blacklist-exact-text, root.keyword-reply-text, root.cron-danmu-text,
@@ -850,6 +861,8 @@ export component MainWindow inherits Window {
                                             CheckBox { text: "定时弹幕"; checked <=> root.cron-danmu; }
                                             CheckBox { text: "关键词回复"; checked <=> root.keyword-reply; }
                                             CheckBox { text: "弹幕过滤"; checked <=> root.danmu-filter-enable; }
+                                            CheckBox { text: "新人发言提示"; checked <=> root.newcomer-danmu-enable; }
+                                            CheckBox { text: "礼物总结答谢"; checked <=> root.gift-summary-thanks; }
                                         }
 
                                         VerticalLayout {
@@ -903,6 +916,18 @@ export component MainWindow inherits Window {
                                         spacing: 10px;
                                         TextEdit { text <=> root.gift-aliases-text; height: 74px; wrap: word-wrap; }
                                         TextEdit { text <=> root.gift-thanks-templates-text; height: 74px; wrap: word-wrap; }
+                                    }
+                                    Text { text: "新人提示、礼物总结与观众规则"; color: root.muted-color; font-size: 11px; font-weight: 700; }
+                                    HorizontalLayout {
+                                        spacing: 10px;
+                                        LineEdit { text <=> root.newcomer-danmu-template; placeholder-text: "新人提示模板"; }
+                                        LineEdit { text <=> root.gift-summary-template; placeholder-text: "礼物总结模板"; }
+                                    }
+                                    HorizontalLayout {
+                                        spacing: 10px;
+                                        TextEdit { text <=> root.permanent-blacklist-users-text; height: 74px; wrap: word-wrap; }
+                                        TextEdit { text <=> root.permanent-blacklist-names-text; height: 74px; wrap: word-wrap; }
+                                        TextEdit { text <=> root.special-nicknames-text; height: 74px; wrap: word-wrap; }
                                     }
                                     TextEdit { text <=> root.cron-danmu-text; height: 84px; wrap: word-wrap; }
                                     TextEdit { text <=> root.draw-list-text; height: 84px; wrap: word-wrap; }

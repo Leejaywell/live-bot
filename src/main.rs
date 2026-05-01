@@ -93,6 +93,13 @@ fn wire_callbacks(app: &MainWindow, state: SharedState) {
               danmu_filter_repeat_threshold,
               gift_aliases_text,
               gift_thanks_templates_text,
+              gift_summary_thanks,
+              gift_summary_template,
+              newcomer_danmu_enable,
+              newcomer_danmu_template,
+              permanent_blacklist_users_text,
+              permanent_blacklist_names_text,
+              special_nicknames_text,
               robot_name,
               talk_robot_cmd,
               robot_mode_index,
@@ -126,6 +133,13 @@ fn wire_callbacks(app: &MainWindow, state: SharedState) {
                 danmu_filter_repeat_threshold,
                 gift_aliases_text,
                 gift_thanks_templates_text,
+                gift_summary_thanks,
+                gift_summary_template,
+                newcomer_danmu_enable,
+                newcomer_danmu_template,
+                permanent_blacklist_users_text,
+                permanent_blacklist_names_text,
+                special_nicknames_text,
                 robot_name,
                 talk_robot_cmd,
                 robot_mode_index,
@@ -690,6 +704,15 @@ fn hydrate_ui(app: &MainWindow, config: &AppConfig) -> Result<()> {
     app.set_danmu_filter_repeat_threshold(config.danmu_filter_repeat_threshold);
     app.set_gift_aliases_text(format_key_value_map(&config.gift_aliases).into());
     app.set_gift_thanks_templates_text(format_key_value_map(&config.gift_thanks_templates).into());
+    app.set_gift_summary_thanks(config.gift_summary_thanks);
+    app.set_gift_summary_template(config.gift_summary_template.clone().into());
+    app.set_newcomer_danmu_enable(config.newcomer_danmu_enable);
+    app.set_newcomer_danmu_template(config.newcomer_danmu_template.clone().into());
+    app.set_permanent_blacklist_users_text(
+        format_i64_lines(&config.permanent_blacklist_users).into(),
+    );
+    app.set_permanent_blacklist_names_text(join_lines(&config.permanent_blacklist_names).into());
+    app.set_special_nicknames_text(format_key_value_map(&config.special_nicknames).into());
     app.set_robot_name(config.robot_name.clone().into());
     app.set_talk_robot_cmd(config.talk_robot_cmd.clone().into());
     app.set_robot_mode_index(if config.robot_mode == "ChatGPT" { 1 } else { 0 });
@@ -727,6 +750,13 @@ fn config_from_ui(
     danmu_filter_repeat_threshold: i32,
     gift_aliases_text: SharedString,
     gift_thanks_templates_text: SharedString,
+    gift_summary_thanks: bool,
+    gift_summary_template: SharedString,
+    newcomer_danmu_enable: bool,
+    newcomer_danmu_template: SharedString,
+    permanent_blacklist_users_text: SharedString,
+    permanent_blacklist_names_text: SharedString,
+    special_nicknames_text: SharedString,
     robot_name: SharedString,
     talk_robot_cmd: SharedString,
     robot_mode_index: i32,
@@ -761,6 +791,13 @@ fn config_from_ui(
     config.danmu_filter_repeat_threshold = danmu_filter_repeat_threshold.max(2);
     config.gift_aliases = parse_key_value_map(&gift_aliases_text);
     config.gift_thanks_templates = parse_key_value_map(&gift_thanks_templates_text);
+    config.gift_summary_thanks = gift_summary_thanks;
+    config.gift_summary_template = gift_summary_template.to_string();
+    config.newcomer_danmu_enable = newcomer_danmu_enable;
+    config.newcomer_danmu_template = newcomer_danmu_template.to_string();
+    config.permanent_blacklist_users = parse_i64_lines(&permanent_blacklist_users_text);
+    config.permanent_blacklist_names = parse_lines(&permanent_blacklist_names_text);
+    config.special_nicknames = parse_key_value_map(&special_nicknames_text);
     config.robot_name = robot_name.to_string();
     config.talk_robot_cmd = talk_robot_cmd.to_string();
     config.robot_mode = if robot_mode_index == 1 {
@@ -786,12 +823,27 @@ fn join_lines(items: &[String]) -> String {
     items.join("\n")
 }
 
+fn format_i64_lines(items: &[i64]) -> String {
+    items
+        .iter()
+        .map(i64::to_string)
+        .collect::<Vec<_>>()
+        .join("\n")
+}
+
 fn parse_lines(value: &str) -> Vec<String> {
     value
         .lines()
         .map(str::trim)
         .filter(|line| !line.is_empty())
         .map(str::to_string)
+        .collect()
+}
+
+fn parse_i64_lines(value: &str) -> Vec<i64> {
+    value
+        .lines()
+        .filter_map(|line| line.trim().parse::<i64>().ok())
         .collect()
 }
 
@@ -903,5 +955,13 @@ mod tests {
 
         assert_eq!(parsed.get("辣条").map(String::as_str), Some("小零食"));
         assert_eq!(parsed.get("舰长").map(String::as_str), Some("大航海"));
+    }
+
+    #[test]
+    fn parses_i64_lines_for_uid_lists() {
+        assert_eq!(
+            super::parse_i64_lines("42\n 100 \nnot-a-uid"),
+            vec![42, 100]
+        );
     }
 }
