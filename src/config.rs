@@ -18,6 +18,12 @@ pub struct AppConfig {
     pub goodbye_info: String,
     pub keyword_reply: bool,
     pub keyword_reply_list: BTreeMap<String, String>,
+    #[serde(default)]
+    pub danmu_filter_enable: bool,
+    #[serde(default)]
+    pub danmu_filter_words: Vec<String>,
+    #[serde(default = "default_danmu_filter_repeat_threshold")]
+    pub danmu_filter_repeat_threshold: i32,
     pub talk_robot_cmd: String,
     pub fuzzy_match_cmd: bool,
     pub robot_name: String,
@@ -131,6 +137,9 @@ impl Default for AppConfig {
                 ("回复关键词1".to_string(), "回复内容1".to_string()),
                 ("回复关键词2".to_string(), "回复内容2".to_string()),
             ]),
+            danmu_filter_enable: false,
+            danmu_filter_words: Vec::new(),
+            danmu_filter_repeat_threshold: default_danmu_filter_repeat_threshold(),
             talk_robot_cmd: "花花".to_string(),
             fuzzy_match_cmd: false,
             robot_name: "花花".to_string(),
@@ -229,4 +238,8 @@ fn default_time_welcome() -> Vec<TimeWelcome> {
         danmu: vec![msg.to_string()],
     })
     .collect()
+}
+
+fn default_danmu_filter_repeat_threshold() -> i32 {
+    3
 }

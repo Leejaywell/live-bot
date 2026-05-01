@@ -1,3 +1,6 @@
+use std::collections::BTreeMap;
+use std::sync::Mutex;
+
 use bilibili_live_protocol::{
     AnchorLotteryKind, InteractKind, LiveEvent, PkEventKind, RedPocketKind,
 };
@@ -8,14 +11,22 @@ use crate::storage::Storage;
 #[derive(Debug)]
 pub struct BotEngine {
     config: AppConfig,
+    repeat_counts: Mutex<BTreeMap<(i64, String), i32>>,
 }
 
 impl BotEngine {
     pub fn new(config: AppConfig) -> Self {
-        Self { config }
+        Self {
+            config,
+            repeat_counts: Mutex::new(BTreeMap::new()),
+        }
     }
 
     pub fn handle_event(&self, event: &LiveEvent, storage: Option<&Storage>) -> Vec<String> {
+        if self.is_filtered_danmu(event) {
+            return Vec::new();
+        }
+
         let mut out = Vec::new();
         self.track_danmu(event, storage);
         out.extend(self.help(event));
@@ -26,6 +37,33 @@ impl BotEngine {
         out.extend(self.thanks(event));
         out.extend(self.pk_and_activity_notice(event));
         out
+    }
+
+    fn is_filtered_danmu(&self, event: &LiveEvent) -> bool {
+        if !self.config.danmu_filter_enable {
+            return false;
+        }
+        let LiveEvent::Danmu { user_id, text, .. } = event else {
+            return false;
+        };
+
+        self.config
+            .danmu_filter_words
+            .iter()
+            .any(|word| !word.is_empty() && text.contains(word))
+            || self.is_repeated_danmu(*user_id, text)
+    }
+
+    fn is_repeated_danmu(&self, user_id: i64, text: &str) -> bool {
+        if self.config.danmu_filter_repeat_threshold <= 1 {
+            return false;
+        }
+        let Ok(mut counts) = self.repeat_counts.lock() else {
+            return false;
+        };
+        let count = counts.entry((user_id, text.to_string())).or_insert(0);
+        *count += 1;
+        *count >= self.config.danmu_filter_repeat_threshold
     }
 
     fn track_danmu(&self, event: &LiveEvent, storage: Option<&Storage>) {
@@ -414,6 +452,49 @@ mod tests {
         );
 
         assert_eq!(replies, vec!["你好呀"]);
+    }
+
+    #[test]
+    fn sensitive_danmu_does_not_trigger_automation() {
+        let mut config = test_config();
+        config.keyword_reply = true;
+        config
+            .keyword_reply_list
+            .insert("你好".to_string(), "你好呀".to_string());
+        config.danmu_filter_enable = true;
+        config.danmu_filter_words = vec!["广告".to_string()];
+        let engine = BotEngine::new(config);
+
+        let replies = engine.handle_event(
+            &LiveEvent::Danmu {
+                user_id: 1,
+                user: "u".to_string(),
+                text: "广告你好".to_string(),
+            },
+            None,
+        );
+
+        assert!(replies.is_empty());
+    }
+
+    #[test]
+    fn repeated_danmu_stops_triggering_automation_at_threshold() {
+        let mut config = test_config();
+        config.keyword_reply = true;
+        config
+            .keyword_reply_list
+            .insert("你好".to_string(), "你好呀".to_string());
+        config.danmu_filter_enable = true;
+        config.danmu_filter_repeat_threshold = 2;
+        let engine = BotEngine::new(config);
+        let event = LiveEvent::Danmu {
+            user_id: 1,
+            user: "u".to_string(),
+            text: "你好".to_string(),
+        };
+
+        assert_eq!(engine.handle_event(&event, None), vec!["你好呀"]);
+        assert!(engine.handle_event(&event, None).is_empty());
     }
 
     #[test]
