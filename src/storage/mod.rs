@@ -28,6 +28,18 @@ pub struct LiveSessionSummary {
     pub unknown_count: i64,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct UserDetail {
+    pub uid: i64,
+    pub uname: Option<String>,
+    pub danmu_count: i64,
+    pub recent_danmu: Option<String>,
+    pub gift_count: i64,
+    pub gift_value: i64,
+    pub recent_gift: Option<String>,
+    pub entry_count: i64,
+}
+
 impl Storage {
     pub fn open(path: &str) -> Result<Self> {
         std::fs::create_dir_all(
@@ -409,6 +421,89 @@ impl Storage {
             params![uid],
             |row| row.get(0),
         )?)
+    }
+
+    #[allow(dead_code)]
+    pub fn user_detail(&self, uid: i64) -> Result<UserDetail> {
+        let conn = self.conn.lock().expect("storage mutex poisoned");
+        let uname = conn
+            .query_row(
+                "
+                select uname
+                from interaction_records
+                where uid = ?1 and uname is not null
+                order by id desc
+                limit 1
+                ",
+                params![uid],
+                |row| row.get(0),
+            )
+            .optional()?;
+        let danmu_count = conn.query_row(
+            "
+            select count(*)
+            from interaction_records
+            where uid = ?1 and event_type = 'danmu'
+            ",
+            params![uid],
+            |row| row.get(0),
+        )?;
+        let recent_danmu = conn
+            .query_row(
+                "
+                select text
+                from interaction_records
+                where uid = ?1 and event_type = 'danmu' and text is not null
+                order by id desc
+                limit 1
+                ",
+                params![uid],
+                |row| row.get(0),
+            )
+            .optional()?;
+        let (gift_count, gift_value) = conn.query_row(
+            "
+            select
+                coalesce(sum(gift_count), 0),
+                coalesce(sum(gift_count * gift_price), 0)
+            from interaction_records
+            where uid = ?1 and event_type = 'gift'
+            ",
+            params![uid],
+            |row| Ok((row.get(0)?, row.get(1)?)),
+        )?;
+        let recent_gift = conn
+            .query_row(
+                "
+                select gift_name
+                from interaction_records
+                where uid = ?1 and event_type = 'gift' and gift_name is not null
+                order by id desc
+                limit 1
+                ",
+                params![uid],
+                |row| row.get(0),
+            )
+            .optional()?;
+        let entry_count = conn.query_row(
+            "
+            select count(*)
+            from interaction_records
+            where uid = ?1 and event_type = 'interact' and event_subtype = 'entry'
+            ",
+            params![uid],
+            |row| row.get(0),
+        )?;
+        Ok(UserDetail {
+            uid,
+            uname,
+            danmu_count,
+            recent_danmu,
+            gift_count,
+            gift_value,
+            recent_gift,
+            entry_count,
+        })
     }
 
     #[allow(dead_code)]
@@ -904,5 +999,90 @@ mod tests {
 
         assert_eq!(summary.guard_buy_count, 2);
         assert_eq!(summary.guard_buyer_count, 1);
+    }
+
+    #[test]
+    fn user_detail_summarizes_interaction_history() {
+        let storage = Storage::open_in_memory().unwrap();
+        let first_session = storage
+            .start_observed_live_session(
+                8792912,
+                Local.with_ymd_and_hms(2026, 5, 1, 20, 0, 0).unwrap(),
+            )
+            .unwrap();
+        let second_session = storage
+            .start_observed_live_session(
+                8792912,
+                Local.with_ymd_and_hms(2026, 5, 2, 20, 0, 0).unwrap(),
+            )
+            .unwrap();
+
+        let events = [
+            (
+                &first_session,
+                ParsedLiveEvent {
+                    event: LiveEvent::Danmu {
+                        user_id: 42,
+                        user: "alice".to_string(),
+                        text: "first".to_string(),
+                    },
+                    raw: json!({"cmd": "DANMU_MSG"}),
+                },
+            ),
+            (
+                &second_session,
+                ParsedLiveEvent {
+                    event: LiveEvent::Danmu {
+                        user_id: 42,
+                        user: "alice".to_string(),
+                        text: "latest".to_string(),
+                    },
+                    raw: json!({"cmd": "DANMU_MSG"}),
+                },
+            ),
+            (
+                &second_session,
+                ParsedLiveEvent {
+                    event: LiveEvent::Gift {
+                        user_id: 42,
+                        user: "alice".to_string(),
+                        gift: "辣条".to_string(),
+                        count: 3,
+                        price: 100,
+                        original_gift_name: None,
+                        original_gift_price: 0,
+                    },
+                    raw: json!({"cmd": "SEND_GIFT"}),
+                },
+            ),
+            (
+                &second_session,
+                ParsedLiveEvent {
+                    event: LiveEvent::Interact {
+                        kind: InteractKind::Entry,
+                        user_id: 42,
+                        user: "alice".to_string(),
+                    },
+                    raw: json!({"cmd": "INTERACT_WORD"}),
+                },
+            ),
+        ];
+
+        for (session_id, event) in events {
+            storage
+                .record_interaction(session_id, 8792912, &event)
+                .unwrap();
+        }
+
+        let detail = storage.user_detail(42).unwrap();
+
+        assert_eq!(detail.uid, 42);
+        assert_eq!(detail.uname.as_deref(), Some("alice"));
+        assert_eq!(detail.danmu_count, 2);
+        assert_eq!(detail.recent_danmu.as_deref(), Some("latest"));
+        assert_eq!(detail.gift_count, 3);
+        assert_eq!(detail.gift_value, 300);
+        assert_eq!(detail.recent_gift.as_deref(), Some("辣条"));
+        assert_eq!(detail.entry_count, 1);
     }
 }
