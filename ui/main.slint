@@ -1072,17 +1072,7 @@ export component MainWindow inherits Window {
                                     ScrollView {
                                         height: 560px;
                                         Text {
-                                            text:
-                                                "14:32:18  已连接直播间 " + root.room-id + "\n"
-                                                + "14:32:19  检测到弹幕：主播你好\n"
-                                                + "14:32:19  自动回复已发送\n"
-                                                + "14:32:25  收到礼物：辣条 x 3\n"
-                                                + "14:32:30  PK 事件：检测到对手房间\n"
-                                                + "14:32:45  红包活动开始，已临时关闭欢迎\n"
-                                                + "14:33:02  AI 回复耗时 1.3s\n"
-                                                + "14:33:15  定时弹幕已发送\n"
-                                                + "14:33:28  发现新版本\n"
-                                                + (root.log-text == "" ? "" : "\n" + root.log-text);
+                                            text: root.log-text == "" ? "暂无运行日志" : root.log-text;
                                             color: #cbd5e1;
                                             font-size: 12px;
                                             wrap: word-wrap;
