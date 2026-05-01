@@ -13,6 +13,7 @@ const PROTOCOL_PLAIN: u16 = 0;
 const PROTOCOL_ZLIB: u16 = 2;
 const PROTOCOL_BROTLI: u16 = 3;
 const OP_HEARTBEAT: u32 = 2;
+const OP_HEARTBEAT_REPLY: u32 = 3;
 const OP_NOTIFICATION: u32 = 5;
 const OP_ROOM_ENTER: u32 = 7;
 
@@ -68,6 +69,9 @@ pub enum LiveEvent {
     },
     Block {
         user: String,
+    },
+    Popularity {
+        value: i64,
     },
     Pk {
         kind: PkEventKind,
@@ -146,6 +150,7 @@ impl fmt::Display for LiveEvent {
             Self::EntryEffect { user, .. } => write!(f, "进场特效 {user}"),
             Self::GuardBuy { user, gift, .. } => write!(f, "大航海 {user}: {gift}"),
             Self::Block { user } => write!(f, "禁言 {user}"),
+            Self::Popularity { value } => write!(f, "人气 {value}"),
             Self::Pk { kind } => write!(f, "PK {kind:?}"),
             Self::RedPocket { kind } => write!(f, "红包 {kind:?}"),
             Self::AnchorLottery { kind } => write!(f, "天选 {kind:?}"),
@@ -229,6 +234,10 @@ pub fn parse_events(data: &[u8]) -> Result<Vec<LiveEvent>> {
 pub fn parse_parsed_events(data: &[u8]) -> Result<Vec<ParsedLiveEvent>> {
     let mut events = Vec::new();
     for packet in split_packets(data)? {
+        if packet.operation == OP_HEARTBEAT_REPLY {
+            collect_popularity(packet, &mut events);
+            continue;
+        }
         match packet.protocol {
             PROTOCOL_PLAIN => collect_notification(packet, &mut events)?,
             PROTOCOL_ZLIB => {
@@ -247,6 +256,17 @@ pub fn parse_parsed_events(data: &[u8]) -> Result<Vec<ParsedLiveEvent>> {
         }
     }
     Ok(events)
+}
+
+fn collect_popularity(packet: Packet<'_>, events: &mut Vec<ParsedLiveEvent>) {
+    if packet.body.len() < 4 {
+        return;
+    }
+    let value = i32::from_be_bytes(packet.body[0..4].try_into().unwrap()) as i64;
+    events.push(ParsedLiveEvent {
+        event: LiveEvent::Popularity { value },
+        raw: serde_json::json!({ "operation": OP_HEARTBEAT_REPLY, "popularity": value }),
+    });
 }
 
 fn build_packet(protocol: u16, operation: u32, body: &[u8]) -> Vec<u8> {
@@ -712,6 +732,15 @@ mod tests {
                 },
             }]
         );
+    }
+
+    #[test]
+    fn parses_heartbeat_popularity() {
+        let raw = build_packet(1, OP_HEARTBEAT_REPLY, &1234_i32.to_be_bytes());
+
+        let events = parse_events(&raw).unwrap();
+
+        assert_eq!(events, vec![LiveEvent::Popularity { value: 1234 }]);
     }
 
     #[test]

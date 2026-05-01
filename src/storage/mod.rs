@@ -25,6 +25,8 @@ pub struct LiveSessionSummary {
     pub share_count: i64,
     pub guard_buy_count: i64,
     pub guard_buyer_count: i64,
+    pub peak_popularity: i64,
+    pub average_popularity: i64,
     pub unknown_count: i64,
 }
 
@@ -116,6 +118,7 @@ impl Storage {
                 wealth_level integer,
                 pk_init_room_id integer,
                 pk_match_room_id integer,
+                popularity_value integer,
                 raw_json text not null,
                 occurred_at text not null
             );
@@ -128,6 +131,7 @@ impl Storage {
         ensure_column(&conn, "interaction_records", "wealth_level", "integer")?;
         ensure_column(&conn, "interaction_records", "pk_init_room_id", "integer")?;
         ensure_column(&conn, "interaction_records", "pk_match_room_id", "integer")?;
+        ensure_column(&conn, "interaction_records", "popularity_value", "integer")?;
         Ok(Self {
             conn: Mutex::new(conn),
         })
@@ -256,6 +260,7 @@ impl Storage {
             gift_price,
             pk_init_room_id,
             pk_match_room_id,
+            popularity_value,
         ) = match &parsed.event {
             LiveEvent::Danmu {
                 user_id,
@@ -267,6 +272,7 @@ impl Storage {
                 Some(*user_id),
                 Some(user.as_str()),
                 Some(text.as_str()),
+                None,
                 None,
                 None,
                 None,
@@ -291,6 +297,7 @@ impl Storage {
                 Some(*price),
                 None,
                 None,
+                None,
             ),
             LiveEvent::Interact {
                 kind,
@@ -301,6 +308,7 @@ impl Storage {
                 Some(interact_kind_name(*kind)),
                 Some(*user_id),
                 Some(user.as_str()),
+                None,
                 None,
                 None,
                 None,
@@ -323,6 +331,7 @@ impl Storage {
                 None,
                 None,
                 None,
+                None,
             ),
             LiveEvent::EntryEffect { user_id, user, .. } => (
                 "entry_effect",
@@ -335,6 +344,20 @@ impl Storage {
                 None,
                 None,
                 None,
+                None,
+            ),
+            LiveEvent::Popularity { value } => (
+                "popularity",
+                None,
+                None,
+                None,
+                None,
+                None,
+                None,
+                None,
+                None,
+                None,
+                Some(*value),
             ),
             LiveEvent::Pk { kind } => match kind {
                 PkEventKind::Start {
@@ -351,10 +374,12 @@ impl Storage {
                     None,
                     Some(*init_room_id),
                     Some(*match_room_id),
+                    None,
                 ),
                 PkEventKind::End => (
                     "pk",
                     Some("end"),
+                    None,
                     None,
                     None,
                     None,
@@ -375,6 +400,7 @@ impl Storage {
                     None,
                     None,
                     None,
+                    None,
                 ),
                 PkEventKind::Other(command) => (
                     "pk",
@@ -387,10 +413,11 @@ impl Storage {
                     None,
                     None,
                     None,
+                    None,
                 ),
             },
             _ => (
-                "unknown", None, None, None, None, None, None, None, None, None,
+                "unknown", None, None, None, None, None, None, None, None, None, None,
             ),
         };
         let raw_json = serde_json::to_string(&parsed.raw)?;
@@ -420,10 +447,11 @@ impl Storage {
                     wealth_level,
                     pk_init_room_id,
                     pk_match_room_id,
+                    popularity_value,
                     raw_json,
                     occurred_at
                 )
-            values (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17, ?18)
+            values (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17, ?18, ?19)
             ",
             params![
                 session_id,
@@ -442,6 +470,7 @@ impl Storage {
                 wealth_level,
                 pk_init_room_id,
                 pk_match_room_id,
+                popularity_value,
                 raw_json,
                 occurred_at
             ],
@@ -530,6 +559,24 @@ impl Storage {
             ",
             params![session_id],
             |row| row.get(0),
+        )?)
+    }
+
+    #[allow(dead_code)]
+    pub fn session_popularity_stats(&self, session_id: &str) -> Result<(i64, i64)> {
+        let conn = self.conn.lock().expect("storage mutex poisoned");
+        Ok(conn.query_row(
+            "
+            select
+                coalesce(max(popularity_value), 0),
+                coalesce(cast(avg(popularity_value) as integer), 0)
+            from interaction_records
+            where session_id = ?1
+              and event_type = 'popularity'
+              and popularity_value is not null
+            ",
+            params![session_id],
+            |row| Ok((row.get(0)?, row.get(1)?)),
         )?)
     }
 
@@ -676,6 +723,7 @@ impl Storage {
 
     #[allow(dead_code)]
     pub fn live_session_summary(&self, session_id: &str) -> Result<LiveSessionSummary> {
+        let (peak_popularity, average_popularity) = self.session_popularity_stats(session_id)?;
         Ok(LiveSessionSummary {
             danmu_count: self.session_danmu_count(session_id)?,
             gift_value: self.session_gift_value(session_id)?,
@@ -685,6 +733,8 @@ impl Storage {
             share_count: self.session_interact_subtype_count(session_id, "share")?,
             guard_buy_count: self.session_guard_buy_count(session_id)?,
             guard_buyer_count: self.session_guard_buyer_count(session_id)?,
+            peak_popularity,
+            average_popularity,
             unknown_count: self.unknown_interaction_count(session_id)?,
         })
     }
@@ -1185,6 +1235,38 @@ mod tests {
         assert_eq!(summary.interact_count, 1);
         assert_eq!(summary.guard_buy_count, 1);
         assert_eq!(summary.unknown_count, 1);
+    }
+
+    #[test]
+    fn live_session_summary_includes_popularity_stats() {
+        let storage = Storage::open_in_memory().unwrap();
+        let session_id = storage
+            .start_observed_live_session(
+                8792912,
+                Local.with_ymd_and_hms(2026, 5, 1, 20, 0, 0).unwrap(),
+            )
+            .unwrap();
+
+        for value in [100, 250, 150] {
+            storage
+                .record_interaction(
+                    &session_id,
+                    8792912,
+                    &ParsedLiveEvent {
+                        event: LiveEvent::Popularity { value },
+                        raw: json!({
+                            "operation": 3,
+                            "popularity": value
+                        }),
+                    },
+                )
+                .unwrap();
+        }
+
+        let summary = storage.live_session_summary(&session_id).unwrap();
+
+        assert_eq!(summary.peak_popularity, 250);
+        assert_eq!(summary.average_popularity, 166);
     }
 
     #[test]
