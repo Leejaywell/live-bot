@@ -264,6 +264,7 @@ fn wire_callbacks(app: &MainWindow, state: SharedState) {
         let task = state_for_monitor.runtime.spawn(async move {
             update_ui(&weak_for_task, |app| {
                 app.set_run_status("运行中".into());
+                reset_session_summary(app);
                 append_log(app, "直播间监听已启动");
             });
 
@@ -497,6 +498,16 @@ fn wire_callbacks(app: &MainWindow, state: SharedState) {
                                     event_engine.handle_event(event, Some(&event_storage))
                                 }
                             };
+                            if let Ok(summary) = event_storage.live_session_summary(&session_id) {
+                                let pk_summary =
+                                    event_storage.session_pk_summary(&session_id, room_id).ok();
+                                update_ui(&event_weak, move |app| {
+                                    apply_session_summary(app, &summary);
+                                    if let Some(pk_summary) = pk_summary {
+                                        apply_pk_summary(app, &pk_summary);
+                                    }
+                                });
+                            }
                             for message in replies {
                                 let _ = event_tx.try_send(message);
                             }
@@ -727,6 +738,46 @@ fn hydrate_ui(app: &MainWindow, config: &AppConfig) -> Result<()> {
     app.set_cron_danmu_text(format_cron_danmu(&config.cron_danmu_list).into());
     app.set_draw_list_text(join_lines(&config.draw_lots_list).into());
     Ok(())
+}
+
+fn reset_session_summary(app: &MainWindow) {
+    app.set_session_danmu_count("0".into());
+    app.set_session_entry_count("0".into());
+    app.set_session_follow_count("0".into());
+    app.set_session_gift_value("0".into());
+    app.set_session_guard_buyer_count("0".into());
+    app.set_session_popularity("0 / 0".into());
+    app.set_session_pk_summary("暂无 PK".into());
+}
+
+fn apply_session_summary(app: &MainWindow, summary: &storage::LiveSessionSummary) {
+    app.set_session_danmu_count(summary.danmu_count.to_string().into());
+    app.set_session_entry_count(summary.entry_count.to_string().into());
+    app.set_session_follow_count(summary.follow_count.to_string().into());
+    app.set_session_gift_value(summary.gift_value.to_string().into());
+    app.set_session_guard_buyer_count(summary.guard_buyer_count.to_string().into());
+    app.set_session_popularity(
+        format!(
+            "{} / {}",
+            summary.peak_popularity, summary.average_popularity
+        )
+        .into(),
+    );
+}
+
+fn apply_pk_summary(app: &MainWindow, summary: &storage::PkSessionSummary) {
+    let opponent = summary
+        .current_opponent_room_id
+        .or(summary.last_opponent_room_id)
+        .map(|room_id| room_id.to_string())
+        .unwrap_or_else(|| "-".to_string());
+    app.set_session_pk_summary(
+        format!(
+            "{}场 对手{} 胜{}",
+            summary.battle_count, opponent, summary.win_count
+        )
+        .into(),
+    );
 }
 
 #[allow(clippy::too_many_arguments)]

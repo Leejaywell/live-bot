@@ -402,6 +402,13 @@ export component MainWindow inherits Window {
     in-out property <string> run-status: "运行中";
     in-out property <string> update-link: "";
     in-out property <string> log-text: "";
+    in-out property <string> session-danmu-count: "0";
+    in-out property <string> session-entry-count: "0";
+    in-out property <string> session-follow-count: "0";
+    in-out property <string> session-gift-value: "0";
+    in-out property <string> session-guard-buyer-count: "0";
+    in-out property <string> session-popularity: "0 / 0";
+    in-out property <string> session-pk-summary: "暂无 PK";
 
     in-out property <bool> theme-popup-open: true;
     in-out property <bool> dark-mode: false;
@@ -654,9 +661,17 @@ export component MainWindow inherits Window {
                             HorizontalLayout {
                                 spacing: 12px;
                                 StatusCard { width: 220px; height: 92px; label: "AI 状态"; value: "就绪"; icon: "AI"; accent: #8b5cf6; base-bg: root.panel-bg; outline-color: root.line-color; text-color: root.text-color; muted-color: root.muted-color; }
-                                StatusCard { width: 220px; height: 92px; label: "发送队列"; value: "3 条"; icon: "发"; accent: #f59e0b; base-bg: root.panel-bg; outline-color: root.line-color; text-color: root.text-color; muted-color: root.muted-color; }
-                                StatusCard { width: 220px; height: 92px; label: "今日弹幕数"; value: "1247"; icon: "弹"; accent: #06b6d4; base-bg: root.panel-bg; outline-color: root.line-color; text-color: root.text-color; muted-color: root.muted-color; }
-                                StatusCard { width: 220px; height: 92px; label: "更新状态"; value: "有新版本"; icon: "更"; accent: #ec4899; base-bg: root.panel-bg; outline-color: root.line-color; text-color: root.text-color; muted-color: root.muted-color; }
+                                StatusCard { width: 220px; height: 92px; label: "本场弹幕"; value: root.session-danmu-count; icon: "弹"; accent: #06b6d4; base-bg: root.panel-bg; outline-color: root.line-color; text-color: root.text-color; muted-color: root.muted-color; }
+                                StatusCard { width: 220px; height: 92px; label: "礼物价值"; value: root.session-gift-value; icon: "礼"; accent: #f59e0b; base-bg: root.panel-bg; outline-color: root.line-color; text-color: root.text-color; muted-color: root.muted-color; }
+                                StatusCard { width: 220px; height: 92px; label: "更新状态"; value: root.update-link == "" ? "已是最新" : "有新版本"; icon: "更"; accent: #ec4899; base-bg: root.panel-bg; outline-color: root.line-color; text-color: root.text-color; muted-color: root.muted-color; }
+                            }
+
+                            HorizontalLayout {
+                                spacing: 14px;
+                                StatusCard { width: 220px; height: 92px; label: "进场 / 关注"; value: root.session-entry-count + " / " + root.session-follow-count; icon: "进"; accent: #14b8a6; base-bg: root.panel-bg; outline-color: root.line-color; text-color: root.text-color; muted-color: root.muted-color; }
+                                StatusCard { width: 220px; height: 92px; label: "大航海人数"; value: root.session-guard-buyer-count; icon: "舰"; accent: #8b5cf6; base-bg: root.panel-bg; outline-color: root.line-color; text-color: root.text-color; muted-color: root.muted-color; }
+                                StatusCard { width: 220px; height: 92px; label: "人气峰值 / 均值"; value: root.session-popularity; icon: "人"; accent: #ef4444; base-bg: root.panel-bg; outline-color: root.line-color; text-color: root.text-color; muted-color: root.muted-color; }
+                                StatusCard { width: 220px; height: 92px; label: "PK 概览"; value: root.session-pk-summary; icon: "PK"; accent: #f97316; base-bg: root.panel-bg; outline-color: root.line-color; text-color: root.text-color; muted-color: root.muted-color; }
                             }
 
                             Rectangle {
