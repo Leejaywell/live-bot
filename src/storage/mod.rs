@@ -51,6 +51,16 @@ pub struct PkHistoryRecord {
     pub event_subtype: Option<String>,
     pub init_room_id: Option<i64>,
     pub match_room_id: Option<i64>,
+    pub winner_room_id: Option<i64>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct PkSessionSummary {
+    pub battle_count: i64,
+    pub current_opponent_room_id: Option<i64>,
+    pub last_opponent_room_id: Option<i64>,
+    pub process_count: i64,
+    pub win_count: i64,
 }
 
 impl Storage {
@@ -118,6 +128,7 @@ impl Storage {
                 wealth_level integer,
                 pk_init_room_id integer,
                 pk_match_room_id integer,
+                pk_winner_room_id integer,
                 popularity_value integer,
                 raw_json text not null,
                 occurred_at text not null
@@ -131,6 +142,7 @@ impl Storage {
         ensure_column(&conn, "interaction_records", "wealth_level", "integer")?;
         ensure_column(&conn, "interaction_records", "pk_init_room_id", "integer")?;
         ensure_column(&conn, "interaction_records", "pk_match_room_id", "integer")?;
+        ensure_column(&conn, "interaction_records", "pk_winner_room_id", "integer")?;
         ensure_column(&conn, "interaction_records", "popularity_value", "integer")?;
         Ok(Self {
             conn: Mutex::new(conn),
@@ -260,6 +272,7 @@ impl Storage {
             gift_price,
             pk_init_room_id,
             pk_match_room_id,
+            pk_winner_room_id,
             popularity_value,
         ) = match &parsed.event {
             LiveEvent::Danmu {
@@ -272,6 +285,7 @@ impl Storage {
                 Some(*user_id),
                 Some(user.as_str()),
                 Some(text.as_str()),
+                None,
                 None,
                 None,
                 None,
@@ -298,6 +312,7 @@ impl Storage {
                 None,
                 None,
                 None,
+                None,
             ),
             LiveEvent::Interact {
                 kind,
@@ -308,6 +323,7 @@ impl Storage {
                 Some(interact_kind_name(*kind)),
                 Some(*user_id),
                 Some(user.as_str()),
+                None,
                 None,
                 None,
                 None,
@@ -332,6 +348,7 @@ impl Storage {
                 None,
                 None,
                 None,
+                None,
             ),
             LiveEvent::EntryEffect { user_id, user, .. } => (
                 "entry_effect",
@@ -345,9 +362,11 @@ impl Storage {
                 None,
                 None,
                 None,
+                None,
             ),
             LiveEvent::Popularity { value } => (
                 "popularity",
+                None,
                 None,
                 None,
                 None,
@@ -375,6 +394,7 @@ impl Storage {
                     Some(*init_room_id),
                     Some(*match_room_id),
                     None,
+                    None,
                 ),
                 PkEventKind::End => (
                     "pk",
@@ -387,11 +407,13 @@ impl Storage {
                     None,
                     None,
                     None,
+                    extract_pk_winner_room_id(&parsed.raw),
                     None,
                 ),
                 PkEventKind::Process => (
                     "pk",
                     Some("process"),
+                    None,
                     None,
                     None,
                     None,
@@ -414,10 +436,11 @@ impl Storage {
                     None,
                     None,
                     None,
+                    None,
                 ),
             },
             _ => (
-                "unknown", None, None, None, None, None, None, None, None, None, None,
+                "unknown", None, None, None, None, None, None, None, None, None, None, None,
             ),
         };
         let raw_json = serde_json::to_string(&parsed.raw)?;
@@ -447,11 +470,12 @@ impl Storage {
                     wealth_level,
                     pk_init_room_id,
                     pk_match_room_id,
+                    pk_winner_room_id,
                     popularity_value,
                     raw_json,
                     occurred_at
                 )
-            values (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17, ?18, ?19)
+            values (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17, ?18, ?19, ?20)
             ",
             params![
                 session_id,
@@ -470,6 +494,7 @@ impl Storage {
                 wealth_level,
                 pk_init_room_id,
                 pk_match_room_id,
+                pk_winner_room_id,
                 popularity_value,
                 raw_json,
                 occurred_at
@@ -704,7 +729,7 @@ impl Storage {
         let conn = self.conn.lock().expect("storage mutex poisoned");
         let mut stmt = conn.prepare(
             "
-            select event_subtype, pk_init_room_id, pk_match_room_id
+            select event_subtype, pk_init_room_id, pk_match_room_id, pk_winner_room_id
             from interaction_records
             where session_id = ?1 and event_type = 'pk'
             order by id asc
@@ -715,10 +740,53 @@ impl Storage {
                 event_subtype: row.get(0)?,
                 init_room_id: row.get(1)?,
                 match_room_id: row.get(2)?,
+                winner_room_id: row.get(3)?,
             })
         })?;
         rows.collect::<rusqlite::Result<Vec<_>>>()
             .map_err(Into::into)
+    }
+
+    #[allow(dead_code)]
+    pub fn session_pk_summary(
+        &self,
+        session_id: &str,
+        home_room_id: i64,
+    ) -> Result<PkSessionSummary> {
+        let history = self.session_pk_history(session_id)?;
+        let battle_count = history
+            .iter()
+            .filter(|record| record.event_subtype.as_deref() == Some("start"))
+            .count() as i64;
+        let process_count = history
+            .iter()
+            .filter(|record| record.event_subtype.as_deref() == Some("process"))
+            .count() as i64;
+        let win_count = history
+            .iter()
+            .filter(|record| record.winner_room_id == Some(home_room_id))
+            .count() as i64;
+        let last_opponent_room_id = history
+            .iter()
+            .rev()
+            .find_map(|record| opponent_room_id(record, home_room_id));
+        let current_opponent_room_id = history
+            .iter()
+            .rev()
+            .find_map(|record| match record.event_subtype.as_deref() {
+                Some("end") => Some(None),
+                Some("start") => Some(opponent_room_id(record, home_room_id)),
+                _ => None,
+            })
+            .flatten();
+
+        Ok(PkSessionSummary {
+            battle_count,
+            current_opponent_room_id,
+            last_opponent_room_id,
+            process_count,
+            win_count,
+        })
     }
 
     #[allow(dead_code)]
@@ -834,6 +902,23 @@ fn extract_wealth_level(parsed: &ParsedLiveEvent) -> Option<i64> {
             .raw
             .pointer("/data/uinfo/wealth/level")
             .and_then(serde_json::Value::as_i64),
+    }
+}
+
+fn extract_pk_winner_room_id(raw: &serde_json::Value) -> Option<i64> {
+    raw.pointer("/data/winner/room_id")
+        .or_else(|| raw.pointer("/data/winner_info/room_id"))
+        .or_else(|| raw.pointer("/data/winner_room_id"))
+        .and_then(serde_json::Value::as_i64)
+}
+
+fn opponent_room_id(record: &PkHistoryRecord, home_room_id: i64) -> Option<i64> {
+    match (record.init_room_id, record.match_room_id) {
+        (Some(init), Some(matched)) if init == home_room_id => Some(matched),
+        (Some(init), Some(matched)) if matched == home_room_id => Some(init),
+        (_, Some(matched)) => Some(matched),
+        (Some(init), _) => Some(init),
+        _ => None,
     }
 }
 
@@ -1165,7 +1250,58 @@ mod tests {
         assert_eq!(history[0].event_subtype.as_deref(), Some("start"));
         assert_eq!(history[0].init_room_id, Some(100));
         assert_eq!(history[0].match_room_id, Some(200));
+        assert_eq!(history[0].winner_room_id, None);
         assert_eq!(storage.unknown_interaction_count(&session_id).unwrap(), 0);
+    }
+
+    #[test]
+    fn session_pk_summary_reports_opponent_and_wins() {
+        let storage = Storage::open_in_memory().unwrap();
+        let session_id = storage
+            .start_observed_live_session(100, Local.with_ymd_and_hms(2026, 5, 1, 20, 0, 0).unwrap())
+            .unwrap();
+        let events = [
+            ParsedLiveEvent {
+                event: LiveEvent::Pk {
+                    kind: PkEventKind::Start {
+                        init_room_id: 100,
+                        match_room_id: 200,
+                    },
+                },
+                raw: json!({"cmd": "PK_BATTLE_START_NEW"}),
+            },
+            ParsedLiveEvent {
+                event: LiveEvent::Pk {
+                    kind: PkEventKind::Process,
+                },
+                raw: json!({"cmd": "PK_BATTLE_PROCESS"}),
+            },
+            ParsedLiveEvent {
+                event: LiveEvent::Pk {
+                    kind: PkEventKind::End,
+                },
+                raw: json!({
+                    "cmd": "PK_BATTLE_SETTLE",
+                    "data": {
+                        "winner": { "room_id": 100 }
+                    }
+                }),
+            },
+        ];
+
+        for event in events {
+            storage
+                .record_interaction(&session_id, 100, &event)
+                .unwrap();
+        }
+
+        let summary = storage.session_pk_summary(&session_id, 100).unwrap();
+
+        assert_eq!(summary.battle_count, 1);
+        assert_eq!(summary.current_opponent_room_id, None);
+        assert_eq!(summary.last_opponent_room_id, Some(200));
+        assert_eq!(summary.process_count, 1);
+        assert_eq!(summary.win_count, 1);
     }
 
     #[test]
