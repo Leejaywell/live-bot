@@ -15,7 +15,7 @@ pub struct SignInResult {
     pub already_signed: bool,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
 pub struct LiveSessionSummary {
     pub danmu_count: i64,
     pub gift_value: i64,
@@ -30,7 +30,15 @@ pub struct LiveSessionSummary {
     pub unknown_count: i64,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
+pub struct GiftStat {
+    pub name: String,
+    pub value: i64,
+    pub count: i64,
+}
+
+
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
 pub struct UserDetail {
     pub uid: i64,
     pub uname: Option<String>,
@@ -46,7 +54,7 @@ pub struct UserDetail {
     pub wealth_level: Option<i64>,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
 pub struct PkHistoryRecord {
     pub event_subtype: Option<String>,
     pub init_room_id: Option<i64>,
@@ -54,7 +62,7 @@ pub struct PkHistoryRecord {
     pub winner_room_id: Option<i64>,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
 pub struct PkSessionSummary {
     pub battle_count: i64,
     pub current_opponent_room_id: Option<i64>,
@@ -805,6 +813,116 @@ impl Storage {
             average_popularity,
             unknown_count: self.unknown_interaction_count(session_id)?,
         })
+    }
+
+    pub fn periodic_summary(&self, days: i64) -> Result<LiveSessionSummary> {
+        let start_date = if days == 0 {
+            today_key()
+        } else {
+            let start = Local::now() - chrono::Duration::days(days);
+            format!("{:04}-{:02}-{:02}", start.year(), start.month(), start.day())
+        };
+
+        let conn = self.conn.lock().expect("storage mutex poisoned");
+        
+        let danmu_count = conn.query_row(
+            "select count(*) from interaction_records where occurred_at >= ?1 and event_type = 'danmu'",
+            params![start_date],
+            |row| row.get(0),
+        )?;
+        let gift_value = conn.query_row(
+            "select coalesce(sum(gift_count * gift_price), 0) from interaction_records where occurred_at >= ?1 and event_type = 'gift'",
+            params![start_date],
+            |row| row.get(0),
+        )?;
+        let interact_count = conn.query_row(
+            "select count(*) from interaction_records where occurred_at >= ?1 and event_type = 'interact'",
+            params![start_date],
+            |row| row.get(0),
+        )?;
+        let entry_count = conn.query_row(
+            "select count(*) from interaction_records where occurred_at >= ?1 and event_type = 'interact' and event_subtype = 'entry'",
+            params![start_date],
+            |row| row.get(0),
+        )?;
+        let follow_count = conn.query_row(
+            "select count(*) from interaction_records where occurred_at >= ?1 and event_type = 'interact' and event_subtype = 'follow'",
+            params![start_date],
+            |row| row.get(0),
+        )?;
+        let share_count = conn.query_row(
+            "select count(*) from interaction_records where occurred_at >= ?1 and event_type = 'interact' and event_subtype = 'share'",
+            params![start_date],
+            |row| row.get(0),
+        )?;
+        let guard_buy_count = conn.query_row(
+            "select count(*) from interaction_records where occurred_at >= ?1 and event_type = 'guard_buy'",
+            params![start_date],
+            |row| row.get(0),
+        )?;
+        let guard_buyer_count = conn.query_row(
+            "select count(distinct uid) from interaction_records where occurred_at >= ?1 and event_type = 'guard_buy' and uid is not null",
+            params![start_date],
+            |row| row.get(0),
+        )?;
+        let (peak_popularity, average_popularity) = conn.query_row(
+            "select coalesce(max(popularity_value), 0), coalesce(cast(avg(popularity_value) as integer), 0) from interaction_records where occurred_at >= ?1 and event_type = 'popularity'",
+            params![start_date],
+            |row| Ok((row.get(0)?, row.get(1)?)),
+        )?;
+        let unknown_count = conn.query_row(
+            "select count(*) from interaction_records where occurred_at >= ?1 and event_type = 'unknown'",
+            params![start_date],
+            |row| row.get(0),
+        )?;
+
+        Ok(LiveSessionSummary {
+            danmu_count,
+            gift_value,
+            interact_count,
+            entry_count,
+            follow_count,
+            share_count,
+            guard_buy_count,
+            guard_buyer_count,
+            peak_popularity,
+            average_popularity,
+            unknown_count,
+        })
+    }
+
+    pub fn gift_top_n(&self, days: i64, n: i32) -> Result<Vec<GiftStat>> {
+        let start_date = if days == 0 {
+            today_key()
+        } else {
+            let start = Local::now() - chrono::Duration::days(days);
+            format!("{:04}-{:02}-{:02}", start.year(), start.month(), start.day())
+        };
+
+        let conn = self.conn.lock().expect("storage mutex poisoned");
+        let mut stmt = conn.prepare(
+            "
+            select gift_name, sum(gift_count * gift_price) as total_value, sum(gift_count) as total_count
+            from interaction_records
+            where occurred_at >= ?1 and event_type = 'gift' and gift_name is not null
+            group by gift_name
+            order by total_value desc
+            limit ?2
+            ",
+        )?;
+        let rows = stmt.query_map(params![start_date, n], |row| {
+            Ok(GiftStat {
+                name: row.get(0)?,
+                value: row.get(1)?,
+                count: row.get(2)?,
+            })
+        })?;
+        
+        let mut result = Vec::new();
+        for row in rows {
+            result.push(row?);
+        }
+        Ok(result)
     }
 
     pub fn record_blind_box_stat(

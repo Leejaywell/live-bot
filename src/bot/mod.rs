@@ -2,6 +2,7 @@ pub mod engine;
 pub mod sender;
 pub mod thanks;
 pub mod timed;
+pub mod monitor;
 
 use anyhow::Result;
 use bilibili_live_protocol::ParsedLiveEvent;
@@ -9,6 +10,17 @@ use chrono::{DateTime, Local};
 
 use crate::bot::engine::BotEngine;
 use crate::storage::Storage;
+
+pub trait EventEmitter: Send + Sync + 'static {
+    fn emit(&self, event: &str, payload: serde_json::Value) -> Result<()>;
+}
+
+#[cfg(feature = "tauri")]
+impl EventEmitter for tauri::AppHandle {
+    fn emit(&self, event: &str, payload: serde_json::Value) -> Result<()> {
+        tauri::Emitter::emit(self, event, payload).map_err(|e| anyhow::anyhow!(e.to_string()))
+    }
+}
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum SessionStatusChange {

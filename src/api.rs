@@ -14,7 +14,7 @@ pub struct BiliApi {
     client: reqwest::Client,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, serde::Serialize)]
 pub struct LoginUrl {
     pub url: String,
     pub qrcode_key: String,
@@ -27,25 +27,25 @@ pub enum LoginPoll {
     Expired(String),
 }
 
-#[derive(Debug)]
+#[derive(Debug, serde::Serialize)]
 pub struct RoomInfo {
     pub room_id: i64,
     pub uid: i64,
     pub live_status: i32,
 }
 
-#[derive(Debug)]
+#[derive(Debug, serde::Serialize)]
 pub struct DanmuInfo {
     pub token: String,
     pub hosts: Vec<String>,
 }
 
-#[derive(Debug)]
+#[derive(Debug, serde::Serialize)]
 pub struct UserInfo {
     pub uname: String,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, serde::Serialize)]
 pub struct UpdateInfo {
     pub version: String,
     pub link: String,

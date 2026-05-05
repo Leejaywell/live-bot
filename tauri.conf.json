@@ -1,0 +1,35 @@
+{
+  "productName": "LiveSpark",
+  "version": "0.1.0",
+  "identifier": "com.livespark.app",
+  "build": {
+    "frontendDist": "src-tauri/dist",
+    "devUrl": "http://localhost:5173",
+    "beforeDevCommand": "npm --prefix src-tauri run dev",
+    "beforeBuildCommand": "npm --prefix src-tauri run build"
+  },
+  "app": {
+    "macOSPrivateApi": true,
+    "windows": [
+      {
+        "title": "LiveSpark",
+        "width": 1080,
+        "height": 720,
+        "resizable": true,
+        "fullscreen": false,
+        "transparent": false,
+        "decorations": true
+      }
+    ],
+    "security": {
+      "csp": null
+    }
+  },
+  "bundle": {
+    "active": true,
+    "targets": "all",
+    "icon": [
+      "icons/icon.png"
+    ]
+  }
+}

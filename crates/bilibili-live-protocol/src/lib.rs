@@ -35,7 +35,7 @@ impl ConnectConfig {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
 pub enum LiveEvent {
     Danmu {
         user_id: i64,
@@ -87,13 +87,13 @@ pub enum LiveEvent {
     },
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
 pub struct ParsedLiveEvent {
     pub event: LiveEvent,
     pub raw: Value,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize)]
 pub enum InteractKind {
     Entry,
     Follow,
@@ -102,7 +102,7 @@ pub enum InteractKind {
     Unknown(i64),
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
 pub enum PkEventKind {
     Start {
         init_room_id: i64,
@@ -113,7 +113,7 @@ pub enum PkEventKind {
     Other(String),
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
 pub enum RedPocketKind {
     New {
         user_id: i64,
@@ -126,7 +126,7 @@ pub enum RedPocketKind {
     Other(String),
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
 pub enum AnchorLotteryKind {
     Start,
     Award,

@@ -6,7 +6,7 @@
 
 ## 当前已实现
 
-- Slint 桌面端 UI。
+- Slint 原生桌面端 UI，界面定义位于 `ui/main.slint`。
 - 与原 `etc/bilidanmaku-api.yaml` 字段名兼容的 YAML 配置。
 - B 站二维码登录链接生成、登录轮询、登录状态检查。
 - Token 持久化到 `token/bili_token.txt` 和 `token/bili_token.json`。
@@ -130,8 +130,8 @@ cargo test --workspace
 - `src/token.rs`：Cookie/Token 持久化。
 - `src/storage/mod.rs`：SQLite 表结构与持久化逻辑。
 - `src/bot/`：机器人规则、发送队列、礼物聚合、定时弹幕。
-- `src/main.rs`：Slint UI 事件绑定、运行时任务编排。
-- `ui/main.slint`：桌面 UI。
+- `src/main.rs`：Slint 桌面端入口与回调装配。
+- `ui/main.slint`：Slint 桌面控制台 UI 与液态玻璃组件。
 - `crates/bilibili-live-protocol`：B 站直播 WebSocket 协议包。
 
 ## 参考来源
