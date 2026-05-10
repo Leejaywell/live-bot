@@ -1,8 +1,8 @@
 pub mod engine;
+pub mod monitor;
 pub mod sender;
 pub mod thanks;
 pub mod timed;
-pub mod monitor;
 
 use anyhow::Result;
 use bilibili_live_protocol::ParsedLiveEvent;
@@ -84,20 +84,18 @@ mod tests {
             )
             .unwrap();
         let mut config = test_config();
-        config.keyword_reply = true;
-        config
-            .keyword_reply_list
-            .insert("你好".to_string(), "你好呀".to_string());
+        config.newcomer_danmu_enable = true;
+        config.newcomer_danmu_template = "欢迎新朋友 {user}".to_string();
         let engine = BotEngine::new(config);
         let event = ParsedLiveEvent {
             event: LiveEvent::Danmu {
                 user_id: 42,
                 user: "alice".to_string(),
-                text: "主播你好".to_string(),
+                text: "hello".to_string(),
             },
             raw: json!({
                 "cmd": "DANMU_MSG",
-                "info": [[], "主播你好", [42, "alice"]]
+                "info": [[], "hello", [42, "alice"]]
             }),
         };
 
@@ -105,7 +103,7 @@ mod tests {
             super::record_and_handle_event(&storage, &session_id, 8792912, &event, &engine)
                 .unwrap();
 
-        assert_eq!(replies, vec!["你好呀"]);
+        assert_eq!(replies, vec!["欢迎新朋友 alice"]);
         assert_eq!(storage.session_danmu_count(&session_id).unwrap(), 1);
     }
 

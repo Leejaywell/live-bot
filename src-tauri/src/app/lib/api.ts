@@ -1,6 +1,19 @@
 import { invoke } from '@tauri-apps/api/core';
 import { listen } from '@tauri-apps/api/event';
 
+export interface AiProvider {
+  Id: string;
+  Name: string;
+  Model: string;
+  APIUrl: string;
+  APIKey: string;
+  SystemPrompt: string;
+  TriggerCommand: string;
+  FuzzyMatch: boolean;
+  Nickname: string;
+  Enabled: boolean;
+}
+
 export interface AppConfig {
   RoomId: number;
   WsServerUrl: string;
@@ -17,14 +30,9 @@ export interface AppConfig {
   TalkRobotCmd: string;
   FuzzyMatchCmd: boolean;
   RobotName: string;
-  RobotMode: string;
-  ChatGPT: {
-    APIUrl: string;
-    APIToken: string;
-    Prompt: string;
-    Limit: boolean;
-    Model: string;
-  };
+  ActiveProviderId: string;
+  AiProviders: AiProvider[];
+  AiReplyToDanmaku: boolean;
   InteractWord: boolean;
   WelcomeUseAt: boolean;
   WelcomeDanmu: string[];
@@ -69,13 +77,20 @@ export interface AppConfig {
   CustomizeBullet: boolean;
   LotteryEnable: boolean;
   LotteryUrl: string;
+  AiAssistantPrompt: string;
 }
 
 export interface UserInfo {
   uid: number;
   uname: string;
   face: string;
+  level: number;
+  vip_status: number;
+  vip_type: number;
+  coins: number;
+  vip_nickname_color: string;
   is_login: boolean;
+  saved_at: number;
 }
 
 export interface LoginUrl {
@@ -89,9 +104,22 @@ export interface RoomInfo {
   uid: number;
   title: string;
   live_status: number;
+  live_time: string;
   uname: string;
   parent_area_name: string;
   area_name: string;
+  online: number;
+  keyframe: string;
+  cover: string;
+}
+
+export interface AnchorInfo {
+  uid: number;
+  uname: string;
+  face: string;
+  follower_num: number;
+  medal_name: string;
+  sign: string;
 }
 
 export interface UserDetailResult {
@@ -123,16 +151,29 @@ export const api = {
   // User/Login
   getUserInfo: () => invoke<UserInfo>('get_user_info'),
   startLogin: () => invoke<LoginUrl>('start_login'),
+  logout: () => invoke<void>('logout'),
+  refreshCookie: () => invoke<any>('refresh_cookie'),
   onLoginStatus: (callback: (status: string) => void) => listen<string>('login-status', (event) => callback(event.payload)),
 
   // Room
   checkRoom: (roomId: number) => invoke<RoomInfo>('check_room', { roomId }),
+  getRoomByUid: (uid: number) => invoke<RoomInfo>('get_room_by_uid', { uid }),
 
   // Monitor
-  startMonitor: () => invoke<void>('start_monitor'),
+  startMonitor: (roomId?: number) => invoke<void>('start_monitor', { roomId: roomId ?? null }),
   stopMonitor: () => invoke<void>('stop_monitor'),
   getMonitorStatus: () => invoke<boolean>('get_monitor_status'),
+  getMonitorLogs: () => invoke<string[]>('get_monitor_logs'),
+  onMonitorStatus: (callback: (status: string) => void) => listen<string>('monitor-status', (event) => callback(event.payload)),
   onMonitorLog: (callback: (log: string) => void) => listen<string>('monitor-log', (event) => callback(event.payload)),
+  onLiveEvent: (callback: (event: any) => void) => listen<any>('live-event', (event) => callback(event.payload)),
+  onRoomStatus: (callback: (data: { live_status: number; online: number; live_time: string }) => void) =>
+    listen<any>('room-status', (event) => callback(event.payload)),
+  onRoomOnline: (callback: (data: { count: number }) => void) =>
+    listen<any>('room-online', (event) => callback(event.payload)),
+
+  // Anchor
+  getAnchorInfo: (uid: number) => invoke<AnchorInfo>('get_anchor_info', { uid }),
 
   // Stats
   getStats: (days: number) => invoke<any>('get_stats', { days }),
@@ -144,7 +185,23 @@ export const api = {
 
   // Misc
   getSystemInfo: () => invoke<SystemInfo>('get_system_info'),
+  checkUpdate: () => invoke<{ version: string; link: string; change_log: string } | null>('check_update_cmd'),
+  openConfigDir: () => invoke<void>('open_config_dir'),
   sendDanmu: (message: string) => invoke<void>('send_danmu', { message }),
   queryUserDetail: (uid: string) => invoke<UserDetailResult>('query_user_detail', { uid }),
   openUrl: (url: string) => invoke<void>('open_url', { url }),
+  proxyImage: (url: string) => invoke<string>('proxy_image', { url }),
+
+  // Persistent room connection
+  setConnectedRoom: (roomId: number | null) => invoke<void>('set_connected_room', { roomId }),
+  getConnectedRoom: () => invoke<number | null>('get_connected_room'),
+
+  // Auto update
+  installUpdate: () => invoke<void>('install_update'),
+  onUpdateProgress: (callback: (data: { downloaded: number; total: number | null }) => void) =>
+    listen<{ downloaded: number; total: number | null }>('update-download-progress', (e) => callback(e.payload)),
+
+  // Cookie auto-refresh
+  onCookieRefreshed: (callback: (success: boolean) => void) =>
+    listen<{ success: boolean }>('cookie-refreshed', (e) => callback(e.payload.success)),
 };

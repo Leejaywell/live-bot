@@ -10,7 +10,7 @@ use crate::storage::Storage;
 
 #[derive(Debug)]
 pub struct BotEngine {
-    config: AppConfig,
+    pub(crate) config: AppConfig,
     repeat_counts: Mutex<BTreeMap<(i64, String), i32>>,
 }
 
@@ -34,9 +34,6 @@ impl BotEngine {
         self.track_danmu(event, storage);
         out.extend(self.newcomer_notice(event, storage));
         out.extend(self.help(event));
-        out.extend(self.keyword_reply(event));
-        out.extend(self.draw_by_lot(event));
-        out.extend(self.sign_in(event, storage));
         out.extend(self.welcome(event));
         out.extend(self.thanks(event));
         out.extend(self.pk_and_activity_notice(event));
@@ -45,20 +42,23 @@ impl BotEngine {
 
     fn is_permanently_blacklisted(&self, event: &LiveEvent) -> bool {
         let (user_id, user) = match event {
-            LiveEvent::Danmu { user_id, user, .. }
-            | LiveEvent::Interact { user_id, user, .. }
-            | LiveEvent::EntryEffect { user_id, user, .. }
-            | LiveEvent::Gift { user_id, user, .. }
-            | LiveEvent::GuardBuy { user_id, user, .. } => (*user_id, user.as_str()),
+            LiveEvent::Danmu { user_id, user, .. } => (*user_id, user.as_str()),
+            LiveEvent::Interact { user_id, user, .. } => (*user_id, user.as_str()),
+            LiveEvent::EntryEffect { user_id, user, .. } => (*user_id, user.as_str()),
+            LiveEvent::Gift { user_id, user, .. } => (*user_id, user.as_str()),
+            LiveEvent::GuardBuy { user_id, user, .. } => (*user_id, user.as_str()),
+            LiveEvent::Block { user } => (0, user.as_str()),
             _ => return false,
         };
 
-        self.config.permanent_blacklist_users.contains(&user_id)
-            || self
-                .config
-                .permanent_blacklist_names
-                .iter()
-                .any(|name| name == user)
+        if user_id != 0 && self.config.permanent_blacklist_users.contains(&user_id) {
+            return true;
+        }
+
+        self.config
+            .permanent_blacklist_names
+            .iter()
+            .any(|name| !name.is_empty() && user.contains(name))
     }
 
     fn is_filtered_danmu(&self, event: &LiveEvent) -> bool {
@@ -121,6 +121,9 @@ impl BotEngine {
     }
 
     pub fn ai_prompt(&self, event: &LiveEvent) -> Option<String> {
+        if self.is_permanently_blacklisted(event) {
+            return None;
+        }
         let LiveEvent::Danmu { text, .. } = event else {
             return None;
         };
@@ -156,74 +159,11 @@ impl BotEngine {
                     ));
                     out.push("请尽情调戏我吧!".to_string());
                 }
-                out.extend([
-                    "发送「签到/打卡」即可签到".to_string(),
-                    "发送「抽签」即可抽签".to_string(),
-                    "主播发送「关闭欢迎弹幕」即可关闭欢迎弹幕".to_string(),
-                    "主播发送「开启欢迎弹幕」即可开启欢迎弹幕".to_string(),
-                    "本软件为永久免费软件".to_string(),
-                ]);
+                out.push("本软件为永久免费软件".to_string());
                 out
             }
             "@我是谁" => vec!["本程序作者为@超凶一只花酱酱".to_string()],
             _ => Vec::new(),
-        }
-    }
-
-    fn keyword_reply(&self, event: &LiveEvent) -> Vec<String> {
-        if !self.config.keyword_reply {
-            return Vec::new();
-        }
-        let LiveEvent::Danmu { text, .. } = event else {
-            return Vec::new();
-        };
-
-        self.config
-            .keyword_reply_list
-            .iter()
-            .find_map(|(keyword, reply)| text.contains(keyword).then(|| reply.clone()))
-            .into_iter()
-            .collect()
-    }
-
-    fn draw_by_lot(&self, event: &LiveEvent) -> Vec<String> {
-        if !self.config.draw_by_lot {
-            return Vec::new();
-        }
-        let LiveEvent::Danmu { text, .. } = event else {
-            return Vec::new();
-        };
-        if text != "抽签" {
-            return Vec::new();
-        }
-        vec![choose(&self.config.draw_lots_list).unwrap_or_else(|| "别抽签，抽主播!".to_string())]
-    }
-
-    fn sign_in(&self, event: &LiveEvent, storage: Option<&Storage>) -> Vec<String> {
-        if !self.config.sign_in_enable {
-            return Vec::new();
-        }
-        let LiveEvent::Danmu { user_id, text, .. } = event else {
-            return Vec::new();
-        };
-        if text != "签到" && text != "打卡" {
-            if text == "查询弹幕" && self.config.danmu_cnt_enable {
-                return storage
-                    .and_then(|storage| storage.danmu_count(*user_id).ok())
-                    .map(|count| vec![format!("你已发送{count}条弹幕")])
-                    .unwrap_or_else(|| vec!["弹幕统计服务异常".to_string()]);
-            }
-            return Vec::new();
-        }
-        let Some(storage) = storage else {
-            return vec!["签到服务异常".to_string()];
-        };
-        match storage.sign_in(*user_id) {
-            Ok(result) if result.already_signed => {
-                vec![format!("今天已经签到过了,已签到{}天", result.count)]
-            }
-            Ok(result) => vec![format!("已签到{}天", result.count)],
-            Err(_) => vec!["签到服务异常".to_string()],
         }
     }
 
@@ -483,36 +423,10 @@ mod tests {
 
     use super::{BotEngine, short_name, time_key};
     use crate::bot::testsupport::test_config;
-    use crate::storage::Storage;
-
-    #[test]
-    fn keyword_reply_matches_contains() {
-        let mut config = test_config();
-        config.keyword_reply = true;
-        config
-            .keyword_reply_list
-            .insert("你好".to_string(), "你好呀".to_string());
-        let engine = BotEngine::new(config);
-
-        let replies = engine.handle_event(
-            &LiveEvent::Danmu {
-                user_id: 1,
-                user: "u".to_string(),
-                text: "主播你好".to_string(),
-            },
-            None,
-        );
-
-        assert_eq!(replies, vec!["你好呀"]);
-    }
 
     #[test]
     fn permanent_blacklist_blocks_danmu_automation() {
         let mut config = test_config();
-        config.keyword_reply = true;
-        config
-            .keyword_reply_list
-            .insert("你好".to_string(), "你好呀".to_string());
         config.permanent_blacklist_users = vec![42];
         let engine = BotEngine::new(config);
 
@@ -520,7 +434,7 @@ mod tests {
             &LiveEvent::Danmu {
                 user_id: 42,
                 user: "u".to_string(),
-                text: "你好".to_string(),
+                text: "@帮助".to_string(),
             },
             None,
         );
@@ -553,10 +467,6 @@ mod tests {
     #[test]
     fn sensitive_danmu_does_not_trigger_automation() {
         let mut config = test_config();
-        config.keyword_reply = true;
-        config
-            .keyword_reply_list
-            .insert("你好".to_string(), "你好呀".to_string());
         config.danmu_filter_enable = true;
         config.danmu_filter_words = vec!["广告".to_string()];
         let engine = BotEngine::new(config);
@@ -565,7 +475,7 @@ mod tests {
             &LiveEvent::Danmu {
                 user_id: 1,
                 user: "u".to_string(),
-                text: "广告你好".to_string(),
+                text: "广告@帮助".to_string(),
             },
             None,
         );
@@ -576,20 +486,16 @@ mod tests {
     #[test]
     fn repeated_danmu_stops_triggering_automation_at_threshold() {
         let mut config = test_config();
-        config.keyword_reply = true;
-        config
-            .keyword_reply_list
-            .insert("你好".to_string(), "你好呀".to_string());
         config.danmu_filter_enable = true;
         config.danmu_filter_repeat_threshold = 2;
         let engine = BotEngine::new(config);
         let event = LiveEvent::Danmu {
             user_id: 1,
             user: "u".to_string(),
-            text: "你好".to_string(),
+            text: "@帮助".to_string(),
         };
 
-        assert_eq!(engine.handle_event(&event, None), vec!["你好呀"]);
+        assert!(!engine.handle_event(&event, None).is_empty());
         assert!(engine.handle_event(&event, None).is_empty());
     }
 
@@ -630,71 +536,6 @@ mod tests {
         );
 
         assert!(replies.is_empty());
-    }
-
-    #[test]
-    fn draw_replies_to_exact_command() {
-        let mut config = test_config();
-        config.draw_lots_list = vec!["上上签".to_string()];
-        let engine = BotEngine::new(config);
-
-        let replies = engine.handle_event(
-            &LiveEvent::Danmu {
-                user_id: 1,
-                user: "u".to_string(),
-                text: "抽签".to_string(),
-            },
-            None,
-        );
-
-        assert_eq!(replies, vec!["上上签"]);
-    }
-
-    #[test]
-    fn sign_in_is_once_per_day() {
-        let config = test_config();
-        let storage = Storage::open_in_memory().unwrap();
-        let engine = BotEngine::new(config);
-        let event = LiveEvent::Danmu {
-            user_id: 1,
-            user: "u".to_string(),
-            text: "签到".to_string(),
-        };
-
-        assert_eq!(
-            engine.handle_event(&event, Some(&storage)),
-            vec!["已签到1天"]
-        );
-        assert_eq!(
-            engine.handle_event(&event, Some(&storage)),
-            vec!["今天已经签到过了,已签到1天"]
-        );
-    }
-
-    #[test]
-    fn danmu_count_query_returns_total() {
-        let mut config = test_config();
-        config.danmu_cnt_enable = true;
-        let storage = Storage::open_in_memory().unwrap();
-        let engine = BotEngine::new(config);
-
-        let event = LiveEvent::Danmu {
-            user_id: 1,
-            user: "u".to_string(),
-            text: "hello".to_string(),
-        };
-        assert!(engine.handle_event(&event, Some(&storage)).is_empty());
-
-        let replies = engine.handle_event(
-            &LiveEvent::Danmu {
-                user_id: 1,
-                user: "u".to_string(),
-                text: "查询弹幕".to_string(),
-            },
-            Some(&storage),
-        );
-
-        assert_eq!(replies, vec!["你已发送2条弹幕"]);
     }
 
     #[test]
@@ -760,7 +601,7 @@ mod tests {
             None,
         );
 
-        assert!(replies.iter().any(|line| line.contains("签到")));
-        assert!(replies.iter().any(|line| line.contains("抽签")));
+        assert!(!replies.is_empty());
+        assert!(replies.iter().any(|line| line.contains("互动")));
     }
 }

@@ -37,7 +37,7 @@ It is recommended to first create a BackgroundBlobs component in Figma and place
 - Left sidebar (width 196, collapsible): Glass #ffffff7a→#ffffff48 (浅) / #ffffff10→#ffffff05 (深), with a 1px fine right border.
 - Main area: Scrollable, padding 14.
 
-[7-item single-segment navigation]: 仪表盘 / 登录与房间 / 监听与发送 / 自动回复 / AI 机器人 / 数据统计 / PK 与活动 / 系统与更新
+[7-item single-segment navigation]: 仪表盘 / 登录与房间 / 监听与发送 / 自动回复 / AI 场控 / 数据统计 / PK 与活动 / 系统与更新
 NavItem height 44, border-radius 12: default transparent / active primary color semi-transparent gradient (opacity 0.84-0.92) + primary color border (opacity 0.7) + 28×28 primary color solid background icon block on the left with white icon.
 
 [Theme] Only 浅色 / 深色 states, named with suffixes " · 浅色" and " · 深色" side-by-side.
@@ -87,7 +87,7 @@ Place a BackgroundBlobs instance as the first layer (top-left blue blob + top-ri
   · 登录与房间
   · 监听与发送
   · 自动回复
-  · AI 机器人
+  · AI 场控
   · 数据统计
   · PK 与活动
   · 系统与更新 (at the bottom)
@@ -118,7 +118,7 @@ Place a BackgroundBlobs instance as the first layer (top-left blue blob + top-ri
    - Speaker icon / "自动欢迎" / "新观众进入直播间时发送欢迎语" / ON
    - Chat icon / "关键词回复" / "弹幕命中关键词自动回复" / ON
    - Gift icon / "礼物答谢" / "收到礼物自动答谢，支持聚合" / ON
-   - AI icon / "AI 闲聊" / "由 AI 模型生成回复，需配置 API" / ON
+   - AI icon / "AI 场控" / "由 AI Agent 调度回复与语音交互" / ON
    - Draw icon / "抽签" / "弹幕发起抽签，自动随机结果" / ON
    - Filter icon / "弹幕过滤" / "屏蔽敏感词、刷屏、风险弹幕" / OFF
 
@@ -276,44 +276,29 @@ Two columns:
 
 ---
 
-## F5 · AI 机器人
+## F5 · AI 场控 (AI Agent)
 
 ```
-Design the "AI 机器人" page for the Live Bot Slint desktop version, with 浅色 + 深色 Frames, each having 3 states: Configured / Not Configured / Test Drawer Open.
+Design the "AI Agent" page for the Live Bot Slint desktop version, with Light + Dark Frames, supporting Tab switching:
 
-First layer: BackgroundBlobs. Left sidebar: "AI 机器人" active.
+First layer: BackgroundBlobs. Left sidebar: "AI 场控" active.
 
-[Configured View] A large glass card in the main area (border-radius 18, padding 20):
+[Common Layout]
+Top Navigation Tabs (Glass-style button group): 对话逻辑 (Logic) / 语音感官 (Voice) / 记忆中心 (Memory - Locked)
 
-Top row of 4 IconBtns to switch providers (each 30 circle, spacing 8):
-- QingYun icon (gray)
-- OpenAI icon (solid primary color active)
-- DeepSeek icon (gray)
-- Custom icon (gray)
-Gray chip on the right showing "OpenAI 兼容".
+[Logic Tab]
+- Switch model source: OpenAI / DeepSeek / Local Ollama.
+- Configure API Key, API URL, Model Name, System Prompt.
+- Glass LineEdit with monospace font for parameters.
+- Large primary color capsule button "保存配置" + "连接测试" button.
 
-Form fields (each 56 high, left label 96 + right control):
-- "模型" glass LineEdit monospace "gpt-4o-mini"
-- "API URL" glass LineEdit "https://api.openai.com/v1"
-- "API Key" password field "●●●●●●sk-…3F2a" + 👁 on the right.
-- "温度" glass slider (primary color gradient fill + circular thumb) + number "0.7" on the right.
-- "系统提示词" glass TextEdit 8 lines high, content "你是花花直播姬的助理，名字叫小花。回答要简短活泼，不超过 20 个字。"
-- "触发命令" LineEdit "小助手" + 36×20 Toggle on the right "模糊匹配" ON.
+[Voice Tab]
+- **Input (ASR)**: Dropdown to switch models (Faster-Whisper / FunASR), microphone volume visualizer bar.
+- **Output (TTS)**: Dropdown to switch models (Bert-VITS2 / ChatTTS / Azure), voice preview play button, speed/pitch sliders.
+- **Real-time Controls**: Two large Toggle switches —— "开启语音监听", "开启语音播报".
 
-Large primary color capsule at the bottom "保存配置".
-
-30×30 circular IconBtn "测试" (glass + test bottle icon) floating in the top-right corner.
-
-[Not Configured View] API Key field empty + yellow warning bar at the top of the card: "⚠ 未配置 API Key，AI 闲聊不可用" + "保存配置" button disabled gray.
-
-[Test Drawer Open View] A 320-wide glass drawer slides in from the right:
-- Title "测试对话" + ✕ + ghost "清空".
-- Chat area with 4 rounds:
-  · User bubble (right, solid primary color background with white text, border-radius 14): "主播在做什么呀"
-  · Assistant bubble (left, semi-transparent white card, border-radius 14): "在陪大家聊天呀～"
-  · User: "今天直播多久了"
-  · Assistant: "已经播了 2 小时啦！"
-- Input field at the bottom + primary color send IconBtn.
+[Memory Tab]
+Empty state with a central lock icon + text "记忆模块将在 V5 阶段开启" + "了解更多" link.
 
 [Append §F0 Shared Settings]
 ```

@@ -17,21 +17,30 @@ const OP_HEARTBEAT_REPLY: u32 = 3;
 const OP_NOTIFICATION: u32 = 5;
 const OP_ROOM_ENTER: u32 = 7;
 
+#[derive(Debug, Clone, serde::Serialize)]
+pub struct DanmuHost {
+    pub host: String,
+    pub wss_port: u16,
+}
+
 #[derive(Debug, Clone)]
 pub struct ConnectConfig {
     pub room_id: i64,
+    pub uid: i64,
+    pub buvid: String,
     pub token: String,
-    pub hosts: Vec<String>,
+    pub hosts: Vec<DanmuHost>,
 }
 
 impl ConnectConfig {
     pub fn first_ws_url(&self) -> String {
-        let host = self
-            .hosts
-            .first()
-            .map(String::as_str)
-            .unwrap_or(DEFAULT_HOST);
-        format!("wss://{host}/sub")
+        match self.hosts.first() {
+            Some(h) if h.wss_port > 0 && h.wss_port != 443 => {
+                format!("wss://{}:{}/sub", h.host, h.wss_port)
+            }
+            Some(h) => format!("wss://{}/sub", h.host),
+            None => format!("wss://{DEFAULT_HOST}/sub"),
+        }
     }
 }
 
@@ -177,15 +186,26 @@ pub async fn run_parsed_client<F>(config: ConnectConfig, mut on_event: F) -> Res
 where
     F: FnMut(ParsedLiveEvent) + Send + 'static,
 {
+    use tokio_tungstenite::tungstenite::client::IntoClientRequest;
+
     let url = config.first_ws_url();
-    let (mut socket, _) = connect_async(&url).await?;
+    let mut request = url.as_str().into_client_request()?;
+    {
+        let h = request.headers_mut();
+        h.insert("Origin", "https://live.bilibili.com".parse()?);
+        h.insert("User-Agent", "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36".parse()?);
+        h.insert("Referer", "https://live.bilibili.com/".parse()?);
+    }
+    let (mut socket, _) = connect_async(request).await?;
     socket
         .send(Message::Binary(
-            build_enter_packet(config.room_id, &config.token).into(),
+            build_enter_packet(config.room_id, config.uid, &config.buvid, &config.token).into(),
         ))
         .await?;
 
     let mut heartbeat = interval(Duration::from_secs(30));
+    // skip the immediate first tick so the enter packet is processed before heartbeat
+    heartbeat.tick().await;
     loop {
         tokio::select! {
             _ = heartbeat.tick() => {
@@ -194,8 +214,11 @@ where
             message = socket.next() => {
                 match message {
                     Some(Ok(Message::Binary(data))) => {
-                        for event in parse_parsed_events(&data)? {
-                            on_event(event);
+                        // Parse errors on individual packets are non-fatal
+                        if let Ok(events) = parse_parsed_events(&data) {
+                            for event in events {
+                                on_event(event);
+                            }
                         }
                     }
                     Some(Ok(Message::Close(_))) => return Err(anyhow!("websocket closed")),
@@ -208,12 +231,13 @@ where
     }
 }
 
-pub fn build_enter_packet(room_id: i64, token: &str) -> Vec<u8> {
+pub fn build_enter_packet(room_id: i64, uid: i64, buvid: &str, token: &str) -> Vec<u8> {
     let body = serde_json::json!({
-        "uid": 0,
+        "uid": uid,
+        "buvid": buvid,
         "roomid": room_id,
         "protover": 3,
-        "platform": "danmuji",
+        "platform": "web",
         "type": 2,
         "key": token,
     });

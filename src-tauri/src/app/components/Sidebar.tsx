@@ -1,4 +1,4 @@
-import { Link, useLocation } from 'react-router';
+import { Link, useLocation } from 'react-router-dom';
 import {
   LayoutDashboard,
   Radio,
@@ -11,15 +11,18 @@ import {
   Sun,
   ChevronLeft,
 } from 'lucide-react';
+import logoUrl from '../../assets/logo.svg?url';
 import { IconButton } from './IconButton';
 import { cn } from '../lib/utils';
 import { useTheme } from '../context/ThemeContext';
 
 interface SidebarProps {
   collapsed?: boolean;
+  connected?: boolean;
   onToggleThemePanel?: () => void;
   onToggleSidebar?: () => void;
   onToggleSettings?: () => void;
+  onBlockedClick?: () => void;
 }
 
 const navItems = [
@@ -27,27 +30,29 @@ const navItems = [
   { path: '/monitor', label: '弹幕管理', icon: Radio },
   { path: '/auto-reply', label: '自动回复', icon: MessageSquare },
   { path: '/ai', label: 'AI 机器人', icon: Bot },
-  { path: '/stats', label: '数据统计', icon: BarChart3 },
-  { path: '/pk', label: 'PK 与活动', icon: Swords },
+  { path: '/stats', label: '数据统计', icon: BarChart3, wip: true },
+  { path: '/pk', label: 'PK 与活动', icon: Swords, wip: true },
 ];
 
-export function Sidebar({ collapsed, onToggleThemePanel, onToggleSidebar, onToggleSettings }: SidebarProps) {
+export function Sidebar({ collapsed, connected, onToggleThemePanel, onToggleSidebar, onToggleSettings, onBlockedClick }: SidebarProps) {
   const location = useLocation();
   const { theme } = useTheme();
 
   if (collapsed) return null;
 
+  const handleNavClick = (e: React.MouseEvent) => {
+    if (!connected) {
+      e.preventDefault();
+      onBlockedClick?.();
+    }
+  };
+
   return (
     <div className="w-[196px] h-full glass-sidebar backdrop-blur-xl flex flex-col pb-3.5 px-3.5">
       <div className="flex items-center justify-between mb-2 px-2 h-[52px] flex-shrink-0">
         <div className="flex items-center gap-2">
-          <div
-            className="w-[28px] h-[28px] rounded-lg flex items-center justify-center text-white font-bold text-[14px]"
-            style={{ background: 'var(--primary-color)' }}
-          >
-            LS
-          </div>
-          <span className="font-bold text-[14px]">LiveSpark</span>
+          <img src={logoUrl} alt="流光" className="w-[28px] h-[28px] rounded-lg" />
+          <span className="font-bold text-[14px]">流光</span>
         </div>
         <IconButton onClick={onToggleSidebar} className="opacity-60 hover:opacity-100">
           <ChevronLeft className="w-4 h-4" />
@@ -63,6 +68,7 @@ export function Sidebar({ collapsed, onToggleThemePanel, onToggleSidebar, onTogg
             <Link
               key={item.path}
               to={item.path}
+              onClick={handleNavClick}
               className={cn(
                 'flex items-center gap-3 h-[44px] px-3 rounded-xl transition-all',
                 isActive
@@ -73,16 +79,16 @@ export function Sidebar({ collapsed, onToggleThemePanel, onToggleSidebar, onTogg
               {isActive && (
                 <div
                   className="w-[28px] h-[28px] rounded-lg flex items-center justify-center"
-                  style={{
-                    background: 'var(--primary-color)',
-                    color: 'white'
-                  }}
+                  style={{ background: 'var(--primary-color)', color: 'white' }}
                 >
                   <Icon className="w-4 h-4" />
                 </div>
               )}
               {!isActive && <Icon className="w-4 h-4 ml-1" />}
-              <span className="text-[12px] font-medium" style={isActive ? { color: 'var(--primary-color)' } : {}}>{item.label}</span>
+              <span className="text-[12px] font-medium flex-1" style={isActive ? { color: 'var(--primary-color)' } : {}}>{item.label}</span>
+              {item.wip && (
+                <span className="text-[9px] text-gray-400 dark:text-gray-500 font-normal">待开发</span>
+              )}
             </Link>
           );
         })}

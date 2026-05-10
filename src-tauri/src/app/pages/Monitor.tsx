@@ -2,32 +2,113 @@ import { useState, useEffect, useRef } from 'react';
 import { GlassCard } from '../components/GlassCard';
 import { Button } from '../components/Button';
 import { Input } from '../components/Input';
-import { MessageCircle, RefreshCw } from 'lucide-react';
+import { Play, RefreshCw } from 'lucide-react';
 import { api } from '../lib/api';
 import { toast } from 'sonner';
+import { useLoggedIn } from '../context/LoginContext';
+
+type LogType = 'danmu' | 'gift' | 'interact' | 'other' | 'system';
+
+interface LogEntry {
+  id: number;
+  type: LogType;
+  text: string;
+  user?: string;
+  content?: string;
+  time: string;
+}
+
+let _logId = 0;
+
+function parseMonitorLog(text: string): LogEntry | null {
+  const time = new Date().toLocaleTimeString();
+  const id = _logId++;
+
+  if (text.startsWith('弹幕 ')) {
+    const rest = text.slice(3);
+    const colonIdx = rest.indexOf(': ');
+    if (colonIdx >= 0) {
+      return { id, type: 'danmu', text, user: rest.slice(0, colonIdx), content: rest.slice(colonIdx + 2), time };
+    }
+    return { id, type: 'danmu', text, time };
+  }
+  if (text.startsWith('礼物 ') || text.startsWith('大航海 ')) {
+    return { id, type: 'gift', text, time };
+  }
+  if (
+    text.startsWith('进场 ') || text.startsWith('进场特效 ') ||
+    text.startsWith('关注 ') || text.startsWith('分享 ') || text.startsWith('互动 ')
+  ) {
+    return { id, type: 'interact', text, time };
+  }
+  if (text.startsWith('禁言 ') || text.startsWith('PK ') || text.startsWith('红包 ') || text.startsWith('天选 ')) {
+    return { id, type: 'other', text, time };
+  }
+  // Skip high-frequency popularity heartbeats
+  if (text.startsWith('人气 ')) return null;
+  // All other messages (system/connection/status)
+  return null;
+}
+
+const typeColors: Record<LogType, string> = {
+  danmu: 'text-sky-600 dark:text-sky-400',
+  gift: 'text-amber-600 dark:text-amber-400',
+  interact: 'text-green-600 dark:text-green-400',
+  other: 'text-purple-600 dark:text-purple-400',
+  system: 'text-gray-400',
+};
+
+const typeBadge: Record<LogType, string> = {
+  danmu: '弹幕',
+  gift: '礼物',
+  interact: '互动',
+  other: '其他',
+  system: '系统',
+};
 
 export function Monitor() {
   const [filter, setFilter] = useState('all');
   const [message, setMessage] = useState('');
   const [isMonitoring, setIsMonitoring] = useState(false);
-  const [logs, setLogs] = useState<string[]>([]);
+  const [logs, setLogs] = useState<LogEntry[]>([]);
   const logEndRef = useRef<HTMLDivElement>(null);
+  const loggedIn = useLoggedIn();
 
   useEffect(() => {
     checkMonitorStatus();
-    
-    let unlisten: (() => void) | undefined;
-    
-    const setupListener = async () => {
-      unlisten = await api.onMonitorLog((log) => {
-        setLogs(prev => [...prev, log].slice(-200));
+
+    // Load buffered history immediately so page shows logs on first open
+    api.getMonitorLogs().then(rawLogs => {
+      const entries = rawLogs
+        .map(parseMonitorLog)
+        .filter((e): e is LogEntry => e !== null)
+        .slice(-200);
+      if (entries.length > 0) setLogs(entries);
+    }).catch(console.error);
+
+    let unlistenLog: (() => void) | undefined;
+    let unlistenStatus: (() => void) | undefined;
+
+    const setup = async () => {
+      unlistenLog = await api.onMonitorLog((text) => {
+        const entry = parseMonitorLog(text);
+        if (entry) setLogs(prev => [...prev, entry].slice(-200));
+      });
+      unlistenStatus = await api.onMonitorStatus((status) => {
+        if (status === '已停止') {
+          setIsMonitoring(false);
+          toast.info('停止获取弹幕');
+        } else if (status === '运行中') {
+          setIsMonitoring(true);
+        }
       });
     };
-    
-    setupListener();
-    
+
+    setup();
+
     return () => {
-      if (unlisten) unlisten();
+      if (unlistenLog) unlistenLog();
+      if (unlistenStatus) unlistenStatus();
     };
   }, []);
 
@@ -45,15 +126,16 @@ export function Monitor() {
   };
 
   const toggleMonitor = async () => {
+    if (!loggedIn) { toast.info('请先登录'); return; }
     try {
       if (isMonitoring) {
         await api.stopMonitor();
         setIsMonitoring(false);
-        toast.success('已停止监听');
+        toast.success('已停止获取弹幕');
       } else {
         await api.startMonitor();
         setIsMonitoring(true);
-        toast.success('已开始监听');
+        toast.success('已开始获取弹幕');
       }
     } catch (err) {
       toast.error(`操作失败: ${err}`);
@@ -61,6 +143,7 @@ export function Monitor() {
   };
 
   const sendDanmu = async () => {
+    if (!loggedIn) { toast.info('请先登录'); return; }
     if (!message.trim()) return;
     try {
       await api.sendDanmu(message);
@@ -75,42 +158,28 @@ export function Monitor() {
     { id: 'all', label: '全部' },
     { id: 'danmaku', label: '弹幕' },
     { id: 'gift', label: '礼物' },
+    { id: 'interact', label: '互动' },
     { id: 'other', label: '其他' },
   ];
 
+  const filteredLogs = logs.filter(log => {
+    if (filter === 'all') return true;
+    if (filter === 'danmaku') return log.type === 'danmu';
+    if (filter === 'gift') return log.type === 'gift';
+    if (filter === 'interact') return log.type === 'interact';
+    if (filter === 'other') return log.type === 'other' || log.type === 'system';
+    return true;
+  });
+
   return (
     <div className="p-4 h-full flex flex-col gap-4 overflow-hidden">
-      <GlassCard className="p-5">
-        <div className="flex items-center justify-between">
-          <div className="flex gap-8">
-            <div>
-              <div className="text-[11px] text-gray-500 mb-1">状态</div>
-              <div className="font-mono text-[15px] font-semibold flex items-center gap-2">
-                <div className={`w-2 h-2 rounded-full ${isMonitoring ? 'bg-green-500 animate-pulse' : 'bg-gray-400'}`} />
-                {isMonitoring ? '运行中' : '未运行'}
-              </div>
-            </div>
+      <GlassCard className="flex-1 p-4 flex flex-col overflow-hidden">
+        <div className="flex items-center justify-between mb-3">
+          <div className="flex items-center gap-1.5">
+            <div className={`w-1.5 h-1.5 rounded-full ${isMonitoring ? 'bg-green-500 animate-pulse' : 'bg-gray-400'}`} />
+            <span className="text-[11px] text-gray-500">{isMonitoring ? '监听中' : '未监听'}</span>
           </div>
-
-          <div className="flex gap-2">
-            <Button
-              variant={isMonitoring ? 'primary' : 'default'}
-              size="md"
-              onClick={toggleMonitor}
-            >
-              {isMonitoring ? '停止监听' : '开始监听'}
-            </Button>
-            <Button variant="default" size="md" onClick={checkMonitorStatus}>
-              <RefreshCw className="w-4 h-4" />
-            </Button>
-          </div>
-        </div>
-      </GlassCard>
-
-      <GlassCard className="flex-1 p-5 flex flex-col overflow-hidden">
-        <div className="flex items-center justify-between mb-4">
-          <h2 className="text-[15px] font-semibold">运行日志</h2>
-          <div className="flex gap-2">
+          <div className="flex gap-1.5">
             {filters.map((f) => (
               <button
                 key={f.id}
@@ -124,7 +193,7 @@ export function Monitor() {
                 {f.label}
               </button>
             ))}
-            <button 
+            <button
               onClick={() => setLogs([])}
               className="px-3 py-1 rounded-lg text-[11px] bg-white/60 dark:bg-white/10 border border-gray-200 dark:border-white/20 hover:bg-white/80"
             >
@@ -133,18 +202,39 @@ export function Monitor() {
           </div>
         </div>
 
-        <div className="flex-1 overflow-y-auto space-y-1 font-mono text-[11px] bg-black/5 dark:bg-black/20 p-3 rounded-lg">
-          {logs.map((log, i) => (
-            <div key={i} className="py-0.5 border-b border-black/5 dark:border-white/5 break-all">
-              {log}
+        <div className="flex-1 overflow-y-auto space-y-0.5 bg-black/5 dark:bg-black/20 p-3 rounded-lg">
+          {filteredLogs.map((log) => (
+            <div
+              key={log.id}
+              className="flex items-start gap-2 py-1 border-b border-black/5 dark:border-white/5 text-[11px]"
+            >
+              <span className="text-gray-400 shrink-0 font-mono w-[52px]">{log.time}</span>
+              <span className={`shrink-0 font-semibold w-[28px] ${typeColors[log.type]}`}>
+                {typeBadge[log.type]}
+              </span>
+              <span className="break-all">
+                {log.type === 'danmu' ? (
+                  <>
+                    <span className="font-medium">{log.user}</span>
+                    <span className="text-gray-400 mx-1">:</span>
+                    <span>{log.content}</span>
+                  </>
+                ) : (
+                  <span className={log.type === 'system' ? 'text-gray-400 italic' : ''}>{log.text}</span>
+                )}
+              </span>
             </div>
           ))}
           <div ref={logEndRef} />
-          {logs.length === 0 && <div className="text-gray-400 text-center py-10 italic">暂无日志</div>}
+          {filteredLogs.length === 0 && (
+            <div className="text-gray-400 text-center py-10 italic text-[11px]">
+              {isMonitoring ? '监听中，等待弹幕...' : '点击右下角 ▶ 开始获取'}
+            </div>
+          )}
         </div>
       </GlassCard>
 
-      <GlassCard className="p-5">
+      <GlassCard className="p-4">
         <div className="flex gap-2">
           <Input
             value={message}
@@ -157,6 +247,22 @@ export function Monitor() {
           <Button variant="primary" onClick={sendDanmu} disabled={!message.trim()}>
             发送
           </Button>
+          {!isMonitoring && (
+            <button
+              onClick={toggleMonitor}
+              title="开始获取"
+              className="w-9 h-9 rounded-lg flex items-center justify-center bg-white/60 dark:bg-white/10 border border-gray-200 dark:border-white/20 hover:bg-white/80 transition-all flex-shrink-0"
+            >
+              <Play className="w-4 h-4" />
+            </button>
+          )}
+          <button
+            onClick={checkMonitorStatus}
+            title="刷新状态"
+            className="w-9 h-9 rounded-lg flex items-center justify-center bg-white/60 dark:bg-white/10 border border-gray-200 dark:border-white/20 hover:bg-white/80 transition-all flex-shrink-0"
+          >
+            <RefreshCw className="w-4 h-4" />
+          </button>
         </div>
         <div className="text-[10px] text-gray-400 mt-2 text-right">
           {message.length}/30

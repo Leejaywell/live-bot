@@ -22,35 +22,31 @@
 
 ---
 
-## 2. 智能 AI 交互 (Intelligence & LLM)
+## 2. 智能 AI 场控 (AI Agent & LLM)
 
-### 方案 A：云端 API 集成 (Cloud-First)
-- **技术栈**：OpenAI API, Claude API, DeepSeek (兼容 OpenAI 协议)。
-- **原理**：直接调用大模型厂商的 API。
-- **优点**：逻辑能力强，无需本地显存，支持超长上下文，部署门槛低。
-- **缺点**：有调用成本（Token 计费），响应速度受网络波动影响，隐私安全性较低。
+### 方案 A：云端集成方案 (Cloud-First Agent)
+- **技术栈**：OpenAI/Claude API (LLM) + Azure Speech (ASR/TTS).
+- **原理**：大脑与感官均托管于云端。
+- **优点**：逻辑极强，配置简单，响应稳定。
+- **缺点**：按量计费成本高，依赖网络稳定性。
 
-### 方案 B：本地私有化部署 (Local LLM)
-- **技术栈**：Ollama, llama.cpp, Rust `candle` 框架。
-- **原理**：通过 Ollama 暴露本地接口，或直接在 Rust 中加载轻量级模型（如 Qwen-1.8B, Llama-3-8B）。
-- **优点**：零 Token 成本，完全保护隐私，断网可用。
-- **缺点**：对用户硬件（显存）有要求，逻辑能力上限受模型规模限制。
+### 方案 B：本地化 Agent 方案 (Local-First Agent)
+- **技术栈**：Ollama/candle (LLM) + Faster-Whisper (ASR) + Bert-VITS2 (TTS).
+- **原理**：利用本地显卡（NVIDIA GPU）进行全流程推理，通过统一的 Agent 状态机调度。
+- **优点**：零 Token 成本，极致隐私保护，支持深度定制音色（克隆主播声音）。
+- **缺点**：对硬件有要求，初次部署复杂度较高。
 
 ---
 
 ## 3. 语音交互系统 (ASR & TTS)
 
-### 方案 A：云端流式方案 (Cloud Streaming)
-- **技术栈**：Azure Cognitive Services, 阿里/腾讯语音 API。
-- **原理**：通过 WebSocket 将音频流实时发送至云端，获取识别文本或合成语音。
-- **优点**：识别率极高，TTS 声音自然度高，不占本地 CPU。
-- **缺点**：延迟受网络影响较大，有服务费用。
+### 3.1 语音识别 (ASR)
+- **方案 A (高性能模式)**：Faster-Whisper (C++ 优化版)。适合实时弹幕监听和主播语音指令识别。
+- **方案 B (中文增强模式)**：阿里 FunASR。针对中文口语和直播黑话有更强的识别修正。
 
-### 方案 B：边缘端实时处理 (Edge/Local Processing)
-- **技术栈**：Whisper.cpp (ASR), Bert-VITS2 (TTS), ONNX Runtime.
-- **原理**：在本地运行量化后的 ASR/TTS 模型。
-- **优点**：极低延迟（实时性好），隐私保护。
-- **缺点**：资源消耗高，环境配置复杂（如需要 Cuda 库）。
+### 3.2 语音合成 (TTS)
+- **方案 A (情感驱动模式)**：Bert-VITS2。目前虚拟主播主流选型，音色情感极其丰富。
+- **方案 B (自然口语模式)**：ChatTTS。适合长文本播报，具备自然的停顿、笑声等口语特征。
 
 ---
 

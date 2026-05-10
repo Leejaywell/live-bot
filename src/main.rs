@@ -4,1098 +4,666 @@ mod config;
 mod storage;
 mod token;
 
-use std::path::PathBuf;
-use std::sync::{Arc, Mutex};
-
 use anyhow::Result;
-use bilibili_live_protocol::ConnectConfig;
-use bot::engine::BotEngine;
 use config::AppConfig;
-use cron::Schedule;
-use slint::{ComponentHandle, SharedString};
-use std::str::FromStr;
+use std::sync::{Arc, Mutex};
 use tokio::runtime::Runtime;
-use tokio::sync::mpsc;
-use tokio::task::JoinHandle;
-use tokio::time::{Duration, sleep};
 use tokio_util::sync::CancellationToken;
 
-slint::include_modules!();
+#[cfg(feature = "tauri")]
+use tauri::AppHandle;
 
 #[derive(Clone)]
 struct SharedState {
+    #[allow(dead_code)]
     runtime: Arc<Runtime>,
     http: api::BiliApi,
     monitor: Arc<Mutex<Option<MonitorHandle>>>,
+    storage: Arc<storage::Storage>,
+    connected_room: Arc<Mutex<Option<i64>>>,
+    monitor_log_buffer: Arc<Mutex<Vec<String>>>,
 }
 
 struct MonitorHandle {
     cancel: CancellationToken,
-    task: JoinHandle<()>,
+    session_id: Arc<Mutex<Option<String>>>,
 }
 
-fn main() -> Result<()> {
-    ensure_dirs()?;
+#[cfg(feature = "tauri")]
+struct BufferedEmitter {
+    handle: AppHandle,
+    buffer: Arc<Mutex<Vec<String>>>,
+}
 
-    let app = MainWindow::new()?;
-    let state = SharedState {
-        runtime: Arc::new(Runtime::new()?),
-        http: api::BiliApi::new()?,
-        monitor: Arc::new(Mutex::new(None)),
+#[cfg(feature = "tauri")]
+impl bot::EventEmitter for BufferedEmitter {
+    fn emit(&self, event: &str, payload: serde_json::Value) -> anyhow::Result<()> {
+        if event == "monitor-log" {
+            if let Some(text) = payload.as_str() {
+                if let Ok(mut buf) = self.buffer.lock() {
+                    buf.push(text.to_string());
+                    if buf.len() > 200 {
+                        buf.remove(0);
+                    }
+                }
+            }
+        }
+        tauri::Emitter::emit(&self.handle, event, payload)
+            .map_err(|e| anyhow::anyhow!(e.to_string()))
+    }
+}
+
+#[cfg(feature = "tauri")]
+#[tauri::command]
+async fn load_config() -> Result<AppConfig, String> {
+    AppConfig::load_or_default().map_err(|e| e.to_string())
+}
+
+#[cfg(feature = "tauri")]
+#[tauri::command]
+async fn save_config(config: AppConfig) -> Result<(), String> {
+    config.save().map_err(|e| e.to_string())
+}
+
+#[cfg(feature = "tauri")]
+#[tauri::command]
+async fn get_user_info(state: tauri::State<'_, SharedState>) -> Result<serde_json::Value, String> {
+    let saved_at = token::cookie_file_modified_secs().unwrap_or(0);
+    let cookie = match token::read_cookie_string() {
+        Ok(c) => c,
+        Err(_) => {
+            return Ok(serde_json::json!({
+                "uid": 0, "uname": "", "face": "", "is_login": false, "saved_at": saved_at
+            }));
+        }
+    };
+    match state.http.user_info(&cookie).await {
+        Ok(info) => Ok(serde_json::json!({
+            "uid": info.uid,
+            "uname": info.uname,
+            "face": info.face,
+            "level": info.level,
+            "vip_status": info.vip_status,
+            "vip_type": info.vip_type,
+            "coins": info.coins,
+            "vip_nickname_color": info.vip_nickname_color,
+            "is_login": true,
+            "saved_at": saved_at
+        })),
+        Err(_) => {
+            // Cookie expired — try refresh_token
+            if let Some(rt) = token::read_refresh_token() {
+                if let Ok((new_cookie, new_rt)) = state.http.refresh_cookie(&rt, &cookie).await {
+                    let _ = token::write_cookie(&new_cookie);
+                    if !new_rt.is_empty() {
+                        let _ = token::write_refresh_token(&new_rt);
+                    }
+                    // Retry user_info with new cookie
+                    if let Ok(info) = state.http.user_info(&new_cookie.cookie_string).await {
+                        let new_saved_at = token::cookie_file_modified_secs().unwrap_or(0);
+                        return Ok(serde_json::json!({
+                            "uid": info.uid,
+                            "uname": info.uname,
+                            "face": info.face,
+                            "level": info.level,
+                            "vip_status": info.vip_status,
+                            "vip_type": info.vip_type,
+                            "coins": info.coins,
+                            "vip_nickname_color": info.vip_nickname_color,
+                            "is_login": true,
+                            "saved_at": new_saved_at
+                        }));
+                    }
+                }
+            }
+            Ok(serde_json::json!({
+                "uid": 0, "uname": "", "face": "", "level": 0,
+                "vip_status": 0, "vip_type": 0, "coins": 0.0, "vip_nickname_color": "",
+                "is_login": false, "saved_at": saved_at
+            }))
+        }
+    }
+}
+
+#[cfg(feature = "tauri")]
+#[tauri::command]
+async fn start_login(state: tauri::State<'_, SharedState>) -> Result<api::LoginUrl, String> {
+    state.http.login_url().await.map_err(|e| e.to_string())
+}
+
+#[cfg(feature = "tauri")]
+#[tauri::command]
+async fn poll_login(
+    state: tauri::State<'_, SharedState>,
+    key: String,
+) -> Result<serde_json::Value, String> {
+    match state.http.poll_login(&key).await {
+        Ok(api::LoginPoll::Success(cookie, refresh_token)) => {
+            token::write_cookie(&cookie).map_err(|e| e.to_string())?;
+            if !refresh_token.is_empty() {
+                let _ = token::write_refresh_token(&refresh_token);
+            }
+            // Immediately fetch user info after saving cookie
+            let cookie_str = &cookie.cookie_string;
+            match state.http.user_info(cookie_str).await {
+                Ok(info) => Ok(serde_json::json!({
+                    "status": "Success",
+                    "uid": info.uid,
+                    "uname": info.uname,
+                    "face": info.face,
+                    "level": info.level,
+                    "vip_status": info.vip_status,
+                    "vip_type": info.vip_type,
+                    "coins": info.coins,
+                    "vip_nickname_color": info.vip_nickname_color,
+                    "is_login": true
+                })),
+                Err(_) => Ok(serde_json::json!({ "status": "Success" })),
+            }
+        }
+        Ok(api::LoginPoll::Expired(msg)) => {
+            Ok(serde_json::json!({ "status": "Expired", "message": msg }))
+        }
+        Ok(api::LoginPoll::Pending(msg)) => {
+            Ok(serde_json::json!({ "status": "Scanning", "message": msg }))
+        }
+        Err(e) => Err(e.to_string()),
+    }
+}
+
+#[cfg(feature = "tauri")]
+#[tauri::command]
+async fn check_room(
+    state: tauri::State<'_, SharedState>,
+    room_id: i64,
+) -> Result<api::RoomInfo, String> {
+    state
+        .http
+        .room_info(room_id)
+        .await
+        .map_err(|e| e.to_string())
+}
+
+#[cfg(feature = "tauri")]
+#[tauri::command]
+async fn get_room_by_uid(
+    state: tauri::State<'_, SharedState>,
+    uid: i64,
+) -> Result<api::RoomInfo, String> {
+    state
+        .http
+        .room_id_by_uid(uid)
+        .await
+        .map_err(|e| e.to_string())
+}
+
+#[cfg(feature = "tauri")]
+#[tauri::command]
+async fn logout() -> Result<(), String> {
+    token::delete_cookie().map_err(|e| e.to_string())
+}
+
+#[cfg(feature = "tauri")]
+#[tauri::command]
+async fn refresh_cookie(state: tauri::State<'_, SharedState>) -> Result<serde_json::Value, String> {
+    let rt = token::read_refresh_token().ok_or("没有 refresh_token")?;
+    let cookie = token::read_cookie_string().map_err(|e| e.to_string())?;
+    let (new_cookie, new_rt) = state
+        .http
+        .refresh_cookie(&rt, &cookie)
+        .await
+        .map_err(|e| e.to_string())?;
+    token::write_cookie(&new_cookie).map_err(|e| e.to_string())?;
+    if !new_rt.is_empty() {
+        let _ = token::write_refresh_token(&new_rt);
+    }
+    let saved_at = token::cookie_file_modified_secs().unwrap_or(0);
+    match state.http.user_info(&new_cookie.cookie_string).await {
+        Ok(info) => Ok(serde_json::json!({
+            "success": true, "uid": info.uid, "uname": info.uname, "face": info.face, "saved_at": saved_at
+        })),
+        Err(_) => Ok(serde_json::json!({ "success": true, "saved_at": saved_at })),
+    }
+}
+
+#[cfg(feature = "tauri")]
+#[tauri::command]
+async fn get_system_info() -> Result<serde_json::Value, String> {
+    Ok(serde_json::json!({
+        "version": env!("CARGO_PKG_VERSION"),
+        "config_path": "etc/bilidanmaku-api.yaml",
+        "db_path": "db/sqliteDataBase.db"
+    }))
+}
+
+#[cfg(feature = "tauri")]
+#[tauri::command]
+async fn start_monitor(
+    app: AppHandle,
+    state: tauri::State<'_, SharedState>,
+    room_id: Option<i64>,
+) -> Result<(), String> {
+    // Stop any existing monitor before starting a new one
+    {
+        let mut monitor = state.monitor.lock().map_err(|e| e.to_string())?;
+        if let Some(handle) = monitor.take() {
+            handle.cancel.cancel();
+        }
+    }
+
+    let cancel = CancellationToken::new();
+    let session_id = Arc::new(Mutex::new(None));
+    let handle = MonitorHandle {
+        cancel: cancel.clone(),
+        session_id: session_id.clone(),
     };
 
-    hydrate_ui(&app, &AppConfig::load_or_default()?)?;
-    append_log(&app, "应用已启动");
-    if token::has_token() {
-        app.set_user_info("已发现本地 token，可直接检测登录".into());
+    let room_id = room_id
+        .or_else(|| state.connected_room.lock().ok().and_then(|r| *r))
+        .unwrap_or_else(|| {
+            AppConfig::load_or_default().ok().map(|c| c.room_id).unwrap_or(0)
+        });
+    let http = state.http.clone();
+
+    // Clear log buffer for new session
+    if let Ok(mut buf) = state.monitor_log_buffer.lock() {
+        buf.clear();
     }
 
-    wire_callbacks(&app, state);
-    app.run()?;
-    Ok(())
-}
+    let emitter = BufferedEmitter {
+        handle: app.clone(),
+        buffer: state.monitor_log_buffer.clone(),
+    };
 
-fn wire_callbacks(app: &MainWindow, state: SharedState) {
-    let weak = app.as_weak();
-    app.on_load_config(move || match AppConfig::load_or_default() {
-        Ok(config) => {
-            if let Some(app) = weak.upgrade() {
-                if let Err(err) = hydrate_ui(&app, &config) {
-                    append_log(&app, &format!("配置应用失败: {err}"));
-                } else {
-                    append_log(&app, "配置已读取");
-                }
-            }
-        }
-        Err(err) => update_ui(&weak, move |app| {
-            append_log(app, &format!("读取配置失败: {err}"))
-        }),
-    });
-
-    let weak = app.as_weak();
-    app.on_save_config(
-        move |room_id,
-              danmu_len,
-              entry_msg,
-              goodbye_info,
-              pk_notice,
-              welcome_enabled,
-              entry_effect,
-              thanks_gift,
-              thanks_focus,
-              thanks_share,
-              cron_danmu,
-              keyword_reply,
-              draw_by_lot,
-              sign_in_enable,
-              danmu_filter_enable,
-              danmu_filter_words_text,
-              danmu_filter_repeat_threshold,
-              gift_aliases_text,
-              gift_thanks_templates_text,
-              gift_summary_thanks,
-              gift_summary_template,
-              newcomer_danmu_enable,
-              newcomer_danmu_template,
-              permanent_blacklist_users_text,
-              permanent_blacklist_names_text,
-              special_nicknames_text,
-              robot_name,
-              talk_robot_cmd,
-              robot_mode_index,
-              chatgpt_token,
-              chatgpt_api_url,
-              chatgpt_prompt,
-              welcome_list_text,
-              focus_list_text,
-              blacklist_wide_text,
-              blacklist_exact_text,
-              keyword_reply_text,
-              cron_danmu_text,
-              draw_list_text| {
-            let result = config_from_ui(
-                room_id,
-                danmu_len,
-                entry_msg,
-                goodbye_info,
-                pk_notice,
-                welcome_enabled,
-                entry_effect,
-                thanks_gift,
-                thanks_focus,
-                thanks_share,
-                cron_danmu,
-                keyword_reply,
-                draw_by_lot,
-                sign_in_enable,
-                danmu_filter_enable,
-                danmu_filter_words_text,
-                danmu_filter_repeat_threshold,
-                gift_aliases_text,
-                gift_thanks_templates_text,
-                gift_summary_thanks,
-                gift_summary_template,
-                newcomer_danmu_enable,
-                newcomer_danmu_template,
-                permanent_blacklist_users_text,
-                permanent_blacklist_names_text,
-                special_nicknames_text,
-                robot_name,
-                talk_robot_cmd,
-                robot_mode_index,
-                chatgpt_token,
-                chatgpt_api_url,
-                chatgpt_prompt,
-                welcome_list_text,
-                focus_list_text,
-                blacklist_wide_text,
-                blacklist_exact_text,
-                keyword_reply_text,
-                cron_danmu_text,
-                draw_list_text,
-            )
-            .and_then(|config| config.save());
-
-            update_ui(&weak, move |app| match result {
-                Ok(()) => append_log(app, "配置已保存到 etc/bilidanmaku-api.yaml"),
-                Err(err) => append_log(app, &format!("保存配置失败: {err}")),
-            });
-        },
-    );
-
-    let weak = app.as_weak();
-    let state_for_login = state.clone();
-    app.on_start_login(move || {
-        update_ui(&weak, |app| {
-            app.set_user_info("正在生成登录链接".into());
-            append_log(app, "请求 Bilibili 扫码登录链接");
-        });
-        let weak = weak.clone();
-        let state = state_for_login.clone();
-        state.runtime.spawn(async move {
-            match state.http.login_url().await {
-                Ok(login) => {
-                    let url = login.url.clone();
-                    let key = login.qrcode_key.clone();
-                    update_ui(&weak, move |app| {
-                        app.set_login_url(url.into());
-                        app.set_user_info("请打开登录链接并用 Bilibili App 扫码".into());
-                        append_log(app, "登录链接已生成，开始自动轮询");
-                    });
-                    poll_login_loop(weak, state.http.clone(), key).await;
-                }
-                Err(err) => update_ui(&weak, move |app| {
-                    app.set_user_info("登录链接生成失败".into());
-                    append_log(app, &format!("登录失败: {err}"));
-                }),
-            }
-        });
-    });
-
-    let weak = app.as_weak();
-    let state_for_check = state.clone();
-    app.on_check_login(move || {
-        let weak = weak.clone();
-        let state = state_for_check.clone();
-        state.runtime.spawn(async move {
-            let result = match token::read_cookie_string() {
-                Ok(cookie) => async_user_info(&state.http, cookie).await,
-                Err(err) => Err(err),
-            };
-            match result {
-                Ok(name) => update_ui(&weak, move |app| {
-                    app.set_user_info(format!("已登录: {name}").into());
-                    append_log(app, "登录状态有效");
-                }),
-                Err(err) => update_ui(&weak, move |app| {
-                    app.set_user_info("未登录或 token 已失效".into());
-                    append_log(app, &format!("登录检查失败: {err}"));
-                }),
-            }
-        });
-    });
-
-    let weak = app.as_weak();
-    let state_for_room = state.clone();
-    app.on_check_room(move || {
-        let room_id = app_room_id(&weak);
-        let weak = weak.clone();
-        let state = state_for_room.clone();
-        state.runtime.spawn(async move {
-            match state.http.room_init(room_id).await {
-                Ok(room) => {
-                    let status = if room.live_status == 1 {
-                        "直播中"
-                    } else {
-                        "未开播"
-                    };
-                    update_ui(&weak, move |app| {
-                        app.set_room_status(
-                            format!("{room_id} / 主播 UID {} / {status}", room.uid).into(),
-                        );
-                        append_log(app, "房间状态检测完成");
-                    });
-                }
-                Err(err) => update_ui(&weak, move |app| {
-                    app.set_room_status("检测失败".into());
-                    append_log(app, &format!("房间检测失败: {err}"));
-                }),
-            }
-        });
-    });
-
-    let weak = app.as_weak();
-    let state_for_monitor = state.clone();
-    app.on_start_monitor(move || {
-        let room_id = app_room_id(&weak);
-        let mut guard = state_for_monitor
-            .monitor
-            .lock()
-            .expect("monitor mutex poisoned");
-        if guard.is_some() {
-            update_ui(&weak, |app| append_log(app, "监听已经在运行"));
-            return;
-        }
-
-        let weak_for_task = weak.clone();
-        let state = state_for_monitor.clone();
-        let cancel = CancellationToken::new();
-        let task_cancel = cancel.clone();
-        let task = state_for_monitor.runtime.spawn(async move {
-            update_ui(&weak_for_task, |app| {
-                app.set_run_status("运行中".into());
-                reset_session_summary(app);
-                append_log(app, "直播间监听已启动");
-            });
-
-            let config = match AppConfig::load_or_default() {
-                Ok(config) => config,
-                Err(err) => {
-                    update_ui(&weak_for_task, move |app| {
-                        append_log(app, &format!("启动失败，配置读取错误: {err}"))
-                    });
-                    return;
-                }
-            };
-            let storage_path = format!("{}/{}", config.db_path.trim_end_matches('/'), config.db_name);
-            let storage = match storage::Storage::open(&storage_path) {
-                Ok(storage) => Arc::new(storage),
-                Err(err) => {
-                    update_ui(&weak_for_task, move |app| {
-                        append_log(app, &format!("启动失败，SQLite 初始化错误: {err}"))
-                    });
-                    return;
-                }
-            };
-            let engine = Arc::new(BotEngine::new(config.clone()));
-            let bot_config = Arc::new(config.clone());
-            let sender_danmu_len = config.danmu_len;
-            let cron_enabled = config.cron_danmu;
-            let cron_entries = config.cron_danmu_list.clone();
-
-            let (send_tx, send_rx) = mpsc::channel::<String>(1000);
-            let (gift_tx, gift_rx) = mpsc::channel::<bilibili_live_protocol::LiveEvent>(1000);
-            let current_session_id = Arc::new(Mutex::new(None::<String>));
-            let send_cookie = token::read_cookie_string().ok();
-            let sender_http = state.http.clone();
-            let sender_weak = weak_for_task.clone();
-            let sender_cancel = task_cancel.clone();
-            let send_task = tokio::spawn(async move {
-                let Some(cookie) = send_cookie else {
-                    update_ui(&sender_weak, |app| append_log(app, "未找到 token，自动弹幕发送队列未启动"));
-                    return;
-                };
-                tokio::select! {
-                    _ = sender_cancel.cancelled() => {}
-                    _ = bot::sender::run_send_queue(
-                        send_rx,
-                        sender_danmu_len,
-                        move |message| {
-                            let http = sender_http.clone();
-                            let cookie = cookie.clone();
-                            async move { http.send_danmu(room_id, &message, &cookie).await }
-                        },
-                        move |line| {
-                            update_ui(&sender_weak, move |app| append_log(app, &line));
-                        },
-                    ) => {}
-                }
-            });
-
-            let gift_task = tokio::spawn(bot::thanks::run_gift_aggregator(
-                gift_rx,
-                send_tx.clone(),
-                task_cancel.clone(),
-                config.clone(),
-                storage.clone(),
-            ));
-
-            let timed_cancel = task_cancel.clone();
-            let timed_weak = weak_for_task.clone();
-            let timed_tx = send_tx.clone();
-            let timed_task = tokio::spawn(async move {
-                if !cron_enabled {
-                    return;
-                }
-                for entry in cron_entries {
-                    let Some(expression) = bot::timed::normalize_cron(&entry.cron) else {
-                        update_ui(&timed_weak, move |app| {
-                            append_log(app, &format!("定时弹幕表达式无效: {}", entry.cron))
-                        });
-                        continue;
-                    };
-                    let Ok(schedule) = Schedule::from_str(&expression) else {
-                        update_ui(&timed_weak, move |app| {
-                            append_log(app, &format!("定时弹幕表达式解析失败: {expression}"))
-                        });
-                        continue;
-                    };
-                    let tx = timed_tx.clone();
-                    let weak = timed_weak.clone();
-                    let cancel = timed_cancel.clone();
-                    tokio::spawn(async move {
-                        let mut upcoming = schedule.upcoming(chrono::Local);
-                        let mut index = 0;
-                        loop {
-                            let Some(next) = upcoming.next() else {
-                                return;
-                            };
-                            let now = chrono::Local::now();
-                            let delay = (next - now)
-                                .to_std()
-                                .unwrap_or_else(|_| Duration::from_secs(0));
-                            tokio::select! {
-                                _ = cancel.cancelled() => return,
-                                _ = sleep(delay) => {
-                                    if let Some(message) = bot::timed::select_timed_message(&entry, &mut index) {
-                                        if tx.send(message).await.is_err() {
-                                            update_ui(&weak, |app| append_log(app, "定时弹幕发送队列已关闭"));
-                                            return;
-                                        }
-                                    }
-                                }
-                            }
-                        }
-                    });
-                }
-                timed_cancel.cancelled().await;
-            });
-
-            let poll_http = state.http.clone();
-            let poll_weak = weak_for_task.clone();
-            let poll_cancel = task_cancel.clone();
-            let poll_storage = storage.clone();
-            let poll_session = current_session_id.clone();
-            let poll_task = tokio::spawn(async move {
-                let mut last_status = -1;
-                loop {
-                    tokio::select! {
-                        _ = poll_cancel.cancelled() => return,
-                        _ = sleep(Duration::from_secs(10)) => {
-                            match poll_http.room_init(room_id).await {
-                                Ok(room) => {
-                                    if room.live_status != last_status {
-                                        last_status = room.live_status;
-                                        let status = if room.live_status == 1 { "直播中" } else { "未开播" };
-                                        let session_change = {
-                                            let mut session = poll_session
-                                                .lock()
-                                                .expect("session mutex poisoned");
-                                            bot::update_observed_session_for_room_status(
-                                                &poll_storage,
-                                                &mut session,
-                                                room_id,
-                                                room.live_status,
-                                                chrono::Local::now(),
-                                            )
-                                        };
-                                        update_ui(&poll_weak, move |app| {
-                                            app.set_room_status(format!("{room_id} / {status}").into());
-                                            append_log(app, &format!("直播状态变更: {status}"));
-                                            match session_change {
-                                                Ok(bot::SessionStatusChange::Started(session_id)) => {
-                                                    append_log(app, &format!("直播场次已开始: {session_id}"));
-                                                }
-                                                Ok(bot::SessionStatusChange::Ended(session_id)) => {
-                                                    append_log(app, &format!("直播场次已结束: {session_id}"));
-                                                }
-                                                Ok(bot::SessionStatusChange::Unchanged) => {}
-                                                Err(err) => {
-                                                    append_log(app, &format!("直播场次状态更新失败: {err}"));
-                                                }
-                                            }
-                                        });
-                                    }
-                                }
-                                Err(err) => update_ui(&poll_weak, move |app| {
-                                    append_log(app, &format!("监听轮询失败: {err}"));
-                                }),
-                            }
-                        }
-                    }
-                }
-            });
-
-            let ws_http = state.http.clone();
-            let ws_weak = weak_for_task.clone();
-            let ws_cancel = task_cancel.clone();
-            let ws_session = current_session_id.clone();
-            let ws_task = tokio::spawn(async move {
-                let cookie = match token::read_cookie_string() {
-                    Ok(cookie) => cookie,
-                    Err(_) => {
-                        update_ui(&ws_weak, |app| append_log(app, "未找到 token，仅启动直播状态轮询"));
-                        return;
-                    }
-                };
-
-                loop {
-                    let result = async {
-                        let room = ws_http.room_init(room_id).await?;
-                        let session_id = {
-                            let mut session = ws_session.lock().expect("session mutex poisoned");
-                            if session.is_none() {
-                                let session_id = storage
-                                    .start_observed_live_session(room_id, chrono::Local::now())?;
-                                *session = Some(session_id);
-                            }
-                            session.clone().expect("session just initialized")
-                        };
-                        let danmu = ws_http.danmu_info(room.room_id, &cookie).await?;
-                        let connect_config = ConnectConfig {
-                            room_id: room.room_id,
-                            token: danmu.token,
-                            hosts: danmu.hosts,
-                        };
-                        let url = connect_config.first_ws_url();
-                        update_ui(&ws_weak, move |app| append_log(app, &format!("连接弹幕流: {url}")));
-
-                        let event_weak = ws_weak.clone();
-                        let event_tx = send_tx.clone();
-                        let event_gift_tx = gift_tx.clone();
-                        let event_engine = engine.clone();
-                        let event_storage = storage.clone();
-                        let ai_http = ws_http.clone();
-                        let ai_config = bot_config.clone();
-                        bilibili_live_protocol::run_parsed_client(connect_config, move |parsed| {
-                            let event = &parsed.event;
-                            let line = event.to_string();
-                            if matches!(event, bilibili_live_protocol::LiveEvent::Gift { .. }) {
-                                let _ = event_gift_tx.try_send(event.clone());
-                            }
-                            let replies = match bot::record_and_handle_event(
-                                &event_storage,
-                                &session_id,
-                                room_id,
-                                &parsed,
-                                &event_engine,
-                            ) {
-                                Ok(replies) => replies,
-                                Err(err) => {
-                                    update_ui(&event_weak, move |app| {
-                                        append_log(app, &format!("事件记录失败: {err}"))
-                                    });
-                                    event_engine.handle_event(event, Some(&event_storage))
-                                }
-                            };
-                            if let Ok(summary) = event_storage.live_session_summary(&session_id) {
-                                let pk_summary =
-                                    event_storage.session_pk_summary(&session_id, room_id).ok();
-                                update_ui(&event_weak, move |app| {
-                                    apply_session_summary(app, &summary);
-                                    if let Some(pk_summary) = pk_summary {
-                                        apply_pk_summary(app, &pk_summary);
-                                    }
-                                });
-                            }
-                            for message in replies {
-                                let _ = event_tx.try_send(message);
-                            }
-                            if let Some(prompt) = event_engine.ai_prompt(event) {
-                                let ai_http = ai_http.clone();
-                                let ai_config = ai_config.clone();
-                                let ai_tx = event_tx.clone();
-                                tokio::spawn(async move {
-                                    let reply = ai_http
-                                        .robot_reply(&ai_config, &prompt)
-                                        .await
-                                        .unwrap_or_else(|_| "不好意思，机器人坏掉了...".to_string());
-                                    let _ = ai_tx.send(reply).await;
-                                });
-                            }
-                            update_ui(&event_weak, move |app| append_log(app, &line));
-                        })
-                        .await
-                    }
-                    .await;
-
-                    if let Err(err) = result {
-                        update_ui(&ws_weak, move |app| append_log(app, &format!("弹幕流连接结束: {err}")));
-                    }
-
-                    tokio::select! {
-                        _ = ws_cancel.cancelled() => return,
-                        _ = sleep(Duration::from_secs(5)) => {}
-                    }
-                }
-            });
-
-            task_cancel.cancelled().await;
-            send_task.abort();
-            gift_task.abort();
-            timed_task.abort();
-            poll_task.abort();
-            ws_task.abort();
-        });
-        *guard = Some(MonitorHandle { cancel, task });
-    });
-
-    let weak = app.as_weak();
-    let state_for_stop = state.clone();
-    app.on_stop_monitor(move || {
-        if let Some(monitor) = state_for_stop
-            .monitor
-            .lock()
-            .expect("monitor mutex poisoned")
-            .take()
+    tokio::spawn(async move {
+        if let Err(e) =
+            crate::bot::monitor::run_monitor_loop(emitter, http, room_id, cancel, session_id)
+                .await
         {
-            monitor.cancel.cancel();
-            monitor.task.abort();
+            eprintln!("Monitor error: {}", e);
         }
-        update_ui(&weak, |app| {
-            app.set_run_status("已停止".into());
-            append_log(app, "监听已停止");
-        });
     });
 
-    let weak = app.as_weak();
-    app.on_query_user_detail(move |uid_text| {
-        let result = query_user_detail_from_storage(uid_text.trim());
-        update_ui(&weak, move |app| match result {
-            Ok(text) => {
-                app.set_user_detail_text(text.into());
-                append_log(app, "用户详情查询完成");
-            }
-            Err(err) => {
-                app.set_user_detail_text(format!("查询失败: {err}").into());
-                append_log(app, &format!("用户详情查询失败: {err}"));
-            }
-        });
-    });
-
-    let weak = app.as_weak();
-    let state_for_send = state.clone();
-    app.on_send_danmu(move |msg| {
-        let room_id = app_room_id(&weak);
-        let msg = msg.to_string();
-        let weak = weak.clone();
-        let state = state_for_send.clone();
-        state.runtime.spawn(async move {
-            let result = async {
-                let cookie = token::read_cookie_string()?;
-                state.http.send_danmu(room_id, &msg, &cookie).await
-            }
-            .await;
-
-            update_ui(&weak, move |app| match result {
-                Ok(()) => append_log(app, &format!("弹幕已发送: {msg}")),
-                Err(err) => append_log(app, &format!("弹幕发送失败: {err}")),
-            });
-        });
-    });
-
-    let weak = app.as_weak();
-    let state_for_update = state.clone();
-    app.on_check_update(move || {
-        let weak = weak.clone();
-        let state = state_for_update.clone();
-        state.runtime.spawn(async move {
-            let current_version = env!("CARGO_PKG_VERSION");
-            match state.http.check_update(current_version).await {
-                Ok(Some(update)) => update_ui(&weak, move |app| {
-                    app.set_update_link(update.link.clone().into());
-                    append_log(
-                        app,
-                        &format!(
-                            "发现新版本 {}: {}\n下载地址: {}",
-                            update.version, update.change_log, update.link
-                        ),
-                    );
-                }),
-                Ok(None) => update_ui(&weak, |app| append_log(app, "当前已是最新版本")),
-                Err(err) => update_ui(&weak, move |app| {
-                    append_log(app, &format!("检查更新失败: {err}"))
-                }),
-            }
-        });
-    });
-
-    let weak = app.as_weak();
-    let state_for_download = state;
-    app.on_download_update(move |link| {
-        let weak = weak.clone();
-        let state = state_for_download.clone();
-        state.runtime.spawn(async move {
-            let link = link.to_string();
-            let destination = update_download_path(&link);
-            let result = async {
-                state.http.download_update_upgrader(&destination).await?;
-                launch_upgrader(&destination)?;
-                Ok::<(), anyhow::Error>(())
-            }
-            .await;
-            update_ui(&weak, move |app| match result {
-                Ok(()) => append_log(app, &format!("更新器已准备完成: {}", destination.display())),
-                Err(err) => append_log(app, &format!("下载更新失败: {err}")),
-            });
-        });
-    });
+    let mut monitor = state.monitor.lock().map_err(|e| e.to_string())?;
+    *monitor = Some(handle);
+    Ok(())
 }
 
-fn update_download_path(_link: &str) -> PathBuf {
-    PathBuf::from("downloads").join("upgrader.exe")
-}
-
-fn launch_upgrader(path: &PathBuf) -> Result<()> {
-    #[cfg(target_os = "windows")]
-    {
-        std::process::Command::new("cmd.exe")
-            .arg("/C")
-            .arg("start")
-            .arg(path)
-            .spawn()?;
+#[cfg(feature = "tauri")]
+#[tauri::command]
+async fn stop_monitor(state: tauri::State<'_, SharedState>) -> Result<(), String> {
+    let mut monitor = state.monitor.lock().map_err(|e| e.to_string())?;
+    if let Some(handle) = monitor.take() {
+        handle.cancel.cancel();
+        Ok(())
+    } else {
+        Err("Monitor is not running".to_string())
     }
-    #[cfg(not(target_os = "windows"))]
-    {
-        let _ = path;
+}
+
+#[cfg(feature = "tauri")]
+#[tauri::command]
+async fn get_monitor_status(state: tauri::State<'_, SharedState>) -> Result<bool, String> {
+    let monitor = state.monitor.lock().map_err(|e| e.to_string())?;
+    Ok(monitor.is_some())
+}
+
+#[cfg(feature = "tauri")]
+#[tauri::command]
+async fn get_stats(
+    state: tauri::State<'_, SharedState>,
+    days: i64,
+) -> Result<storage::LiveSessionSummary, String> {
+    state
+        .storage
+        .periodic_summary(days)
+        .map_err(|e| e.to_string())
+}
+
+#[cfg(feature = "tauri")]
+#[tauri::command]
+async fn get_gift_stats(
+    state: tauri::State<'_, SharedState>,
+    days: i64,
+    n: i32,
+) -> Result<Vec<storage::GiftStat>, String> {
+    state.storage.gift_top_n(days, n).map_err(|e| e.to_string())
+}
+
+#[cfg(feature = "tauri")]
+#[tauri::command]
+async fn get_pk_summary(
+    state: tauri::State<'_, SharedState>,
+) -> Result<Option<storage::PkSessionSummary>, String> {
+    let monitor = state.monitor.lock().map_err(|e| e.to_string())?;
+    if let Some(handle) = monitor.as_ref() {
+        let session_id = handle.session_id.lock().map_err(|e| e.to_string())?;
+        if let Some(id) = session_id.as_ref() {
+            let config = AppConfig::load_or_default().map_err(|e| e.to_string())?;
+            return Ok(Some(
+                state
+                    .storage
+                    .session_pk_summary(id, config.room_id)
+                    .map_err(|e| e.to_string())?,
+            ));
+        }
+    }
+    Ok(None)
+}
+
+#[cfg(feature = "tauri")]
+#[tauri::command]
+async fn get_pk_history(
+    state: tauri::State<'_, SharedState>,
+) -> Result<Vec<storage::PkHistoryRecord>, String> {
+    let monitor = state.monitor.lock().map_err(|e| e.to_string())?;
+    if let Some(handle) = monitor.as_ref() {
+        let session_id = handle.session_id.lock().map_err(|e| e.to_string())?;
+        if let Some(id) = session_id.as_ref() {
+            return Ok(state
+                .storage
+                .session_pk_history(id)
+                .map_err(|e| e.to_string())?);
+        }
+    }
+    Ok(Vec::new())
+}
+
+#[cfg(feature = "tauri")]
+#[tauri::command]
+async fn send_danmu(state: tauri::State<'_, SharedState>, message: String) -> Result<(), String> {
+    let room_id = {
+        let room = state.connected_room.lock().map_err(|e| e.to_string())?;
+        match *room {
+            Some(id) => id,
+            None => AppConfig::load_or_default().map_err(|e| e.to_string())?.room_id,
+        }
+    };
+    if room_id == 0 {
+        return Err("未连接直播间".to_string());
+    }
+    let cookie = token::read_cookie_string().map_err(|e| e.to_string())?;
+    state
+        .http
+        .send_danmu(room_id, &message, &cookie)
+        .await
+        .map_err(|e| e.to_string())
+}
+
+#[cfg(feature = "tauri")]
+#[tauri::command]
+async fn query_user_detail(
+    state: tauri::State<'_, SharedState>,
+    uid: String,
+) -> Result<storage::UserDetail, String> {
+    let uid_i64 = uid.parse::<i64>().map_err(|e| e.to_string())?;
+    state
+        .storage
+        .user_detail(uid_i64)
+        .map_err(|e| e.to_string())
+}
+
+#[cfg(feature = "tauri")]
+#[tauri::command]
+async fn send_ai_message(
+    state: tauri::State<'_, SharedState>,
+    prompt: String,
+) -> Result<String, String> {
+    let config = AppConfig::load_or_default().map_err(|e| e.to_string())?;
+    state
+        .http
+        .robot_assistant_reply(&config, &prompt)
+        .await
+        .map_err(|e| e.to_string())
+}
+
+#[cfg(feature = "tauri")]
+#[tauri::command]
+async fn get_anchor_info(
+    state: tauri::State<'_, SharedState>,
+    uid: i64,
+) -> Result<api::AnchorInfo, String> {
+    state.http.anchor_info(uid).await.map_err(|e| e.to_string())
+}
+
+#[cfg(feature = "tauri")]
+#[tauri::command]
+async fn proxy_image(state: tauri::State<'_, SharedState>, url: String) -> Result<String, String> {
+    use base64::{engine::general_purpose::STANDARD, Engine as _};
+    let bytes = state.http.fetch_image(&url).await.map_err(|e| e.to_string())?;
+    let mime = if bytes.starts_with(b"\xff\xd8") {
+        "image/jpeg"
+    } else if bytes.starts_with(b"\x89PNG") {
+        "image/png"
+    } else if bytes.starts_with(b"RIFF") {
+        "image/webp"
+    } else {
+        "image/jpeg"
+    };
+    Ok(format!("data:{};base64,{}", mime, STANDARD.encode(&bytes)))
+}
+
+#[cfg(feature = "tauri")]
+#[tauri::command]
+async fn set_connected_room(
+    state: tauri::State<'_, SharedState>,
+    room_id: Option<i64>,
+) -> Result<(), String> {
+    let mut room = state.connected_room.lock().map_err(|e| e.to_string())?;
+    *room = room_id;
+    match room_id {
+        Some(id) => std::fs::write("token/connected_room", id.to_string()).map_err(|e| e.to_string())?,
+        None => { let _ = std::fs::remove_file("token/connected_room"); }
     }
     Ok(())
 }
 
-async fn poll_login_loop(weak: slint::Weak<MainWindow>, http: api::BiliApi, key: String) {
-    for _ in 0..180 {
-        match http.poll_login(&key).await {
-            Ok(api::LoginPoll::Pending(message)) => update_ui(&weak, move |app| {
-                app.set_user_info(message.into());
-            }),
-            Ok(api::LoginPoll::Success(cookie)) => {
-                let save_result = token::write_cookie(&cookie);
-                update_ui(&weak, move |app| match save_result {
-                    Ok(()) => {
-                        app.set_user_info("登录成功".into());
-                        append_log(app, "token 已保存");
-                    }
-                    Err(err) => append_log(app, &format!("token 保存失败: {err}")),
-                });
-                return;
-            }
-            Ok(api::LoginPoll::Expired(message)) => {
-                update_ui(&weak, move |app| {
-                    app.set_user_info(message.into());
-                    append_log(app, "登录二维码已过期");
-                });
-                return;
-            }
-            Err(err) => update_ui(&weak, move |app| {
-                append_log(app, &format!("登录轮询失败: {err}"))
-            }),
-        }
-        sleep(Duration::from_secs(2)).await;
-    }
-    update_ui(&weak, |app| append_log(app, "登录轮询超时"));
+#[cfg(feature = "tauri")]
+#[tauri::command]
+async fn get_connected_room(
+    state: tauri::State<'_, SharedState>,
+) -> Result<Option<i64>, String> {
+    let room = state.connected_room.lock().map_err(|e| e.to_string())?;
+    Ok(*room)
 }
 
-async fn async_user_info(http: &api::BiliApi, cookie: String) -> Result<String> {
-    let user = http.user_info(&cookie).await?;
-    Ok(user.uname)
+#[cfg(feature = "tauri")]
+#[tauri::command]
+async fn get_monitor_logs(state: tauri::State<'_, SharedState>) -> Result<Vec<String>, String> {
+    let buf = state.monitor_log_buffer.lock().map_err(|e| e.to_string())?;
+    Ok(buf.clone())
 }
 
-fn hydrate_ui(app: &MainWindow, config: &AppConfig) -> Result<()> {
-    app.set_room_id(config.room_id.to_string().into());
-    app.set_danmu_len(config.danmu_len);
-    app.set_entry_msg(config.entry_msg.clone().into());
-    app.set_goodbye_info(config.goodbye_info.clone().into());
-    app.set_pk_notice(config.pk_notice);
-    app.set_welcome_enabled(config.interact_word);
-    app.set_entry_effect(config.entry_effect);
-    app.set_thanks_gift(config.thanks_gift);
-    app.set_thanks_focus(config.thanks_focus);
-    app.set_thanks_share(config.thanks_share);
-    app.set_cron_danmu(config.cron_danmu);
-    app.set_keyword_reply(config.keyword_reply);
-    app.set_draw_by_lot(config.draw_by_lot);
-    app.set_sign_in_enable(config.sign_in_enable);
-    app.set_danmu_filter_enable(config.danmu_filter_enable);
-    app.set_danmu_filter_words_text(join_lines(&config.danmu_filter_words).into());
-    app.set_danmu_filter_repeat_threshold(config.danmu_filter_repeat_threshold);
-    app.set_gift_aliases_text(format_key_value_map(&config.gift_aliases).into());
-    app.set_gift_thanks_templates_text(format_key_value_map(&config.gift_thanks_templates).into());
-    app.set_gift_summary_thanks(config.gift_summary_thanks);
-    app.set_gift_summary_template(config.gift_summary_template.clone().into());
-    app.set_newcomer_danmu_enable(config.newcomer_danmu_enable);
-    app.set_newcomer_danmu_template(config.newcomer_danmu_template.clone().into());
-    app.set_permanent_blacklist_users_text(
-        format_i64_lines(&config.permanent_blacklist_users).into(),
-    );
-    app.set_permanent_blacklist_names_text(join_lines(&config.permanent_blacklist_names).into());
-    app.set_special_nicknames_text(format_key_value_map(&config.special_nicknames).into());
-    app.set_robot_name(config.robot_name.clone().into());
-    app.set_talk_robot_cmd(config.talk_robot_cmd.clone().into());
-    app.set_robot_mode_index(if config.robot_mode == "ChatGPT" { 1 } else { 0 });
-    app.set_chatgpt_token(config.chatgpt.api_token.clone().into());
-    app.set_chatgpt_api_url(config.chatgpt.api_url.clone().into());
-    app.set_chatgpt_prompt(config.chatgpt.prompt.clone().into());
-    app.set_welcome_list_text(join_lines(&config.welcome_danmu).into());
-    app.set_focus_list_text(join_lines(&config.focus_danmu).into());
-    app.set_blacklist_wide_text(join_lines(&config.welcome_blacklist_wide).into());
-    app.set_blacklist_exact_text(join_lines(&config.welcome_blacklist).into());
-    app.set_keyword_reply_text(format_keyword_reply(&config.keyword_reply_list).into());
-    app.set_cron_danmu_text(format_cron_danmu(&config.cron_danmu_list).into());
-    app.set_draw_list_text(join_lines(&config.draw_lots_list).into());
+#[cfg(feature = "tauri")]
+#[tauri::command]
+async fn open_url(app: AppHandle, url: String) -> Result<(), String> {
+    use tauri_plugin_shell::ShellExt;
+    app.shell().open(url, None).map_err(|e| e.to_string())
+}
+
+#[cfg(feature = "tauri")]
+#[tauri::command]
+async fn open_config_dir(app: AppHandle) -> Result<(), String> {
+    use tauri_plugin_shell::ShellExt;
+    let path = std::env::current_dir()
+        .map(|p| p.join("etc"))
+        .unwrap_or_else(|_| std::path::PathBuf::from("etc"));
+    app.shell()
+        .open(path.to_string_lossy().to_string(), None)
+        .map_err(|e| e.to_string())
+}
+
+#[cfg(feature = "tauri")]
+#[tauri::command]
+async fn check_update_cmd(
+    state: tauri::State<'_, SharedState>,
+) -> Result<Option<api::UpdateInfo>, String> {
+    let current = env!("CARGO_PKG_VERSION");
+    state.http.check_update(current).await.map_err(|e| e.to_string())
+}
+
+#[cfg(feature = "tauri")]
+#[tauri::command]
+async fn install_update(app: AppHandle) -> Result<(), String> {
+    use tauri_plugin_updater::UpdaterExt;
+
+    let update = app
+        .updater()
+        .map_err(|e| e.to_string())?
+        .check()
+        .await
+        .map_err(|e| e.to_string())?;
+
+    let Some(update) = update else {
+        return Err("already_latest".to_string());
+    };
+
+    let app_handle = app.clone();
+    let mut downloaded: u64 = 0;
+
+    update
+        .download_and_install(
+            move |chunk, total| {
+                downloaded += chunk as u64;
+                let _ = tauri::Emitter::emit(
+                    &app_handle,
+                    "update-download-progress",
+                    serde_json::json!({ "downloaded": downloaded, "total": total }),
+                );
+            },
+            || {},
+        )
+        .await
+        .map_err(|e| e.to_string())?;
+
     Ok(())
 }
 
-fn reset_session_summary(app: &MainWindow) {
-    app.set_session_danmu_count("0".into());
-    app.set_session_entry_count("0".into());
-    app.set_session_follow_count("0".into());
-    app.set_session_gift_value("0".into());
-    app.set_session_guard_buyer_count("0".into());
-    app.set_session_popularity("0 / 0".into());
-    app.set_session_pk_summary("暂无 PK".into());
+#[cfg(feature = "tauri")]
+async fn try_refresh_cookie_once(http: &api::BiliApi, app: &AppHandle) {
+    let Ok(cookie) = token::read_cookie_string() else { return };
+    let needs_refresh = match http.check_cookie_refresh_needed(&cookie).await {
+        Ok(v) => v,
+        Err(_) => return,
+    };
+    if !needs_refresh {
+        return;
+    }
+    let Some(rt) = token::read_refresh_token() else { return };
+    match http.refresh_cookie(&rt, &cookie).await {
+        Ok((new_cookie, new_rt)) => {
+            let _ = token::write_cookie(&new_cookie);
+            if !new_rt.is_empty() {
+                let _ = token::write_refresh_token(&new_rt);
+            }
+            let _ = tauri::Emitter::emit(app, "cookie-refreshed", serde_json::json!({ "success": true }));
+            println!("[cookie] 自动刷新成功");
+        }
+        Err(e) => {
+            println!("[cookie] 自动刷新失败: {e}");
+        }
+    }
 }
 
-fn apply_session_summary(app: &MainWindow, summary: &storage::LiveSessionSummary) {
-    app.set_session_danmu_count(summary.danmu_count.to_string().into());
-    app.set_session_entry_count(summary.entry_count.to_string().into());
-    app.set_session_follow_count(summary.follow_count.to_string().into());
-    app.set_session_gift_value(summary.gift_value.to_string().into());
-    app.set_session_guard_buyer_count(summary.guard_buyer_count.to_string().into());
-    app.set_session_popularity(
-        format!(
-            "{} / {}",
-            summary.peak_popularity, summary.average_popularity
-        )
-        .into(),
-    );
+#[cfg(feature = "tauri")]
+async fn cookie_refresh_loop(http: api::BiliApi, app: AppHandle) {
+    // 启动后稍等 15 秒，等 App 完全初始化
+    tokio::time::sleep(tokio::time::Duration::from_secs(15)).await;
+    loop {
+        try_refresh_cookie_once(&http, &app).await;
+        tokio::time::sleep(tokio::time::Duration::from_secs(3600)).await;
+    }
 }
 
-fn apply_pk_summary(app: &MainWindow, summary: &storage::PkSessionSummary) {
-    let opponent = summary
-        .current_opponent_room_id
-        .or(summary.last_opponent_room_id)
-        .map(|room_id| room_id.to_string())
-        .unwrap_or_else(|| "-".to_string());
-    app.set_session_pk_summary(
-        format!(
-            "{}场 对手{} 胜{}",
-            summary.battle_count, opponent, summary.win_count
-        )
-        .into(),
-    );
-}
+#[cfg(feature = "tauri")]
+fn main() -> Result<()> {
+    println!("Starting Streamix backend...");
+    ensure_dirs()?;
 
-fn query_user_detail_from_storage(uid_text: &str) -> Result<String> {
-    let uid = uid_text.parse::<i64>()?;
+    println!("Loading configuration...");
     let config = AppConfig::load_or_default()?;
     let storage_path = format!(
         "{}/{}",
         config.db_path.trim_end_matches('/'),
         config.db_name
     );
+
+    println!("Opening storage at {}...", storage_path);
     let storage = storage::Storage::open(&storage_path)?;
-    let detail = storage.user_detail(uid)?;
-    Ok(format_user_detail(&detail))
-}
 
-fn format_user_detail(detail: &storage::UserDetail) -> String {
-    let medal_level = detail
-        .medal_level
-        .map(|level| format!("Lv.{level}"))
-        .unwrap_or_else(|| "-".to_string());
-    let guard_level = detail
-        .guard_level
-        .map(|level| level.to_string())
-        .unwrap_or_else(|| "-".to_string());
-    let wealth_level = detail
-        .wealth_level
-        .map(|level| level.to_string())
-        .unwrap_or_else(|| "-".to_string());
+    let saved_room = std::fs::read_to_string("token/connected_room")
+        .ok()
+        .and_then(|s| s.trim().parse::<i64>().ok());
 
-    format!(
-        "UID: {}\n昵称: {}\n累计弹幕: {}\n最近弹幕: {}\n累计礼物: {} 件 / {} 电池\n最近礼物: {}\n进场次数: {}\n粉丝牌: {} {}\n舰长等级: {}\n财富等级: {}",
-        detail.uid,
-        detail.uname.as_deref().unwrap_or("-"),
-        detail.danmu_count,
-        detail.recent_danmu.as_deref().unwrap_or("-"),
-        detail.gift_count,
-        detail.gift_value,
-        detail.recent_gift.as_deref().unwrap_or("-"),
-        detail.entry_count,
-        detail.medal_name.as_deref().unwrap_or("-"),
-        medal_level,
-        guard_level,
-        wealth_level
-    )
-}
-
-#[allow(clippy::too_many_arguments)]
-fn config_from_ui(
-    room_id: SharedString,
-    danmu_len: i32,
-    entry_msg: SharedString,
-    goodbye_info: SharedString,
-    pk_notice: bool,
-    welcome_enabled: bool,
-    entry_effect: bool,
-    thanks_gift: bool,
-    thanks_focus: bool,
-    thanks_share: bool,
-    cron_danmu: bool,
-    keyword_reply: bool,
-    draw_by_lot: bool,
-    sign_in_enable: bool,
-    danmu_filter_enable: bool,
-    danmu_filter_words_text: SharedString,
-    danmu_filter_repeat_threshold: i32,
-    gift_aliases_text: SharedString,
-    gift_thanks_templates_text: SharedString,
-    gift_summary_thanks: bool,
-    gift_summary_template: SharedString,
-    newcomer_danmu_enable: bool,
-    newcomer_danmu_template: SharedString,
-    permanent_blacklist_users_text: SharedString,
-    permanent_blacklist_names_text: SharedString,
-    special_nicknames_text: SharedString,
-    robot_name: SharedString,
-    talk_robot_cmd: SharedString,
-    robot_mode_index: i32,
-    chatgpt_token: SharedString,
-    chatgpt_api_url: SharedString,
-    chatgpt_prompt: SharedString,
-    welcome_list_text: SharedString,
-    focus_list_text: SharedString,
-    blacklist_wide_text: SharedString,
-    blacklist_exact_text: SharedString,
-    keyword_reply_text: SharedString,
-    cron_danmu_text: SharedString,
-    draw_list_text: SharedString,
-) -> Result<AppConfig> {
-    let mut config = AppConfig::load_or_default()?;
-    config.room_id = room_id.trim().parse()?;
-    config.danmu_len = danmu_len;
-    config.entry_msg = entry_msg.to_string();
-    config.goodbye_info = goodbye_info.to_string();
-    config.pk_notice = pk_notice;
-    config.interact_word = welcome_enabled;
-    config.entry_effect = entry_effect;
-    config.thanks_gift = thanks_gift;
-    config.thanks_focus = thanks_focus;
-    config.thanks_share = thanks_share;
-    config.cron_danmu = cron_danmu;
-    config.keyword_reply = keyword_reply;
-    config.draw_by_lot = draw_by_lot;
-    config.sign_in_enable = sign_in_enable;
-    config.danmu_filter_enable = danmu_filter_enable;
-    config.danmu_filter_words = parse_lines(&danmu_filter_words_text);
-    config.danmu_filter_repeat_threshold = danmu_filter_repeat_threshold.max(2);
-    config.gift_aliases = parse_key_value_map(&gift_aliases_text);
-    config.gift_thanks_templates = parse_key_value_map(&gift_thanks_templates_text);
-    config.gift_summary_thanks = gift_summary_thanks;
-    config.gift_summary_template = gift_summary_template.to_string();
-    config.newcomer_danmu_enable = newcomer_danmu_enable;
-    config.newcomer_danmu_template = newcomer_danmu_template.to_string();
-    config.permanent_blacklist_users = parse_i64_lines(&permanent_blacklist_users_text);
-    config.permanent_blacklist_names = parse_lines(&permanent_blacklist_names_text);
-    config.special_nicknames = parse_key_value_map(&special_nicknames_text);
-    config.robot_name = robot_name.to_string();
-    config.talk_robot_cmd = talk_robot_cmd.to_string();
-    config.robot_mode = if robot_mode_index == 1 {
-        "ChatGPT"
-    } else {
-        "QingYunKe"
-    }
-    .to_string();
-    config.chatgpt.api_token = chatgpt_token.to_string();
-    config.chatgpt.api_url = chatgpt_api_url.to_string();
-    config.chatgpt.prompt = chatgpt_prompt.to_string();
-    config.welcome_danmu = parse_lines(&welcome_list_text);
-    config.focus_danmu = parse_lines(&focus_list_text);
-    config.welcome_blacklist_wide = parse_lines(&blacklist_wide_text);
-    config.welcome_blacklist = parse_lines(&blacklist_exact_text);
-    config.keyword_reply_list = parse_keyword_reply(&keyword_reply_text);
-    config.cron_danmu_list = parse_cron_danmu(&cron_danmu_text);
-    config.draw_lots_list = parse_lines(&draw_list_text);
-    Ok(config)
-}
-
-fn join_lines(items: &[String]) -> String {
-    items.join("\n")
-}
-
-fn format_i64_lines(items: &[i64]) -> String {
-    items
-        .iter()
-        .map(i64::to_string)
-        .collect::<Vec<_>>()
-        .join("\n")
-}
-
-fn parse_lines(value: &str) -> Vec<String> {
-    value
-        .lines()
-        .map(str::trim)
-        .filter(|line| !line.is_empty())
-        .map(str::to_string)
-        .collect()
-}
-
-fn parse_i64_lines(value: &str) -> Vec<i64> {
-    value
-        .lines()
-        .filter_map(|line| line.trim().parse::<i64>().ok())
-        .collect()
-}
-
-fn format_keyword_reply(items: &std::collections::BTreeMap<String, String>) -> String {
-    format_key_value_map(items)
-}
-
-fn format_key_value_map(items: &std::collections::BTreeMap<String, String>) -> String {
-    items
-        .iter()
-        .map(|(keyword, reply)| format!("{keyword}={reply}"))
-        .collect::<Vec<_>>()
-        .join("\n")
-}
-
-fn parse_keyword_reply(value: &str) -> std::collections::BTreeMap<String, String> {
-    parse_key_value_map(value)
-}
-
-fn parse_key_value_map(value: &str) -> std::collections::BTreeMap<String, String> {
-    value
-        .lines()
-        .filter_map(|line| {
-            let (keyword, reply) = line.split_once('=')?;
-            let keyword = keyword.trim();
-            let reply = reply.trim();
-            (!keyword.is_empty() && !reply.is_empty())
-                .then(|| (keyword.to_string(), reply.to_string()))
-        })
-        .collect()
-}
-
-fn format_cron_danmu(items: &[config::CronDanmu]) -> String {
-    items
-        .iter()
-        .map(|item| format!("{}|{}|{}", item.cron, item.random, item.danmu.join(";")))
-        .collect::<Vec<_>>()
-        .join("\n")
-}
-
-fn parse_cron_danmu(value: &str) -> Vec<config::CronDanmu> {
-    value
-        .lines()
-        .filter_map(|line| {
-            let mut parts = line.splitn(3, '|');
-            let cron = parts.next()?.trim();
-            let random = parts.next()?.trim().parse::<bool>().unwrap_or(false);
-            let danmu = parts
-                .next()
-                .map(|items| {
-                    items
-                        .split(';')
-                        .map(str::trim)
-                        .filter(|item| !item.is_empty())
-                        .map(str::to_string)
-                        .collect::<Vec<_>>()
-                })
-                .unwrap_or_default();
-            (!cron.is_empty() && !danmu.is_empty()).then(|| config::CronDanmu {
-                cron: cron.to_string(),
-                random,
-                danmu,
-            })
-        })
-        .collect()
-}
-
-fn append_log(app: &MainWindow, line: &str) {
-    let now = chrono::Local::now().format("%H:%M:%S");
-    let current = app.get_log_text();
-    let next = if current.is_empty() {
-        format!("[{now}] {line}")
-    } else {
-        format!("{current}\n[{now}] {line}")
+    let state = SharedState {
+        runtime: Arc::new(Runtime::new()?),
+        http: api::BiliApi::new()?,
+        monitor: Arc::new(Mutex::new(None)),
+        storage: Arc::new(storage),
+        connected_room: Arc::new(Mutex::new(saved_room)),
+        monitor_log_buffer: Arc::new(Mutex::new(Vec::new())),
     };
-    app.set_log_text(next.into());
-}
 
-fn update_ui<F>(weak: &slint::Weak<MainWindow>, f: F)
-where
-    F: FnOnce(&MainWindow) + Send + 'static,
-{
-    let weak = weak.clone();
-    let _ = slint::invoke_from_event_loop(move || {
-        if let Some(app) = weak.upgrade() {
-            f(&app);
-        }
-    });
-}
+    let http_for_refresh = state.http.clone();
 
-fn app_room_id(weak: &slint::Weak<MainWindow>) -> i64 {
-    weak.upgrade()
-        .and_then(|app| app.get_room_id().parse::<i64>().ok())
-        .unwrap_or(3)
-}
+    println!("Starting Tauri builder...");
+    tauri::Builder::default()
+        .plugin(tauri_plugin_shell::init())
+        .plugin(tauri_plugin_updater::Builder::new().build())
+        .plugin(tauri_plugin_process::init())
+        .manage(state)
+        .setup(move |app| {
+            let handle = app.handle().clone();
+            tauri::async_runtime::spawn(cookie_refresh_loop(http_for_refresh, handle));
+            Ok(())
+        })
+        .invoke_handler(tauri::generate_handler![
+            load_config,
+            save_config,
+            get_user_info,
+            start_login,
+            poll_login,
+            check_room,
+            get_room_by_uid,
+            logout,
+            refresh_cookie,
+            get_system_info,
+            start_monitor,
+            stop_monitor,
+            get_monitor_status,
+            get_stats,
+            get_gift_stats,
+            get_pk_summary,
+            get_pk_history,
+            send_danmu,
+            query_user_detail,
+            send_ai_message,
+            open_url,
+            open_config_dir,
+            check_update_cmd,
+            install_update,
+            proxy_image,
+            get_anchor_info,
+            set_connected_room,
+            get_connected_room,
+            get_monitor_logs
+        ])
+        .run(tauri::generate_context!())
+        .expect("error while running tauri application");
 
-fn ensure_dirs() -> Result<()> {
-    std::fs::create_dir_all("etc")?;
-    std::fs::create_dir_all("token")?;
-    std::fs::create_dir_all("logs")?;
     Ok(())
 }
 
-#[cfg(test)]
-mod tests {
-    #[test]
-    fn parses_key_value_text_for_config_maps() {
-        let parsed = super::parse_key_value_map("辣条 = 小零食\n舰长=大航海");
+#[cfg(not(feature = "tauri"))]
+fn main() -> Result<()> {
+    println!("Please enable 'tauri' feature to run the desktop application.");
+    Ok(())
+}
 
-        assert_eq!(parsed.get("辣条").map(String::as_str), Some("小零食"));
-        assert_eq!(parsed.get("舰长").map(String::as_str), Some("大航海"));
-    }
-
-    #[test]
-    fn parses_i64_lines_for_uid_lists() {
-        assert_eq!(
-            super::parse_i64_lines("42\n 100 \nnot-a-uid"),
-            vec![42, 100]
-        );
-    }
-
-    #[test]
-    fn formats_user_detail_for_ui() {
-        let detail = crate::storage::UserDetail {
-            uid: 42,
-            uname: Some("alice".to_string()),
-            danmu_count: 2,
-            recent_danmu: Some("hello".to_string()),
-            gift_count: 3,
-            gift_value: 300,
-            recent_gift: Some("辣条".to_string()),
-            entry_count: 1,
-            medal_name: Some("舰团牌".to_string()),
-            medal_level: Some(21),
-            guard_level: Some(3),
-            wealth_level: Some(18),
-        };
-
-        let text = super::format_user_detail(&detail);
-
-        assert!(text.contains("UID: 42"));
-        assert!(text.contains("昵称: alice"));
-        assert!(text.contains("粉丝牌: 舰团牌 Lv.21"));
-    }
+fn ensure_dirs() -> Result<()> {
+    let _ = std::fs::create_dir_all("etc");
+    let _ = std::fs::create_dir_all("token");
+    let _ = std::fs::create_dir_all("logs");
+    let _ = std::fs::create_dir_all("db");
+    Ok(())
 }

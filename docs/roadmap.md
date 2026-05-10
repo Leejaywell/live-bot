@@ -1,94 +1,94 @@
-# Roadmap
+# 技术路线图 (Roadmap)
 
-This project is a Bilibili-focused live-room interaction assistant. The next stage prioritizes a reliable event and data loop before adding broader UI, AI, room-management, or multi-platform capabilities.
+本项目是一款专注于 Bilibili 的直播间互动助手。下一阶段的优先任务是建立可靠的事件和数据循环，随后再增加更广泛的 UI、AI、房间管理或多平台功能。
 
-## Current Direction
+## 当前方向
 
-The product is not being planned as a multi-platform live-operations platform in the next stage. It should first become a dependable single-room Bilibili assistant that can observe live events, respond with configured danmu behavior, and persist enough local facts to support session summaries and user lookup.
+在下一阶段，本产品不打算作为一个多平台直播运营平台进行规划。它首先应成为一个可靠的单房间 Bilibili 助手，能够监听直播事件，根据配置的弹幕行为做出响应，并持久化足够的本地事实，以支持场次总结和用户查询。
 
-## Confirmed Decisions
+## 已确认的决策
 
-- The next stage focuses on event and data loop work before UI expansion.
-- A live session is one continuous period from a Bilibili room going live until that room goes offline.
-- App restart, monitor stop, or websocket reconnect does not create a new live session if the room is still live.
-- Interaction records keep both stable normalized fields and the original Bilibili event payload.
-- The protocol crate should expose a wrapper such as `ParsedLiveEvent { event, raw }` so existing rules can keep using normalized `LiveEvent` values.
-- Notification-style live events should be persisted, including unknown commands.
-- Protocol heartbeats, connection logs, and handshake traffic are not interaction records.
-- The first storage shape uses one `interaction_records` table rather than one table per event type.
-- `live_sessions` stores session metadata such as room ID, start/end time, and whether the times were official or observed.
-- The first implementation keeps synchronous SQLite writes through explicit `Storage` entry points.
-- Interaction record write failure is logged but does not stop existing interaction rules.
-- The existing danmu count table remains in parallel until interaction records are proven stable.
+- 下一阶段专注于事件和数据循环工作，暂不进行 UI 扩展。
+- 一个“直播场次 (Live Session)”是指从 Bilibili 房间开播到关播的一个连续周期。
+- 如果房间仍处于开播状态，应用重启、监听停止或 WebSocket 重连不会创建新的直播场次。
+- 互动记录 (Interaction Records) 同时保留稳定的规范化字段和原始的 Bilibili 事件负载 (Payload)。
+- 协议 crate 应暴露一个包装器，例如 `ParsedLiveEvent { event, raw }`，以便现有的规则处理可以继续使用规范化的 `LiveEvent` 值。
+- 通知类型的直播事件应进行持久化，包括未知命令。
+- 协议心跳、连接日志和握手流量不属于互动记录。
+- 第一版存储结构使用一个宽表 `interaction_records`，而不是每个事件类型一个表。
+- `live_sessions` 表存储场次元数据，如房间 ID、开始/结束时间，以及时间是官方提供还是观测到的。
+- 第一版实现通过显式的 `Storage` 入口点保持同步 SQLite 写入。
+- 互动记录写入失败会被记录日志，但不会停止现有的互动规则处理。
+- 现有的弹幕计数表将并行保留，直到互动记录被证明稳定。
 
-## Next Milestone: Event And Data Loop
+## 下一里程碑：事件与数据循环
 
-### Goal
+### 目标
 
-Persist live-room interaction facts in a way that can support session summaries, user detail views, later analysis, and future reprocessing when Bilibili fields change.
+以支持场次总结、用户详情查看、后期分析以及未来在 Bilibili 字段变化时进行重新处理的方式，持久化直播间互动事实。
 
-### Scope
+### 范围
 
-1. Add `ParsedLiveEvent`.
-   - The protocol crate should preserve raw notification JSON alongside the existing normalized event.
-   - Existing rule handling should continue to use `LiveEvent`.
+1. **添加 `ParsedLiveEvent`**
+   - 协议 crate 应在保留现有规范化事件的同时，保存原始通知 JSON。
+   - 现有的规则处理应继续使用 `LiveEvent`。
 
-2. Add live session storage.
-   - Create or resume a live session when a room is observed as live.
-   - End the session when the room is observed as offline.
-   - First version may use observed start time when an official Bilibili start time is unavailable.
+2. **添加直播场次存储**
+   - 当观察到房间开播时，创建或恢复直播场次。
+   - 当观察到房间下播时，结束场次。
+   - 第一版在官方开播时间不可用时，可能使用观察到的开始时间。
 
-3. Add interaction record storage.
-   - Store `session_id`, `room_id`, `event_type`, optional command name, optional user fields, event timestamp, common type-specific fields, and raw JSON.
-   - Persist unknown notification commands as records with raw JSON.
+3. **添加互动记录存储**
+   - 存储 `session_id`、`room_id`、`event_type`、可选的命令名称、可选的用户字段、事件时间戳、通用的类型特定字段以及原始 JSON。
+   - 将未知的通知命令作为带有原始 JSON 的记录进行持久化。
 
-4. Add minimal query coverage.
-   - Danmu count for a live session.
-   - Gift value for a live session.
-   - User cumulative danmu count from interaction records.
-   - Unknown command persistence.
+4. **添加最小查询覆盖**
+   - 直播场次的弹幕计数。
+   - 直播场次的礼物价值。
+   - 基于互动记录的用户累计弹幕计数。
+   - 未知命令的持久化。
 
-5. Wire recording into the monitor loop.
-   - Record events before or alongside rule handling.
-   - Log record failures and continue rule handling.
-   - Keep startup failing if SQLite cannot open.
+5. **将记录功能接入监听循环**
+   - 在规则处理之前或同时记录事件。
+   - 记录写入失败时记入日志并继续规则处理。
+   - 如果 SQLite 无法打开，保持启动失败状态。
 
-### Out Of Scope
+### 超出范围
 
-- Replacing the existing danmu count command with interaction-record aggregation.
-- Full dashboard UI for session summaries.
-- AI user profiles and natural-language SQLite queries.
-- Multi-platform abstractions for Douyin, Huya, Douyu, or other platforms.
-- Recording, screenshots, OBS sources, point-song tools, or plugin systems.
-- Broad room-management operations such as changing title, category, cover, or moderators.
+- 使用互动记录聚合完全替代现有的弹幕计数命令。
+- 用于场次总结的完整仪表盘 UI。
+- AI 用户画像和自然语言 SQLite 查询。
+- 针对抖音、虎牙、斗鱼或其他平台的多平台抽象。
+- 录制、截图、OBS 推流源、点歌工具或插件系统。
+- 广泛的房间管理操作，如修改标题、分区、封面或管理员设置。
 
-## Later Milestones
+## 后续里程碑
 
-### Session And User Views
+### 场次与用户视图
 
-Use interaction records to show a live session summary and user detail lookup. This should come after the write path and query tests are stable.
+使用互动记录显示直播场次总结和用户详情查询。这应在写入路径和查询测试稳定后进行。
 
-### Configuration UI Cleanup
+### 配置界面清理
 
-Replace multiline text editing for repeated config lists with table-style editors, but only after the data loop is stable enough that UI work has a clear model to display.
+将重复配置列表的多行文本编辑替换为表格样式编辑器，但仅在数据循环足够稳定且 UI 工作有清晰的显示模型后进行。
 
-### Advanced Analysis
+### 高级分析
 
-Add AI classification, fan profiles, natural-language queries, and stream advice only after interaction records have enough history to make those features meaningful.
+仅在互动记录拥有足够历史数据使这些功能具有意义后，才添加 AI 分类、粉丝画像、自然语言查询和开播建议。
 
-### Expansion Decisions
+### 扩展决策
 
-Room management, point-song, OBS pages, recording, and multi-platform support are separate product expansions. Each should be planned as its own milestone instead of being mixed into the event data loop.
+房间管理、点歌、OBS 页面、录制和多平台支持是独立的辅助功能扩展。每一个都应作为独立的里程碑进行规划，而不是混入事件数据循环中。
 
-## V2: 智能交互与深度娱乐 (Advanced Interaction & Intelligence)
+## V2: 智能 AI 场控与深度互动 (Advanced AI Agent & Interaction)
 
-当底层数据循环稳定后，我们将引入更高级的交互功能，使机器人从“自动回复工具”进化为“直播间虚拟助手”。
+当底层数据循环稳定后，我们将引入更高级的 AI 场控功能，使机器人从“自动回复工具”进化为“具备感知能力的智能 Agent”。
 
-### 1. 智能 AI 增强
-- **本地 LLM 支持**：集成 Ollama/LocalAI，支持本地运行大模型，保护隐私且零调用成本。
-- **上下文感知交互**：AI 机器人将感知直播间实时状态（如：在线人数波动、当前游戏进度、PK 胜负）进行主动发言。
-- **情感分析系统**：分析弹幕整体情绪，动态调整回复策略。
-- **会后 AI 总结**：每场直播结束后，自动生成“直播高光报告”，总结最活跃用户、最热门话题和情感趋势。
+### 1. 智能 Agent 核心增强
+- **大脑 (LLM)**：支持云端 API 与本地 LLM (Ollama/candle)，实现上下文感知的弹幕回复。
+- **感官 (语音交互)**：集成 ASR (语音识别) 和 TTS (语音合成)，让机器人能听会说。
+- **情感分析**：基于弹幕情绪动态调整 AI 场控的语气和策略。
+- **直播总结**：AI 自动生成场次报告，提取高光时刻和热门话题。
 
 ### 2. 趣味互动娱乐
 - **弹幕互动小游戏**：内置猜谜、文字 RPG 或弹幕抽奖小游戏，提升观众参与度。
@@ -154,9 +154,9 @@ Room management, point-song, OBS pages, recording, and multi-platform support ar
 - **任务规划 (Reasoning & Planning)**：当主播下达复杂指令（如：“帮我准备下场游戏的抽奖，然后切换到战斗场景”）时，Agent 能自动拆解步骤并分步执行。
 - **主动触发逻辑**：不限于被动响应，Agent 可根据直播间热度、弹幕节奏主动向主播提议操作（如：“现在人气很高，要不要来一波抽奖？”）。
 
-## Verification
+## 验证 (Verification)
 
-Required checks for implementation work:
+实施工作所需的检查：
 
 ```bash
 cargo fmt --check
@@ -164,4 +164,4 @@ cargo check --workspace
 cargo test --workspace
 ```
 
-Narrow tests should be added for protocol parsing, storage migrations, interaction record writes, session lifecycle behavior, and the minimal query functions before relying on manual smoke tests.
+在依赖手动冒烟测试之前，应为协议解析、存储迁移、互动记录写入、场次生命周期行为以及最小查询函数添加针对性的测试。

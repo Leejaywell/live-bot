@@ -1,3 +1,4 @@
 fn main() {
-    slint_build::compile("ui/main.slint").expect("failed to compile Slint UI");
+    #[cfg(feature = "tauri")]
+    tauri_build::build();
 }

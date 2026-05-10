@@ -1,18 +1,18 @@
 {
-  "productName": "LiveSpark",
+  "productName": "Streamix",
   "version": "0.1.0",
-  "identifier": "com.livespark.app",
+  "identifier": "com.streamix.app",
   "build": {
     "frontendDist": "src-tauri/dist",
     "devUrl": "http://localhost:5173",
-    "beforeDevCommand": "npm --prefix src-tauri run dev",
-    "beforeBuildCommand": "npm --prefix src-tauri run build"
+    "beforeDevCommand": { "script": "npm run dev", "cwd": "src-tauri" },
+    "beforeBuildCommand": { "script": "npm run build", "cwd": "src-tauri" }
   },
   "app": {
     "macOSPrivateApi": true,
     "windows": [
       {
-        "title": "LiveSpark",
+        "title": "流光",
         "width": 1080,
         "height": 720,
         "resizable": true,
@@ -25,11 +25,25 @@
       "csp": null
     }
   },
+  "plugins": {
+    "updater": {
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDZBQzQ3RUI3NjFFRUVDMkUKUldRdTdPNWh0MzdFYWdUL1JoUmNRS3pSQnBqNHVUd1BONmdMNGpPckhLK2cwejh6UkxuWFE1YUsK",
+      "endpoints": [
+        "https://ghproxy.com/https://github.com/Leejaywell/live-bot/releases/latest/download/latest.json",
+        "https://github.com/Leejaywell/live-bot/releases/latest/download/latest.json"
+      ],
+      "dialog": false
+    }
+  },
   "bundle": {
     "active": true,
     "targets": "all",
     "icon": [
-      "icons/icon.png"
+      "icons/32x32.png",
+      "icons/128x128.png",
+      "icons/128x128@2x.png",
+      "icons/icon.icns",
+      "icons/icon.ico"
     ]
   }
 }

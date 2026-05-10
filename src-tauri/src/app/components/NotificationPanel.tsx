@@ -1,13 +1,24 @@
-import { X, Check, AlertCircle, Info, Gift } from 'lucide-react';
+import { useEffect, useRef } from 'react';
+import { Check, AlertCircle, Info, Gift } from 'lucide-react';
 import { GlassCard } from './GlassCard';
 import { Button } from './Button';
-import { Chip } from './Chip';
 
 interface NotificationPanelProps {
   onClose: () => void;
 }
 
 export function NotificationPanel({ onClose }: NotificationPanelProps) {
+  const panelRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const handleClickOutside = (e: MouseEvent) => {
+      if (panelRef.current && !panelRef.current.contains(e.target as Node)) {
+        onClose();
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, [onClose]);
   const notifications = [
     {
       id: 1,
@@ -71,7 +82,7 @@ export function NotificationPanel({ onClose }: NotificationPanelProps) {
 
   return (
     <div className="fixed inset-0 z-50 flex items-start justify-end pointer-events-none">
-      <div className="pointer-events-auto mt-[60px] mr-4 w-[360px]">
+      <div ref={panelRef} className="pointer-events-auto mt-[60px] mr-4 w-[360px]">
         <GlassCard className="p-4 max-h-[calc(100vh-80px)] flex flex-col">
           <div className="flex items-center justify-between mb-4">
             <div>
@@ -80,48 +91,19 @@ export function NotificationPanel({ onClose }: NotificationPanelProps) {
                 {notifications.filter(n => !n.read).length} 条未读
               </p>
             </div>
-            <div className="flex gap-2">
-              <Button size="sm" variant="ghost" className="text-[11px]">
-                全部已读
-              </Button>
-              <button onClick={onClose} className="text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200">
-                <X className="w-5 h-5" />
-              </button>
-            </div>
+            <Button size="sm" variant="ghost" className="text-[11px]">
+              全部已读
+            </Button>
           </div>
 
-          <div className="flex-1 overflow-y-auto space-y-2 -mx-2 px-2">
-            {notifications.map((notification) => {
-              const Icon = notification.icon;
-              return (
-                <div
-                  key={notification.id}
-                  className={`p-3 rounded-xl transition-all hover:bg-white/40 dark:hover:bg-white/10 ${
-                    !notification.read ? 'bg-white/30 dark:bg-white/5' : ''
-                  }`}
-                >
-                  <div className="flex gap-3">
-                    <div className={`mt-0.5 ${getIconColor(notification.type)}`}>
-                      <Icon className="w-5 h-5" />
-                    </div>
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-start justify-between gap-2 mb-1">
-                        <h3 className="text-[12px] font-semibold">{notification.title}</h3>
-                        {!notification.read && (
-                          <div className="w-2 h-2 rounded-full bg-[var(--primary-color)] flex-shrink-0" />
-                        )}
-                      </div>
-                      <p className="text-[11px] text-gray-600 dark:text-gray-400 mb-1">
-                        {notification.message}
-                      </p>
-                      <span className="text-[10px] text-gray-500 dark:text-gray-500">
-                        {notification.time}
-                      </span>
-                    </div>
-                  </div>
-                </div>
-              );
-            })}
+          <div className="flex-1 flex flex-col items-center justify-center space-y-4 opacity-60">
+            <div className="w-16 h-16 rounded-full bg-gray-100 dark:bg-white/5 flex items-center justify-center">
+              <AlertCircle className="w-8 h-8 text-gray-400" />
+            </div>
+            <div className="text-center">
+              <h3 className="text-[14px] font-semibold text-gray-500">功能待开发</h3>
+              <p className="text-[11px] text-gray-400 mt-1">通知中心功能正在建设中，敬请期待...</p>
+            </div>
           </div>
 
           <div className="pt-3 mt-3 border-t border-white/10">

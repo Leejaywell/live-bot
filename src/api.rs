@@ -1,4 +1,5 @@
 use std::path::Path;
+use std::time::{SystemTime, UNIX_EPOCH};
 
 use anyhow::{Result, anyhow};
 use reqwest::header::{COOKIE, HeaderMap, HeaderValue, USER_AGENT};
@@ -23,26 +24,52 @@ pub struct LoginUrl {
 #[derive(Debug)]
 pub enum LoginPoll {
     Pending(String),
-    Success(token::CookieJar),
+    Success(token::CookieJar, String), // cookie + refresh_token
     Expired(String),
 }
 
 #[derive(Debug, serde::Serialize)]
 pub struct RoomInfo {
     pub room_id: i64,
+    pub short_id: i64,
     pub uid: i64,
     pub live_status: i32,
+    pub live_time: String,
+    pub title: String,
+    pub uname: String,
+    pub area_name: String,
+    pub parent_area_name: String,
+    pub online: i64,
+    pub keyframe: String,
+    pub cover: String,
 }
 
 #[derive(Debug, serde::Serialize)]
 pub struct DanmuInfo {
     pub token: String,
-    pub hosts: Vec<String>,
+    pub hosts: Vec<bilibili_live_protocol::DanmuHost>,
 }
 
 #[derive(Debug, serde::Serialize)]
 pub struct UserInfo {
+    pub uid: i64,
     pub uname: String,
+    pub face: String,
+    pub level: i32,
+    pub vip_status: i32,
+    pub vip_type: i32,
+    pub coins: f64,
+    pub vip_nickname_color: String,
+}
+
+#[derive(Debug, Clone, serde::Serialize)]
+pub struct AnchorInfo {
+    pub uid: i64,
+    pub uname: String,
+    pub face: String,
+    pub follower_num: i64,
+    pub medal_name: String,
+    pub sign: String,
 }
 
 #[derive(Debug, Clone, serde::Serialize)]
@@ -95,10 +122,67 @@ impl BiliApi {
         }
 
         match body.data.code {
-            0 => Ok(LoginPoll::Success(token::collect_set_cookie(&headers))),
+            0 => {
+                let jar = token::collect_set_cookie(&headers);
+                // After success, visit a main page to get more security cookies (like sec_ck)
+                let _ = self.client.get("https://live.bilibili.com/").header(reqwest::header::COOKIE, &jar.cookie_string).send().await;
+                
+                Ok(LoginPoll::Success(
+                    jar,
+                    body.data.refresh_token,
+                ))
+            }
             86038 => Ok(LoginPoll::Expired(body.data.message)),
             _ => Ok(LoginPoll::Pending(body.data.message)),
         }
+    }
+
+    pub async fn check_cookie_refresh_needed(&self, cookie: &str) -> Result<bool> {
+        #[derive(Deserialize)]
+        struct CookieInfoData {
+            #[serde(default)]
+            refresh: bool,
+        }
+
+        let body: ApiResponse<CookieInfoData> = self
+            .client
+            .get("https://passport.bilibili.com/x/passport-login/web/cookie/info")
+            .header(COOKIE, cookie)
+            .send()
+            .await?
+            .error_for_status()?
+            .json()
+            .await?;
+
+        if body.code != 0 {
+            return Err(anyhow!("查询 cookie 状态失败: {}", body.message));
+        }
+        Ok(body.data.refresh)
+    }
+
+    pub async fn refresh_cookie(
+        &self,
+        refresh_token: &str,
+        cookie: &str,
+    ) -> Result<(token::CookieJar, String)> {
+        let csrf = extract_cookie(cookie, "bili_jct").unwrap_or_default();
+        let response = self
+            .client
+            .post("https://passport.bilibili.com/x/passport-login/web/token/refresh")
+            .header(COOKIE, cookie)
+            .form(&[
+                ("csrf", &csrf),
+                ("refresh_token", &refresh_token.to_string()),
+            ])
+            .send()
+            .await?
+            .error_for_status()?;
+        let headers = response.headers().clone();
+        let body: ApiResponse<RefreshTokenData> = response.json().await?;
+        if body.code != 0 {
+            return Err(anyhow!("刷新 cookie 失败: {}", body.message));
+        }
+        Ok((token::collect_set_cookie(&headers), body.data.refresh_token))
     }
 
     pub async fn room_init(&self, room_id: i64) -> Result<RoomInfo> {
@@ -116,17 +200,25 @@ impl BiliApi {
         }
         Ok(RoomInfo {
             room_id: response.data.room_id,
+            short_id: 0,
             uid: response.data.uid,
             live_status: response.data.live_status,
+            live_time: String::new(),
+            title: String::new(),
+            uname: String::new(),
+            area_name: String::new(),
+            parent_area_name: String::new(),
+            online: 0,
+            keyframe: String::new(),
+            cover: String::new(),
         })
     }
 
-    pub async fn danmu_info(&self, room_id: i64, cookie: &str) -> Result<DanmuInfo> {
-        let response: ApiResponse<DanmuInfoData> = self
+    pub async fn room_info(&self, room_id: i64) -> Result<RoomInfo> {
+        let response: ApiResponse<RoomInfoGetData> = self
             .client
-            .get("https://api.live.bilibili.com/xlive/web-room/v1/index/getDanmuInfo")
-            .query(&[("id", room_id), ("type", 0)])
-            .header(COOKIE, cookie)
+            .get("https://api.live.bilibili.com/room/v1/Room/get_info")
+            .query(&[("room_id", room_id)])
             .send()
             .await?
             .error_for_status()?
@@ -135,16 +227,125 @@ impl BiliApi {
         if response.code != 0 {
             return Err(anyhow!(response.message));
         }
-        let hosts = response
-            .data
-            .host_list
-            .into_iter()
-            .map(|host| host.host)
-            .collect();
-        Ok(DanmuInfo {
-            token: response.data.token,
-            hosts,
+        let d = response.data;
+        Ok(RoomInfo {
+            room_id: d.room_id,
+            short_id: d.short_id,
+            uid: d.uid,
+            live_status: d.live_status,
+            live_time: d.live_time,
+            title: d.title,
+            uname: d.uname,
+            area_name: d.area_name,
+            parent_area_name: d.parent_area_name,
+            online: d.online,
+            keyframe: d.keyframe,
+            cover: d.user_cover,
         })
+    }
+
+    pub async fn fetch_buvid(&self) -> Result<String> {
+        #[derive(Deserialize)]
+        struct SpiData {
+            b_3: String,
+        }
+        let response: ApiResponse<SpiData> = self
+            .client
+            .get("https://api.bilibili.com/x/frontend/finger/spi")
+            .send()
+            .await?
+            .error_for_status()?
+            .json()
+            .await?;
+        if response.code != 0 {
+            return Err(anyhow!(response.message));
+        }
+        Ok(response.data.b_3)
+    }
+
+    async fn fetch_wbi_keys(&self, cookie: &str) -> Result<(String, String)> {
+        #[derive(Deserialize)]
+        struct WbiImg { img_url: String, sub_url: String }
+        #[derive(Deserialize)]
+        struct NavData { wbi_img: WbiImg }
+        let response: ApiResponse<NavData> = self
+            .client
+            .get("https://api.bilibili.com/x/web-interface/nav")
+            .header(COOKIE, cookie)
+            .send()
+            .await?
+            .error_for_status()?
+            .json()
+            .await?;
+        let img = &response.data.wbi_img;
+        let img_key = img.img_url
+            .rsplit('/').next().unwrap_or("").trim_end_matches(".png");
+        let sub_key = img.sub_url
+            .rsplit('/').next().unwrap_or("").trim_end_matches(".png");
+        Ok((img_key.to_string(), sub_key.to_string()))
+    }
+
+    fn wbi_sign(params: &str, img_key: &str, sub_key: &str) -> String {
+        const MIXIN_KEY_ENC_TAB: &[usize] = &[
+            46, 47, 18,  2, 53,  8, 23, 32, 15, 50, 10, 31, 58,  3, 45, 35,
+            27, 43,  5, 49, 33,  9, 42, 19, 29, 28, 14, 39, 12, 38, 41, 13,
+            37, 48,  7, 16, 24, 55, 40, 61, 26, 17,  0,  1, 60, 51, 30,  4,
+            22, 25, 54, 21, 56, 59,  6, 63, 57, 62, 11, 36, 20, 34, 44, 52,
+        ];
+        let raw: Vec<char> = format!("{img_key}{sub_key}").chars().collect();
+        let mixin_key: String = MIXIN_KEY_ENC_TAB.iter()
+            .filter_map(|&i| raw.get(i).copied())
+            .take(32)
+            .collect();
+
+        let wts = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_secs();
+
+        let mut parts: Vec<&str> = params.split('&').collect();
+        let wts_str = format!("wts={wts}");
+        parts.push(&wts_str);
+        parts.sort();
+        let sorted = parts.join("&");
+
+        let digest = md5::compute(format!("{sorted}{mixin_key}"));
+        let w_rid = format!("{:x}", digest);
+        format!("{params}&wts={wts}&w_rid={w_rid}")
+    }
+
+    pub async fn danmu_info(&self, room_id: i64, cookie: &str) -> Result<DanmuInfo> {
+        let (img_key, sub_key) = self.fetch_wbi_keys(cookie).await
+            .unwrap_or_default();
+        let base_params = format!("id={room_id}&type=0");
+        let signed = if img_key.is_empty() {
+            base_params
+        } else {
+            Self::wbi_sign(&base_params, &img_key, &sub_key)
+        };
+        let url = format!(
+            "https://api.live.bilibili.com/xlive/web-room/v1/index/getDanmuInfo?{signed}"
+        );
+        let response: ApiResponse<DanmuInfoData> = self
+            .client
+            .get(&url)
+            .header(COOKIE, cookie)
+            .header("Referer", format!("https://live.bilibili.com/{room_id}"))
+            .send()
+            .await?
+            .error_for_status()?
+            .json()
+            .await?;
+        if response.code != 0 {
+            return Err(anyhow!("getDanmuInfo 失败 (code={}): {}", response.code, response.message));
+        }
+        let hosts = response.data.host_list.into_iter()
+            .map(|h| bilibili_live_protocol::DanmuHost {
+                host: h.host,
+                wss_port: h.wss_port,
+            })
+            .collect();
+        Ok(DanmuInfo { token: response.data.token, hosts })
     }
 
     pub async fn user_info(&self, cookie: &str) -> Result<UserInfo> {
@@ -160,9 +361,36 @@ impl BiliApi {
         if response.code != 0 || !response.data.is_login {
             return Err(anyhow!("Bilibili 登录状态无效"));
         }
+        let d = response.data;
         Ok(UserInfo {
-            uname: response.data.uname,
+            uid: d.mid,
+            uname: d.uname,
+            face: d.face,
+            level: d.level_info.current_level,
+            vip_status: d.vip_status,
+            vip_type: d.vip_type,
+            coins: d.money,
+            vip_nickname_color: d.vip.nickname_color,
         })
+    }
+
+    pub async fn room_id_by_uid(&self, uid: i64) -> Result<RoomInfo> {
+        let response: ApiResponse<RoomIdByUidData> = self
+            .client
+            .get("https://api.live.bilibili.com/room/v1/Room/getRoomInfoOld")
+            .query(&[("mid", uid)])
+            .send()
+            .await?
+            .error_for_status()?
+            .json()
+            .await?;
+        if response.code != 0 {
+            return Err(anyhow!("获取用户直播间失败: {}", response.message));
+        }
+        if response.data.room_id == 0 {
+            return Err(anyhow!("该用户没有直播间"));
+        }
+        self.room_info(response.data.room_id).await
     }
 
     pub async fn send_danmu(&self, room_id: i64, msg: &str, cookie: &str) -> Result<()> {
@@ -171,21 +399,20 @@ impl BiliApi {
         }
         let csrf =
             extract_cookie(cookie, "bili_jct").ok_or_else(|| anyhow!("token 中缺少 bili_jct"))?;
-        let form = [
-            ("bubble", "5".to_string()),
-            ("msg", msg.to_string()),
-            ("color", "4546550".to_string()),
-            ("fontsize", "25".to_string()),
-            ("rnd", chrono::Local::now().timestamp().to_string()),
-            ("roomid", room_id.to_string()),
-            ("csrf", csrf.clone()),
-            ("csrf_token", csrf),
-        ];
         let response: SendResponse = self
             .client
             .post("https://api.live.bilibili.com/msg/send")
             .header(COOKIE, cookie)
-            .form(&form)
+            .form(&[
+                ("color", "16777215"),
+                ("fontsize", "25"),
+                ("mode", "1"),
+                ("msg", msg),
+                ("rnd", &chrono::Local::now().timestamp().to_string()),
+                ("roomid", &room_id.to_string()),
+                ("csrf", &csrf),
+                ("csrf_token", &csrf),
+            ])
             .send()
             .await?
             .error_for_status()?
@@ -193,113 +420,160 @@ impl BiliApi {
             .await?;
         if response.code != 0 {
             return Err(anyhow!(
-                response.msg.unwrap_or_else(|| "发送失败".to_string())
+                response.msg.unwrap_or_else(|| "发送弹幕失败".to_string())
             ));
         }
         Ok(())
     }
 
-    pub async fn robot_reply(&self, config: &AppConfig, prompt: &str) -> Result<String> {
-        if config.robot_mode == "ChatGPT" {
-            self.chatgpt_reply(config, prompt).await
-        } else {
-            self.qingyunke_reply(prompt).await
-        }
+    pub async fn robot_reply(&self, config: &AppConfig, provider_id: &str, prompt: &str) -> Result<String> {
+        let provider = config
+            .ai_providers
+            .iter()
+            .find(|p| p.id == provider_id)
+            .ok_or_else(|| anyhow!("未找到活跃的 AI 供应商"))?;
+        
+        let system_prompt = provider.system_prompt.replace("{{name}}", &provider.nickname);
+        self.openai_reply(provider, &system_prompt, prompt).await
+    }
+
+    pub async fn robot_assistant_reply(&self, config: &AppConfig, prompt: &str) -> Result<String> {
+        let provider = config
+            .ai_providers
+            .iter()
+            .find(|p| p.id == config.active_provider_id)
+            .ok_or_else(|| anyhow!("未找到活跃的 AI 供应商"))?;
+        
+        let system_prompt = provider.system_prompt.replace("{{name}}", &provider.nickname);
+        self.openai_reply(provider, &system_prompt, prompt).await
     }
 
     pub async fn check_update(&self, current_version: &str) -> Result<Option<UpdateInfo>> {
         let response: UpdateResponse = self
             .client
-            .get("https://danmuji.neuedu.work/getUpdate")
+            .get("https://api.github.com/repos/Leejaywell/live-bot/releases/latest")
+            .header(USER_AGENT, UA)
             .send()
             .await?
             .error_for_status()?
             .json()
             .await?;
-        if response.version == current_version {
-            return Ok(None);
+        // normalize: strip leading 'v' from both sides for comparison
+        let strip_v = |s: &str| s.trim_start_matches('v').to_string();
+        if strip_v(&response.tag_name) != strip_v(current_version) {
+            Ok(Some(UpdateInfo {
+                version: response.tag_name,
+                link: response.html_url,
+                change_log: response.body,
+            }))
+        } else {
+            Ok(None)
         }
-        Ok(Some(UpdateInfo {
-            version: response.version,
-            link: response.link,
-            change_log: response.change_log,
-        }))
     }
 
-    pub async fn download_update(&self, url: &str, destination: impl AsRef<Path>) -> Result<()> {
-        if url.trim().is_empty() {
-            return Err(anyhow!("没有可下载的更新地址"));
+    pub async fn anchor_info(&self, uid: i64) -> Result<AnchorInfo> {
+        #[derive(Deserialize)]
+        struct AnchorInfoData {
+            info: AnchorBasicInfo,
+            follower_num: i64,
+            #[serde(default)]
+            medal_name: String,
         }
-        let destination = destination.as_ref();
+        #[derive(Deserialize)]
+        struct AnchorBasicInfo {
+            uid: i64,
+            uname: String,
+            face: String,
+        }
+        #[derive(Deserialize)]
+        struct SpaceData {
+            #[serde(default)]
+            sign: String,
+        }
+
+        let resp: ApiResponse<AnchorInfoData> = self
+            .client
+            .get("https://api.live.bilibili.com/live_user/v1/Master/info")
+            .query(&[("uid", uid)])
+            .send()
+            .await?
+            .json()
+            .await?;
+        if resp.code != 0 {
+            return Err(anyhow!(resp.message));
+        }
+
+        let sign = match self
+            .client
+            .get("https://api.bilibili.com/x/space/acc/info")
+            .query(&[("mid", uid)])
+            .send()
+            .await
+        {
+            Ok(r) => r
+                .json::<ApiResponse<SpaceData>>()
+                .await
+                .map(|r| if r.code == 0 { r.data.sign } else { String::new() })
+                .unwrap_or_default(),
+            Err(_) => String::new(),
+        };
+
+        Ok(AnchorInfo {
+            uid: resp.data.info.uid,
+            uname: resp.data.info.uname,
+            face: resp.data.info.face,
+            follower_num: resp.data.follower_num,
+            medal_name: resp.data.medal_name,
+            sign,
+        })
+    }
+
+    pub async fn fetch_image(&self, url: &str) -> Result<Vec<u8>> {
         let bytes = self
             .client
             .get(url)
+            .header("Referer", "https://www.bilibili.com")
+            .header(USER_AGENT, UA)
             .send()
             .await?
-            .error_for_status()?
             .bytes()
             .await?;
-        if let Some(parent) = destination.parent() {
-            std::fs::create_dir_all(parent)?;
-        }
-        std::fs::write(destination, bytes)?;
+        Ok(bytes.to_vec())
+    }
+
+    pub async fn download_update(&self, url: &str, destination: impl AsRef<Path>) -> Result<()> {
+        let response = self.client.get(url).send().await?.error_for_status()?;
+        let content = response.bytes().await?;
+        std::fs::write(destination, content)?;
         Ok(())
     }
 
     pub async fn download_update_upgrader(&self, destination: impl AsRef<Path>) -> Result<()> {
-        let response: UpdateResponse = self
-            .client
-            .get("https://danmuji.neuedu.work/getUpgraderUpdate")
-            .send()
-            .await?
-            .error_for_status()?
-            .json()
-            .await?;
-        self.download_update(&response.link, destination).await
+        let url = "https://github.com/lee/live-bot/releases/download/latest/upgrader";
+        self.download_update(url, destination).await
     }
 
-    async fn qingyunke_reply(&self, prompt: &str) -> Result<String> {
-        let nonce = chrono::Local::now().timestamp_micros().to_string();
-        let response: QingyunkeResponse = self
-            .client
-            .get("http://api.qingyunke.com/api.php")
-            .query(&[
-                ("key", "free".to_string()),
-                ("appid", "0".to_string()),
-                ("msg", prompt.to_string()),
-                ("_", nonce),
-            ])
-            .send()
-            .await?
-            .error_for_status()?
-            .json()
-            .await?;
-        Ok(clean_robot_reply(&response.content))
-    }
-
-    async fn chatgpt_reply(&self, config: &AppConfig, prompt: &str) -> Result<String> {
-        if config.chatgpt.api_token.trim().is_empty() {
-            return Err(anyhow!("ChatGPT APIToken 不能为空"));
-        }
-        let base = if config.chatgpt.api_url.trim().is_empty() {
-            "https://api.openai.com/v1"
+    async fn openai_reply(
+        &self,
+        provider: &crate::config::AiProvider,
+        system_prompt: &str,
+        prompt: &str,
+    ) -> Result<String> {
+        let url = if provider.api_url.ends_with("/chat/completions") {
+            provider.api_url.clone()
         } else {
-            config.chatgpt.api_url.trim().trim_end_matches('/')
-        };
-        let system_prompt = if config.chatgpt.limit {
             format!(
-                "{} 尽可能的在{}个字内回答",
-                config.chatgpt.prompt, config.danmu_len
+                "{}/chat/completions",
+                provider.api_url.trim_end_matches('/')
             )
-        } else {
-            config.chatgpt.prompt.clone()
         };
+
         let request = ChatCompletionRequest {
-            model: config.chatgpt.model.clone(),
+            model: provider.model.clone(),
             messages: vec![
                 ChatMessage {
                     role: "system",
-                    content: system_prompt,
+                    content: system_prompt.to_string(),
                 },
                 ChatMessage {
                     role: "user",
@@ -309,28 +583,27 @@ impl BiliApi {
         };
         let response: ChatCompletionResponse = self
             .client
-            .post(format!("{base}/chat/completions"))
-            .bearer_auth(config.chatgpt.api_token.trim())
+            .post(&url)
+            .header("Authorization", format!("Bearer {}", provider.api_key))
             .json(&request)
             .send()
             .await?
             .error_for_status()?
             .json()
             .await?;
-        let content = response
-            .choices
-            .into_iter()
-            .map(|choice| choice.message.content)
-            .collect::<Vec<_>>()
-            .join("");
-        Ok(clean_robot_reply(&content))
+        Ok(response.choices[0].message.content.clone())
     }
 }
 
 fn extract_cookie(cookie: &str, name: &str) -> Option<String> {
-    cookie.split(';').find_map(|part| {
-        let (key, value) = part.trim().split_once('=')?;
-        (key == name).then(|| value.to_string())
+    cookie.split(';').find_map(|s| {
+        let s = s.trim();
+        let prefix = format!("{}=", name);
+        if s.starts_with(&prefix) {
+            Some(s[prefix.len()..].to_string())
+        } else {
+            None
+        }
     })
 }
 
@@ -352,6 +625,16 @@ struct LoginUrlData {
 struct LoginPollData {
     code: i32,
     message: String,
+    #[serde(default)]
+    refresh_token: String,
+}
+
+#[derive(Debug, Deserialize)]
+struct RefreshTokenData {
+    #[serde(default)]
+    message: String,
+    #[serde(default)]
+    refresh_token: String,
 }
 
 #[derive(Debug, Deserialize)]
@@ -359,6 +642,34 @@ struct RoomInitData {
     room_id: i64,
     uid: i64,
     live_status: i32,
+}
+
+#[derive(Debug, Deserialize)]
+struct RoomInfoGetData {
+    #[serde(default)]
+    uid: i64,
+    #[serde(default)]
+    room_id: i64,
+    #[serde(default)]
+    short_id: i64,
+    #[serde(default)]
+    title: String,
+    #[serde(default)]
+    uname: String,
+    #[serde(default)]
+    live_status: i32,
+    #[serde(default)]
+    live_time: String,
+    #[serde(default)]
+    area_name: String,
+    #[serde(default)]
+    parent_area_name: String,
+    #[serde(default)]
+    online: i64,
+    #[serde(default)]
+    keyframe: String,
+    #[serde(default)]
+    user_cover: String,
 }
 
 #[derive(Debug, Deserialize)]
@@ -370,14 +681,50 @@ struct DanmuInfoData {
 #[derive(Debug, Deserialize)]
 struct DanmuHost {
     host: String,
+    #[serde(default)]
+    wss_port: u16,
+}
+
+#[derive(Debug, Deserialize, Default)]
+struct LevelInfo {
+    #[serde(default)]
+    current_level: i32,
+}
+
+#[derive(Debug, Deserialize, Default)]
+struct VipInfo {
+    #[serde(default)]
+    nickname_color: String,
 }
 
 #[derive(Debug, Deserialize)]
 struct UserInfoData {
-    #[serde(default)]
+    #[serde(rename = "isLogin", default)]
     is_login: bool,
     #[serde(default)]
+    mid: i64,
+    #[serde(default)]
     uname: String,
+    #[serde(default)]
+    face: String,
+    #[serde(default)]
+    money: f64,
+    #[serde(default)]
+    level_info: LevelInfo,
+    #[serde(rename = "vipStatus", default)]
+    vip_status: i32,
+    #[serde(rename = "vipType", default)]
+    vip_type: i32,
+    #[serde(default)]
+    vip: VipInfo,
+}
+
+#[derive(Debug, Deserialize)]
+struct RoomIdByUidData {
+    #[serde(rename = "roomid", default)]
+    room_id: i64,
+    #[serde(rename = "liveStatus", default)]
+    live_status: i32,
 }
 
 #[derive(Debug, Deserialize)]
@@ -385,11 +732,6 @@ struct SendResponse {
     code: i32,
     #[serde(default)]
     msg: Option<String>,
-}
-
-#[derive(Debug, Deserialize)]
-struct QingyunkeResponse {
-    content: String,
 }
 
 #[derive(Debug, serde::Serialize)]
@@ -420,11 +762,11 @@ struct ChatChoiceMessage {
 }
 
 #[derive(Debug, Deserialize)]
-#[serde(rename_all = "camelCase")]
 struct UpdateResponse {
-    version: String,
-    link: String,
-    change_log: String,
+    tag_name: String,
+    html_url: String,
+    #[serde(default)]
+    body: String,
 }
 
 fn clean_robot_reply(content: &str) -> String {

@@ -37,7 +37,6 @@ pub struct GiftStat {
     pub count: i64,
 }
 
-
 #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
 pub struct UserDetail {
     pub uid: i64,
@@ -820,11 +819,16 @@ impl Storage {
             today_key()
         } else {
             let start = Local::now() - chrono::Duration::days(days);
-            format!("{:04}-{:02}-{:02}", start.year(), start.month(), start.day())
+            format!(
+                "{:04}-{:02}-{:02}",
+                start.year(),
+                start.month(),
+                start.day()
+            )
         };
 
         let conn = self.conn.lock().expect("storage mutex poisoned");
-        
+
         let danmu_count = conn.query_row(
             "select count(*) from interaction_records where occurred_at >= ?1 and event_type = 'danmu'",
             params![start_date],
@@ -896,7 +900,12 @@ impl Storage {
             today_key()
         } else {
             let start = Local::now() - chrono::Duration::days(days);
-            format!("{:04}-{:02}-{:02}", start.year(), start.month(), start.day())
+            format!(
+                "{:04}-{:02}-{:02}",
+                start.year(),
+                start.month(),
+                start.day()
+            )
         };
 
         let conn = self.conn.lock().expect("storage mutex poisoned");
@@ -917,7 +926,7 @@ impl Storage {
                 count: row.get(2)?,
             })
         })?;
-        
+
         let mut result = Vec::new();
         for row in rows {
             result.push(row?);
