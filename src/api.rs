@@ -426,26 +426,60 @@ impl BiliApi {
         Ok(())
     }
 
-    pub async fn robot_reply(&self, config: &AppConfig, provider_id: &str, prompt: &str) -> Result<String> {
+    pub async fn robot_reply(
+        &self,
+        config: &AppConfig,
+        provider_id: &str,
+        prompt: &str,
+        uid: i64,
+        uname: &str,
+        memory: &std::sync::Arc<std::sync::Mutex<crate::bot::memory::SessionMemory>>,
+    ) -> Result<String> {
         let provider = config
             .ai_providers
             .iter()
             .find(|p| p.id == provider_id)
             .ok_or_else(|| anyhow!("未找到活跃的 AI 供应商"))?;
-        
+
+        let (history, speaker_hint) = {
+            let mut mem = memory.lock().unwrap();
+            let count = mem.note_speaker(uid, uname);
+            let hint = if count > 1 {
+                format!("（{}第{}次与你对话）", uname, count)
+            } else {
+                format!("（{}首次与你对话）", uname)
+            };
+            (mem.history_pairs(provider_id), hint)
+        };
+
+        let enriched_prompt = format!("{} {}", prompt, speaker_hint);
         let system_prompt = provider.system_prompt.replace("{{name}}", &provider.nickname);
-        self.openai_reply(provider, &system_prompt, prompt).await
+        let reply = self.openai_reply(provider, &system_prompt, &history, &enriched_prompt).await?;
+
+        {
+            let mut mem = memory.lock().unwrap();
+            mem.push_turn(provider_id, prompt.to_string(), reply.clone());
+        }
+
+        Ok(reply)
     }
 
     pub async fn robot_assistant_reply(&self, config: &AppConfig, prompt: &str) -> Result<String> {
+        // 优先找 ai_bots 中第一个启用的 bot
+        if let Some(bot) = config.ai_bots.iter().find(|b| b.enabled) {
+            if let Some(provider) = config.ai_providers.iter().find(|p| p.id == bot.provider_id) {
+                let system_prompt = bot.system_prompt.replace("{{name}}", &bot.nickname);
+                return self.openai_reply(provider, &system_prompt, &[], prompt).await;
+            }
+        }
+        // fallback: 旧版 active_provider_id 路径
         let provider = config
             .ai_providers
             .iter()
             .find(|p| p.id == config.active_provider_id)
             .ok_or_else(|| anyhow!("未找到活跃的 AI 供应商"))?;
-        
         let system_prompt = provider.system_prompt.replace("{{name}}", &provider.nickname);
-        self.openai_reply(provider, &system_prompt, prompt).await
+        self.openai_reply(provider, &system_prompt, &[], prompt).await
     }
 
     pub async fn check_update(&self, current_version: &str) -> Result<Option<UpdateInfo>> {
@@ -553,10 +587,44 @@ impl BiliApi {
         self.download_update(url, destination).await
     }
 
+    /// 低级 chat completions 接口（供 AgentRuntime 使用，支持 tool_calls）
+    pub async fn chat_completions_raw(
+        &self,
+        provider: &crate::config::AiProvider,
+        messages: &[serde_json::Value],
+        tools: Option<&[serde_json::Value]>,
+    ) -> anyhow::Result<serde_json::Value> {
+        let url = if provider.api_url.ends_with("/chat/completions") {
+            provider.api_url.clone()
+        } else {
+            format!("{}/chat/completions", provider.api_url.trim_end_matches('/'))
+        };
+        let mut body = serde_json::json!({
+            "model": provider.model,
+            "messages": messages,
+        });
+        if let Some(tools) = tools {
+            body["tools"] = serde_json::json!(tools);
+            body["tool_choice"] = serde_json::json!("auto");
+        }
+        let response: serde_json::Value = self
+            .client
+            .post(&url)
+            .header("Authorization", format!("Bearer {}", provider.api_key))
+            .json(&body)
+            .send()
+            .await?
+            .error_for_status()?
+            .json()
+            .await?;
+        Ok(response)
+    }
+
     async fn openai_reply(
         &self,
         provider: &crate::config::AiProvider,
         system_prompt: &str,
+        history: &[(String, String)],
         prompt: &str,
     ) -> Result<String> {
         let url = if provider.api_url.ends_with("/chat/completions") {
@@ -568,18 +636,18 @@ impl BiliApi {
             )
         };
 
+        let mut messages = vec![ChatMessage {
+            role: "system".to_string(),
+            content: system_prompt.to_string(),
+        }];
+        for (role, content) in history {
+            messages.push(ChatMessage { role: role.clone(), content: content.clone() });
+        }
+        messages.push(ChatMessage { role: "user".to_string(), content: prompt.to_string() });
+
         let request = ChatCompletionRequest {
             model: provider.model.clone(),
-            messages: vec![
-                ChatMessage {
-                    role: "system",
-                    content: system_prompt.to_string(),
-                },
-                ChatMessage {
-                    role: "user",
-                    content: prompt.to_string(),
-                },
-            ],
+            messages,
         };
         let response: ChatCompletionResponse = self
             .client
@@ -631,8 +699,6 @@ struct LoginPollData {
 
 #[derive(Debug, Deserialize)]
 struct RefreshTokenData {
-    #[serde(default)]
-    message: String,
     #[serde(default)]
     refresh_token: String,
 }
@@ -742,7 +808,7 @@ struct ChatCompletionRequest {
 
 #[derive(Debug, serde::Serialize)]
 struct ChatMessage {
-    role: &'static str,
+    role: String,
     content: String,
 }
 

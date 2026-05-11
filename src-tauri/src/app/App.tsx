@@ -17,6 +17,8 @@ import { Dashboard } from './pages/Dashboard';
 import { Monitor } from './pages/Monitor';
 import { AutoReply } from './pages/AutoReply';
 import { AI } from './pages/AI';
+import { Voice } from './pages/Voice';
+import { Models } from './pages/Models';
 import { Stats } from './pages/Stats';
 import { PK } from './pages/PK';
 import { api, UserInfo, RoomInfo, AnchorInfo } from './lib/api';
@@ -239,7 +241,16 @@ export default function App() {
 
   return (
     <ThemeProvider>
-      <Toaster position="top-center" richColors duration={1500} closeButton offset={72} />
+      <Toaster
+        position="top-center"
+        richColors
+        duration={1500}
+        closeButton
+        offset={72}
+        toastOptions={{
+          style: { width: 'fit-content', maxWidth: 360, fontSize: 12, padding: '8px 12px', minHeight: 36 },
+        }}
+      />
       <LoginContext.Provider value={isLoggedIn}>
       <HashRouter>
         <div 
@@ -305,6 +316,8 @@ export default function App() {
                 <Route path="/monitor" element={<Monitor />} />
                 <Route path="/auto-reply" element={<AutoReply />} />
                 <Route path="/ai" element={<AI />} />
+                <Route path="/voice" element={<Voice />} />
+                <Route path="/models" element={<Models />} />
                 <Route path="/stats" element={<Stats />} />
                 <Route path="/pk" element={<PK />} />
               </Routes>

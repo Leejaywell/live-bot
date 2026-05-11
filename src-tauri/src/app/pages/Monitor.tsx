@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import { GlassCard } from '../components/GlassCard';
 import { Button } from '../components/Button';
 import { Input } from '../components/Input';
@@ -21,6 +21,8 @@ interface LogEntry {
 let _logId = 0;
 
 function parseMonitorLog(text: string): LogEntry | null {
+  if (!text) return null;
+  console.log('[Monitor] Parsing log:', text);
   const time = new Date().toLocaleTimeString();
   const id = _logId++;
 
@@ -47,7 +49,7 @@ function parseMonitorLog(text: string): LogEntry | null {
   // Skip high-frequency popularity heartbeats
   if (text.startsWith('人气 ')) return null;
   // All other messages (system/connection/status)
-  return null;
+  return { id, type: 'system', text, time };
 }
 
 const typeColors: Record<LogType, string> = {
@@ -72,42 +74,89 @@ export function Monitor() {
   const [isMonitoring, setIsMonitoring] = useState(false);
   const [logs, setLogs] = useState<LogEntry[]>([]);
   const logEndRef = useRef<HTMLDivElement>(null);
+  const bufferRef = useRef<LogEntry[]>([]);
   const loggedIn = useLoggedIn();
 
+  // Flush buffered log entries every 200ms for smooth real-time display
+  const flushLogs = useCallback(() => {
+    if (bufferRef.current.length === 0) return;
+    console.log('[Monitor] Flushing logs:', bufferRef.current.length);
+    setLogs(prev => {
+      const next = [...prev, ...bufferRef.current];
+      return next.length > 500 ? next.slice(next.length - 500) : next;
+    });
+    bufferRef.current = [];
+  }, []);
+
   useEffect(() => {
+    console.log('[Monitor] Component mounted');
+    // Add a local log to verify rendering
+    bufferRef.current.push({ id: _logId++, type: 'system', text: '前端监控组件已就绪', time: new Date().toLocaleTimeString() });
+    flushLogs();
+    
     checkMonitorStatus();
+    // ... rest of the logic
 
     // Load buffered history immediately so page shows logs on first open
     api.getMonitorLogs().then(rawLogs => {
-      const entries = rawLogs
+      bufferRef.current = rawLogs
         .map(parseMonitorLog)
         .filter((e): e is LogEntry => e !== null)
         .slice(-200);
-      if (entries.length > 0) setLogs(entries);
+      flushLogs();
     }).catch(console.error);
 
+    // Poll danmaku buffer every 150ms (direct mpsc channel, no Tauri broadcast overhead)
+    const pollTimer = setInterval(async () => {
+      try {
+        const lines = await api.getRecentDanmaku();
+        if (lines.length > 0) {
+          for (const line of lines) {
+            const entry = parseMonitorLog(line);
+            if (entry) bufferRef.current.push(entry);
+          }
+        }
+      } catch {}
+    }, 150);
+
+    // Batch flush to React state every 200ms
+    const flushTimer = setInterval(flushLogs, 200);
+
     let unlistenLog: (() => void) | undefined;
+    let unlistenLive: (() => void) | undefined;
     let unlistenStatus: (() => void) | undefined;
 
     const setup = async () => {
       unlistenLog = await api.onMonitorLog((text) => {
+        console.log('[Monitor] Log received:', text);
         const entry = parseMonitorLog(text);
-        if (entry) setLogs(prev => [...prev, entry].slice(-200));
+        if (entry) bufferRef.current.push(entry);
       });
-      unlistenStatus = await api.onMonitorStatus((status) => {
-        if (status === '已停止') {
-          setIsMonitoring(false);
-          toast.info('停止获取弹幕');
-        } else if (status === '运行中') {
-          setIsMonitoring(true);
+      unlistenLive = await api.onLiveEvent((parsed: any) => {
+        console.log('[Monitor] Event received:', parsed);
+        const event = parsed?.event ?? parsed;
+        const time = new Date().toLocaleTimeString();
+        const type = event?.type || event?.cmd;
+        if (type === 'Danmu' || type === 'DANMU_MSG') {
+          const user = event.user || event.info?.[2]?.[1] || '未知';
+          const text = event.text || event.info?.[1] || '';
+          if (text) {
+            bufferRef.current.push({ id: _logId++, type: 'danmu', text: `弹幕 ${user}: ${text}`, user, content: text, time });
+          }
         }
       });
+      unlistenStatus = await api.onMonitorStatus((status) => {
+        if (status === '已停止') { setIsMonitoring(false); }
+        else if (status === '运行中') { setIsMonitoring(true); }
+      });
     };
-
     setup();
 
     return () => {
+      clearInterval(pollTimer);
+      clearInterval(flushTimer);
       if (unlistenLog) unlistenLog();
+      if (unlistenLive) unlistenLive();
       if (unlistenStatus) unlistenStatus();
     };
   }, []);
@@ -131,11 +180,9 @@ export function Monitor() {
       if (isMonitoring) {
         await api.stopMonitor();
         setIsMonitoring(false);
-        toast.success('已停止获取弹幕');
       } else {
         await api.startMonitor();
         setIsMonitoring(true);
-        toast.success('已开始获取弹幕');
       }
     } catch (err) {
       toast.error(`操作失败: ${err}`);
@@ -148,7 +195,6 @@ export function Monitor() {
     try {
       await api.sendDanmu(message);
       setMessage('');
-      toast.success('弹幕已发送');
     } catch (err) {
       toast.error(`发送失败: ${err}`);
     }

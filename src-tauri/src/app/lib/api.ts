@@ -3,6 +3,8 @@ import { listen } from '@tauri-apps/api/event';
 
 export interface AiProvider {
   Id: string;
+  /** "llm" | "asr" | "tts" */
+  ProviderType: string;
   Name: string;
   Model: string;
   APIUrl: string;
@@ -11,6 +13,16 @@ export interface AiProvider {
   TriggerCommand: string;
   FuzzyMatch: boolean;
   Nickname: string;
+  Enabled: boolean;
+}
+
+/** 机器人：引用一个 LLM，拥有独立昵称、人设和会话记忆 */
+export interface AiBot {
+  Id: string;
+  /** 引用的 LLM provider id */
+  ProviderId: string;
+  Nickname: string;
+  SystemPrompt: string;
   Enabled: boolean;
 }
 
@@ -31,7 +43,11 @@ export interface AppConfig {
   FuzzyMatchCmd: boolean;
   RobotName: string;
   ActiveProviderId: string;
+  ActiveAsrProviderId: string;
+  ActiveTtsProviderId: string;
   AiProviders: AiProvider[];
+  /** 新版机器人列表，各自独立记忆 */
+  AiBots: AiBot[];
   AiReplyToDanmaku: boolean;
   InteractWord: boolean;
   WelcomeUseAt: boolean;
@@ -78,6 +94,23 @@ export interface AppConfig {
   LotteryEnable: boolean;
   LotteryUrl: string;
   AiAssistantPrompt: string;
+  // Voice / TTS / ASR / OBS
+  TtsEnabled: boolean;
+  TtsVoice: string;
+  TtsSpeed: number;
+  TtsPitch: number;
+  ObsEnabled: boolean;
+  ObsHost: string;
+  ObsPort: number;
+  ObsPassword: string;
+  VadEnabled: boolean;
+  AsrUrl: string;
+  AsrEngine: string;
+  AsrLanguage: string;
+  /** 语音交互模式的 AI 系统提示词 */
+  VoiceSystemPrompt: string;
+  /** 语音 AI 性别：女AI / 男AI */
+  VoiceGender: string;
 }
 
 export interface UserInfo {
@@ -204,4 +237,20 @@ export const api = {
   // Cookie auto-refresh
   onCookieRefreshed: (callback: (success: boolean) => void) =>
     listen<{ success: boolean }>('cookie-refreshed', (e) => callback(e.payload.success)),
+
+  // AI message (used by AI page and Voice page)
+  sendAiMessage: (prompt: string) => invoke<string>('send_ai_message', { prompt }),
+
+  // Session summary (emitted on every event)
+  onSessionSummary: (callback: (data: any) => void) =>
+    listen<any>('session-summary', (e) => callback(e.payload)),
+
+  // Voice model status
+  checkVoiceModels: () => invoke<{ vad_model_ok: boolean; asr_local_model_ok: boolean; asr_model_dir: string }>('check_voice_models'),
+  downloadSensevoiceModel: () => invoke<string>('download_sensevoice_model'),
+  onVoiceModelProgress: (callback: (data: { stage: string; pct: number; downloaded_mb?: string; total_mb?: string }) => void) =>
+    listen<{ stage: string; pct: number; downloaded_mb?: string; total_mb?: string }>('voice-model-progress', (e) => callback(e.payload)),
+
+  // Danmaku polling (replaces Tauri event broadcast)
+  getRecentDanmaku: () => invoke<string[]>('get_recent_danmaku'),
 };

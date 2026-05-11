@@ -1,4 +1,6 @@
+pub mod agent;
 pub mod engine;
+pub mod memory;
 pub mod monitor;
 pub mod sender;
 pub mod thanks;

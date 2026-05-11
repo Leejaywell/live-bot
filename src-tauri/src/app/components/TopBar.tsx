@@ -125,6 +125,7 @@ export function TopBar({ onToggleNotifications, sidebarCollapsed, isLoggedIn, us
       if (isMonitoring) {
         await api.stopMonitor();
         setIsMonitoring(false);
+        toast.success('停止获取消息');
       } else {
         await api.startMonitor();
         setIsMonitoring(true);
@@ -141,6 +142,7 @@ export function TopBar({ onToggleNotifications, sidebarCollapsed, isLoggedIn, us
     setLiveDuration(0);
     setOnlineCount(0);
     setIsMonitoring(false);
+    toast.success('已退出直播间');
     onDisconnect();
   };
 
@@ -220,17 +222,34 @@ export function TopBar({ onToggleNotifications, sidebarCollapsed, isLoggedIn, us
                   )}
                 </div>
               </div>
-              <Button size="sm" variant="primary" onClick={handleDisconnect}>
-                <Unplug className="w-3.5 h-3.5 mr-1" />
-                退出房间
-              </Button>
-              <Button size="sm" variant="primary" onClick={handleToggleMonitor}>
-                {isMonitoring ? (
-                  <><Square className="w-3 h-3 mr-1" />停止事件</>
-                ) : (
-                  <><Play className="w-3 h-3 mr-1" />获取事件</>
-                )}
-              </Button>
+              {/* 退出房间：红色警示样式 */}
+              <button
+                onClick={handleDisconnect}
+                className="inline-flex items-center justify-center gap-1.5 h-[28px] px-4 rounded-[14px] text-[12px] font-medium transition-all
+                           bg-red-500/15 border border-red-400/40 text-red-500 dark:text-red-400
+                           hover:bg-red-500/25 hover:border-red-400/60"
+              >
+                <Unplug className="w-3.5 h-3.5" />退出房间
+              </button>
+              {/* 停止/获取事件 */}
+              {isMonitoring ? (
+                <button
+                  onClick={handleToggleMonitor}
+                  className="inline-flex items-center justify-center gap-1.5 h-[28px] px-4 rounded-[14px] text-[12px] font-medium transition-all
+                             bg-red-500/15 border border-red-400/40 text-red-500 dark:text-red-400
+                             hover:bg-red-500/25 hover:border-red-400/60"
+                >
+                  <Square className="w-3 h-3" />停止事件
+                </button>
+              ) : (
+                <button
+                  onClick={handleToggleMonitor}
+                  className="inline-flex items-center justify-center gap-1.5 h-[28px] px-4 rounded-[14px] text-[12px] font-medium text-white transition-all hover:opacity-90"
+                  style={{ background: 'var(--primary-color)' }}
+                >
+                  <Play className="w-3 h-3" />获取弹幕
+                </button>
+              )}
             </>
           ) : isLoggedIn ? (
             <Button size="sm" variant="primary" onClick={onOpenRoomModal}>

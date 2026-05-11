@@ -4,6 +4,8 @@ import {
   Radio,
   MessageSquare,
   Bot,
+  Mic,
+  Cpu,
   BarChart3,
   Swords,
   Settings as SettingsIcon,
@@ -30,6 +32,8 @@ const navItems = [
   { path: '/monitor', label: '弹幕管理', icon: Radio },
   { path: '/auto-reply', label: '自动回复', icon: MessageSquare },
   { path: '/ai', label: 'AI 机器人', icon: Bot },
+  { path: '/voice', label: '语音交互', icon: Mic },
+  { path: '/models', label: '模型服务', icon: Cpu },
   { path: '/stats', label: '数据统计', icon: BarChart3, wip: true },
   { path: '/pk', label: 'PK 与活动', icon: Swords, wip: true },
 ];

@@ -1,6 +1,7 @@
 mod api;
 mod bot;
 mod config;
+mod obs;
 mod storage;
 mod token;
 
@@ -11,7 +12,7 @@ use tokio::runtime::Runtime;
 use tokio_util::sync::CancellationToken;
 
 #[cfg(feature = "tauri")]
-use tauri::AppHandle;
+use tauri::{AppHandle, Emitter};
 
 #[derive(Clone)]
 struct SharedState {
@@ -22,17 +23,22 @@ struct SharedState {
     storage: Arc<storage::Storage>,
     connected_room: Arc<Mutex<Option<i64>>>,
     monitor_log_buffer: Arc<Mutex<Vec<String>>>,
+    /// 预览 TTS（AI页播放按钮）：(router, 当前声音, cancel)
+    #[cfg(feature = "tauri")]
+    preview_tts: Arc<Mutex<Option<(streamix_voice::SpeakerRouter, String, CancellationToken)>>>,
 }
 
 struct MonitorHandle {
     cancel: CancellationToken,
     session_id: Arc<Mutex<Option<String>>>,
+    danmaku_buffer: Arc<Mutex<Vec<String>>>,
 }
 
 #[cfg(feature = "tauri")]
 struct BufferedEmitter {
     handle: AppHandle,
-    buffer: Arc<Mutex<Vec<String>>>,
+    log_buffer: Arc<Mutex<Vec<String>>>,
+    danmaku_buffer: Arc<Mutex<Vec<String>>>,
 }
 
 #[cfg(feature = "tauri")]
@@ -40,10 +46,25 @@ impl bot::EventEmitter for BufferedEmitter {
     fn emit(&self, event: &str, payload: serde_json::Value) -> anyhow::Result<()> {
         if event == "monitor-log" {
             if let Some(text) = payload.as_str() {
-                if let Ok(mut buf) = self.buffer.lock() {
+                if let Ok(mut buf) = self.log_buffer.lock() {
                     buf.push(text.to_string());
                     if buf.len() > 200 {
                         buf.remove(0);
+                    }
+                }
+            }
+        } else if event == "live-event" {
+            // 同时也存入弹幕缓冲区供前端轮询（可选）
+            if let Some(ev_type) = payload.pointer("/event/type").and_then(|v| v.as_str()) {
+                if ev_type == "Danmu" {
+                    if let Some(text) = payload.pointer("/event/text").and_then(|v| v.as_str()) {
+                        let user = payload.pointer("/event/user").and_then(|v| v.as_str()).unwrap_or("未知");
+                        if let Ok(mut buf) = self.danmaku_buffer.lock() {
+                            buf.push(format!("{}: {}", user, text));
+                            if buf.len() > 100 {
+                                buf.remove(0);
+                            }
+                        }
                     }
                 }
             }
@@ -251,11 +272,13 @@ async fn start_monitor(
         }
     }
 
+    let danmaku_buf: Arc<Mutex<Vec<String>>> = Arc::new(Mutex::new(Vec::new()));
     let cancel = CancellationToken::new();
     let session_id = Arc::new(Mutex::new(None));
     let handle = MonitorHandle {
         cancel: cancel.clone(),
         session_id: session_id.clone(),
+        danmaku_buffer: danmaku_buf.clone(),
     };
 
     let room_id = room_id
@@ -272,12 +295,13 @@ async fn start_monitor(
 
     let emitter = BufferedEmitter {
         handle: app.clone(),
-        buffer: state.monitor_log_buffer.clone(),
+        log_buffer: state.monitor_log_buffer.clone(),
+        danmaku_buffer: danmaku_buf.clone(),
     };
 
     tokio::spawn(async move {
         if let Err(e) =
-            crate::bot::monitor::run_monitor_loop(emitter, http, room_id, cancel, session_id)
+            crate::bot::monitor::run_monitor_loop(emitter, http, room_id, cancel, session_id, danmaku_buf)
                 .await
         {
             eprintln!("Monitor error: {}", e);
@@ -474,22 +498,120 @@ async fn get_monitor_logs(state: tauri::State<'_, SharedState>) -> Result<Vec<St
     Ok(buf.clone())
 }
 
+/// 预览 TTS：在 AI 机器人页面播放回复文本。
+/// 按声音懒惰初始化 SpeakerRouter，声音改变时自动重建。
+#[cfg(feature = "tauri")]
+#[tauri::command]
+async fn get_recent_danmaku(
+    state: tauri::State<'_, SharedState>,
+) -> Result<Vec<String>, String> {
+    let monitor = state.monitor.lock().map_err(|e| e.to_string())?;
+    let items = if let Some(handle) = monitor.as_ref() {
+        let mut buf = handle.danmaku_buffer.lock().map_err(|e| e.to_string())?;
+        buf.drain(..).collect()
+    } else {
+        Vec::new()
+    };
+    Ok(items)
+}
+
+#[cfg(feature = "tauri")]
+#[tauri::command]
+async fn speak_text_cmd(
+    state: tauri::State<'_, SharedState>,
+    text: String,
+    voice: String,
+) -> Result<(), String> {
+    use streamix_voice::{SessionConfig, SpeakerRouter};
+
+    // 从 config 解析当前 TTS 引擎
+    let cfg = AppConfig::load_or_default().map_err(|e| e.to_string())?;
+    let engine = resolve_tts_engine_for_preview(&cfg);
+
+    let router = {
+        let mut guard = state.preview_tts.lock().map_err(|e| e.to_string())?;
+        let needs_new = guard.as_ref().map(|(_, v, _)| v != &voice).unwrap_or(true);
+        if needs_new {
+            if let Some((_, _, cancel)) = guard.take() {
+                cancel.cancel();
+            }
+            let cancel = CancellationToken::new();
+            let session_cfg = SessionConfig { tts_voice: voice.clone(), ..Default::default() };
+            let router = SpeakerRouter::spawn_with_audio_and_engine(session_cfg, engine.clone(), cancel.clone());
+            *guard = Some((router.clone(), voice, cancel));
+            router
+        } else {
+            guard.as_ref().unwrap().0.clone()
+        }
+    };
+
+    router.speak_system(text).await.map_err(|e| e.to_string())
+}
+
+/// 预览用 TTS 引擎解析（与 monitor 中的 resolve_tts_engine 逻辑一致）
+fn resolve_tts_engine_for_preview(config: &AppConfig) -> streamix_voice::TtsEngine {
+    let tts_provider = if config.active_tts_provider_id.is_empty() {
+        None
+    } else {
+        config.ai_providers.iter().find(|p| p.provider_type == "tts" && p.id == config.active_tts_provider_id)
+    };
+
+    let Some(provider) = tts_provider else {
+        return streamix_voice::TtsEngine::Edge;
+    };
+
+    let name_lower = provider.name.to_lowercase();
+
+    if name_lower.contains("minimax") {
+        streamix_voice::TtsEngine::MiniMax {
+            api_key: provider.api_key.clone(),
+            voice_id: if provider.model.is_empty() {
+                config.tts_voice.clone()
+            } else {
+                provider.model.clone()
+            },
+        }
+    } else if name_lower.contains("火山") || name_lower.contains("volcengine") || name_lower.contains("volc") {
+        let app_id = if provider.api_key.is_empty() {
+            std::env::var("VOLC_APP_ID").unwrap_or_default()
+        } else {
+            provider.api_key.clone()
+        };
+        let access_key = std::env::var("VOLC_ACCESS_TOKEN").unwrap_or_default();
+        let resource_id = if provider.model.is_empty() {
+            std::env::var("VOLC_RESOURCE_ID").unwrap_or_else(|_| "seed-tts-2.0".to_string())
+        } else {
+            provider.model.clone()
+        };
+        let speaker = if provider.api_url.is_empty() {
+            std::env::var("VOLC_SPEAKER").unwrap_or_else(|_| "zh_female_shuangkuaisisi_moon_bigtts".to_string())
+        } else {
+            provider.api_url.clone()
+        };
+        streamix_voice::TtsEngine::VolcEngine { app_id, access_key, resource_id, speaker }
+    } else if name_lower.contains("azure") {
+        streamix_voice::TtsEngine::Azure {
+            subscription_key: provider.api_key.clone(),
+            region: if provider.model.is_empty() { "eastasia".to_string() } else { provider.model.clone() },
+        }
+    } else {
+        streamix_voice::TtsEngine::Edge
+    }
+}
+
 #[cfg(feature = "tauri")]
 #[tauri::command]
 async fn open_url(app: AppHandle, url: String) -> Result<(), String> {
-    use tauri_plugin_shell::ShellExt;
-    app.shell().open(url, None).map_err(|e| e.to_string())
+    tauri_plugin_opener::open(&app, url, None::<&str>).map_err(|e| e.to_string())
 }
 
 #[cfg(feature = "tauri")]
 #[tauri::command]
 async fn open_config_dir(app: AppHandle) -> Result<(), String> {
-    use tauri_plugin_shell::ShellExt;
     let path = std::env::current_dir()
         .map(|p| p.join("etc"))
         .unwrap_or_else(|_| std::path::PathBuf::from("etc"));
-    app.shell()
-        .open(path.to_string_lossy().to_string(), None)
+    tauri_plugin_opener::open(&app, path.to_string_lossy().to_string(), None::<&str>)
         .map_err(|e| e.to_string())
 }
 
@@ -576,6 +698,105 @@ async fn cookie_refresh_loop(http: api::BiliApi, app: AppHandle) {
 }
 
 #[cfg(feature = "tauri")]
+#[tauri::command]
+fn check_voice_models() -> Result<serde_json::Value, String> {
+    let base = std::env::current_dir()
+        .unwrap_or_default()
+        .join("assets")
+        .join("models");
+
+    let vad_ok = base.join("silero_vad.onnx").exists();
+    let asr_local_dir = base.join("sherpa-onnx-sense-voice-zh-en-ja-ko-yue-int8-2024-07-17");
+    let asr_local_ok = asr_local_dir.join("model.int8.onnx").exists()
+        && asr_local_dir.join("tokens.txt").exists();
+
+    Ok(serde_json::json!({
+        "vad_model_ok": vad_ok,
+        "asr_local_model_ok": asr_local_ok,
+        "asr_model_dir": asr_local_dir.to_string_lossy(),
+    }))
+}
+
+#[cfg(feature = "tauri")]
+#[tauri::command]
+async fn download_sensevoice_model(app: AppHandle) -> Result<String, String> {
+    let base = std::env::current_dir()
+        .unwrap_or_default()
+        .join("assets")
+        .join("models");
+    let target_dir = base.join("sherpa-onnx-sense-voice-zh-en-ja-ko-yue-int8-2024-07-17");
+
+    // 已存在则跳过
+    if target_dir.join("model.int8.onnx").exists() && target_dir.join("tokens.txt").exists() {
+        return Ok("SenseVoice 模型已存在".to_string());
+    }
+
+    let url = "https://ghproxy.com/https://github.com/k2-fsa/sherpa-onnx/releases/download/asr-models/sherpa-onnx-sense-voice-zh-en-ja-ko-yue-int8-2024-07-17.tar.bz2";
+    let tmp = base.join("_sensevoice_dl.tar.bz2");
+
+    let _ = app.emit("voice-model-progress", serde_json::json!({ "stage": "downloading", "pct": 0u32 }));
+
+    // 下载
+    let client = reqwest::Client::builder()
+        .timeout(std::time::Duration::from_secs(600))
+        .build()
+        .map_err(|e| e.to_string())?;
+
+    let mut resp = client.get(url).send().await.map_err(|e| format!("下载失败: {e}"))?;
+    let total = resp.content_length().unwrap_or(0);
+    let mut downloaded: u64 = 0;
+    let _file = std::fs::File::create(&tmp).map_err(|e| e.to_string())?;
+
+    use tokio::io::AsyncWriteExt;
+    let tmp_path = tmp.clone();
+    let app2 = app.clone();
+
+    // 使用同步 IO 写文件，异步收数据
+    let mut tmp_file = tokio::fs::File::from_std(std::fs::File::create(&tmp_path).map_err(|e| e.to_string())?);
+    while let Some(chunk) = resp.chunk().await.map_err(|e| format!("下载中断: {e}"))? {
+        tmp_file.write_all(&chunk).await.map_err(|e| format!("写入失败: {e}"))?;
+        downloaded += chunk.len() as u64;
+        if total > 0 {
+            let pct = ((downloaded as f64 / total as f64) * 100.0) as u32;
+            let _ = app2.emit("voice-model-progress", serde_json::json!({
+                "stage": "downloading",
+                "pct": pct,
+                "downloaded_mb": format!("{:.1}", downloaded as f64 / 1_048_576.0),
+                "total_mb": format!("{:.1}", total as f64 / 1_048_576.0),
+            }));
+        }
+    }
+    drop(tmp_file);
+
+    let _ = app.emit("voice-model-progress", serde_json::json!({ "stage": "extracting", "pct": 100u32 }));
+
+    // 解压
+    std::fs::create_dir_all(&base).map_err(|e| e.to_string())?;
+    let output = std::process::Command::new("tar")
+        .arg("xf")
+        .arg(&tmp)
+        .arg("-C")
+        .arg(&base)
+        .output()
+        .map_err(|e| format!("解压失败: {e}"))?;
+
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        return Err(format!("解压失败: {}", stderr));
+    }
+
+    // 清理临时文件
+    let _ = std::fs::remove_file(&tmp);
+
+    if target_dir.join("model.int8.onnx").exists() {
+        let _ = app.emit("voice-model-progress", serde_json::json!({ "stage": "done", "pct": 100u32 }));
+        Ok("SenseVoice 模型下载完成".to_string())
+    } else {
+        Err("解压后未找到模型文件，请检查目录结构".to_string())
+    }
+}
+
+#[cfg(feature = "tauri")]
 fn main() -> Result<()> {
     println!("Starting Streamix backend...");
     ensure_dirs()?;
@@ -602,6 +823,9 @@ fn main() -> Result<()> {
         storage: Arc::new(storage),
         connected_room: Arc::new(Mutex::new(saved_room)),
         monitor_log_buffer: Arc::new(Mutex::new(Vec::new())),
+        danmaku_buffer: Arc::new(Mutex::new(Vec::new())),
+        #[cfg(feature = "tauri")]
+        preview_tts: Arc::new(Mutex::new(None)),
     };
 
     let http_for_refresh = state.http.clone();
@@ -646,7 +870,11 @@ fn main() -> Result<()> {
             get_anchor_info,
             set_connected_room,
             get_connected_room,
-            get_monitor_logs
+            get_monitor_logs,
+            speak_text_cmd,
+            get_recent_danmaku,
+            check_voice_models,
+            download_sensevoice_model
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

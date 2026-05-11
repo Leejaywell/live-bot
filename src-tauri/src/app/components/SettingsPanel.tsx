@@ -1,4 +1,4 @@
-import { X, FolderOpen, Database, RefreshCw, Copy, Check, Settings2, Plus } from 'lucide-react';
+import { X, FolderOpen, Database, RefreshCw, Copy, Check, Settings2, Plus, Mic } from 'lucide-react';
 import { useState, useEffect } from 'react';
 import { GlassCard } from './GlassCard';
 import { Button } from './Button';
@@ -108,7 +108,40 @@ export function SettingsPanel({ onClose }: SettingsPanelProps) {
                 />
               </div>
 
-              {/* 欢迎模板 */}
+              {/* 语音交互提示词 */}
+              <div className="space-y-2.5">
+                <label className="text-[11px] text-gray-500 flex items-center gap-1.5">
+                  <Mic className="w-3 h-3" />
+                  语音交互设置（连麦模式使用）：
+                </label>
+                
+                <div className="flex items-center gap-2 mb-1.5">
+                  <span className="text-[11px] text-gray-400">AI 性别：</span>
+                  <div className="flex items-center gap-1 p-0.5 rounded-xl bg-black/5 dark:bg-white/8 border border-gray-200 dark:border-white/12">
+                    {(['女AI', '男AI'] as const).map(g => (
+                      <button 
+                        key={g} 
+                        onClick={() => updateField('VoiceGender', g)}
+                        className={`h-[24px] px-3 rounded-lg text-[10px] font-medium transition-all ${
+                          (config?.VoiceGender ?? '女AI') === g
+                            ? 'bg-white dark:bg-white/20 text-[var(--primary-color)] shadow-sm'
+                            : 'text-gray-400 hover:text-gray-600 dark:hover:text-gray-300'
+                        }`}>
+                        {g}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                <textarea
+                  className="w-full h-44 px-3 py-2 rounded-lg bg-white/60 dark:bg-white/10 border border-gray-200 dark:border-white/20 text-[12px] focus:outline-none focus:ring-2 focus:ring-[var(--primary-color)]/50 resize-none leading-relaxed"
+                  value={config?.VoiceSystemPrompt ?? ''}
+                  onChange={e => updateField('VoiceSystemPrompt', e.target.value)}
+                  placeholder="语音交互模式下 AI 的系统提示词..."
+                />
+                <p className="text-[10px] text-gray-400">固定用于语音搭子场景，提示词中可使用 {"{{gender}}"} 占位符</p>
+              </div>
+
               <div className="space-y-1.5">
                 <div className="flex items-center justify-between">
                   <label className="text-[11px] text-gray-500">欢迎模板（随机选一条，支持 {'{user}'}）：</label>

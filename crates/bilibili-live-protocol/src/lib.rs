@@ -45,6 +45,7 @@ impl ConnectConfig {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
+#[serde(tag = "type")]
 pub enum LiveEvent {
     Danmu {
         user_id: i64,
