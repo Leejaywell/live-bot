@@ -54,20 +54,8 @@ impl bot::EventEmitter for BufferedEmitter {
                 }
             }
         } else if event == "live-event" {
-            // 同时也存入弹幕缓冲区供前端轮询（可选）
-            if let Some(ev_type) = payload.pointer("/event/type").and_then(|v| v.as_str()) {
-                if ev_type == "Danmu" {
-                    if let Some(text) = payload.pointer("/event/text").and_then(|v| v.as_str()) {
-                        let user = payload.pointer("/event/user").and_then(|v| v.as_str()).unwrap_or("未知");
-                        if let Ok(mut buf) = self.danmaku_buffer.lock() {
-                            buf.push(format!("{}: {}", user, text));
-                            if buf.len() > 100 {
-                                buf.remove(0);
-                            }
-                        }
-                    }
-                }
-            }
+            // 已在 monitor.rs 中直接写入 danmaku_buffer (带格式前缀)
+            // 这里仅做广播转发
         }
         tauri::Emitter::emit(&self.handle, event, payload)
             .map_err(|e| anyhow::anyhow!(e.to_string()))

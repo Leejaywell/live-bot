@@ -388,9 +388,11 @@ pub async fn run_monitor_loop<E: EventEmitter>(
                 bilibili_live_protocol::run_parsed_client(connect_config, move |parsed| {
                     let event = &parsed.event;
                     let line = event.to_string();
-                    println!("[Monitor] Event received: {}", line);
+                    
+                    // Broadcast event for real-time listeners (and for BufferedEmitter to catch if needed)
+                    let _ = event_app.emit("live-event", json!(parsed));
 
-                    // Push danmaku line to buffer (frontend polls this, no broadcast overhead)
+                    // Push formatted line to buffer for high-frequency polling
                     if let Ok(mut buf) = danmaku_buf_cb.lock() {
                         buf.push(line);
                         if buf.len() > 500 { buf.remove(0); }
