@@ -27,6 +27,7 @@ export interface AiBot {
 }
 
 export interface AppConfig {
+  AutoUpdate: boolean;
   RoomId: number;
   WsServerUrl: string;
   DanmuLen: number;
@@ -199,7 +200,9 @@ export const api = {
   getMonitorLogs: () => invoke<string[]>('get_monitor_logs'),
   onMonitorStatus: (callback: (status: string) => void) => listen<string>('monitor-status', (event) => callback(event.payload)),
   onMonitorLog: (callback: (log: string) => void) => listen<string>('monitor-log', (event) => callback(event.payload)),
+  onMonitorLogs: (callback: (logs: string[]) => void) => listen<string[]>('monitor-logs', (event) => callback(event.payload)),
   onLiveEvent: (callback: (event: any) => void) => listen<any>('live-event', (event) => callback(event.payload)),
+  onLiveEvents: (callback: (events: any[]) => void) => listen<any[]>('live-events', (event) => callback(event.payload)),
   onRoomStatus: (callback: (data: { live_status: number; online: number; live_time: string }) => void) =>
     listen<any>('room-status', (event) => callback(event.payload)),
   onRoomOnline: (callback: (data: { count: number }) => void) =>

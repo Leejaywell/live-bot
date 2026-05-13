@@ -123,32 +123,33 @@ export function Monitor() {
     const flushTimer = setInterval(flushLogs, 200);
 
     let unlistenLog: (() => void) | undefined;
-    let unlistenLive: (() => void) | undefined;
+    let unlistenLogs: (() => void) | undefined;
     let unlistenStatus: (() => void) | undefined;
+    let unlistenLiveBatch: (() => void) | undefined;
 
     const setup = async () => {
-      unlistenLog = await api.onMonitorLog((text) => {
-        console.log('[Monitor] Log received:', text);
-        const entry = parseMonitorLog(text);
-        if (entry) bufferRef.current.push(entry);
-      });
-      unlistenLive = await api.onLiveEvent((parsed: any) => {
-        console.log('[Monitor] Event received:', parsed);
-        const event = parsed?.event ?? parsed;
-        const time = new Date().toLocaleTimeString();
-        const type = event?.type || event?.cmd;
-        if (type === 'Danmu' || type === 'DANMU_MSG') {
-          const user = event.user || event.info?.[2]?.[1] || '未知';
-          const text = event.text || event.info?.[1] || '';
-          if (text) {
-            bufferRef.current.push({ id: _logId++, type: 'danmu', text: `弹幕 ${user}: ${text}`, user, content: text, time });
+      try {
+        unlistenLog = await api.onMonitorLog((text) => {
+          if (!showLogs) return;
+          const entry = parseMonitorLog(text);
+          if (entry) bufferRef.current.push(entry);
+        });
+        unlistenLogs = await api.onMonitorLogs((texts) => {
+          if (!showLogs) return;
+          for (const text of texts) {
+            const entry = parseMonitorLog(text);
+            if (entry) bufferRef.current.push(entry);
           }
-        }
-      });
-      unlistenStatus = await api.onMonitorStatus((status) => {
-        if (status === '已停止') { setIsMonitoring(false); }
-        else if (status === '运行中') { setIsMonitoring(true); }
-      });
+        });
+        unlistenLiveBatch = await api.onLiveEvents((batch) => {
+          // Future-proofing for batched live events
+        });
+        unlistenStatus = await api.onMonitorStatus((status) => {
+          setIsMonitoring(status === '运行中');
+        });
+      } catch (err) {
+        console.error(err);
+      }
     };
     setup();
 
@@ -156,8 +157,9 @@ export function Monitor() {
       clearInterval(pollTimer);
       clearInterval(flushTimer);
       if (unlistenLog) unlistenLog();
-      if (unlistenLive) unlistenLive();
+      if (unlistenLogs) unlistenLogs();
       if (unlistenStatus) unlistenStatus();
+      if (unlistenLiveBatch) unlistenLiveBatch();
     };
   }, []);
 

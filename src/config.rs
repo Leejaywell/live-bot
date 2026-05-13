@@ -9,6 +9,8 @@ const CONFIG_PATH: &str = "etc/bilidanmaku-api.yaml";
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "PascalCase")]
 pub struct AppConfig {
+    #[serde(default = "default_true")]
+    pub auto_update: bool,
     #[serde(default = "default_room_id")]
     pub room_id: i64,
     #[serde(default = "default_ws_url")]
@@ -95,10 +97,6 @@ pub struct AppConfig {
     #[serde(default)]
     pub special_nicknames: BTreeMap<String, String>,
     #[serde(default)]
-    pub newcomer_danmu_enable: bool,
-    #[serde(default = "default_newcomer_danmu_template")]
-    pub newcomer_danmu_template: String,
-    #[serde(default)]
     pub thanks_gift: bool,
     #[serde(default)]
     pub thanks_gift_timeout: i32,
@@ -123,12 +121,6 @@ pub struct AppConfig {
     #[serde(default)]
     pub cron_danmu_list: Vec<CronDanmu>,
     #[serde(default)]
-    pub draw_by_lot: bool,
-    #[serde(default)]
-    pub draw_lots_list: Vec<String>,
-    #[serde(default)]
-    pub sign_in_enable: bool,
-    #[serde(default)]
     pub danmu_cnt_enable: bool,
     #[serde(default)]
     pub blind_box_stat: bool,
@@ -138,10 +130,6 @@ pub struct AppConfig {
     pub db_name: String,
     #[serde(default)]
     pub customize_bullet: bool,
-    #[serde(default)]
-    pub lottery_enable: bool,
-    #[serde(default)]
-    pub lottery_url: String,
     #[serde(default = "default_ai_assistant_prompt")]
     pub ai_assistant_prompt: String,
     /// 是否启用 TTS 语音播报（念弹幕/Bot 回复）
@@ -279,6 +267,7 @@ impl AppConfig {
 impl Default for AppConfig {
     fn default() -> Self {
         Self {
+            auto_update: true,
             room_id: 3,
             ws_server_url: "wss://broadcastlv.chat.bilibili.com:2245/sub".to_string(),
             danmu_len: 20,
@@ -351,8 +340,6 @@ impl Default for AppConfig {
             permanent_blacklist_users: Vec::new(),
             permanent_blacklist_names: Vec::new(),
             special_nicknames: BTreeMap::new(),
-            newcomer_danmu_enable: false,
-            newcomer_danmu_template: default_newcomer_danmu_template(),
             thanks_gift: true,
             thanks_gift_timeout: 3,
             thanks_blind_box_timeout: 6,
@@ -372,20 +359,11 @@ impl Default for AppConfig {
                     "喜欢主播的小伙伴可以动动小手点个关注~".to_string(),
                 ],
             }],
-            draw_by_lot: true,
-            draw_lots_list: vec![
-                "恭喜您抽到吉签，好运常伴，心想事成！".to_string(),
-                "遗憾，下签，请保持警惕。".to_string(),
-                "我是签，抽我抽我".to_string(),
-            ],
-            sign_in_enable: true,
             danmu_cnt_enable: false,
             blind_box_stat: true,
             db_path: "./db".to_string(),
             db_name: "sqliteDataBase.db".to_string(),
             customize_bullet: false,
-            lottery_enable: true,
-            lottery_url: String::new(),
             ai_reply_to_danmaku: false,
             ai_assistant_prompt: default_ai_assistant_prompt(),
             tts_enabled: false,
@@ -407,6 +385,7 @@ impl Default for AppConfig {
 }
 
 fn default_asr_engine() -> String { "funasr".to_string() }
+fn default_true() -> bool { true }
 fn default_asr_language() -> String { "zh".to_string() }
 fn default_tts_speed() -> f32 { 1.0 }
 fn default_provider_type() -> String { "llm".to_string() }
@@ -602,10 +581,6 @@ fn default_time_welcome() -> Vec<TimeWelcome> {
 
 fn default_danmu_filter_repeat_threshold() -> i32 {
     3
-}
-
-fn default_newcomer_danmu_template() -> String {
-    "欢迎新朋友 {user} 首次发言".to_string()
 }
 
 fn default_gift_summary_template() -> String {

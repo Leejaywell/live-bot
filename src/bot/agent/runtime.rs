@@ -13,7 +13,7 @@ use anyhow::Result;
 use serde_json::{Value, json};
 
 use crate::api::BiliApi;
-use crate::config::{AiProvider, AppConfig};
+use crate::config::AiProvider;
 use super::tool::{Tool, ToolCall, ToolDefinition};
 
 const MAX_TOOL_ROUNDS: usize = 3;
@@ -32,24 +32,6 @@ impl AgentRuntime {
     pub fn register(mut self, tool: impl Tool + 'static) -> Self {
         self.tools.push(Arc::new(tool));
         self
-    }
-
-    /// 通过 provider_id 找 provider（旧接口，向后兼容）
-    pub async fn run(
-        &self,
-        http: &BiliApi,
-        config: &AppConfig,
-        provider_id: &str,
-        system_prompt: &str,
-        history: &[(String, String)],
-        user_prompt: &str,
-    ) -> Result<String> {
-        let provider = config
-            .ai_providers
-            .iter()
-            .find(|p| p.id == provider_id)
-            .ok_or_else(|| anyhow::anyhow!("未找到 AI 供应商: {provider_id}"))?;
-        self.run_with_provider(http, provider, system_prompt, history, user_prompt).await
     }
 
     /// 直接传入 provider 引用（新接口，用于 bot 路由）

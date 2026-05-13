@@ -98,7 +98,7 @@ impl SherpaPipeline {
 /// VAD + 可选 ASR 主循环（在 spawn_blocking 线程里运行）
 fn run_loop(
     mut audio_rx: mpsc::UnboundedReceiver<Vec<f32>>,
-    mut vad:      VoiceActivityDetector,
+    vad:          VoiceActivityDetector,
     mut asr:      Option<SherpaAsrBackend>,
     events:       broadcast::Sender<TurnEvent>,
     cancel:       CancellationToken,

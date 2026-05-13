@@ -38,7 +38,7 @@ struct MonitorHandle {
 struct BufferedEmitter {
     handle: AppHandle,
     log_buffer: Arc<Mutex<Vec<String>>>,
-    danmaku_buffer: Arc<Mutex<Vec<String>>>,
+    batch_tx: tokio::sync::mpsc::UnboundedSender<String>,
 }
 
 #[cfg(feature = "tauri")]
@@ -46,17 +46,20 @@ impl bot::EventEmitter for BufferedEmitter {
     fn emit(&self, event: &str, payload: serde_json::Value) -> anyhow::Result<()> {
         if event == "monitor-log" {
             if let Some(text) = payload.as_str() {
+                // Update internal buffer for polling
                 if let Ok(mut buf) = self.log_buffer.lock() {
                     buf.push(text.to_string());
-                    if buf.len() > 200 {
-                        buf.remove(0);
-                    }
+                    if buf.len() > 200 { buf.remove(0); }
                 }
+                // Queue for batched IPC emission
+                let _ = self.batch_tx.send(text.to_string());
+                return Ok(());
             }
         } else if event == "live-event" {
-            // 已在 monitor.rs 中直接写入 danmaku_buffer (带格式前缀)
-            // 这里仅做广播转发
+            // Already handled via live-events batching in monitor.rs
+            return Ok(());
         }
+        
         tauri::Emitter::emit(&self.handle, event, payload)
             .map_err(|e| anyhow::anyhow!(e.to_string()))
     }
@@ -281,10 +284,39 @@ async fn start_monitor(
         buf.clear();
     }
 
+    // Batch Emitter Task for monitor-log
+    let (batch_tx, mut batch_rx) = tokio::sync::mpsc::unbounded_channel::<String>();
+    let batch_app = app.clone();
+    let batch_cancel = cancel.clone();
+    tokio::spawn(async move {
+        let mut buffer = Vec::new();
+        let mut interval = tokio::time::interval(std::time::Duration::from_millis(200));
+        loop {
+            tokio::select! {
+                _ = batch_cancel.cancelled() => break,
+                msg = batch_rx.recv() => {
+                    if let Some(s) = msg {
+                        buffer.push(s);
+                        if buffer.len() >= 20 {
+                            let _ = batch_app.emit("monitor-logs", serde_json::json!(buffer));
+                            buffer.clear();
+                        }
+                    } else { break; }
+                }
+                _ = interval.tick() => {
+                    if !buffer.is_empty() {
+                        let _ = batch_app.emit("monitor-logs", serde_json::json!(buffer));
+                        buffer.clear();
+                    }
+                }
+            }
+        }
+    });
+
     let emitter = BufferedEmitter {
         handle: app.clone(),
         log_buffer: state.monitor_log_buffer.clone(),
-        danmaku_buffer: danmaku_buf.clone(),
+        batch_tx,
     };
 
     tokio::spawn(async move {
@@ -590,16 +622,18 @@ fn resolve_tts_engine_for_preview(config: &AppConfig) -> streamix_voice::TtsEngi
 #[cfg(feature = "tauri")]
 #[tauri::command]
 async fn open_url(app: AppHandle, url: String) -> Result<(), String> {
-    tauri_plugin_opener::open(&app, url, None::<&str>).map_err(|e| e.to_string())
+    use tauri_plugin_opener::OpenerExt;
+    app.opener().open_url(url, None::<&str>).map_err(|e| e.to_string())
 }
 
 #[cfg(feature = "tauri")]
 #[tauri::command]
 async fn open_config_dir(app: AppHandle) -> Result<(), String> {
+    use tauri_plugin_opener::OpenerExt;
     let path = std::env::current_dir()
         .map(|p| p.join("etc"))
         .unwrap_or_else(|_| std::path::PathBuf::from("etc"));
-    tauri_plugin_opener::open(&app, path.to_string_lossy().to_string(), None::<&str>)
+    app.opener().open_path(path.to_string_lossy(), None::<&str>)
         .map_err(|e| e.to_string())
 }
 
@@ -613,8 +647,7 @@ async fn check_update_cmd(
 }
 
 #[cfg(feature = "tauri")]
-#[tauri::command]
-async fn install_update(app: AppHandle) -> Result<(), String> {
+async fn perform_update(app: AppHandle) -> Result<(), String> {
     use tauri_plugin_updater::UpdaterExt;
 
     let update = app
@@ -647,6 +680,56 @@ async fn install_update(app: AppHandle) -> Result<(), String> {
         .map_err(|e| e.to_string())?;
 
     Ok(())
+}
+
+#[cfg(feature = "tauri")]
+#[tauri::command]
+async fn install_update(app: AppHandle) -> Result<(), String> {
+    perform_update(app).await
+}
+
+#[cfg(feature = "tauri")]
+async fn update_check_loop(app: AppHandle) {
+    use tauri_plugin_notification::NotificationExt;
+    use tauri_plugin_updater::UpdaterExt;
+    
+    // Initial delay to let the app start up fully
+    tokio::time::sleep(std::time::Duration::from_secs(20)).await;
+
+    loop {
+        let config = AppConfig::load_or_default().unwrap_or_default();
+        
+        match app.updater() {
+            Ok(u) => {
+                if let Ok(Some(update)) = u.check().await {
+                    if config.auto_update {
+                        println!("[Updater] Found update v{}, starting auto update...", update.version);
+                        let _ = perform_update(app.clone()).await;
+                    } else {
+                        // Check if we notified today
+                        let today = chrono::Local::now().format("%Y-%m-%d").to_string();
+                        let last_notified = std::fs::read_to_string("etc/last_update_notified.txt").unwrap_or_default();
+                        
+                        if last_notified != today {
+                            println!("[Updater] Found update v{}, sending daily notification...", update.version);
+                            let _ = app.notification()
+                                .builder()
+                                .title("Streamix 更新提醒")
+                                .body(format!("发现新版本 v{}，点击前往设置更新", update.version))
+                                .show();
+                            let _ = std::fs::write("etc/last_update_notified.txt", today);
+                        }
+                    }
+                }
+            }
+            Err(e) => {
+                eprintln!("[Updater] Failed to get updater: {}", e);
+            }
+        }
+
+        // Check every 6 hours
+        tokio::time::sleep(std::time::Duration::from_secs(6 * 3600)).await;
+    }
 }
 
 #[cfg(feature = "tauri")]
@@ -811,7 +894,6 @@ fn main() -> Result<()> {
         storage: Arc::new(storage),
         connected_room: Arc::new(Mutex::new(saved_room)),
         monitor_log_buffer: Arc::new(Mutex::new(Vec::new())),
-        danmaku_buffer: Arc::new(Mutex::new(Vec::new())),
         #[cfg(feature = "tauri")]
         preview_tts: Arc::new(Mutex::new(None)),
     };
@@ -822,13 +904,19 @@ fn main() -> Result<()> {
     tauri::Builder::default()
         .plugin(tauri_plugin_shell::init())
         .plugin(tauri_plugin_updater::Builder::new().build())
+        .plugin(tauri_plugin_notification::init())
         .plugin(tauri_plugin_process::init())
         .manage(state)
         .setup(move |app| {
             let handle = app.handle().clone();
             tauri::async_runtime::spawn(cookie_refresh_loop(http_for_refresh, handle));
+
+            let handle_for_update = app.handle().clone();
+            tauri::async_runtime::spawn(update_check_loop(handle_for_update));
+
             Ok(())
         })
+
         .invoke_handler(tauri::generate_handler![
             load_config,
             save_config,

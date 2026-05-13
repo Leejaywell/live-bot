@@ -6,6 +6,8 @@ import { IconButton } from '../components/IconButton';
 import { Chip } from '../components/Chip';
 import { api } from '../lib/api';
 import { toast } from 'sonner';
+import { useConfig } from '../context/ConfigContext';
+import { Toggle } from '../components/Toggle';
 
 interface UpdateResult {
   version: string;
@@ -21,6 +23,7 @@ function formatBytes(bytes: number): string {
 }
 
 export function System() {
+  const { config, updateConfigImmediate } = useConfig();
   const [sysInfo, setSysInfo] = useState<{ version: string; config_path: string; db_path: string } | null>(null);
   const [checking, setChecking] = useState(false);
   const [updateResult, setUpdateResult] = useState<UpdateResult | null | 'up-to-date' | 'error'>(undefined as any);
@@ -102,6 +105,15 @@ export function System() {
           <div className="flex items-center gap-4">
             <label className="w-24 text-[11px] text-gray-500 shrink-0">当前版本</label>
             <span className="font-mono text-[12px]">{currentVersion}</span>
+          </div>
+
+          <div className="flex items-center gap-4">
+            <label className="w-24 text-[11px] text-gray-500 shrink-0">自动更新</label>
+            <Toggle
+              checked={config?.AutoUpdate ?? true}
+              onChange={(checked) => updateConfigImmediate({ AutoUpdate: checked })}
+            />
+            <span className="text-[10px] text-gray-400">发现新版本后自动下载并安装</span>
           </div>
 
           {updateResult === 'up-to-date' && (

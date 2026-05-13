@@ -306,6 +306,27 @@ pub async fn run_monitor_loop<E: EventEmitter>(
         }
     });
 
+    // Stats Update Task (Throttled)
+    let stats_app = sender_app.clone();
+    let stats_cancel = cancel.clone();
+    let stats_storage = storage.clone();
+    let stats_session = current_session_id.clone();
+    let stats_task = tokio::spawn(async move {
+        loop {
+            tokio::select! {
+                _ = stats_cancel.cancelled() => return,
+                _ = tokio::time::sleep(std::time::Duration::from_secs(2)) => {
+                    let session_id = stats_session.lock().unwrap().clone();
+                    if let Some(id) = session_id {
+                        if let Ok(summary) = stats_storage.live_session_summary(&id) {
+                            let _ = stats_app.emit("session-summary", serde_json::json!(summary));
+                        }
+                    }
+                }
+            }
+        }
+    });
+
     // WebSocket Client Task
     let ws_http = http.clone();
     let ws_app = sender_app.clone();
@@ -385,14 +406,45 @@ pub async fn run_monitor_loop<E: EventEmitter>(
                 let event_agent = agent_runtime.clone();
 
                 let danmaku_buf_cb = ws_danmaku.clone();
+
+                // Batched Event Emitter
+                let (batch_tx, mut batch_rx) = tokio::sync::mpsc::unbounded_channel::<serde_json::Value>();
+                let batch_app = event_app.clone();
+                let batch_cancel = ws_cancel.clone();
+                tokio::spawn(async move {
+                    let mut buffer = Vec::new();
+                    let mut interval = tokio::time::interval(std::time::Duration::from_millis(200));
+                    loop {
+                        tokio::select! {
+                            _ = batch_cancel.cancelled() => break,
+                            msg = batch_rx.recv() => {
+                                if let Some(v) = msg {
+                                    buffer.push(v);
+                                    if buffer.len() >= 50 {
+                                        let _ = batch_app.emit("live-events", serde_json::json!(buffer));
+                                        buffer.clear();
+                                    }
+                                } else { break; }
+                            }
+                            _ = interval.tick() => {
+                                if !buffer.is_empty() {
+                                    let _ = batch_app.emit("live-events", serde_json::json!(buffer));
+                                    buffer.clear();
+                                }
+                            }
+                        }
+                    }
+                });
+
                 bilibili_live_protocol::run_parsed_client(connect_config, move |parsed| {
                     let event = &parsed.event;
                     let line = event.to_string();
-                    
-                    // Broadcast event for real-time listeners (and for BufferedEmitter to catch if needed)
-                    let _ = event_app.emit("live-event", json!(parsed));
+
+                    // Queue event for batched emission
+                    let _ = batch_tx.send(serde_json::json!(parsed));
 
                     // Push formatted line to buffer for high-frequency polling
+
                     if let Ok(mut buf) = danmaku_buf_cb.lock() {
                         buf.push(line);
                         if buf.len() > 500 { buf.remove(0); }
@@ -419,12 +471,10 @@ pub async fn run_monitor_loop<E: EventEmitter>(
                         }
                     };
 
-                    // Stats Update
-                    if let Ok(summary) = event_storage.live_session_summary(&session_id_inner) {
-                        let _ = event_app.emit("session-summary", json!(summary));
-                    }
+                    // Stats Update removed from here (moved to background task)
 
                     for message in replies {
+
                         if let Some(ref router) = event_tts_router {
                             let r = router.clone();
                             let m = message.clone();
@@ -539,6 +589,7 @@ pub async fn run_monitor_loop<E: EventEmitter>(
     gift_task.abort();
     timed_task.abort();
     poll_task.abort();
+    stats_task.abort();
     ws_task.abort();
 
     let _ = sender_app.emit("monitor-status", json!("已停止"));
@@ -547,30 +598,6 @@ pub async fn run_monitor_loop<E: EventEmitter>(
 }
 
 /// 监听 VadPipeline 话轮事件，记录日志（无 ASR 时使用）
-#[cfg(all(feature = "playback", feature = "vad"))]
-async fn handle_turn_events<E: crate::bot::EventEmitter + Send + Sync + 'static>(
-    mut events: tokio::sync::broadcast::Receiver<streamix_voice::TurnEvent>,
-    app: Arc<E>,
-    cancel: tokio_util::sync::CancellationToken,
-) {
-    loop {
-        tokio::select! {
-            _ = cancel.cancelled() => break,
-            ev = events.recv() => match ev {
-                Ok(streamix_voice::TurnEvent::SpeechStart) => {
-                    let _ = app.emit("monitor-log", serde_json::json!("[VAD] 检测到主播开始说话"));
-                }
-                Ok(streamix_voice::TurnEvent::TurnEnd) => {
-                    let _ = app.emit("monitor-log", serde_json::json!("[VAD] 话轮结束（未配置 ASR）"));
-                }
-                Ok(streamix_voice::TurnEvent::SpeechEnd { .. }) => {}
-                Err(tokio::sync::broadcast::error::RecvError::Lagged(_)) => continue,
-                Err(_) => break,
-            }
-        }
-    }
-}
-
 /// VAD + ASR 完整循环：
 ///   SpeechStart → 开始积累 PCM
 ///   TurnEnd → 发送积累音频到 WhisperLive → 识别结果注入 AI

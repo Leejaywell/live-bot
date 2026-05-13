@@ -13,10 +13,6 @@ pub struct CookieJar {
     pub cookie_map: BTreeMap<String, String>,
 }
 
-pub fn has_token() -> bool {
-    std::path::Path::new(TOKEN_TXT).exists() && std::path::Path::new(TOKEN_JSON).exists()
-}
-
 pub fn read_cookie_string() -> Result<String> {
     Ok(std::fs::read_to_string(TOKEN_TXT)?)
 }

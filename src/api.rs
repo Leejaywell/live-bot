@@ -1,4 +1,3 @@
-use std::path::Path;
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use anyhow::{Result, anyhow};
@@ -426,44 +425,6 @@ impl BiliApi {
         Ok(())
     }
 
-    pub async fn robot_reply(
-        &self,
-        config: &AppConfig,
-        provider_id: &str,
-        prompt: &str,
-        uid: i64,
-        uname: &str,
-        memory: &std::sync::Arc<std::sync::Mutex<crate::bot::memory::SessionMemory>>,
-    ) -> Result<String> {
-        let provider = config
-            .ai_providers
-            .iter()
-            .find(|p| p.id == provider_id)
-            .ok_or_else(|| anyhow!("未找到活跃的 AI 供应商"))?;
-
-        let (history, speaker_hint) = {
-            let mut mem = memory.lock().unwrap();
-            let count = mem.note_speaker(uid, uname);
-            let hint = if count > 1 {
-                format!("（{}第{}次与你对话）", uname, count)
-            } else {
-                format!("（{}首次与你对话）", uname)
-            };
-            (mem.history_pairs(provider_id), hint)
-        };
-
-        let enriched_prompt = format!("{} {}", prompt, speaker_hint);
-        let system_prompt = provider.system_prompt.replace("{{name}}", &provider.nickname);
-        let reply = self.openai_reply(provider, &system_prompt, &history, &enriched_prompt).await?;
-
-        {
-            let mut mem = memory.lock().unwrap();
-            mem.push_turn(provider_id, prompt.to_string(), reply.clone());
-        }
-
-        Ok(reply)
-    }
-
     pub async fn robot_assistant_reply(&self, config: &AppConfig, prompt: &str) -> Result<String> {
         // 优先找 ai_bots 中第一个启用的 bot
         if let Some(bot) = config.ai_bots.iter().find(|b| b.enabled) {
@@ -573,18 +534,6 @@ impl BiliApi {
             .bytes()
             .await?;
         Ok(bytes.to_vec())
-    }
-
-    pub async fn download_update(&self, url: &str, destination: impl AsRef<Path>) -> Result<()> {
-        let response = self.client.get(url).send().await?.error_for_status()?;
-        let content = response.bytes().await?;
-        std::fs::write(destination, content)?;
-        Ok(())
-    }
-
-    pub async fn download_update_upgrader(&self, destination: impl AsRef<Path>) -> Result<()> {
-        let url = "https://github.com/lee/live-bot/releases/download/latest/upgrader";
-        self.download_update(url, destination).await
     }
 
     /// 低级 chat completions 接口（供 AgentRuntime 使用，支持 tool_calls）
@@ -789,8 +738,6 @@ struct UserInfoData {
 struct RoomIdByUidData {
     #[serde(rename = "roomid", default)]
     room_id: i64,
-    #[serde(rename = "liveStatus", default)]
-    live_status: i32,
 }
 
 #[derive(Debug, Deserialize)]
@@ -833,15 +780,4 @@ struct UpdateResponse {
     html_url: String,
     #[serde(default)]
     body: String,
-}
-
-fn clean_robot_reply(content: &str) -> String {
-    content
-        .replace("菲菲", "花花")
-        .replace("{br}", "\n")
-        .lines()
-        .map(str::trim)
-        .filter(|line| !line.is_empty())
-        .collect::<Vec<_>>()
-        .join("\n")
 }

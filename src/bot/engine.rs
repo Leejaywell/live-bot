@@ -32,12 +32,27 @@ impl BotEngine {
 
         let mut out = Vec::new();
         self.track_danmu(event, storage);
-        out.extend(self.newcomer_notice(event, storage));
         out.extend(self.help(event));
+        out.extend(self.keyword_reply(event));
         out.extend(self.welcome(event));
         out.extend(self.thanks(event));
         out.extend(self.pk_and_activity_notice(event));
         out
+    }
+
+    fn keyword_reply(&self, event: &LiveEvent) -> Vec<String> {
+        if !self.config.keyword_reply {
+            return Vec::new();
+        }
+        let LiveEvent::Danmu { text, .. } = event else {
+            return Vec::new();
+        };
+        self.config
+            .keyword_reply_list
+            .iter()
+            .find(|(k, _)| text.contains(*k))
+            .map(|(_, v)| vec![v.clone()])
+            .unwrap_or_default()
     }
 
     fn is_permanently_blacklisted(&self, event: &LiveEvent) -> bool {
@@ -100,48 +115,7 @@ impl BotEngine {
         }
     }
 
-    fn newcomer_notice(&self, event: &LiveEvent, storage: Option<&Storage>) -> Vec<String> {
-        if !self.config.newcomer_danmu_enable {
-            return Vec::new();
-        }
-        let LiveEvent::Danmu { user_id, user, .. } = event else {
-            return Vec::new();
-        };
-        let Some(storage) = storage else {
-            return Vec::new();
-        };
-        match storage.user_interaction_danmu_count(*user_id) {
-            Ok(1) => vec![
-                self.config
-                    .newcomer_danmu_template
-                    .replace("{user}", &self.display_name(*user_id, user)),
-            ],
-            _ => Vec::new(),
-        }
-    }
 
-    pub fn ai_prompt(&self, event: &LiveEvent) -> Option<String> {
-        if self.is_permanently_blacklisted(event) {
-            return None;
-        }
-        let LiveEvent::Danmu { text, .. } = event else {
-            return None;
-        };
-        let cmd = self.config.talk_robot_cmd.trim();
-        if cmd.is_empty() || text == &self.config.entry_msg {
-            return None;
-        }
-
-        let prompt = if self.config.fuzzy_match_cmd && text.contains(cmd) {
-            text.replace(cmd, "")
-        } else if let Some(rest) = text.strip_prefix(cmd) {
-            rest.to_string()
-        } else {
-            return None;
-        };
-        let prompt = prompt.trim();
-        (!prompt.is_empty()).then(|| prompt.to_string())
-    }
 
     fn help(&self, event: &LiveEvent) -> Vec<String> {
         let LiveEvent::Danmu { text, .. } = event else {

@@ -35,7 +35,6 @@ impl ProviderMemory {
 /// 本场直播单个发言者的档案
 #[derive(Debug, Clone)]
 pub struct SpeakerProfile {
-    pub uname: String,
     /// 与 AI 的互动次数（当场累计）
     pub turn_count: u32,
 }
@@ -69,23 +68,11 @@ impl SessionMemory {
     }
 
     /// 记录发言者互动（AI 回复前调用，返回最新次数用于 prompt）
-    pub fn note_speaker(&mut self, uid: i64, uname: &str) -> u32 {
+    pub fn note_speaker(&mut self, uid: i64, _uname: &str) -> u32 {
         let p = self.speakers.entry(uid).or_insert_with(|| SpeakerProfile {
-            uname: uname.to_string(),
             turn_count: 0,
         });
         p.turn_count += 1;
         p.turn_count
-    }
-
-    /// 返回适合追加到 user prompt 末尾的发言者上下文标注
-    pub fn speaker_hint(&self, uid: i64) -> Option<String> {
-        self.speakers.get(&uid).map(|p| {
-            if p.turn_count > 1 {
-                format!("（{}第{}次与你对话）", p.uname, p.turn_count)
-            } else {
-                format!("（{}首次与你对话）", p.uname)
-            }
-        })
     }
 }
