@@ -7,9 +7,8 @@ import {
   Download,
   CheckCircle2,
   AlertCircle,
-  Globe,
 } from 'lucide-react';
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect } from 'react';
 import { Button } from './Button';
 import { Modal, ModalCloseButton } from './Modal';
 import { api, SystemInfo } from '../lib/api';
@@ -42,14 +41,12 @@ interface ModelCardProps {
   size: string;
   installed: boolean | null;
   dl: DlState;
-  useMirror: boolean;
   onDownload: () => void;
 }
 
-function ModelCard({ title, desc, size, installed, dl, useMirror, onDownload }: ModelCardProps) {
+function ModelCard({ title, desc, size, installed, dl, onDownload }: ModelCardProps) {
   return (
     <div className="bg-white/40 dark:bg-white/5 rounded-xl p-4 border border-gray-200 dark:border-white/10 space-y-3">
-      {/* Header row */}
       <div className="flex items-start justify-between gap-3">
         <div className="flex-1 min-w-0">
           <div className="text-[12px] font-bold text-gray-800 dark:text-gray-100">{title}</div>
@@ -72,10 +69,8 @@ function ModelCard({ title, desc, size, installed, dl, useMirror, onDownload }: 
         </div>
       </div>
 
-      {/* Size */}
       <div className="text-[10px] text-gray-400 font-mono">{size}</div>
 
-      {/* Progress bar */}
       {dl.active && (
         <div className="space-y-1.5">
           <div className="h-1.5 bg-gray-200 dark:bg-white/10 rounded-full overflow-hidden">
@@ -93,7 +88,6 @@ function ModelCard({ title, desc, size, installed, dl, useMirror, onDownload }: 
         </div>
       )}
 
-      {/* Download button */}
       {!installed && (
         <Button
           variant="default"
@@ -105,7 +99,7 @@ function ModelCard({ title, desc, size, installed, dl, useMirror, onDownload }: 
           <Download className="w-3.5 h-3.5" />
           {dl.active
             ? (dl.stage === 'extracting' ? '解压中…' : `下载中 ${dl.pct}%`)
-            : (useMirror ? '镜像下载' : '下载')}
+            : '下载'}
         </Button>
       )}
     </div>
@@ -119,26 +113,22 @@ export function SettingsPanel({ onClose }: SettingsPanelProps) {
 
   // Models tab state
   const [modelStatus, setModelStatus] = useState<{ vad_model_ok: boolean; asr_local_model_ok: boolean } | null>(null);
-  const [ipRegion, setIpRegion] = useState<string>('');
-  const [useMirror, setUseMirror] = useState(false);
   const [vadDl, setVadDl] = useState<DlState>({ active: false, pct: 0 });
   const [asrDl, setAsrDl] = useState<DlState>({ active: false, pct: 0 });
-  const modelsLoaded = useRef(false);
 
   useEffect(() => {
     api.getSystemInfo().then(setSystemInfo).catch(console.error);
   }, []);
 
+  // Check model status when entering models tab
   useEffect(() => {
-    if (tab !== 'models' || modelsLoaded.current) return;
-    modelsLoaded.current = true;
+    if (tab === 'models') {
+      api.checkVoiceModels().then(m => setModelStatus(m)).catch(console.error);
+    }
+  }, [tab]);
 
-    api.checkVoiceModels().then(m => setModelStatus(m)).catch(console.error);
-    api.checkIpRegion().then(region => {
-      setIpRegion(region);
-      if (region === 'CN') setUseMirror(true);
-    }).catch(console.error);
-
+  // Set up download progress listeners for the lifetime of this modal
+  useEffect(() => {
     let vadUnsub: (() => void) | undefined;
     let asrUnsub: (() => void) | undefined;
 
@@ -164,12 +154,12 @@ export function SettingsPanel({ onClose }: SettingsPanelProps) {
       vadUnsub?.();
       asrUnsub?.();
     };
-  }, [tab]);
+  }, []);
 
   const handleDownloadVad = async () => {
-    setVadDl({ active: true, pct: 0 });
+    setVadDl({ active: true, pct: 0, stage: 'downloading' });
     try {
-      await api.downloadVadModel(useMirror);
+      await api.downloadVadModel();
       toast.success('VAD 模型下载完成');
     } catch (e) {
       setVadDl({ active: false, pct: 0 });
@@ -178,9 +168,9 @@ export function SettingsPanel({ onClose }: SettingsPanelProps) {
   };
 
   const handleDownloadAsr = async () => {
-    setAsrDl({ active: true, pct: 0 });
+    setAsrDl({ active: true, pct: 0, stage: 'downloading' });
     try {
-      await api.downloadSensevoiceModel(useMirror);
+      await api.downloadSensevoiceModel();
       toast.success('SenseVoice 模型下载完成');
     } catch (e) {
       setAsrDl({ active: false, pct: 0 });
@@ -188,10 +178,11 @@ export function SettingsPanel({ onClose }: SettingsPanelProps) {
     }
   };
 
-  const handleOpenDir = (filePath: string) => {
+  const handleOpenFolder = (filePath: string) => {
+    // Strip filename to get directory
     const sep = filePath.includes('/') ? '/' : '\\';
-    const dir = filePath.split(sep).slice(0, -1).join(sep);
-    api.openUrl(dir).catch(err => toast.error(`打开失败: ${err}`));
+    const dir = filePath.split(sep).slice(0, -1).join(sep) || filePath;
+    api.openFolder(dir).catch(err => toast.error(`打开失败: ${err}`));
   };
 
   const handleCheckUpdate = async () => {
@@ -216,7 +207,7 @@ export function SettingsPanel({ onClose }: SettingsPanelProps) {
     p.split('/').pop() || p.split('\\').pop() || p;
 
   return (
-    <Modal open={true} onClose={onClose} className="w-full max-w-md max-h-[80vh] overflow-hidden flex flex-col" zIndex={50}>
+    <Modal open={true} onClose={onClose} className="w-[540px] max-h-[80vh] overflow-hidden flex flex-col" zIndex={50}>
       {/* Header */}
       <div className="flex items-center justify-between px-5 py-4 border-b border-white/10 shrink-0">
         <h2 className="text-[15px] font-semibold">设置</h2>
@@ -259,7 +250,7 @@ export function SettingsPanel({ onClose }: SettingsPanelProps) {
                   </code>
                   {systemInfo && (
                     <button
-                      onClick={() => handleOpenDir(systemInfo.config_path)}
+                      onClick={() => handleOpenFolder(systemInfo.config_path)}
                       title="打开所在文件夹"
                       className="flex-shrink-0 w-7 h-7 rounded-lg hover:bg-white/50 dark:hover:bg-white/10 flex items-center justify-center transition-colors"
                     >
@@ -283,7 +274,7 @@ export function SettingsPanel({ onClose }: SettingsPanelProps) {
                   </code>
                   {systemInfo && (
                     <button
-                      onClick={() => handleOpenDir(systemInfo.db_path)}
+                      onClick={() => handleOpenFolder(systemInfo.db_path)}
                       title="打开所在文件夹"
                       className="flex-shrink-0 w-7 h-7 rounded-lg hover:bg-white/50 dark:hover:bg-white/10 flex items-center justify-center transition-colors"
                     >
@@ -294,7 +285,7 @@ export function SettingsPanel({ onClose }: SettingsPanelProps) {
               </div>
             </div>
 
-            {/* 系统更新 */}
+            {/* 检查更新 */}
             <div>
               <div className="flex items-center gap-2 mb-3">
                 <RefreshCw className="w-4 h-4 text-[var(--primary-color)]" />
@@ -322,79 +313,31 @@ export function SettingsPanel({ onClose }: SettingsPanelProps) {
 
         {tab === 'models' && (
           <div className="space-y-4">
-            {/* Header */}
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-2">
-                <Cpu className="w-4 h-4 text-[var(--primary-color)]" />
-                <h3 className="text-[13px] font-semibold">本地模型</h3>
-              </div>
-              {/* IP region + mirror toggle */}
-              <div className="flex items-center gap-2">
-                {ipRegion && (
-                  <div className="flex items-center gap-1 text-[10px] text-gray-400">
-                    <Globe className="w-3 h-3" />
-                    {ipRegion}
-                  </div>
-                )}
-                <div className="flex rounded-lg overflow-hidden border border-gray-200 dark:border-white/10 text-[10px] font-semibold">
-                  <button
-                    onClick={() => setUseMirror(false)}
-                    className={cn(
-                      'px-2.5 py-1 transition-colors',
-                      !useMirror
-                        ? 'bg-[var(--primary-color)] text-white'
-                        : 'text-gray-500 hover:text-gray-700 dark:hover:text-gray-300'
-                    )}
-                  >
-                    直连
-                  </button>
-                  <button
-                    onClick={() => setUseMirror(true)}
-                    className={cn(
-                      'px-2.5 py-1 transition-colors',
-                      useMirror
-                        ? 'bg-[var(--primary-color)] text-white'
-                        : 'text-gray-500 hover:text-gray-700 dark:hover:text-gray-300'
-                    )}
-                  >
-                    镜像
-                  </button>
-                </div>
-              </div>
+            <div className="flex items-center gap-2">
+              <Cpu className="w-4 h-4 text-[var(--primary-color)]" />
+              <h3 className="text-[13px] font-semibold">本地模型</h3>
             </div>
 
-            {/* China mirror banner */}
-            {ipRegion === 'CN' && (
-              <div className="flex items-start gap-2 p-3 rounded-lg bg-amber-500/8 border border-amber-500/20 text-[10px] text-amber-600 dark:text-amber-400">
-                <Globe className="w-3.5 h-3.5 mt-0.5 shrink-0" />
-                <span>检测到中国 IP，已自动切换为镜像下载（GitHub ghproxy）</span>
-              </div>
-            )}
-
-            {/* VAD model */}
             <ModelCard
               title="VAD · 语音活动检测"
-              desc="实时检测说话的起止时间，用于语音交互的端点判断。由 Silero 提供。"
-              size="silero_vad.onnx · ~1.8 MB · GitHub"
+              desc="实时检测说话的起止时间，用于语音交互端点判断。由 Silero 提供。"
+              size="silero_vad.onnx · ~1.8 MB"
               installed={modelStatus ? modelStatus.vad_model_ok : null}
               dl={vadDl}
-              useMirror={useMirror}
               onDownload={handleDownloadVad}
             />
 
-            {/* SenseVoice ASR model */}
             <ModelCard
               title="SenseVoice ASR · 本地语音识别"
               desc="多语言离线识别（中 / 英 / 日 / 韩 / 粤），int8 量化版，无需联网。由 k2-fsa / sherpa-onnx 提供。"
-              size="sherpa-onnx-sense-voice-*-int8 · ~300 MB · GitHub"
+              size="sherpa-onnx-sense-voice-*-int8 · ~300 MB"
               installed={modelStatus ? modelStatus.asr_local_model_ok : null}
               dl={asrDl}
-              useMirror={useMirror}
               onDownload={handleDownloadAsr}
             />
 
             <p className="text-[10px] text-gray-400 leading-relaxed">
-              模型存储在应用缓存目录。语音功能所需模型可在此页面统一下载，下载完成后无需重启即可启用。
+              模型存储在应用缓存目录。国内网络自动使用镜像加速下载。
             </p>
           </div>
         )}

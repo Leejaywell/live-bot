@@ -250,13 +250,13 @@ export const api = {
 
   // Voice model status
   checkVoiceModels: () => invoke<{ vad_model_ok: boolean; asr_local_model_ok: boolean; asr_model_dir: string }>('check_voice_models'),
-  downloadSensevoiceModel: (useMirror: boolean) => invoke<string>('download_sensevoice_model', { useMirror }),
-  downloadVadModel: (useMirror: boolean) => invoke<string>('download_vad_model', { useMirror }),
-  checkIpRegion: () => invoke<string>('check_ip_region'),
+  downloadSensevoiceModel: () => invoke<string>('download_sensevoice_model'),
+  downloadVadModel: () => invoke<string>('download_vad_model'),
   onVoiceModelProgress: (callback: (data: { stage: string; pct: number; downloaded_mb?: string; total_mb?: string }) => void) =>
     listen<{ stage: string; pct: number; downloaded_mb?: string; total_mb?: string }>('voice-model-progress', (e) => callback(e.payload)),
   onVadModelProgress: (callback: (data: { stage: string; pct: number; downloaded_mb?: string; total_mb?: string }) => void) =>
     listen<{ stage: string; pct: number; downloaded_mb?: string; total_mb?: string }>('vad-model-progress', (e) => callback(e.payload)),
+  openFolder: (path: string) => invoke<void>('open_folder', { path }),
 
   // Danmaku polling (replaces Tauri event broadcast)
   getRecentDanmaku: () => invoke<string[]>('get_recent_danmaku'),

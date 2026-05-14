@@ -303,7 +303,7 @@ export function AI() {
 
       <VoicePicker open={voiceOpen} onClose={() => setVoiceOpen(false)} providers={config ? availableProviders((config.AiProviders ?? []).filter(p => p.ProviderType === 'tts' && p.Enabled).map(p => p.Name)) : ['edge_tts']} currentVoice={ttsVoice} onSelect={v => { setTtsVoice(v); setConfig({ ...config!, TtsVoice: v }); api.saveConfig({ ...config!, TtsVoice: v }); }} />
 
-      <Modal open={settingsOpen} onClose={() => setSettingsOpen(false)} className="w-[640px] max-h-[80vh] overflow-hidden flex flex-col">
+      <Modal open={settingsOpen} onClose={() => setSettingsOpen(false)} className="w-[426px] max-h-[80vh] overflow-hidden flex flex-col">
         <div className="flex items-center justify-between px-6 py-4 border-b border-white/10 shrink-0">
           <h2 className="text-[14px] font-bold">AI 助手提示词</h2>
           <ModalCloseButton onClose={() => setSettingsOpen(false)} />

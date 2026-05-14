@@ -460,7 +460,7 @@ export function Voice() {
         onSelect={v => { setTtsVoice(v); onVoiceChange(v); }}
       />
 
-      <Modal open={settingsOpen} onClose={() => setSettingsOpen(false)} className="w-[640px] max-h-[80vh] overflow-hidden flex flex-col">
+      <Modal open={settingsOpen} onClose={() => setSettingsOpen(false)} className="w-[426px] max-h-[80vh] overflow-hidden flex flex-col">
         <div className="flex items-center justify-between px-6 py-4 border-b border-white/10 shrink-0">
           <h3 className="text-[14px] font-bold">语音交互提示词</h3>
           <ModalCloseButton onClose={() => setSettingsOpen(false)} className="w-8 h-8" />

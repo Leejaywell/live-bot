@@ -691,6 +691,32 @@ async fn update_check_loop(app: AppHandle) {
     }
 }
 
+/// Returns true if the current machine's public IP is in China.
+/// Uses https://myip.ipip.net/json; falls back to false on error.
+#[cfg(feature = "tauri")]
+async fn detect_china_ip() -> bool {
+    let client = match reqwest::Client::builder()
+        .timeout(std::time::Duration::from_secs(5))
+        .build()
+    {
+        Ok(c) => c,
+        Err(_) => return false,
+    };
+    match client.get("https://myip.ipip.net/json").send().await {
+        Ok(resp) => {
+            if let Ok(json) = resp.json::<serde_json::Value>().await {
+                json.pointer("/data/location/0")
+                    .and_then(|v| v.as_str())
+                    .map(|loc| loc == "中国")
+                    .unwrap_or(false)
+            } else {
+                false
+            }
+        }
+        Err(_) => false,
+    }
+}
+
 #[cfg(feature = "tauri")]
 fn model_dir(app: &AppHandle) -> std::path::PathBuf {
     app.path()
@@ -718,7 +744,7 @@ fn check_voice_models(app: AppHandle) -> Result<serde_json::Value, String> {
 
 #[cfg(feature = "tauri")]
 #[tauri::command]
-async fn download_sensevoice_model(app: AppHandle, use_mirror: bool) -> Result<String, String> {
+async fn download_sensevoice_model(app: AppHandle) -> Result<String, String> {
     let base = model_dir(&app);
     let target_dir = base.join("sherpa-onnx-sense-voice-zh-en-ja-ko-yue-int8-2024-07-17");
 
@@ -727,6 +753,7 @@ async fn download_sensevoice_model(app: AppHandle, use_mirror: bool) -> Result<S
         return Ok("SenseVoice 模型已存在".to_string());
     }
 
+    let use_mirror = detect_china_ip().await;
     let direct = "https://github.com/k2-fsa/sherpa-onnx/releases/download/asr-models/sherpa-onnx-sense-voice-zh-en-ja-ko-yue-int8-2024-07-17.tar.bz2";
     let mirror = "https://ghproxy.com/https://github.com/k2-fsa/sherpa-onnx/releases/download/asr-models/sherpa-onnx-sense-voice-zh-en-ja-ko-yue-int8-2024-07-17.tar.bz2";
     let url = if use_mirror { mirror } else { direct };
@@ -796,7 +823,7 @@ async fn download_sensevoice_model(app: AppHandle, use_mirror: bool) -> Result<S
 
 #[cfg(feature = "tauri")]
 #[tauri::command]
-async fn download_vad_model(app: AppHandle, use_mirror: bool) -> Result<String, String> {
+async fn download_vad_model(app: AppHandle) -> Result<String, String> {
     let base = model_dir(&app);
     let out_path = base.join("silero_vad.onnx");
 
@@ -804,6 +831,7 @@ async fn download_vad_model(app: AppHandle, use_mirror: bool) -> Result<String, 
         return Ok("VAD 模型已存在".to_string());
     }
 
+    let use_mirror = detect_china_ip().await;
     let direct = "https://github.com/snakers4/silero-vad/raw/master/files/silero_vad.onnx";
     let mirror = "https://ghproxy.com/https://github.com/snakers4/silero-vad/raw/master/files/silero_vad.onnx";
     let url = if use_mirror { mirror } else { direct };
@@ -851,24 +879,9 @@ async fn download_vad_model(app: AppHandle, use_mirror: bool) -> Result<String, 
 
 #[cfg(feature = "tauri")]
 #[tauri::command]
-async fn check_ip_region() -> String {
-    let client = match reqwest::Client::builder()
-        .timeout(std::time::Duration::from_secs(5))
-        .build()
-    {
-        Ok(c) => c,
-        Err(_) => return String::new(),
-    };
-    match client.get("http://ip-api.com/json?fields=countryCode").send().await {
-        Ok(resp) => {
-            if let Ok(json) = resp.json::<serde_json::Value>().await {
-                json["countryCode"].as_str().unwrap_or("").to_string()
-            } else {
-                String::new()
-            }
-        }
-        Err(_) => String::new(),
-    }
+async fn open_folder(app: AppHandle, path: String) -> Result<(), String> {
+    use tauri_plugin_opener::OpenerExt;
+    app.opener().open_path(&path, None::<&str>).map_err(|e| e.to_string())
 }
 
 #[cfg(feature = "tauri")]
@@ -944,7 +957,7 @@ fn main() -> Result<()> {
             check_voice_models,
             download_sensevoice_model,
             download_vad_model,
-            check_ip_region
+            open_folder
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
