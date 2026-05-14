@@ -45,6 +45,12 @@ pub async fn run_monitor_loop<E: EventEmitter>(
     let (gift_tx, gift_rx) = mpsc::channel::<bilibili_live_protocol::LiveEvent>(1000);
     let send_cookie = token::read_session().ok().map(|s| s.cookie).filter(|c| !c.is_empty());
 
+    // 读取机器人自身 UID，用于过滤弹幕回声（B站会将机器人发送的弹幕也推送回来）
+    let self_uid: i64 = send_cookie.as_deref()
+        .and_then(|c| extract_cookie_value(c, "DedeUserID"))
+        .and_then(|v| v.parse().ok())
+        .unwrap_or(0);
+
     // Session 记忆：对话历史窗口 + 发言者档案
     use crate::bot::memory::SessionMemory;
     let session_memory = Arc::new(std::sync::Mutex::new(SessionMemory::new()));
@@ -434,6 +440,16 @@ pub async fn run_monitor_loop<E: EventEmitter>(
 
                 bilibili_live_protocol::run_parsed_client(connect_config, move |parsed| {
                     let event = &parsed.event;
+
+                    // 过滤机器人自身发出的弹幕回声，避免计入弹幕统计
+                    if self_uid != 0 {
+                        if let bilibili_live_protocol::LiveEvent::Danmu { user_id, .. } = event {
+                            if *user_id == self_uid {
+                                return;
+                            }
+                        }
+                    }
+
                     let line = event.to_string();
 
                     // Queue event for batched emission

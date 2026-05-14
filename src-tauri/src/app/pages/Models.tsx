@@ -247,7 +247,7 @@ function AsrFields({ p, set }: { p: AiProvider; set: (patch: Partial<AiProvider>
 
   const handleSvDownload = async () => {
     setSvDlStage('downloading'); setSvDlPct(0);
-    try { await api.downloadSensevoiceModel(); }
+    try { await api.downloadSensevoiceModel(false); }
     catch (e) { setSvDlStage('error'); toast.error(`下载失败: ${e}`); }
   };
 

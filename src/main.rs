@@ -718,7 +718,7 @@ fn check_voice_models(app: AppHandle) -> Result<serde_json::Value, String> {
 
 #[cfg(feature = "tauri")]
 #[tauri::command]
-async fn download_sensevoice_model(app: AppHandle) -> Result<String, String> {
+async fn download_sensevoice_model(app: AppHandle, use_mirror: bool) -> Result<String, String> {
     let base = model_dir(&app);
     let target_dir = base.join("sherpa-onnx-sense-voice-zh-en-ja-ko-yue-int8-2024-07-17");
 
@@ -727,7 +727,9 @@ async fn download_sensevoice_model(app: AppHandle) -> Result<String, String> {
         return Ok("SenseVoice 模型已存在".to_string());
     }
 
-    let url = "https://ghproxy.com/https://github.com/k2-fsa/sherpa-onnx/releases/download/asr-models/sherpa-onnx-sense-voice-zh-en-ja-ko-yue-int8-2024-07-17.tar.bz2";
+    let direct = "https://github.com/k2-fsa/sherpa-onnx/releases/download/asr-models/sherpa-onnx-sense-voice-zh-en-ja-ko-yue-int8-2024-07-17.tar.bz2";
+    let mirror = "https://ghproxy.com/https://github.com/k2-fsa/sherpa-onnx/releases/download/asr-models/sherpa-onnx-sense-voice-zh-en-ja-ko-yue-int8-2024-07-17.tar.bz2";
+    let url = if use_mirror { mirror } else { direct };
     let tmp = base.join("_sensevoice_dl.tar.bz2");
 
     let _ = app.emit("voice-model-progress", serde_json::json!({ "stage": "downloading", "pct": 0u32 }));
@@ -789,6 +791,83 @@ async fn download_sensevoice_model(app: AppHandle) -> Result<String, String> {
         Ok("SenseVoice 模型下载完成".to_string())
     } else {
         Err("解压后未找到模型文件，请检查目录结构".to_string())
+    }
+}
+
+#[cfg(feature = "tauri")]
+#[tauri::command]
+async fn download_vad_model(app: AppHandle, use_mirror: bool) -> Result<String, String> {
+    let base = model_dir(&app);
+    let out_path = base.join("silero_vad.onnx");
+
+    if out_path.exists() {
+        return Ok("VAD 模型已存在".to_string());
+    }
+
+    let direct = "https://github.com/snakers4/silero-vad/raw/master/files/silero_vad.onnx";
+    let mirror = "https://ghproxy.com/https://github.com/snakers4/silero-vad/raw/master/files/silero_vad.onnx";
+    let url = if use_mirror { mirror } else { direct };
+
+    let _ = app.emit("vad-model-progress", serde_json::json!({ "stage": "downloading", "pct": 0u32 }));
+
+    let client = reqwest::Client::builder()
+        .timeout(std::time::Duration::from_secs(120))
+        .build()
+        .map_err(|e| e.to_string())?;
+
+    let mut resp = client.get(url).send().await.map_err(|e| format!("下载失败: {e}"))?;
+    let total = resp.content_length().unwrap_or(0);
+    let mut downloaded: u64 = 0;
+
+    std::fs::create_dir_all(&base).map_err(|e| e.to_string())?;
+
+    use tokio::io::AsyncWriteExt;
+    let mut file = tokio::fs::File::from_std(
+        std::fs::File::create(&out_path).map_err(|e| e.to_string())?,
+    );
+
+    while let Some(chunk) = resp.chunk().await.map_err(|e| format!("下载中断: {e}"))? {
+        file.write_all(&chunk).await.map_err(|e| format!("写入失败: {e}"))?;
+        downloaded += chunk.len() as u64;
+        if total > 0 {
+            let pct = ((downloaded as f64 / total as f64) * 100.0) as u32;
+            let _ = app.emit("vad-model-progress", serde_json::json!({
+                "stage": "downloading",
+                "pct": pct,
+                "downloaded_mb": format!("{:.2}", downloaded as f64 / 1_048_576.0),
+                "total_mb": format!("{:.2}", total as f64 / 1_048_576.0),
+            }));
+        }
+    }
+    drop(file);
+
+    if out_path.exists() {
+        let _ = app.emit("vad-model-progress", serde_json::json!({ "stage": "done", "pct": 100u32 }));
+        Ok("VAD 模型下载完成".to_string())
+    } else {
+        Err("下载后未找到模型文件".to_string())
+    }
+}
+
+#[cfg(feature = "tauri")]
+#[tauri::command]
+async fn check_ip_region() -> String {
+    let client = match reqwest::Client::builder()
+        .timeout(std::time::Duration::from_secs(5))
+        .build()
+    {
+        Ok(c) => c,
+        Err(_) => return String::new(),
+    };
+    match client.get("http://ip-api.com/json?fields=countryCode").send().await {
+        Ok(resp) => {
+            if let Ok(json) = resp.json::<serde_json::Value>().await {
+                json["countryCode"].as_str().unwrap_or("").to_string()
+            } else {
+                String::new()
+            }
+        }
+        Err(_) => String::new(),
     }
 }
 
@@ -863,7 +942,9 @@ fn main() -> Result<()> {
             speak_text_cmd,
             get_recent_danmaku,
             check_voice_models,
-            download_sensevoice_model
+            download_sensevoice_model,
+            download_vad_model,
+            check_ip_region
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

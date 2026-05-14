@@ -105,7 +105,7 @@ export function Sidebar({ collapsed, connected, onToggleThemePanel, onToggleSide
                   item.mt && 'mt-1.5',
                   isActive
                     ? 'text-white'
-                    : 'text-gray-500 hover:text-gray-900 dark:hover:text-white hover:bg-white/40 dark:hover:bg-white/5'
+                    : 'text-gray-800 dark:text-gray-100 hover:text-gray-900 dark:hover:text-white hover:bg-white/40 dark:hover:bg-white/8'
                 )}
               >
                 <Icon className={cn('w-[15px] h-[15px] transition-transform duration-300 shrink-0', !isActive && 'group-hover:scale-110')} />

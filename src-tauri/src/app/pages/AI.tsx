@@ -303,21 +303,21 @@ export function AI() {
 
       <VoicePicker open={voiceOpen} onClose={() => setVoiceOpen(false)} providers={config ? availableProviders((config.AiProviders ?? []).filter(p => p.ProviderType === 'tts' && p.Enabled).map(p => p.Name)) : ['edge_tts']} currentVoice={ttsVoice} onSelect={v => { setTtsVoice(v); setConfig({ ...config!, TtsVoice: v }); api.saveConfig({ ...config!, TtsVoice: v }); }} />
 
-      <Modal open={settingsOpen} onClose={() => setSettingsOpen(false)} className="w-[480px] p-6">
-        <div className="flex items-center justify-between mb-4">
-          <h2 className="text-[14px] font-bold">AI 助手设置</h2>
+      <Modal open={settingsOpen} onClose={() => setSettingsOpen(false)} className="w-[640px] max-h-[80vh] overflow-hidden flex flex-col">
+        <div className="flex items-center justify-between px-6 py-4 border-b border-white/10 shrink-0">
+          <h2 className="text-[14px] font-bold">AI 助手提示词</h2>
           <ModalCloseButton onClose={() => setSettingsOpen(false)} />
         </div>
-        <div className="space-y-1.5">
-          <label className="text-[11px] text-gray-500 block">AI 助手提示词（界面对话使用）：</label>
+        <div className="flex-1 overflow-y-auto px-6 py-5 space-y-2">
+          <label className="text-[11px] text-gray-500 block">AI 界面聊天使用的系统提示词（与直播间 AI 机器人人设独立）</label>
           <textarea
-            className="w-full h-40 px-3 py-2 rounded-lg bg-white/60 dark:bg-white/10 border border-gray-200 dark:border-white/20 text-[12px] focus:outline-none focus:ring-2 focus:ring-[var(--primary-color)]/50 resize-none"
+            className="w-full h-64 px-3 py-2.5 rounded-xl bg-white/60 dark:bg-white/10 border border-gray-200 dark:border-white/20 text-[13px] leading-relaxed focus:outline-none focus:ring-2 focus:ring-[var(--primary-color)]/50 resize-none"
             value={promptDraft}
             onChange={e => setPromptDraft(e.target.value)}
-            placeholder="AI 界面聊天使用的系统提示词..."
+            placeholder="例如：你是一个助理，请简洁专业地回答问题..."
           />
         </div>
-        <div className="flex gap-2 mt-4">
+        <div className="flex gap-2 px-6 pb-6 shrink-0">
           <Button variant="primary" className="flex-1" onClick={async () => {
             if (!config) return;
             const next = { ...config, AiAssistantPrompt: promptDraft };
@@ -329,7 +329,7 @@ export function AI() {
             } catch (err) {
               toast.error(`保存失败: ${err}`);
             }
-          }}>保存</Button>
+          }}>保存提示词</Button>
         </div>
       </Modal>
     </div>
