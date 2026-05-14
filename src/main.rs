@@ -180,34 +180,6 @@ async fn logout() -> Result<(), String> {
 
 #[cfg(feature = "tauri")]
 #[tauri::command]
-async fn refresh_cookie(state: tauri::State<'_, SharedState>) -> Result<serde_json::Value, String> {
-    let session = token::read_session().map_err(|e| e.to_string())?;
-    if session.refresh_token.is_empty() {
-        return Err("没有 refresh_token".into());
-    }
-    let (new_cookie, new_rt) = state
-        .http
-        .refresh_cookie(&session.refresh_token, &session.cookie)
-        .await
-        .map_err(|e| e.to_string())?;
-    let new_session = token::Session {
-        cookie:        new_cookie,
-        refresh_token: if new_rt.is_empty() { session.refresh_token } else { new_rt },
-    };
-    token::write_session(&new_session).map_err(|e| e.to_string())?;
-    let saved_at = token::session_saved_at().unwrap_or(0);
-    match state.http.user_info(&new_session.cookie).await {
-        Ok(info) => {
-            let mut v = user_info_json(&info, saved_at);
-            v["success"] = serde_json::json!(true);
-            Ok(v)
-        }
-        Err(_) => Ok(serde_json::json!({ "success": true, "saved_at": saved_at })),
-    }
-}
-
-#[cfg(feature = "tauri")]
-#[tauri::command]
 async fn get_system_info() -> Result<serde_json::Value, String> {
     Ok(serde_json::json!({
         "version": env!("CARGO_PKG_VERSION"),
@@ -702,39 +674,6 @@ async fn update_check_loop(app: AppHandle) {
 }
 
 #[cfg(feature = "tauri")]
-async fn try_refresh_cookie_once(http: &api::BiliApi, app: &AppHandle) {
-    let Ok(session) = token::read_session() else { return };
-    if session.cookie.is_empty() || session.refresh_token.is_empty() { return; }
-    let needs_refresh = match http.check_cookie_refresh_needed(&session.cookie).await {
-        Ok(v) => v,
-        Err(_) => return,
-    };
-    if !needs_refresh { return; }
-    match http.refresh_cookie(&session.refresh_token, &session.cookie).await {
-        Ok((new_cookie, new_rt)) => {
-            let new_session = token::Session {
-                cookie:        new_cookie,
-                refresh_token: if new_rt.is_empty() { session.refresh_token } else { new_rt },
-            };
-            let _ = token::write_session(&new_session);
-            let _ = tauri::Emitter::emit(app, "cookie-refreshed", serde_json::json!({ "success": true }));
-            println!("[auth] cookie 自动刷新成功");
-        }
-        Err(e) => eprintln!("[auth] cookie 自动刷新失败: {e}"),
-    }
-}
-
-#[cfg(feature = "tauri")]
-async fn cookie_refresh_loop(http: api::BiliApi, app: AppHandle) {
-    // 启动后稍等 15 秒，等 App 完全初始化
-    tokio::time::sleep(tokio::time::Duration::from_secs(15)).await;
-    loop {
-        try_refresh_cookie_once(&http, &app).await;
-        tokio::time::sleep(tokio::time::Duration::from_secs(3600)).await;
-    }
-}
-
-#[cfg(feature = "tauri")]
 fn model_dir(app: &AppHandle) -> std::path::PathBuf {
     app.path()
         .app_cache_dir()
@@ -859,8 +798,6 @@ fn main() -> Result<()> {
         preview_tts: Arc::new(Mutex::new(None)),
     };
 
-    let http_for_refresh = state.http.clone();
-
     println!("Starting Tauri builder...");
     tauri::Builder::default()
         .plugin(tauri_plugin_shell::init())
@@ -869,9 +806,6 @@ fn main() -> Result<()> {
         .plugin(tauri_plugin_process::init())
         .manage(state)
         .setup(move |app| {
-            let handle = app.handle().clone();
-            tauri::async_runtime::spawn(cookie_refresh_loop(http_for_refresh, handle));
-
             let handle_for_update = app.handle().clone();
             tauri::async_runtime::spawn(update_check_loop(handle_for_update));
 
@@ -887,7 +821,6 @@ fn main() -> Result<()> {
             check_room,
             get_room_by_uid,
             logout,
-            refresh_cookie,
             get_system_info,
             start_monitor,
             stop_monitor,

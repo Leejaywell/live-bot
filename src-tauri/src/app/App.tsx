@@ -20,7 +20,6 @@ import { AI } from './pages/AI';
 import { Voice } from './pages/Voice';
 import { Models } from './pages/Models';
 import { Stats } from './pages/Stats';
-import { PK } from './pages/PK';
 import { api, UserInfo, RoomInfo, AnchorInfo } from './lib/api';
 import { invoke } from '@tauri-apps/api/core';
 import QRCode from 'react-qr-code';
@@ -73,16 +72,8 @@ export default function App() {
   // 启动时检查登录状态
   useEffect(() => {
     (async () => {
-      const info = await refreshUserInfo();
+      await refreshUserInfo();
       setLoginChecked(true);
-      if (info && !info.is_login) {
-        try {
-          const res = await api.refreshCookie();
-          if (res?.success) {
-            await refreshUserInfo();
-          }
-        } catch {}
-      }
     })();
   }, [refreshUserInfo]);
 
@@ -108,21 +99,12 @@ export default function App() {
     }
   }, [isLoggedIn, userInfo?.uid]);
 
-  // 定期检查 cookie 有效性
+  // 定期检查 cookie 有效性，失效直接提示重新登录
   useEffect(() => {
     if (!isLoggedIn || !loginChecked) return;
     const timer = setInterval(async () => {
       const info = await api.getUserInfo();
       if (!info.is_login) {
-        // 尝试 refresh
-        try {
-          const res = await api.refreshCookie();
-          if (res?.success) {
-            await refreshUserInfo();
-            return;
-          }
-        } catch {}
-        // refresh 也失败了，强制重新登录
         setIsLoggedIn(false);
         setUserInfo(null);
         setHasConnectedRoom(false);
@@ -132,15 +114,6 @@ export default function App() {
     }, 60000);
     return () => clearInterval(timer);
   }, [isLoggedIn, loginChecked, refreshUserInfo]);
-
-  // 监听后端自动刷新 cookie 事件
-  useEffect(() => {
-    let unlisten: (() => void) | undefined;
-    api.onCookieRefreshed((success) => {
-      if (success) refreshUserInfo();
-    }).then(fn => { unlisten = fn; });
-    return () => unlisten?.();
-  }, [refreshUserInfo]);
 
   const fetchLoginQr = async () => {
     setLoadingQr(true);
@@ -334,7 +307,6 @@ export default function App() {
                 <Route path="/voice" element={<Voice />} />
                 <Route path="/models" element={<Models />} />
                 <Route path="/stats" element={<Stats />} />
-                <Route path="/pk" element={<PK />} />
               </Routes>
             </main>
           </div>

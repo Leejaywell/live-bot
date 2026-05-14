@@ -173,7 +173,6 @@ export const api = {
   getUserInfo: () => invoke<UserInfo>('get_user_info'),
   startLogin: () => invoke<LoginUrl>('start_login'),
   logout: () => invoke<void>('logout'),
-  refreshCookie: () => invoke<any>('refresh_cookie'),
   onLoginStatus: (callback: (status: string) => void) => listen<string>('login-status', (event) => callback(event.payload)),
 
   // Room
@@ -223,10 +222,6 @@ export const api = {
   installUpdate: () => invoke<void>('install_update'),
   onUpdateProgress: (callback: (data: { downloaded: number; total: number | null }) => void) =>
     listen<{ downloaded: number; total: number | null }>('update-download-progress', (e) => callback(e.payload)),
-
-  // Cookie auto-refresh
-  onCookieRefreshed: (callback: (success: boolean) => void) =>
-    listen<{ success: boolean }>('cookie-refreshed', (e) => callback(e.payload.success)),
 
   // AI message (used by AI page and Voice page)
   sendAiMessage: (prompt: string) => invoke<string>('send_ai_message', { prompt }),

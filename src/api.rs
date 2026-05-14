@@ -132,54 +132,6 @@ impl BiliApi {
         }
     }
 
-    pub async fn check_cookie_refresh_needed(&self, cookie: &str) -> Result<bool> {
-        #[derive(Deserialize)]
-        struct CookieInfoData {
-            #[serde(default)]
-            refresh: bool,
-        }
-
-        let body: ApiResponse<CookieInfoData> = self
-            .client
-            .get("https://passport.bilibili.com/x/passport-login/web/cookie/info")
-            .header(COOKIE, cookie)
-            .send()
-            .await?
-            .error_for_status()?
-            .json()
-            .await?;
-
-        if body.code != 0 {
-            return Err(anyhow!("查询 cookie 状态失败: {}", body.message));
-        }
-        Ok(body.data.refresh)
-    }
-
-    pub async fn refresh_cookie(
-        &self,
-        refresh_token: &str,
-        cookie: &str,
-    ) -> Result<(String, String)> {
-        let csrf = extract_cookie(cookie, "bili_jct").unwrap_or_default();
-        let response = self
-            .client
-            .post("https://passport.bilibili.com/x/passport-login/web/token/refresh")
-            .header(COOKIE, cookie)
-            .form(&[
-                ("csrf", &csrf),
-                ("refresh_token", &refresh_token.to_string()),
-            ])
-            .send()
-            .await?
-            .error_for_status()?;
-        let headers = response.headers().clone();
-        let body: ApiResponse<RefreshTokenData> = response.json().await?;
-        if body.code != 0 {
-            return Err(anyhow!("刷新 cookie 失败: {}", body.message));
-        }
-        Ok((token::parse_set_cookie(&headers), body.data.refresh_token))
-    }
-
     pub async fn room_init(&self, room_id: i64) -> Result<RoomInfo> {
         let response: ApiResponse<RoomInitData> = self
             .client
@@ -638,12 +590,6 @@ struct LoginUrlData {
 struct LoginPollData {
     code: i32,
     message: String,
-    #[serde(default)]
-    refresh_token: String,
-}
-
-#[derive(Debug, Deserialize)]
-struct RefreshTokenData {
     #[serde(default)]
     refresh_token: String,
 }

@@ -1,196 +1,204 @@
-import { useEffect, useState, useRef } from 'react';
-import { useTheme, hexToRgb } from '../context/ThemeContext';
+import { useEffect, useState, useRef, useCallback } from 'react';
+import { useTheme, hexToRgb, hexToHsl, hslToHex } from '../context/ThemeContext';
 
 export function BackgroundBlobs() {
   const { theme, primaryColor } = useTheme();
-  const [mousePos, setMousePos] = useState({ x: 0, y: 0 });
-  const requestRef = useRef<number>(0);
-  const canvasRef = useRef<HTMLCanvasElement>(null);
+  const mousePos = useRef({ x: window.innerWidth / 2, y: window.innerHeight / 2 });
+  const [smoothMouse, setSmoothMouse] = useState({ x: window.innerWidth / 2, y: window.innerHeight / 2 });
   const [ripples, setRipples] = useState<{ id: number; x: number; y: number }[]>([]);
+  const canvasRef = useRef<HTMLCanvasElement>(null);
+  const animFrameRef = useRef<number>(0);
+  const smoothRef = useRef({ x: window.innerWidth / 2, y: window.innerHeight / 2 });
 
   const isDark = theme === 'dark';
 
-  // Mouse tracking
+  // Smooth mouse tracking via rAF
   useEffect(() => {
-    const handleMouseMove = (e: MouseEvent) => {
-      setMousePos({ x: e.clientX, y: e.clientY });
+    const onMove = (e: MouseEvent) => {
+      mousePos.current = { x: e.clientX, y: e.clientY };
     };
-    
-    // Add ripple on click
-    const handleClick = (e: MouseEvent) => {
+    const onClick = (e: MouseEvent) => {
       const id = Date.now();
       setRipples(prev => [...prev, { id, x: e.clientX, y: e.clientY }]);
-      setTimeout(() => {
-        setRipples(prev => prev.filter(r => r.id !== id));
-      }, 2000);
+      setTimeout(() => setRipples(prev => prev.filter(r => r.id !== id)), 2200);
     };
-
-    window.addEventListener('mousemove', handleMouseMove);
-    window.addEventListener('mousedown', handleClick);
+    window.addEventListener('mousemove', onMove);
+    window.addEventListener('mousedown', onClick);
     return () => {
-      window.removeEventListener('mousemove', handleMouseMove);
-      window.removeEventListener('mousedown', handleClick);
+      window.removeEventListener('mousemove', onMove);
+      window.removeEventListener('mousedown', onClick);
     };
   }, []);
 
-  // Bubble animation on canvas
+  // Lerp smooth mouse update
+  useEffect(() => {
+    let rafId: number;
+    const tick = () => {
+      smoothRef.current = {
+        x: smoothRef.current.x + (mousePos.current.x - smoothRef.current.x) * 0.05,
+        y: smoothRef.current.y + (mousePos.current.y - smoothRef.current.y) * 0.05,
+      };
+      setSmoothMouse({ ...smoothRef.current });
+      rafId = requestAnimationFrame(tick);
+    };
+    rafId = requestAnimationFrame(tick);
+    return () => cancelAnimationFrame(rafId);
+  }, []);
+
+  // Derive a complementary hue-shifted color from mouse X position
+  const { h, s, l } = hexToHsl(primaryColor);
+  const mx = smoothMouse.x / window.innerWidth;   // 0→1
+  const my = smoothMouse.y / window.innerHeight;  // 0→1
+  const hueShift = (mx - 0.5) * 60;               // ±30° based on mouse X
+  const shiftedColor = hslToHex(
+    ((h + hueShift) % 360 + 360) % 360,
+    Math.max(30, s),
+    Math.min(70, l + 5),
+  );
+  const rgb  = hexToRgb(primaryColor)  || { r: 75, g: 142, b: 255 };
+  const rgb2 = hexToRgb(shiftedColor)  || rgb;
+
+  // Canvas bubble animation
   useEffect(() => {
     const canvas = canvasRef.current;
     if (!canvas) return;
     const ctx = canvas.getContext('2d');
     if (!ctx) return;
 
-    let width = (canvas.width = window.innerWidth);
-    let height = (canvas.height = window.innerHeight);
+    let W = (canvas.width  = window.innerWidth);
+    let H = (canvas.height = window.innerHeight);
 
-    const bubbles: any[] = [];
-    const bubbleCount = 20;
+    const COUNT = 22;
+    const bubbles = Array.from({ length: COUNT }, () => ({
+      x:       Math.random() * W,
+      y:       Math.random() * H,
+      r:       Math.random() * 45 + 12,
+      vx:      (Math.random() - 0.5) * 0.35,
+      vy:      (Math.random() - 0.5) * 0.35,
+      opacity: Math.random() * 0.13 + 0.04,
+      phase:   Math.random() * Math.PI * 2,
+      hue:     Math.random() * 40 - 20,   // per-bubble hue offset
+    }));
 
-    for (let i = 0; i < bubbleCount; i++) {
-      bubbles.push({
-        x: Math.random() * width,
-        y: Math.random() * height,
-        radius: Math.random() * 40 + 10,
-        vx: (Math.random() - 0.5) * 0.4,
-        vy: (Math.random() - 0.5) * 0.4,
-        opacity: Math.random() * 0.15 + 0.05,
-        phase: Math.random() * Math.PI * 2,
-      });
-    }
+    const draw = () => {
+      ctx.clearRect(0, 0, W, H);
 
-    const rgb = hexToRgb(primaryColor) || { r: 75, g: 142, b: 255 };
-
-    const animate = () => {
-      ctx.clearRect(0, 0, width, height);
-      
-      bubbles.forEach((b) => {
+      bubbles.forEach(b => {
         b.x += b.vx;
         b.y += b.vy;
-        b.phase += 0.01;
+        b.phase += 0.008;
+        if (b.x < -b.r) b.x = W + b.r;
+        if (b.x > W + b.r) b.x = -b.r;
+        if (b.y < -b.r) b.y = H + b.r;
+        if (b.y > H + b.r) b.y = -b.r;
 
-        if (b.x < -b.radius) b.x = width + b.radius;
-        if (b.x > width + b.radius) b.x = -b.radius;
-        if (b.y < -b.radius) b.y = height + b.radius;
-        if (b.y > height + b.radius) b.y = -b.radius;
-
-        // Interactive distance to mouse
-        const dx = mousePos.x - b.x;
-        const dy = mousePos.y - b.y;
+        const dx   = smoothRef.current.x - b.x;
+        const dy   = smoothRef.current.y - b.y;
         const dist = Math.sqrt(dx * dx + dy * dy);
-        const nearMouse = dist < 200;
-        
-        const floatY = Math.sin(b.phase) * 10;
-        const currentOpacity = nearMouse ? b.opacity * 2 : b.opacity;
+        const near = dist < 220;
+        const floatY = Math.sin(b.phase) * 8;
+        const scale  = near ? 1.15 : 1;
+        const op     = near ? Math.min(b.opacity * 2.2, 0.35) : b.opacity;
 
-        const gradient = ctx.createRadialGradient(b.x, b.y + floatY, 0, b.x, b.y + floatY, b.radius);
-        
-        if (nearMouse) {
-          // Color changes near mouse
-          gradient.addColorStop(0, `rgba(255, 255, 255, ${currentOpacity * 1.2})`);
-          gradient.addColorStop(0.4, `rgba(${rgb.r}, ${rgb.g}, ${rgb.b}, ${currentOpacity})`);
-          gradient.addColorStop(1, 'rgba(255, 255, 255, 0)');
-        } else {
-          gradient.addColorStop(0, `rgba(255, 255, 255, ${currentOpacity * 1.5})`);
-          gradient.addColorStop(0.3, `rgba(${isDark ? '200, 220, 255' : '150, 180, 255'}, ${currentOpacity})`);
-          gradient.addColorStop(1, 'rgba(255, 255, 255, 0)');
-        }
+        // Color blends between primary and shifted color near mouse
+        const t = near ? Math.max(0, 1 - dist / 220) : 0;
+        const br = Math.round(rgb.r + (rgb2.r - rgb.r) * t);
+        const bg = Math.round(rgb.g + (rgb2.g - rgb.g) * t);
+        const bb = Math.round(rgb.b + (rgb2.b - rgb.b) * t);
+
+        const cx = b.x;
+        const cy = b.y + floatY;
+        const gr = ctx.createRadialGradient(cx, cy, 0, cx, cy, b.r * scale);
+        gr.addColorStop(0,   `rgba(255,255,255,${op * 1.4})`);
+        gr.addColorStop(0.35,`rgba(${br},${bg},${bb},${op})`);
+        gr.addColorStop(1,   'rgba(255,255,255,0)');
 
         ctx.beginPath();
-        ctx.arc(b.x, b.y + floatY, b.radius * (nearMouse ? 1.1 : 1), 0, Math.PI * 2);
-        ctx.fillStyle = gradient;
+        ctx.arc(cx, cy, b.r * scale, 0, Math.PI * 2);
+        ctx.fillStyle = gr;
         ctx.fill();
       });
 
-      requestRef.current = requestAnimationFrame(animate);
+      animFrameRef.current = requestAnimationFrame(draw);
     };
 
-    const handleResize = () => {
-      width = canvas.width = window.innerWidth;
-      height = canvas.height = window.innerHeight;
+    const onResize = () => {
+      W = canvas.width  = window.innerWidth;
+      H = canvas.height = window.innerHeight;
     };
-
-    window.addEventListener('resize', handleResize);
-    animate();
-
+    window.addEventListener('resize', onResize);
+    draw();
     return () => {
-      cancelAnimationFrame(requestRef.current);
-      window.removeEventListener('resize', handleResize);
+      cancelAnimationFrame(animFrameRef.current);
+      window.removeEventListener('resize', onResize);
     };
-  }, [isDark, primaryColor, mousePos.x, mousePos.y]);
+  }, [isDark, primaryColor]);   // re-init on theme/color change
+
+  const pct = (v: number, max: number) => `${(v / max * 100).toFixed(1)}%`;
 
   return (
-    <div className="fixed inset-0 overflow-hidden pointer-events-none z-[-1] transition-colors duration-1000"
-      style={{ background: isDark ? '#0a0a0f' : '#f0f5ff' }}>
-      
-      {/* Background Ripple Layer */}
-      <div className="absolute inset-0 opacity-30">
-        <div className="absolute inset-0 bg-gradient-to-br from-transparent via-[var(--primary-color)]/5 to-transparent animate-pulse-slow" />
-      </div>
+    <div
+      className="fixed inset-0 overflow-hidden pointer-events-none z-[-1] transition-colors duration-1000"
+      style={{ background: isDark ? '#08080f' : '#f0f4ff' }}
+    >
+      {/* Water-ripple gradient — follows mouse smoothly */}
+      <div
+        className="absolute inset-0 transition-all duration-200"
+        style={{
+          background: `
+            radial-gradient(ellipse 70% 60% at ${pct(smoothMouse.x, window.innerWidth)} ${pct(smoothMouse.y, window.innerHeight)},
+              rgba(${rgb.r},${rgb.g},${rgb.b},${isDark ? 0.18 : 0.14}) 0%,
+              transparent 65%),
+            radial-gradient(ellipse 60% 55% at ${pct(window.innerWidth - smoothMouse.x, window.innerWidth)} ${pct(window.innerHeight - smoothMouse.y, window.innerHeight)},
+              rgba(${rgb2.r},${rgb2.g},${rgb2.b},${isDark ? 0.12 : 0.10}) 0%,
+              transparent 60%)
+          `,
+        }}
+      />
 
-      {/* Water Ripples */}
-      {ripples.map(ripple => (
-        <div 
-          key={ripple.id}
-          className="absolute rounded-full border border-[var(--primary-color)]/20 animate-ripple"
+      {/* Slow-wave ambient layer */}
+      <div
+        className="absolute inset-0 animate-wave-drift opacity-40"
+        style={{
+          background: `
+            radial-gradient(ellipse 120% 80% at 30% 20%,
+              rgba(${rgb.r},${rgb.g},${rgb.b},0.08) 0%, transparent 55%),
+            radial-gradient(ellipse 100% 90% at 80% 70%,
+              rgba(${rgb2.r},${rgb2.g},${rgb2.b},0.07) 0%, transparent 55%)
+          `,
+        }}
+      />
+
+      {/* Click ripples */}
+      {ripples.map(r => (
+        <div
+          key={r.id}
+          className="absolute rounded-full animate-ripple-expand"
           style={{
-            left: ripple.x,
-            top: ripple.y,
-            width: '10px',
-            height: '10px',
-            transform: 'translate(-50%, -50%)',
+            left: r.x, top: r.y,
+            width: 10, height: 10,
+            transform: 'translate(-50%,-50%)',
+            border: `2px solid rgba(${rgb.r},${rgb.g},${rgb.b},0.4)`,
           }}
         />
       ))}
 
-      {/* Mouse Follow Glow */}
-      <div 
-        className="absolute rounded-full transition-all duration-300 ease-out"
-        style={{
-          width: '600px',
-          height: '600px',
-          left: `calc(${mousePos.x}px - 300px)`,
-          top: `calc(${mousePos.y}px - 300px)`,
-          background: `radial-gradient(circle, ${primaryColor}15 0%, transparent 70%)`,
-          filter: 'blur(80px)',
-          opacity: 0.6,
-        }}
-      />
-
-      {/* Main Blobs */}
-      <div 
-        className="absolute rounded-full animate-blob-slow-1 mix-blend-soft-light"
-        style={{
-          width: '800px',
-          height: '800px',
-          left: '-10%',
-          top: '-10%',
-          background: `radial-gradient(circle, ${primaryColor}10 0%, transparent 70%)`,
-          filter: 'blur(100px)',
-        }}
-      />
-
-      {/* Random Bubbles Canvas */}
-      <canvas ref={canvasRef} className="absolute inset-0 w-full h-full opacity-70" />
+      {/* Bubbles canvas */}
+      <canvas ref={canvasRef} className="absolute inset-0 w-full h-full" style={{ opacity: isDark ? 0.8 : 0.65 }} />
 
       <style>{`
-        @keyframes ripple {
-          0% { width: 0; height: 0; opacity: 0.5; border-width: 4px; }
-          100% { width: 500px; height: 500px; opacity: 0; border-width: 1px; }
+        @keyframes ripple-expand {
+          0%   { width: 0;     height: 0;     opacity: 0.7; }
+          100% { width: 480px; height: 480px; opacity: 0;   }
         }
-        .animate-ripple { animation: ripple 2s cubic-bezier(0, 0.2, 0.8, 1) forwards; }
-        
-        @keyframes pulse-slow {
-          0%, 100% { opacity: 0.3; }
-          50% { opacity: 0.6; }
-        }
-        .animate-pulse-slow { animation: pulse-slow 8s infinite ease-in-out; }
+        .animate-ripple-expand { animation: ripple-expand 2.2s cubic-bezier(0,.2,.8,1) forwards; }
 
-        @keyframes blob-slow-1 {
-          0%, 100% { transform: translate(0, 0) scale(1); }
-          33% { transform: translate(50px, -30px) scale(1.1); }
-          66% { transform: translate(-30px, 50px) scale(0.9); }
+        @keyframes wave-drift {
+          0%,100% { transform: translate(0,0) scale(1); }
+          33%     { transform: translate(30px,-20px) scale(1.05); }
+          66%     { transform: translate(-20px,35px) scale(0.97); }
         }
-        .animate-blob-slow-1 { animation: blob-slow-1 25s infinite ease-in-out; }
+        .animate-wave-drift { animation: wave-drift 20s infinite ease-in-out; }
       `}</style>
     </div>
   );

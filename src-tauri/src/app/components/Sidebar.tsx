@@ -7,7 +7,6 @@ import {
   Mic,
   Cpu,
   BarChart3,
-  Swords,
   Settings as SettingsIcon,
   Moon,
   Sun,
@@ -35,7 +34,6 @@ const navItems = [
   { path: '/ai', label: 'AI 机器人', icon: Bot },
   { path: '/voice', label: '语音交互', icon: Mic },
   { path: '/models', label: '模型服务', icon: Cpu },
-  { path: '/pk', label: 'PK 与活动', icon: Swords, wip: true },
 ];
 
 export function Sidebar({ collapsed, connected, onToggleThemePanel, onToggleSidebar, onToggleSettings, onBlockedClick }: SidebarProps) {
