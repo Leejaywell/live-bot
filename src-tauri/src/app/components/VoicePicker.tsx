@@ -17,7 +17,18 @@ export function VoicePicker({ open, onClose, providers, currentVoice, onSelect }
   const [lang, setLang] = useState('');
   const [gender, setGender] = useState('');
   const [search, setSearch] = useState('');
+  const [rendered, setRendered] = useState(open);
+  const [closing, setClosing] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (open) { setRendered(true); setClosing(false); }
+    else if (rendered) {
+      setClosing(true);
+      const t = setTimeout(() => { setRendered(false); setClosing(false); }, 220);
+      return () => clearTimeout(t);
+    }
+  }, [open]);
 
   useEffect(() => {
     if (providers.length > 0 && !providers.includes(provider)) setProvider(providers[0]);
@@ -35,13 +46,13 @@ export function VoicePicker({ open, onClose, providers, currentVoice, onSelect }
   const langs = getLanguages(provider);
   const genders = [...new Set(filterVoices(provider, lang || undefined).map(v => v.gender).filter(Boolean))];
 
-  if (!open) return null;
+  if (!rendered) return null;
 
   return createPortal(
     <div className="fixed inset-0 z-[99999] flex items-center justify-center" onClick={onClose}>
-      <div className="absolute inset-0 bg-black/30 backdrop-blur-sm" />
+      <div className={cn('absolute inset-0 bg-black/30 backdrop-blur-sm', closing ? 'animate-backdrop-out' : 'animate-backdrop-in')} />
       <div ref={ref} onClick={e => e.stopPropagation()}
-        className="relative w-[420px] max-h-[520px] bg-white dark:bg-gray-900 rounded-2xl shadow-2xl border border-gray-200 dark:border-white/10 flex flex-col overflow-hidden animate-in fade-in zoom-in-95 duration-150">
+        className={cn('relative w-[420px] max-h-[520px] bg-white dark:bg-gray-900 rounded-2xl shadow-2xl border border-gray-200 dark:border-white/10 flex flex-col overflow-hidden', closing ? 'animate-modal-out' : 'animate-modal-in')}>
         {/* Header */}
         <div className="flex items-center justify-between px-4 py-3 border-b border-gray-200 dark:border-white/10 shrink-0">
           <div className="flex items-center gap-2">

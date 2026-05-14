@@ -1,8 +1,9 @@
-import { useState, useRef, useEffect } from 'react';
+import { useState, useRef, useEffect, useCallback } from 'react';
 import { ChevronDown } from 'lucide-react';
 import { HexColorPicker } from 'react-colorful';
 import { useTheme, themePresets } from '../context/ThemeContext';
 import { GlassCard } from './GlassCard';
+import { cn } from '../lib/utils';
 
 interface ThemePanelProps {
   onClose: () => void;
@@ -12,17 +13,24 @@ export function ThemePanel({ onClose }: ThemePanelProps) {
   const { theme, setTheme, primaryColor, setPrimaryColor } = useTheme();
   const [showCustom, setShowCustom] = useState(false);
   const [customColor, setCustomColor] = useState(primaryColor);
+  const [closing, setClosing] = useState(false);
   const panelRef = useRef<HTMLDivElement>(null);
+
+  const handleClose = useCallback(() => {
+    if (closing) return;
+    setClosing(true);
+    setTimeout(onClose, 200);
+  }, [closing, onClose]);
 
   useEffect(() => {
     const handleMouseDown = (e: MouseEvent) => {
       if (panelRef.current && !panelRef.current.contains(e.target as Node)) {
-        onClose();
+        handleClose();
       }
     };
     document.addEventListener('mousedown', handleMouseDown);
     return () => document.removeEventListener('mousedown', handleMouseDown);
-  }, [onClose]);
+  }, [handleClose]);
 
   const handlePreset = (color: string) => {
     setPrimaryColor(color);
@@ -37,7 +45,7 @@ export function ThemePanel({ onClose }: ThemePanelProps) {
 
   return (
     <div ref={panelRef} className="fixed bottom-4 left-4 w-72 z-[10001] pointer-events-none flex items-end justify-start">
-      <GlassCard className="w-full pointer-events-auto shadow-2xl border border-white/10 flex flex-col animate-in slide-in-from-bottom-4 duration-300 rounded-[20px] overflow-hidden">
+      <GlassCard className={cn('w-full pointer-events-auto shadow-2xl border border-white/10 flex flex-col rounded-[20px] overflow-hidden', closing ? 'animate-panel-out' : 'animate-in slide-in-from-bottom-4 duration-300')}>
 
         {/* 明亮 / 深邃 */}
         <div className="flex p-3 gap-2 border-b border-white/5">

@@ -15,6 +15,7 @@ import { toast } from 'sonner';
 import { invoke } from '@tauri-apps/api/core';
 import { TtsProvider, availableProviders, findVoice, TtsVoice } from '../lib/voices';
 import { VoicePicker } from '../components/VoicePicker';
+import { Modal, ModalCloseButton } from '../components/Modal';
 import { useLoggedIn } from '../context/LoginContext';
 import { cn } from '../lib/utils';
 
@@ -47,56 +48,52 @@ function BotEditModal({ bot, isNew, llmProviders, onSave, onClose }: any) {
   const [draft, setDraft] = useState<AiBot>({ ...bot });
   const patch = (p: Partial<AiBot>) => setDraft(prev => ({ ...prev, ...p }));
   return (
-    <div className="fixed inset-0 bg-black/30 backdrop-blur-sm flex items-center justify-center z-[100]">
-      <GlassCard className="w-[420px] shadow-2xl border border-white/20 overflow-hidden">
-        {/* Header */}
-        <div className="flex items-center justify-between px-6 py-4 border-b border-black/5 dark:border-white/10 shrink-0">
-          <div>
-            <h2 className="text-[14px] font-bold">{isNew ? '添加机器人' : '编辑机器人'}</h2>
-            <p className="text-[10px] text-gray-400 mt-0.5">配置机器人名称和语言模型</p>
-          </div>
-          <button onClick={onClose} className="w-7 h-7 rounded-lg hover:bg-black/5 dark:hover:bg-white/10 flex items-center justify-center transition-colors">
-            <X className="w-4 h-4 text-gray-500" />
-          </button>
+    <Modal open={true} onClose={onClose} className="w-[420px]">
+      {/* Header */}
+      <div className="flex items-center justify-between px-6 py-4 border-b border-black/5 dark:border-white/10 shrink-0">
+        <div>
+          <h2 className="text-[14px] font-bold">{isNew ? '添加机器人' : '编辑机器人'}</h2>
+          <p className="text-[10px] text-gray-400 mt-0.5">配置机器人名称和语言模型</p>
         </div>
-        {/* Body */}
-        <div className="p-6 space-y-4">
-          <div>
-            <label className="text-[11px] text-gray-500 mb-1.5 block">机器人名称</label>
-            <Input
-              value={draft.Nickname}
-              onChange={e => patch({ Nickname: e.target.value })}
-              placeholder="例如：二狗、AI助手"
-              className="w-full h-10"
-            />
-          </div>
-          <div>
-            <label className="text-[11px] text-gray-500 mb-1.5 block">LLM 供应商</label>
-            <div className="relative">
-              <select
-                value={draft.ProviderId}
-                onChange={e => patch({ ProviderId: e.target.value })}
-                className="w-full h-10 pl-3 pr-8 rounded-xl appearance-none bg-white/60 dark:bg-white/10 border border-gray-200 dark:border-white/20 text-[13px] focus:outline-none focus:ring-2 focus:ring-[var(--primary-color)]/50"
-              >
-                <option value="">-- 选择 LLM 供应商 --</option>
-                {llmProviders.map((p: any) => <option key={p.Id} value={p.Id}>{p.Name}</option>)}
-              </select>
-              <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-gray-400 pointer-events-none" />
-            </div>
-            {llmProviders.length === 0 && (
-              <p className="text-[10px] text-amber-500 mt-1">请先在「模型服务」页添加 LLM 供应商</p>
-            )}
-          </div>
+        <ModalCloseButton onClose={onClose} />
+      </div>
+      {/* Body */}
+      <div className="p-6 space-y-4">
+        <div>
+          <label className="text-[11px] text-gray-500 mb-1.5 block">机器人名称</label>
+          <Input
+            value={draft.Nickname}
+            onChange={e => patch({ Nickname: e.target.value })}
+            placeholder="例如：二狗、AI助手"
+            className="w-full h-10"
+          />
         </div>
-        {/* Footer */}
-        <div className="flex gap-2 px-6 pb-6">
-          <Button variant="default" className="flex-1" onClick={onClose}>取消</Button>
-          <Button variant="primary" className="flex-1" onClick={() => onSave(draft)}>
-            {isNew ? '添加' : '保存'}
-          </Button>
+        <div>
+          <label className="text-[11px] text-gray-500 mb-1.5 block">LLM 供应商</label>
+          <div className="relative">
+            <select
+              value={draft.ProviderId}
+              onChange={e => patch({ ProviderId: e.target.value })}
+              className="w-full h-10 pl-3 pr-8 rounded-xl appearance-none bg-white/60 dark:bg-white/10 border border-gray-200 dark:border-white/20 text-[13px] focus:outline-none focus:ring-2 focus:ring-[var(--primary-color)]/50"
+            >
+              <option value="">-- 选择 LLM 供应商 --</option>
+              {llmProviders.map((p: any) => <option key={p.Id} value={p.Id}>{p.Name}</option>)}
+            </select>
+            <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-gray-400 pointer-events-none" />
+          </div>
+          {llmProviders.length === 0 && (
+            <p className="text-[10px] text-amber-500 mt-1">请先在「模型服务」页添加 LLM 供应商</p>
+          )}
         </div>
-      </GlassCard>
-    </div>
+      </div>
+      {/* Footer */}
+      <div className="flex gap-2 px-6 pb-6">
+        <Button variant="default" className="flex-1" onClick={onClose}>取消</Button>
+        <Button variant="primary" className="flex-1" onClick={() => onSave(draft)}>
+          {isNew ? '添加' : '保存'}
+        </Button>
+      </div>
+    </Modal>
   );
 }
 
@@ -320,42 +317,36 @@ export function AI() {
 
       <VoicePicker open={voiceOpen} onClose={() => setVoiceOpen(false)} providers={config ? availableProviders((config.AiProviders ?? []).filter(p => p.ProviderType === 'tts' && p.Enabled).map(p => p.Name)) : ['edge_tts']} currentVoice={ttsVoice} onSelect={v => { setTtsVoice(v); setConfig({ ...config!, TtsVoice: v }); api.saveConfig({ ...config!, TtsVoice: v }); }} />
 
-      {settingsOpen && (
-        <div className="fixed inset-0 bg-black/30 backdrop-blur-sm flex items-center justify-center z-[100]">
-          <GlassCard className="w-[480px] p-6 shadow-2xl border border-white/10">
-            <div className="flex items-center justify-between mb-4">
-              <h2 className="text-[14px] font-bold">AI 助手设置</h2>
-              <button onClick={() => setSettingsOpen(false)} className="w-7 h-7 rounded-lg hover:bg-white/10 flex items-center justify-center transition-colors">
-                <X className="w-4 h-4" />
-              </button>
-            </div>
-            <div className="space-y-1.5">
-              <label className="text-[11px] text-gray-500 block">AI 助手提示词（界面对话使用）：</label>
-              <textarea
-                className="w-full h-40 px-3 py-2 rounded-lg bg-white/60 dark:bg-white/10 border border-gray-200 dark:border-white/20 text-[12px] focus:outline-none focus:ring-2 focus:ring-[var(--primary-color)]/50 resize-none"
-                value={promptDraft}
-                onChange={e => setPromptDraft(e.target.value)}
-                placeholder="AI 界面聊天使用的系统提示词..."
-              />
-            </div>
-            <div className="flex gap-2 mt-4">
-              <Button variant="default" className="flex-1" onClick={() => setSettingsOpen(false)}>取消</Button>
-              <Button variant="primary" className="flex-1" onClick={async () => {
-                if (!config) return;
-                const next = { ...config, AiAssistantPrompt: promptDraft };
-                try {
-                  await api.saveConfig(next);
-                  setConfig(next);
-                  toast.success('保存成功');
-                  setSettingsOpen(false);
-                } catch (err) {
-                  toast.error(`保存失败: ${err}`);
-                }
-              }}>保存</Button>
-            </div>
-          </GlassCard>
+      <Modal open={settingsOpen} onClose={() => setSettingsOpen(false)} className="w-[480px] p-6">
+        <div className="flex items-center justify-between mb-4">
+          <h2 className="text-[14px] font-bold">AI 助手设置</h2>
+          <ModalCloseButton onClose={() => setSettingsOpen(false)} />
         </div>
-      )}
+        <div className="space-y-1.5">
+          <label className="text-[11px] text-gray-500 block">AI 助手提示词（界面对话使用）：</label>
+          <textarea
+            className="w-full h-40 px-3 py-2 rounded-lg bg-white/60 dark:bg-white/10 border border-gray-200 dark:border-white/20 text-[12px] focus:outline-none focus:ring-2 focus:ring-[var(--primary-color)]/50 resize-none"
+            value={promptDraft}
+            onChange={e => setPromptDraft(e.target.value)}
+            placeholder="AI 界面聊天使用的系统提示词..."
+          />
+        </div>
+        <div className="flex gap-2 mt-4">
+          <Button variant="default" className="flex-1" onClick={() => setSettingsOpen(false)}>取消</Button>
+          <Button variant="primary" className="flex-1" onClick={async () => {
+            if (!config) return;
+            const next = { ...config, AiAssistantPrompt: promptDraft };
+            try {
+              await api.saveConfig(next);
+              setConfig(next);
+              toast.success('保存成功');
+              setSettingsOpen(false);
+            } catch (err) {
+              toast.error(`保存失败: ${err}`);
+            }
+          }}>保存</Button>
+        </div>
+      </Modal>
     </div>
   );
 }

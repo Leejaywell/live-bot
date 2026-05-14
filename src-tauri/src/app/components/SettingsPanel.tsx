@@ -1,7 +1,7 @@
-import { X, FolderOpen, Database, RefreshCw } from 'lucide-react';
+import { FolderOpen, Database, RefreshCw } from 'lucide-react';
 import { useState, useEffect } from 'react';
-import { GlassCard } from './GlassCard';
 import { Button } from './Button';
+import { Modal, ModalCloseButton } from './Modal';
 import { api, SystemInfo } from '../lib/api';
 import { toast } from 'sonner';
 
@@ -45,17 +45,11 @@ export function SettingsPanel({ onClose }: SettingsPanelProps) {
     p.split('/').pop() || p.split('\\').pop() || p;
 
   return (
-    <div className="fixed inset-0 bg-black/20 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-      <GlassCard className="w-full max-w-md max-h-[80vh] overflow-hidden flex flex-col">
+    <Modal open={true} onClose={onClose} className="w-full max-w-md max-h-[80vh] overflow-hidden flex flex-col" zIndex={50}>
         {/* Header */}
         <div className="flex items-center justify-between p-5 border-b border-white/10">
           <h2 className="text-[15px] font-semibold">设置</h2>
-          <button
-            onClick={onClose}
-            className="w-8 h-8 rounded-lg hover:bg-white/10 flex items-center justify-center transition-colors"
-          >
-            <X className="w-4 h-4" />
-          </button>
+          <ModalCloseButton onClose={onClose} className="w-8 h-8" />
         </div>
 
         {/* Content */}
@@ -137,7 +131,6 @@ export function SettingsPanel({ onClose }: SettingsPanelProps) {
           </div>
 
         </div>
-      </GlassCard>
-    </div>
+    </Modal>
   );
 }

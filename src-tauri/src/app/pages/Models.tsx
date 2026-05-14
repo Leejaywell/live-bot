@@ -11,6 +11,7 @@ import {
 } from 'lucide-react';
 import { api, AppConfig, AiProvider } from '../lib/api';
 import { toast } from 'sonner';
+import { Modal, ModalCloseButton } from '../components/Modal';
 
 // ── 供应商模板 ─────────────────────────────────────────────────────────────────
 
@@ -103,53 +104,50 @@ function GSelect({ value, onChange, options }: {
 
 // ── 新建时弹窗：先选类型 ───────────────────────────────────────────────────────
 
-function TypePickerModal({ onPick, onClose, fullTypes }: {
+function TypePickerModal({ open, onPick, onClose, fullTypes }: {
+  open: boolean;
   onPick: (type: ProviderType) => void;
   onClose: () => void;
   fullTypes: Set<ProviderType>;
 }) {
   return (
-    <div className="fixed inset-0 bg-black/30 backdrop-blur-sm flex items-center justify-center z-[100]">
-      <GlassCard className="w-[340px] p-6 shadow-2xl border border-white/10">
-        <div className="flex items-center justify-between mb-5">
-          <h2 className="text-[13px] font-semibold">选择服务类型</h2>
-          <button onClick={onClose} className="w-7 h-7 rounded-lg hover:bg-white/10 flex items-center justify-center transition-colors">
-            <X className="w-3.5 h-3.5" />
-          </button>
-        </div>
-        <div className="space-y-2">
-          {(['llm', 'asr', 'tts'] as ProviderType[]).map(t => {
-            const { label, icon: Icon, accent } = TYPE_META[t];
-            const isFull = fullTypes.has(t);
-            const cap = MAX_PER_TYPE[t];
-            const desc = t === 'llm'
-              ? `大语言模型，提供 AI 对话能力（最多 ${cap} 个）`
-              : t === 'asr' ? `语音识别，将语音转为文字（限 ${cap} 个）`
-              : `语音合成，将文字转为语音（限 ${cap} 个）`;
-            return (
-              <button key={t} type="button" onClick={() => !isFull && onPick(t)} disabled={isFull}
-                className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl border transition-all text-left group ${
-                  isFull
-                    ? 'opacity-40 cursor-not-allowed border-gray-200 dark:border-white/10'
-                    : 'border-gray-200 dark:border-white/12 hover:border-[var(--primary-color)]/50 hover:bg-[var(--primary-color)]/5'
-                }`}>
-                <div className="w-9 h-9 rounded-xl flex items-center justify-center shrink-0 transition-all group-hover:scale-105"
-                  style={{ background: `${accent}18`, border: `1.5px solid ${accent}30` }}>
-                  <Icon className="w-4 h-4" style={{ color: accent }} />
+    <Modal open={open} onClose={onClose} className="w-[340px] p-6">
+      <div className="flex items-center justify-between mb-5">
+        <h2 className="text-[13px] font-semibold">选择服务类型</h2>
+        <ModalCloseButton onClose={onClose} />
+      </div>
+      <div className="space-y-2">
+        {(['llm', 'asr', 'tts'] as ProviderType[]).map(t => {
+          const { label, icon: Icon, accent } = TYPE_META[t];
+          const isFull = fullTypes.has(t);
+          const cap = MAX_PER_TYPE[t];
+          const desc = t === 'llm'
+            ? `大语言模型，提供 AI 对话能力（最多 ${cap} 个）`
+            : t === 'asr' ? `语音识别，将语音转为文字（限 ${cap} 个）`
+            : `语音合成，将文字转为语音（限 ${cap} 个）`;
+          return (
+            <button key={t} type="button" onClick={() => !isFull && onPick(t)} disabled={isFull}
+              className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl border transition-all text-left group ${
+                isFull
+                  ? 'opacity-40 cursor-not-allowed border-gray-200 dark:border-white/10'
+                  : 'border-gray-200 dark:border-white/12 hover:border-[var(--primary-color)]/50 hover:bg-[var(--primary-color)]/5'
+              }`}>
+              <div className="w-9 h-9 rounded-xl flex items-center justify-center shrink-0 transition-all group-hover:scale-105"
+                style={{ background: `${accent}18`, border: `1.5px solid ${accent}30` }}>
+                <Icon className="w-4 h-4" style={{ color: accent }} />
+              </div>
+              <div>
+                <div className="text-[12px] font-semibold flex items-center gap-2">
+                  {label}
+                  {isFull && <span className="text-[9px] px-1.5 py-0.5 rounded-full bg-gray-200 dark:bg-white/10 text-gray-500">已达上限</span>}
                 </div>
-                <div>
-                  <div className="text-[12px] font-semibold flex items-center gap-2">
-                    {label}
-                    {isFull && <span className="text-[9px] px-1.5 py-0.5 rounded-full bg-gray-200 dark:bg-white/10 text-gray-500">已达上限</span>}
-                  </div>
-                  <div className="text-[10px] text-gray-400">{desc}</div>
-                </div>
-              </button>
-            );
-          })}
-        </div>
-      </GlassCard>
-    </div>
+                <div className="text-[10px] text-gray-400">{desc}</div>
+              </div>
+            </button>
+          );
+        })}
+      </div>
+    </Modal>
   );
 }
 
@@ -669,36 +667,31 @@ export function Models() {
       )}
 
       {/* 类型选择弹窗 */}
-      {showTypePick && <TypePickerModal onPick={handlePickType} onClose={() => setShowTypePick(false)} fullTypes={fullTypes} />}
+      <TypePickerModal open={showTypePick} onPick={handlePickType} onClose={() => setShowTypePick(false)} fullTypes={fullTypes} />
 
       {/* 编辑弹窗 */}
       {pending && (
-        <div className="fixed inset-0 bg-black/30 backdrop-blur-sm flex items-center justify-center z-[100]">
-          <GlassCard className="w-[480px] max-h-[88vh] overflow-hidden flex flex-col shadow-2xl border border-white/10">
-            <div className="flex items-center justify-between p-5 border-b border-white/10 shrink-0">
-              <h2 className="text-[13px] font-semibold flex items-center gap-2">
-                {(() => {
-                  const type = (pending.ProviderType || 'llm') as ProviderType;
-                  const { icon: Icon, label } = TYPE_META[type];
-                  return <><Icon className="w-4 h-4" />{config.AiProviders.some(p => p.Id === pending.Id) ? '编辑' : '添加'} {label}</>;
-                })()}
-              </h2>
-              <button onClick={() => { setPending(null); setErrors({}); }}
-                className="w-8 h-8 rounded-lg hover:bg-white/10 flex items-center justify-center transition-colors">
-                <X className="w-4 h-4" />
-              </button>
-            </div>
-            <div className="flex-1 overflow-y-auto p-5">
-              {pending.ProviderType === 'asr' ? <AsrFields p={pending} set={setPendingField} />
-                : pending.ProviderType === 'tts' ? <TtsFields p={pending} set={setPendingField} />
-                : <LlmFields p={pending} set={setPendingField} errors={errors} />}
-            </div>
-            <div className="p-5 border-t border-white/10 flex gap-2 shrink-0">
-              <Button variant="default" className="flex-1 h-10" onClick={() => { setPending(null); setErrors({}); }}>取消</Button>
-              <Button variant="primary" className="flex-1 h-10" onClick={handleSave}>保存</Button>
-            </div>
-          </GlassCard>
-        </div>
+        <Modal open={true} onClose={() => { setPending(null); setErrors({}); }} className="w-[480px] max-h-[88vh] overflow-hidden flex flex-col">
+          <div className="flex items-center justify-between p-5 border-b border-white/10 shrink-0">
+            <h2 className="text-[13px] font-semibold flex items-center gap-2">
+              {(() => {
+                const type = (pending.ProviderType || 'llm') as ProviderType;
+                const { icon: Icon, label } = TYPE_META[type];
+                return <><Icon className="w-4 h-4" />{config.AiProviders.some(p => p.Id === pending.Id) ? '编辑' : '添加'} {label}</>;
+              })()}
+            </h2>
+            <ModalCloseButton onClose={() => { setPending(null); setErrors({}); }} className="w-8 h-8" />
+          </div>
+          <div className="flex-1 overflow-y-auto p-5">
+            {pending.ProviderType === 'asr' ? <AsrFields p={pending} set={setPendingField} />
+              : pending.ProviderType === 'tts' ? <TtsFields p={pending} set={setPendingField} />
+              : <LlmFields p={pending} set={setPendingField} errors={errors} />}
+          </div>
+          <div className="p-5 border-t border-white/10 flex gap-2 shrink-0">
+            <Button variant="default" className="flex-1 h-10" onClick={() => { setPending(null); setErrors({}); }}>取消</Button>
+            <Button variant="primary" className="flex-1 h-10" onClick={handleSave}>保存</Button>
+          </div>
+        </Modal>
       )}
     </div>
   );

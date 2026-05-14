@@ -4,10 +4,11 @@ import { Toggle } from '../components/Toggle';
 import { cn } from '../lib/utils';
 import { api, AppConfig } from '../lib/api';
 import { Link } from 'react-router-dom';
-import { Mic, MicOff, ChevronDown, Cpu, MessageSquareText, Settings as SettingsIcon, AlertCircle, X } from 'lucide-react';
+import { Mic, MicOff, ChevronDown, Cpu, MessageSquareText, Settings as SettingsIcon, AlertCircle } from 'lucide-react';
 import { toast } from 'sonner';
 import { TtsProvider, availableProviders, findVoice } from '../lib/voices';
 import { VoicePicker } from '../components/VoicePicker';
+import { Modal, ModalCloseButton } from '../components/Modal';
 
 // ── 动画 ───────────────────────────────────────────────────────────────────────
 
@@ -461,60 +462,44 @@ export function Voice() {
         onSelect={v => { setTtsVoice(v); onVoiceChange(v); }}
       />
 
-      {/* 语音设置弹窗 */}
-      {settingsOpen && (
-        <div
-          className="fixed inset-0 bg-black/20 backdrop-blur-sm z-50 flex items-center justify-center p-4"
-          onClick={() => setSettingsOpen(false)}
-        >
-          <div
-            className="glass-card w-full max-w-md rounded-2xl overflow-hidden shadow-2xl"
-            onClick={e => e.stopPropagation()}
-          >
-            <div className="flex items-center justify-between p-4 border-b border-white/10">
-              <h3 className="text-[13px] font-semibold">语音交互设置</h3>
-              <button
-                onClick={() => setSettingsOpen(false)}
-                className="w-8 h-8 rounded-lg hover:bg-white/10 flex items-center justify-center transition-colors"
-              >
-                <X className="w-4 h-4" />
-              </button>
-            </div>
-            <div className="p-4 space-y-4">
-              <div className="flex items-center gap-3">
-                <span className="text-[11px] text-gray-500 shrink-0">AI 性别</span>
-                <div className="flex items-center gap-1 p-0.5 rounded-xl bg-black/5 dark:bg-white/8 border border-gray-200 dark:border-white/12">
-                  {(['女AI', '男AI'] as const).map(g => (
-                    <button
-                      key={g}
-                      onClick={() => scheduleSave({ VoiceGender: g })}
-                      className={`h-[24px] px-3 rounded-lg text-[10px] font-medium transition-all ${
-                        (config?.VoiceGender ?? '女AI') === g
-                          ? 'bg-white dark:bg-white/20 text-[var(--primary-color)] shadow-sm'
-                          : 'text-gray-400 hover:text-gray-600 dark:hover:text-gray-300'
-                      }`}
-                    >
-                      {g}
-                    </button>
-                  ))}
-                </div>
-              </div>
-              <div>
-                <label className="text-[11px] text-gray-500 mb-1.5 block">系统提示词</label>
-                <textarea
-                  className="w-full h-40 px-3 py-2 rounded-lg bg-white/60 dark:bg-white/10 border border-gray-200 dark:border-white/20 text-[12px] focus:outline-none focus:ring-2 focus:ring-[var(--primary-color)]/50 resize-none leading-relaxed"
-                  value={config?.VoiceSystemPrompt ?? ''}
-                  onChange={e => scheduleSave({ VoiceSystemPrompt: e.target.value })}
-                  placeholder="语音交互模式下 AI 的系统提示词..."
-                />
-                <p className="text-[10px] text-gray-400 mt-1">
-                  提示词中可使用 {'{gender}'} 占位符，自动替换为所选 AI 性别
-                </p>
-              </div>
+      <Modal open={settingsOpen} onClose={() => setSettingsOpen(false)} className="w-full max-w-md">
+        <div className="flex items-center justify-between p-4 border-b border-white/10">
+          <h3 className="text-[13px] font-semibold">语音交互设置</h3>
+          <ModalCloseButton onClose={() => setSettingsOpen(false)} className="w-8 h-8" />
+        </div>
+        <div className="p-4 space-y-4">
+          <div className="flex items-center gap-3">
+            <span className="text-[11px] text-gray-500 shrink-0">AI 性别</span>
+            <div className="flex items-center gap-1 p-0.5 rounded-xl bg-black/5 dark:bg-white/8 border border-gray-200 dark:border-white/12">
+              {(['女AI', '男AI'] as const).map(g => (
+                <button
+                  key={g}
+                  onClick={() => scheduleSave({ VoiceGender: g })}
+                  className={`h-[24px] px-3 rounded-lg text-[10px] font-medium transition-all ${
+                    (config?.VoiceGender ?? '女AI') === g
+                      ? 'bg-white dark:bg-white/20 text-[var(--primary-color)] shadow-sm'
+                      : 'text-gray-400 hover:text-gray-600 dark:hover:text-gray-300'
+                  }`}
+                >
+                  {g}
+                </button>
+              ))}
             </div>
           </div>
+          <div>
+            <label className="text-[11px] text-gray-500 mb-1.5 block">系统提示词</label>
+            <textarea
+              className="w-full h-40 px-3 py-2 rounded-lg bg-white/60 dark:bg-white/10 border border-gray-200 dark:border-white/20 text-[12px] focus:outline-none focus:ring-2 focus:ring-[var(--primary-color)]/50 resize-none leading-relaxed"
+              value={config?.VoiceSystemPrompt ?? ''}
+              onChange={e => scheduleSave({ VoiceSystemPrompt: e.target.value })}
+              placeholder="语音交互模式下 AI 的系统提示词..."
+            />
+            <p className="text-[10px] text-gray-400 mt-1">
+              提示词中可使用 {'{gender}'} 占位符，自动替换为所选 AI 性别
+            </p>
+          </div>
         </div>
-      )}
+      </Modal>
     </>
   );
 }

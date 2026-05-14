@@ -25,6 +25,7 @@ import { invoke } from '@tauri-apps/api/core';
 import QRCode from 'react-qr-code';
 import { toast } from 'sonner';
 import { RefreshCw, X, QrCode } from 'lucide-react';
+import { Modal, ModalCloseButton } from './components/Modal';
 
 export default function App() {
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
@@ -311,62 +312,49 @@ export default function App() {
           {settingsPanelOpen && <SettingsPanel onClose={() => setSettingsPanelOpen(false)} />}
 
           {/* 连接直播间弹窗 */}
-          {showRoomModal && isLoggedIn && (
-            <div
-              className="fixed inset-0 bg-black/30 backdrop-blur-sm flex items-center justify-center z-[9998]"
-              onClick={() => setShowRoomModal(false)}
-            >
-              <div onClick={(e) => e.stopPropagation()}><GlassCard className="w-[400px] p-6">
-                <RoomConnectForm
-                  userRoom={userRoom}
-                  onSuccess={handleRoomConnected}
-                />
-              </GlassCard></div>
-            </div>
-          )}
+          <Modal open={showRoomModal && isLoggedIn} onClose={() => setShowRoomModal(false)} className="w-[400px] p-6" zIndex={9998}>
+            <RoomConnectForm
+              userRoom={userRoom}
+              onSuccess={handleRoomConnected}
+            />
+          </Modal>
 
           {/* 登录二维码弹窗 */}
-          {showLoginModal && (
-            <div className="fixed inset-0 bg-black/30 backdrop-blur-sm flex items-center justify-center z-[9999]">
-              <GlassCard className="w-[340px] p-6">
-                <div className="flex items-center justify-between mb-6">
-                  <h2 className="text-[15px] font-semibold">扫码登录</h2>
-                  <button onClick={() => { setShowLoginModal(false); setLoginUrl(''); }} className="w-8 h-8 rounded-lg hover:bg-white/10 flex items-center justify-center transition-colors">
-                    <X className="w-4 h-4" />
-                  </button>
-                </div>
-                <div className="flex flex-col items-center">
-                  <div className="w-52 h-52 bg-white rounded-xl flex items-center justify-center mb-4 border border-gray-200 p-2 relative overflow-hidden">
-                    {loadingQr ? (
-                      <RefreshCw className="w-8 h-8 text-gray-300 animate-spin" />
-                    ) : loginUrl ? (
-                      <>
-                        <QRCode value={loginUrl} size={180} />
-                        {loginStatus === 'expired' && (
-                          <div className="absolute inset-0 bg-white/90 flex flex-col items-center justify-center gap-2 cursor-pointer" onClick={fetchLoginQr}>
-                            <RefreshCw className="w-6 h-6 text-gray-500" />
-                            <span className="text-[12px] text-gray-600">二维码已过期</span>
-                            <span className="text-[10px] text-blue-500">点击刷新</span>
-                          </div>
-                        )}
-                      </>
-                    ) : (
-                      <QrCode className="w-40 h-40 text-gray-200" />
-                    )}
-                  </div>
-                  <div className="w-full space-y-2 mb-4">
-                    <div className="flex items-start gap-2"><span className="text-[11px] text-gray-500 flex-shrink-0">1.</span><span className="text-[11px] text-gray-500">打开哔哩哔哩 App</span></div>
-                    <div className="flex items-start gap-2"><span className="text-[11px] text-gray-500 flex-shrink-0">2.</span><span className="text-[11px] text-gray-500">点击右上角扫一扫</span></div>
-                    <div className="flex items-start gap-2"><span className="text-[11px] text-gray-500 flex-shrink-0">3.</span><span className="text-[11px] text-gray-500">确认登录</span></div>
-                  </div>
-                  <Button variant="default" className="w-full" onClick={fetchLoginQr} disabled={loadingQr}>
-                    <RefreshCw className={`w-3.5 h-3.5 mr-1.5 ${loadingQr ? 'animate-spin' : ''}`} />
-                    刷新二维码
-                  </Button>
-                </div>
-              </GlassCard>
+          <Modal open={showLoginModal} onClose={() => { setShowLoginModal(false); setLoginUrl(''); }} className="w-[340px] p-6" zIndex={9999}>
+            <div className="flex items-center justify-between mb-6">
+              <h2 className="text-[15px] font-semibold">扫码登录</h2>
+              <ModalCloseButton onClose={() => { setShowLoginModal(false); setLoginUrl(''); }} className="w-8 h-8" />
             </div>
-          )}
+            <div className="flex flex-col items-center">
+              <div className="w-52 h-52 bg-white rounded-xl flex items-center justify-center mb-4 border border-gray-200 p-2 relative overflow-hidden">
+                {loadingQr ? (
+                  <RefreshCw className="w-8 h-8 text-gray-300 animate-spin" />
+                ) : loginUrl ? (
+                  <>
+                    <QRCode value={loginUrl} size={180} />
+                    {loginStatus === 'expired' && (
+                      <div className="absolute inset-0 bg-white/90 flex flex-col items-center justify-center gap-2 cursor-pointer" onClick={fetchLoginQr}>
+                        <RefreshCw className="w-6 h-6 text-gray-500" />
+                        <span className="text-[12px] text-gray-600">二维码已过期</span>
+                        <span className="text-[10px] text-blue-500">点击刷新</span>
+                      </div>
+                    )}
+                  </>
+                ) : (
+                  <QrCode className="w-40 h-40 text-gray-200" />
+                )}
+              </div>
+              <div className="w-full space-y-2 mb-4">
+                <div className="flex items-start gap-2"><span className="text-[11px] text-gray-500 flex-shrink-0">1.</span><span className="text-[11px] text-gray-500">打开哔哩哔哩 App</span></div>
+                <div className="flex items-start gap-2"><span className="text-[11px] text-gray-500 flex-shrink-0">2.</span><span className="text-[11px] text-gray-500">点击右上角扫一扫</span></div>
+                <div className="flex items-start gap-2"><span className="text-[11px] text-gray-500 flex-shrink-0">3.</span><span className="text-[11px] text-gray-500">确认登录</span></div>
+              </div>
+              <Button variant="default" className="w-full" onClick={fetchLoginQr} disabled={loadingQr}>
+                <RefreshCw className={`w-3.5 h-3.5 mr-1.5 ${loadingQr ? 'animate-spin' : ''}`} />
+                刷新二维码
+              </Button>
+            </div>
+          </Modal>
         </div>
       </HashRouter>
       </LoginContext.Provider>
