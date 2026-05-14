@@ -62,7 +62,7 @@ const MINIMAX_VOICES = [
   { value: 'zh_male_qinqiang_moon_bigtts',          label: '秦腔（浑厚男声）' },
 ];
 
-const MAX_PER_TYPE = 3;
+const MAX_PER_TYPE: Record<ProviderType, number> = { llm: 5, asr: 1, tts: 1 };
 
 // ── 工具 ───────────────────────────────────────────────────────────────────────
 
@@ -103,9 +103,10 @@ function GSelect({ value, onChange, options }: {
 
 // ── 新建时弹窗：先选类型 ───────────────────────────────────────────────────────
 
-function TypePickerModal({ onPick, onClose }: {
+function TypePickerModal({ onPick, onClose, fullTypes }: {
   onPick: (type: ProviderType) => void;
   onClose: () => void;
+  fullTypes: Set<ProviderType>;
 }) {
   return (
     <div className="fixed inset-0 bg-black/30 backdrop-blur-sm flex items-center justify-center z-[100]">
@@ -119,16 +120,28 @@ function TypePickerModal({ onPick, onClose }: {
         <div className="space-y-2">
           {(['llm', 'asr', 'tts'] as ProviderType[]).map(t => {
             const { label, icon: Icon, accent } = TYPE_META[t];
-            const desc = t === 'llm' ? '大语言模型，提供 AI 对话能力' : t === 'asr' ? '语音识别，将语音转为文字' : '语音合成，将文字转为语音';
+            const isFull = fullTypes.has(t);
+            const cap = MAX_PER_TYPE[t];
+            const desc = t === 'llm'
+              ? `大语言模型，提供 AI 对话能力（最多 ${cap} 个）`
+              : t === 'asr' ? `语音识别，将语音转为文字（限 ${cap} 个）`
+              : `语音合成，将文字转为语音（限 ${cap} 个）`;
             return (
-              <button key={t} type="button" onClick={() => onPick(t)}
-                className="w-full flex items-center gap-3 px-4 py-3 rounded-xl border border-gray-200 dark:border-white/12 hover:border-[var(--primary-color)]/50 hover:bg-[var(--primary-color)]/5 transition-all text-left group">
+              <button key={t} type="button" onClick={() => !isFull && onPick(t)} disabled={isFull}
+                className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl border transition-all text-left group ${
+                  isFull
+                    ? 'opacity-40 cursor-not-allowed border-gray-200 dark:border-white/10'
+                    : 'border-gray-200 dark:border-white/12 hover:border-[var(--primary-color)]/50 hover:bg-[var(--primary-color)]/5'
+                }`}>
                 <div className="w-9 h-9 rounded-xl flex items-center justify-center shrink-0 transition-all group-hover:scale-105"
                   style={{ background: `${accent}18`, border: `1.5px solid ${accent}30` }}>
                   <Icon className="w-4 h-4" style={{ color: accent }} />
                 </div>
                 <div>
-                  <div className="text-[12px] font-semibold">{label}</div>
+                  <div className="text-[12px] font-semibold flex items-center gap-2">
+                    {label}
+                    {isFull && <span className="text-[9px] px-1.5 py-0.5 rounded-full bg-gray-200 dark:bg-white/10 text-gray-500">已达上限</span>}
+                  </div>
                   <div className="text-[10px] text-gray-400">{desc}</div>
                 </div>
               </button>
@@ -518,13 +531,21 @@ export function Models() {
     }).catch(console.error);
   }, []);
 
-  const handleAdd = () => setShowTypePick(true);
+  const handleAdd = () => {
+    if (!config) return;
+    const providers = config.AiProviders ?? [];
+    const canAddAny = (['llm', 'asr', 'tts'] as ProviderType[]).some(
+      t => providers.filter(p => (p.ProviderType || 'llm') === t).length < MAX_PER_TYPE[t]
+    );
+    if (!canAddAny) { toast.error('所有类型的服务均已配置完毕'); return; }
+    setShowTypePick(true);
+  };
 
   const handlePickType = (type: ProviderType) => {
     if (!config) return;
     const count = (config.AiProviders ?? []).filter(p => (p.ProviderType || 'llm') === type).length;
-    if (count >= MAX_PER_TYPE) {
-      toast.error(`${TYPE_META[type].label} 最多配置 ${MAX_PER_TYPE} 个`);
+    if (count >= MAX_PER_TYPE[type]) {
+      toast.error(`${TYPE_META[type].label} 最多配置 ${MAX_PER_TYPE[type]} 个`);
       setShowTypePick(false);
       return;
     }
@@ -602,7 +623,8 @@ export function Models() {
 
   const allProviders = config.AiProviders ?? [];
   const totalByType = (t: ProviderType) => allProviders.filter(p => (p.ProviderType || 'llm') === t).length;
-  const canAdd = (['llm', 'asr', 'tts'] as ProviderType[]).some(t => totalByType(t) < MAX_PER_TYPE);
+  const canAdd = (['llm', 'asr', 'tts'] as ProviderType[]).some(t => totalByType(t) < MAX_PER_TYPE[t]);
+  const fullTypes = new Set((['llm', 'asr', 'tts'] as ProviderType[]).filter(t => totalByType(t) >= MAX_PER_TYPE[t]));
 
   return (
     <div className="h-full flex flex-col p-4 gap-4 overflow-y-auto">
@@ -613,7 +635,7 @@ export function Models() {
             <Cpu className="w-4 h-4 text-[var(--primary-color)]" />
             模型服务
           </h1>
-          <p className="text-[11px] text-gray-400 mt-0.5">管理 LLM · ASR · TTS 服务，每类最多 {MAX_PER_TYPE} 个</p>
+          <p className="text-[11px] text-gray-400 mt-0.5">管理 LLM · ASR · TTS 服务，ASR/TTS 各限 1 个</p>
         </div>
         <Button variant={canAdd ? 'primary' : 'default'} size="sm" onClick={handleAdd} disabled={!canAdd}>
           <Plus className="w-3.5 h-3.5 mr-1.5" />添加服务
@@ -647,7 +669,7 @@ export function Models() {
       )}
 
       {/* 类型选择弹窗 */}
-      {showTypePick && <TypePickerModal onPick={handlePickType} onClose={() => setShowTypePick(false)} />}
+      {showTypePick && <TypePickerModal onPick={handlePickType} onClose={() => setShowTypePick(false)} fullTypes={fullTypes} />}
 
       {/* 编辑弹窗 */}
       {pending && (

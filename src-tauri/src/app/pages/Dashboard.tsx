@@ -34,7 +34,7 @@ const AUTO_GROUPS: AutoGroup[] = [
     ],
   },
   {
-    title: '指定欢迎', Icon: Star, to: '/auto-reply',
+    title: '欢迎过滤', Icon: Star, to: '/auto-reply?tab=system',
     subs: [
       { label: '欢迎自己', key: 'InteractSelf' },
       { label: '欢迎主播', key: 'InteractAnchor' },
@@ -56,7 +56,7 @@ const AUTO_GROUPS: AutoGroup[] = [
     subs: [],
   },
   {
-    title: '黑名单',  Icon: ShieldCheck, mainKey: 'DanmuFilterEnable', to: '/auto-reply?tab=blacklist',
+    title: '黑名单',  Icon: ShieldCheck, mainKey: 'DanmuFilterEnable', to: '/auto-reply?tab=filter',
     subs: [],
   },
 ];

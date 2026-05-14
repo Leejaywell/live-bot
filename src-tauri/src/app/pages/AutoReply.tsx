@@ -251,33 +251,34 @@ export function AutoReply() {
         </div>
 
         {/* 添加表单 */}
-        <div className="p-3.5 rounded-2xl bg-black/5 dark:bg-white/5 border border-dashed border-gray-300 dark:border-white/10 space-y-2">
-          <div className="flex gap-2">
-            <div className="w-[88px] shrink-0">
-              <label className="text-[10px] text-gray-500 mb-1 block flex items-center gap-1">
-                <Hash className="w-2.5 h-2.5" />UID
-              </label>
-              <Input
-                value={newSpecialUid}
-                onChange={e => setNewSpecialUid(e.target.value)}
-                placeholder="123456"
-                className="h-8 text-[11px] font-mono"
-              />
-            </div>
-            <div className="flex-1">
-              <label className="text-[10px] text-gray-500 mb-1 block">专属欢迎弹幕（支持 {'{user}'}）</label>
-              <Input
-                value={newSpecialMsg}
-                onChange={e => setNewSpecialMsg(e.target.value)}
-                placeholder="欢迎我的大哥 {user} 回来！"
-                className="h-8 text-[11px]"
-                onKeyDown={e => e.key === 'Enter' && addSpecialWelcome()}
-              />
-            </div>
+        <div className="flex items-end gap-2">
+          <div className="w-[80px] shrink-0">
+            <label className="text-[10px] text-gray-500 mb-1 block flex items-center gap-1">
+              <Hash className="w-2.5 h-2.5" />UID
+            </label>
+            <Input
+              value={newSpecialUid}
+              onChange={e => setNewSpecialUid(e.target.value)}
+              placeholder="123456"
+              className="h-9 text-[11px] font-mono"
+            />
           </div>
-          <Button variant="primary" size="sm" className="h-8 px-5 w-full" onClick={addSpecialWelcome}>
-            + 添加专属欢迎
-          </Button>
+          <div className="flex-1">
+            <label className="text-[10px] text-gray-500 mb-1 block">专属欢迎弹幕（支持 {'{user}'}）</label>
+            <Input
+              value={newSpecialMsg}
+              onChange={e => setNewSpecialMsg(e.target.value)}
+              placeholder="欢迎我的大哥 {user} 回来！"
+              className="h-9 text-[11px]"
+              onKeyDown={e => e.key === 'Enter' && addSpecialWelcome()}
+            />
+          </div>
+          <button
+            onClick={addSpecialWelcome}
+            className="w-9 h-9 rounded-lg bg-[var(--primary-color)] text-white flex items-center justify-center hover:opacity-90 shrink-0"
+          >
+            <Plus className="w-3.5 h-3.5" />
+          </button>
         </div>
 
         {/* 列表 */}
@@ -579,10 +580,6 @@ export function AutoReply() {
     <div className="space-y-5">
       {/* Left-right message boxes */}
       <div className="space-y-2">
-        <div className="flex items-center justify-between">
-          <span className="text-[12px] font-semibold">进出提示文案</span>
-          <Button size="sm" variant="primary" className="h-7 px-4 text-[11px]" onClick={() => save(config)}>保存</Button>
-        </div>
         <div className="grid grid-cols-2 gap-3">
           <div className="space-y-1.5 p-3.5 rounded-2xl bg-black/[0.03] dark:bg-white/[0.04] border border-gray-200/60 dark:border-white/10">
             <label className="text-[10px] font-bold text-gray-500 uppercase tracking-widest block">进入直播间</label>
@@ -603,6 +600,7 @@ export function AutoReply() {
             />
           </div>
         </div>
+        <Button size="sm" variant="primary" className="h-8 px-5 text-[11px]" onClick={() => save(config)}>保存</Button>
       </div>
 
       <div className="h-px bg-black/5 dark:bg-white/8" />
@@ -613,17 +611,17 @@ export function AutoReply() {
         <div className="space-y-2 rounded-2xl bg-black/[0.03] dark:bg-white/[0.04] border border-gray-200/60 dark:border-white/10 divide-y divide-black/5 dark:divide-white/5 overflow-hidden">
           <div className="flex items-center justify-between px-4 py-3">
             <div>
-              <div className="text-[12px] font-medium">不欢迎自己</div>
-              <div className="text-[10px] text-gray-400">主播进入自己直播间时不触发通用欢迎</div>
+              <div className="text-[12px] font-medium">欢迎自己</div>
+              <div className="text-[10px] text-gray-400">开启后，主播自己进入直播间时触发通用欢迎</div>
             </div>
-            <Toggle checked={!(config.InteractSelf ?? true)} onChange={checked => save({ ...config, InteractSelf: !checked })} />
+            <Toggle checked={config.InteractSelf ?? false} onChange={v => save({ ...config, InteractSelf: v })} />
           </div>
           <div className="flex items-center justify-between px-4 py-3">
             <div>
-              <div className="text-[12px] font-medium">不欢迎主播</div>
-              <div className="text-[10px] text-gray-400">主播账号进入直播间时不触发通用欢迎</div>
+              <div className="text-[12px] font-medium">欢迎主播</div>
+              <div className="text-[10px] text-gray-400">开启后，主播账号进入直播间时触发通用欢迎</div>
             </div>
-            <Toggle checked={!(config.InteractAnchor ?? true)} onChange={checked => save({ ...config, InteractAnchor: !checked })} />
+            <Toggle checked={config.InteractAnchor ?? false} onChange={v => save({ ...config, InteractAnchor: v })} />
           </div>
         </div>
       </div>

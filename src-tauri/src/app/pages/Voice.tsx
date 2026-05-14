@@ -4,7 +4,7 @@ import { Toggle } from '../components/Toggle';
 import { cn } from '../lib/utils';
 import { api, AppConfig } from '../lib/api';
 import { Link } from 'react-router-dom';
-import { Mic, MicOff, ChevronDown, Cpu, MessageSquareText, Activity, AlertCircle, AlertTriangle } from 'lucide-react';
+import { Mic, MicOff, ChevronDown, Cpu, MessageSquareText, Settings as SettingsIcon, AlertCircle } from 'lucide-react';
 import { toast } from 'sonner';
 import { TtsProvider, availableProviders, findVoice } from '../lib/voices';
 import { VoicePicker } from '../components/VoicePicker';
@@ -398,19 +398,47 @@ export function Voice() {
         </div>
 
         {/* ══ 下栏：实时字幕 ══════════════════════════════════════════════════ */}
-        <GlassCard className="flex-1 flex flex-col overflow-hidden border-white/60 dark:border-white/10 bg-white/40 shadow-2xl relative">
-          <div className="absolute top-6 left-6 flex items-center gap-2">
-             <div className="w-1.5 h-1.5 rounded-full bg-[var(--primary-color)]" />
-             <span className="text-[13px] font-bold text-gray-700">实时字幕</span>
+        <GlassCard className="flex-1 flex flex-col overflow-hidden border-white/60 dark:border-white/10 bg-white/60 dark:bg-black/20 shadow-2xl">
+          {/* header */}
+          <div className="flex items-center justify-between px-5 py-3 border-b border-black/5 dark:border-white/8 bg-white/40 dark:bg-black/10 shrink-0">
+            <div className="flex items-center gap-2">
+              <div className={`w-2 h-2 rounded-full transition-colors ${micActive ? 'bg-[var(--primary-color)] animate-pulse' : 'bg-gray-300'}`} />
+              <span className="text-[12px] font-bold text-gray-600 dark:text-gray-300">实时字幕</span>
+              {micActive && latency > 0 && (
+                <span className="text-[10px] text-gray-400 ml-2">{latency}ms</span>
+              )}
+            </div>
+            <button onClick={() => setSubtitles([])} className="h-7 px-3 rounded-full border border-gray-200 dark:border-white/15 text-[10px] font-bold text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 hover:bg-white/60 transition-all">
+              清空
+            </button>
           </div>
-          
-          <div className="flex-1 flex flex-col items-center justify-center gap-6 opacity-30 select-none">
-             <MessageSquareText className="w-20 h-20 text-gray-300" />
-             <p className="text-[14px] font-bold tracking-widest text-gray-400">开启麦克风后，实时字幕将显示在此处</p>
+
+          {/* subtitle content */}
+          <div ref={subRef} className="flex-1 overflow-y-auto p-5 space-y-3 scrollbar-none">
+            {subtitles.length === 0 ? (
+              <div className="h-full flex flex-col items-center justify-center gap-3 opacity-25 select-none">
+                <MessageSquareText className="w-16 h-16 text-gray-400" />
+                <p className="text-[13px] font-bold tracking-wide text-gray-400">开启麦克风后，实时字幕将显示在此处</p>
+              </div>
+            ) : (
+              subtitles.map(sub => (
+                <div key={sub.id} className={`flex ${sub.role === 'user' ? 'justify-end' : 'justify-start'} ${sub.fresh ? 'animate-in slide-in-from-bottom-2 duration-300' : ''}`}>
+                  <div className={cn(
+                    "max-w-[82%] px-4 py-2.5 rounded-2xl text-[13px] shadow-sm",
+                    sub.role === 'user'
+                      ? "bg-gray-100 dark:bg-white/10 text-gray-700 dark:text-gray-200 rounded-br-sm"
+                      : "bg-[var(--primary-color)] text-white rounded-bl-sm"
+                  )}>
+                    {sub.text}
+                  </div>
+                </div>
+              ))
+            )}
           </div>
-          
-          <div className="p-10">
-             <FullWave active={micActive} color={micActive ? 'var(--primary-color)' : '#e5e7eb'} barCount={80} />
+
+          {/* wave at bottom */}
+          <div className="px-6 pb-5 pt-2 shrink-0">
+            <FullWave active={micActive} color={micActive ? 'var(--primary-color)' : '#d1d5db'} barCount={64} />
           </div>
         </GlassCard>
       </div>

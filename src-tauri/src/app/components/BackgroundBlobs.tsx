@@ -1,6 +1,12 @@
 import { useEffect, useState, useRef } from 'react';
 import { useTheme, hexToRgb, hexToHsl, hslToHex } from '../context/ThemeContext';
 
+interface Bubble {
+  x: number; y: number; r: number;
+  vy: number; wobble: number; phase: number; speed: number; opacity: number;
+  popping: boolean; popT: number;
+}
+
 export function BackgroundBlobs() {
   const { theme, primaryColor } = useTheme();
   const mousePos = useRef({ x: window.innerWidth / 2, y: window.innerHeight / 2 });
@@ -9,15 +15,31 @@ export function BackgroundBlobs() {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const animFrameRef = useRef<number>(0);
   const smoothRef = useRef({ x: window.innerWidth / 2, y: window.innerHeight / 2 });
+  const bubblesRef = useRef<Bubble[]>([]);
 
   const isDark = theme === 'dark';
 
   useEffect(() => {
     const onMove = (e: MouseEvent) => { mousePos.current = { x: e.clientX, y: e.clientY }; };
     const onClick = (e: MouseEvent) => {
+      // Try to pop a bubble first
+      let popped = false;
+      for (const b of bubblesRef.current) {
+        if (b.popping) continue;
+        const drawX = b.x + Math.sin(b.phase) * b.wobble;
+        const dx = e.clientX - drawX;
+        const dy = e.clientY - b.y;
+        if (Math.sqrt(dx * dx + dy * dy) < b.r) {
+          b.popping = true; b.popT = 0;
+          popped = true;
+          break;
+        }
+      }
+      // Always add ripple
       const id = Date.now();
       setRipples(prev => [...prev, { id, x: e.clientX, y: e.clientY }]);
       setTimeout(() => setRipples(prev => prev.filter(r => r.id !== id)), 2500);
+      void popped;
     };
     window.addEventListener('mousemove', onMove);
     window.addEventListener('mousedown', onClick);
@@ -60,16 +82,64 @@ export function BackgroundBlobs() {
     const baseRgb = hexToRgb(primaryColor) || { r: 75, g: 142, b: 255 };
 
     const COUNT = 18;
-    const bubbles = Array.from({ length: COUNT }, (_, i) => ({
-      x:       Math.random() * W,
-      y:       H - Math.random() * H,
-      r:       Math.random() * 80 + 28,
-      vy:      -(Math.random() * 0.35 + 0.15),
-      wobble:  Math.random() * 45 + 20,
-      phase:   Math.random() * Math.PI * 2,
-      speed:   Math.random() * 0.014 + 0.007,
+    const mkBubble = (): Bubble => ({
+      x: Math.random() * W,
+      y: H - Math.random() * H,
+      r: Math.random() * 80 + 28,
+      vy: -(Math.random() * 0.35 + 0.15),
+      wobble: Math.random() * 45 + 20,
+      phase: Math.random() * Math.PI * 2,
+      speed: Math.random() * 0.014 + 0.007,
       opacity: Math.random() * 0.22 + (isDark ? 0.16 : 0.12),
-    }));
+      popping: false, popT: 0,
+    });
+    // Reuse existing bubbles if available (theme/color change), else create fresh
+    if (bubblesRef.current.length !== COUNT) {
+      bubblesRef.current = Array.from({ length: COUNT }, mkBubble);
+    }
+    const bubbles = bubblesRef.current;
+
+    const drawBubble = (drawX: number, drawY: number, R: number, op: number, br: number, bg: number, bb: number) => {
+      ctx.save();
+      ctx.beginPath();
+      ctx.arc(drawX, drawY, R, 0, Math.PI * 2);
+      ctx.clip();
+
+      const gr = ctx.createRadialGradient(drawX - R * 0.28, drawY - R * 0.28, 0, drawX, drawY, R);
+      if (isDark) {
+        gr.addColorStop(0,    `rgba(${Math.min(br+55,255)},${Math.min(bg+55,255)},${Math.min(bb+55,255)},${op * 0.50})`);
+        gr.addColorStop(0.55, `rgba(${br},${bg},${bb},${op * 0.80})`);
+        gr.addColorStop(0.88, `rgba(${br},${bg},${bb},${op * 1.05})`);
+        gr.addColorStop(1,    `rgba(${br},${bg},${bb},0)`);
+      } else {
+        gr.addColorStop(0,    `rgba(255,255,255,${op * 1.4})`);
+        gr.addColorStop(0.38, `rgba(${br},${bg},${bb},${op * 0.55})`);
+        gr.addColorStop(0.80, `rgba(${br},${bg},${bb},${op * 0.88})`);
+        gr.addColorStop(0.93, `rgba(${br},${bg},${bb},${op * 1.0})`);
+        gr.addColorStop(1,    `rgba(${br},${bg},${bb},0)`);
+      }
+      ctx.beginPath();
+      ctx.arc(drawX, drawY, R, 0, Math.PI * 2);
+      ctx.fillStyle = gr;
+      ctx.fill();
+
+      const gX = drawX - R * 0.30, gY = drawY - R * 0.32, gR = R * 0.44;
+      const glare = ctx.createRadialGradient(gX, gY, 0, gX, gY, gR);
+      glare.addColorStop(0,   `rgba(255,255,255,${isDark ? 0.38 : 0.60})`);
+      glare.addColorStop(0.5, `rgba(255,255,255,${isDark ? 0.12 : 0.22})`);
+      glare.addColorStop(1,   'rgba(255,255,255,0)');
+      ctx.beginPath();
+      ctx.arc(gX, gY, gR, 0, Math.PI * 2);
+      ctx.fillStyle = glare;
+      ctx.fill();
+      ctx.restore();
+
+      ctx.beginPath();
+      ctx.arc(drawX, drawY, R, 0, Math.PI * 2);
+      ctx.strokeStyle = `rgba(${br},${bg},${bb},${Math.min(op * 3.2, isDark ? 0.72 : 0.58)})`;
+      ctx.lineWidth = isDark ? 2.0 : 1.6;
+      ctx.stroke();
+    };
 
     const draw = () => {
       ctx.clearRect(0, 0, W, H);
@@ -81,6 +151,48 @@ export function BackgroundBlobs() {
       const sr = hexToRgb(dynColor) || baseRgb;
 
       bubbles.forEach(b => {
+        // Popping animation
+        if (b.popping) {
+          b.popT += 0.07;
+          const sc = 1 + b.popT * 0.5;
+          const popOp = Math.max(0, 1 - b.popT * 1.8) * b.opacity * 2.2;
+
+          if (b.popT >= 1 || popOp <= 0) {
+            // Respawn
+            b.popping = false; b.popT = 0;
+            b.y = H + b.r + Math.random() * 80;
+            b.x = Math.random() * W;
+            b.r = Math.random() * 80 + 28;
+            b.opacity = Math.random() * 0.22 + (isDark ? 0.16 : 0.12);
+            b.vy = -(Math.random() * 0.35 + 0.15);
+            return;
+          }
+
+          const drawX = b.x + Math.sin(b.phase) * b.wobble;
+          const drawY = b.y;
+          const R = b.r * sc;
+          const t2 = Math.min(b.popT / 0.5, 1);
+          const br = Math.round(baseRgb.r + (sr.r - baseRgb.r) * t2);
+          const bg = Math.round(baseRgb.g + (sr.g - baseRgb.g) * t2);
+          const bb2 = Math.round(baseRgb.b + (sr.b - baseRgb.b) * t2);
+
+          // Draw pop fragments (small dots radiating outward)
+          const fragCount = 6;
+          for (let fi = 0; fi < fragCount; fi++) {
+            const angle = (fi / fragCount) * Math.PI * 2;
+            const fragDist = b.r * b.popT * 1.4;
+            const fx = drawX + Math.cos(angle) * fragDist;
+            const fy = drawY + Math.sin(angle) * fragDist;
+            const fr = b.r * 0.12 * (1 - b.popT);
+            ctx.beginPath();
+            ctx.arc(fx, fy, Math.max(1, fr), 0, Math.PI * 2);
+            ctx.fillStyle = `rgba(${br},${bg},${bb2},${popOp * 0.8})`;
+            ctx.fill();
+          }
+          drawBubble(drawX, drawY, R, popOp, br, bg, bb2);
+          return;
+        }
+
         b.phase += b.speed;
         b.y += b.vy;
 
@@ -108,55 +220,7 @@ export function BackgroundBlobs() {
         const bg = Math.round(baseRgb.g + (sr.g - baseRgb.g) * t);
         const bb = Math.round(baseRgb.b + (sr.b - baseRgb.b) * t);
 
-        const R = b.r * sc;
-
-        // Clip to bubble circle so glare stays inside
-        ctx.save();
-        ctx.beginPath();
-        ctx.arc(drawX, drawY, R, 0, Math.PI * 2);
-        ctx.clip();
-
-        // Body fill — offset centre for 3-D sphere look
-        const gr = ctx.createRadialGradient(
-          drawX - R * 0.28, drawY - R * 0.28, 0,
-          drawX, drawY, R,
-        );
-        if (isDark) {
-          gr.addColorStop(0,    `rgba(${Math.min(br+55,255)},${Math.min(bg+55,255)},${Math.min(bb+55,255)},${op * 0.50})`);
-          gr.addColorStop(0.55, `rgba(${br},${bg},${bb},${op * 0.80})`);
-          gr.addColorStop(0.88, `rgba(${br},${bg},${bb},${op * 1.05})`);
-          gr.addColorStop(1,    `rgba(${br},${bg},${bb},0)`);
-        } else {
-          gr.addColorStop(0,    `rgba(255,255,255,${op * 1.4})`);
-          gr.addColorStop(0.38, `rgba(${br},${bg},${bb},${op * 0.55})`);
-          gr.addColorStop(0.80, `rgba(${br},${bg},${bb},${op * 0.88})`);
-          gr.addColorStop(0.93, `rgba(${br},${bg},${bb},${op * 1.0})`);
-          gr.addColorStop(1,    `rgba(${br},${bg},${bb},0)`);
-        }
-        ctx.beginPath();
-        ctx.arc(drawX, drawY, R, 0, Math.PI * 2);
-        ctx.fillStyle = gr;
-        ctx.fill();
-
-        // White glare highlight (top-left, balloon shine)
-        const gX = drawX - R * 0.30, gY = drawY - R * 0.32, gR = R * 0.44;
-        const glare = ctx.createRadialGradient(gX, gY, 0, gX, gY, gR);
-        glare.addColorStop(0,   `rgba(255,255,255,${isDark ? 0.38 : 0.60})`);
-        glare.addColorStop(0.5, `rgba(255,255,255,${isDark ? 0.12 : 0.22})`);
-        glare.addColorStop(1,   'rgba(255,255,255,0)');
-        ctx.beginPath();
-        ctx.arc(gX, gY, gR, 0, Math.PI * 2);
-        ctx.fillStyle = glare;
-        ctx.fill();
-
-        ctx.restore();
-
-        // Clear edge stroke drawn outside clip
-        ctx.beginPath();
-        ctx.arc(drawX, drawY, R, 0, Math.PI * 2);
-        ctx.strokeStyle = `rgba(${br},${bg},${bb},${Math.min(op * 3.2, isDark ? 0.72 : 0.58)})`;
-        ctx.lineWidth = isDark ? 2.0 : 1.6;
-        ctx.stroke();
+        drawBubble(drawX, drawY, b.r * sc, op, br, bg, bb);
       });
 
       animFrameRef.current = requestAnimationFrame(draw);

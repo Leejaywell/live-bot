@@ -185,9 +185,9 @@ export function TopBar({ onToggleNotifications, sidebarCollapsed, isLoggedIn, us
               <div className="flex items-center gap-2.5 px-3.5 py-2 rounded-2xl bg-white/40 dark:bg-white/5 border border-white/20">
                 {/* 主播头像 */}
                 {anchorFace ? (
-                  <img src={anchorFace} className="w-9 h-9 rounded-full border-2 border-white/50 flex-shrink-0 object-cover shadow-sm" />
+                  <img src={anchorFace} className="w-12 h-12 rounded-full border-2 border-white/50 flex-shrink-0 object-cover shadow-sm" />
                 ) : (
-                  <div className="w-9 h-9 rounded-full border-2 border-white/20 bg-white/10 flex-shrink-0" />
+                  <div className="w-12 h-12 rounded-full border-2 border-white/20 bg-white/10 flex-shrink-0" />
                 )}
                 {/* 主播名 + 勋章 */}
                 <div className="flex flex-col gap-0.5">
