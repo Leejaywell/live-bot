@@ -30,6 +30,7 @@ interface TopBarProps {
   onOpenRoomModal: () => void;
   onRefreshUserInfo: () => Promise<UserInfo | null>;
   showConnectHint?: boolean;
+  unreadCount?: number;
 }
 
 function formatNum(n: number) {
@@ -37,7 +38,7 @@ function formatNum(n: number) {
   return String(n);
 }
 
-export function TopBar({ onToggleNotifications, sidebarCollapsed, isLoggedIn, userInfo, userRoom, anchorInfo, onRequireLogin, onLogout, autoRoom, onAutoRoomConsumed, onDisconnect, onOpenRoomModal, onRefreshUserInfo, showConnectHint }: TopBarProps) {
+export function TopBar({ onToggleNotifications, sidebarCollapsed, isLoggedIn, userInfo, userRoom, anchorInfo, onRequireLogin, onLogout, autoRoom, onAutoRoomConsumed, onDisconnect, onOpenRoomModal, onRefreshUserInfo, showConnectHint, unreadCount = 0 }: TopBarProps) {
   const [showUserMenu, setShowUserMenu] = useState(false);
   const [isConnected, setIsConnected] = useState(false);
   const [isMonitoring, setIsMonitoring] = useState(false);
@@ -260,9 +261,16 @@ export function TopBar({ onToggleNotifications, sidebarCollapsed, isLoggedIn, us
         </div>
 
         <div className="flex items-center gap-3">
-          <IconButton onClick={onToggleNotifications} className="bg-white/40 dark:bg-white/5 border border-white/20 hover:border-white/40">
-            <Bell className="w-[18px] h-[18px]" />
-          </IconButton>
+          <div className="relative">
+            <IconButton onClick={onToggleNotifications} className="bg-white/40 dark:bg-white/5 border border-white/20 hover:border-white/40">
+              <Bell className={`w-[18px] h-[18px] transition-transform duration-300 ${unreadCount > 0 ? 'animate-[bell-shake_0.6s_ease_both]' : ''}`} />
+            </IconButton>
+            {unreadCount > 0 && (
+              <span className="absolute -top-1 -right-1 min-w-[16px] h-4 bg-red-500 text-white text-[9px] font-black rounded-full flex items-center justify-center px-1 animate-in zoom-in duration-200 pointer-events-none">
+                {unreadCount > 99 ? '99+' : unreadCount}
+              </span>
+            )}
+          </div>
           {isLoggedIn ? (
             <div className="relative" ref={userMenuRef}>
               <div

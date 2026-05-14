@@ -27,6 +27,36 @@ import { toast } from 'sonner';
 import { RefreshCw, X, QrCode } from 'lucide-react';
 import { Modal, ModalCloseButton } from './components/Modal';
 
+export interface AppNotif {
+  id: string;
+  type: 'success' | 'info' | 'warning' | 'gift' | 'error';
+  title: string;
+  message: string;
+  time: Date;
+  read: boolean;
+}
+
+function parseNotification(log: string): AppNotif | null {
+  if (log.startsWith('弹幕 ')) return null;
+  if (log.startsWith('正在获取') || log.startsWith('连接弹幕流') || log.startsWith('已发送登场语')) return null;
+
+  const id = `${Date.now()}-${Math.random()}`;
+  const time = new Date();
+  const base = { id, time, read: false };
+
+  if (/^感谢.+的关注/.test(log)) return { ...base, type: 'success', title: '新增关注', message: log };
+  if (/^感谢.+的 SC/.test(log) || /SC \(¥/.test(log)) return { ...base, type: 'gift', title: 'SC 消息', message: log };
+  if (/^感谢.+(电池|舰长|提督|总督)/.test(log)) return { ...base, type: 'gift', title: '收到礼物', message: log };
+  if (/^感谢.+的 /.test(log)) return { ...base, type: 'gift', title: '收到礼物', message: log };
+  if (/.+被禁言$/.test(log)) return { ...base, type: 'warning', title: '用户禁言', message: log };
+  if (log === '直播间监听已启动') return { ...base, type: 'info', title: '监听已启动', message: log };
+  if (log === '监听已停止') return { ...base, type: 'info', title: '监听已停止', message: log };
+  if (log.startsWith('直播场次') || log.startsWith('直播状态变更')) return { ...base, type: 'info', title: '直播状态', message: log };
+  if (log.includes('失败') || log.includes('错误')) return { ...base, type: 'error', title: '错误', message: log };
+
+  return null;
+}
+
 export default function App() {
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [themePanelOpen, setThemePanelOpen] = useState(false);
@@ -46,6 +76,8 @@ export default function App() {
   const [userRoom, setUserRoom] = useState<RoomInfo | null>(null);
   const [anchorInfo, setAnchorInfo] = useState<AnchorInfo | null>(null);
   const [showConnectHint, setShowConnectHint] = useState(false);
+  const [notifications, setNotifications] = useState<AppNotif[]>([]);
+  const [unreadCount, setUnreadCount] = useState(0);
   const connectHintTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // 刷新用户信息（返回最新 info）
@@ -68,6 +100,18 @@ export default function App() {
     const handler = () => window.history.pushState(null, '', window.location.href);
     window.addEventListener('popstate', handler);
     return () => window.removeEventListener('popstate', handler);
+  }, []);
+
+  // 监听 monitor-log 生成通知
+  useEffect(() => {
+    let unlisten: (() => void) | undefined;
+    api.onMonitorLog((log) => {
+      const notif = parseNotification(log);
+      if (!notif) return;
+      setNotifications(prev => [notif, ...prev].slice(0, 50));
+      setUnreadCount(c => c + 1);
+    }).then(f => { unlisten = f; }).catch(() => {});
+    return () => unlisten?.();
   }, []);
 
   // 启动时检查登录状态
@@ -222,6 +266,8 @@ export default function App() {
       <Toaster
         position="top-right"
         richColors
+        gap={6}
+        visibleToasts={4}
         duration={2500}
         containerStyle={{
           right: '0px',
@@ -282,6 +328,7 @@ export default function App() {
               onOpenRoomModal={() => setShowRoomModal(true)}
               onRefreshUserInfo={refreshUserInfo}
               showConnectHint={showConnectHint}
+              unreadCount={unreadCount}
             />
             <main className="flex-1 overflow-hidden relative">
               {/* 已登录但未连接房间：透明拦截层 */}
@@ -308,7 +355,16 @@ export default function App() {
           </div>
 
           {themePanelOpen && <ThemePanel onClose={() => setThemePanelOpen(false)} />}
-          {notificationPanelOpen && <NotificationPanel onClose={() => setNotificationPanelOpen(false)} />}
+          {notificationPanelOpen && (
+            <NotificationPanel
+              notifications={notifications}
+              onClose={() => setNotificationPanelOpen(false)}
+              onMarkAllRead={() => {
+                setNotifications(prev => prev.map(n => ({ ...n, read: true })));
+                setUnreadCount(0);
+              }}
+            />
+          )}
           {settingsPanelOpen && <SettingsPanel onClose={() => setSettingsPanelOpen(false)} />}
 
           {/* 连接直播间弹窗 */}
