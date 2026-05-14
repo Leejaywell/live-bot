@@ -3,6 +3,33 @@ import { GlassCard } from '../components/GlassCard';
 import { Toggle } from '../components/Toggle';
 import { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
+
+// ── Count-up animation ────────────────────────────────────────────────────────
+function CountUp({ value }: { value: number }) {
+  const [display, setDisplay] = useState(0);
+  const fromRef = useRef(0);
+  const rafRef  = useRef(0);
+
+  useEffect(() => {
+    const from = fromRef.current;
+    const to   = value;
+    const dur  = 800;
+    const t0   = performance.now();
+    cancelAnimationFrame(rafRef.current);
+    const tick = (now: number) => {
+      const p     = Math.min((now - t0) / dur, 1);
+      const eased = 1 - Math.pow(1 - p, 3);
+      const cur   = Math.round(from + (to - from) * eased);
+      setDisplay(cur);
+      if (p < 1) rafRef.current = requestAnimationFrame(tick);
+      else fromRef.current = to;
+    };
+    rafRef.current = requestAnimationFrame(tick);
+    return () => cancelAnimationFrame(rafRef.current);
+  }, [value]);
+
+  return <>{display.toLocaleString()}</>;
+}
 import { api, AppConfig } from '../lib/api';
 import { toast } from 'sonner';
 
@@ -141,7 +168,7 @@ export function Dashboard() {
     const mainChecked = mainKey != null && config ? !!(config as any)[mainKey] : undefined;
 
     return (
-      <GlassCard className={`p-4 ${wide ? 'col-span-2' : ''} border-white/60 dark:border-white/10 overflow-hidden`}>
+      <GlassCard hoverable className={`p-4 ${wide ? 'col-span-2' : ''} border-white/60 dark:border-white/10 overflow-hidden`}>
         {/* card accent glow */}
         <div className="absolute -top-8 -right-8 w-28 h-28 rounded-full pointer-events-none"
              style={{ background: 'radial-gradient(circle, rgba(var(--primary-rgb),0.10) 0%, transparent 70%)' }} />
@@ -196,11 +223,11 @@ export function Dashboard() {
       {/* stats */}
       <div className="grid grid-cols-3 gap-4">
         {statItems.map((stat, i) => (
-          <GlassCard key={i} className="p-5 relative border-white/60 dark:border-white/10">
+          <GlassCard key={i} hoverable className="p-5 relative border-white/60 dark:border-white/10">
             <div className="absolute top-3 right-3 w-1.5 h-1.5 rounded-full"
                  style={{ background: stat.color, boxShadow: `0 0 8px ${stat.color}` }} />
             <div className="text-[11px] text-gray-500 font-bold uppercase tracking-wider mb-2">{stat.label}</div>
-            <div className="text-[24px] font-black tracking-tight leading-none mb-1">{stat.value.toLocaleString()}</div>
+            <div className="text-[24px] font-black tracking-tight leading-none mb-1"><CountUp value={stat.value} /></div>
             <div className="text-[10px] text-gray-400 font-bold">{stat.sub || '本场'}</div>
           </GlassCard>
         ))}

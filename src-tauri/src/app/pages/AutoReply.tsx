@@ -183,7 +183,7 @@ export function AutoReply() {
         {/* 模板列表 */}
         <div className="space-y-1.5 max-h-[160px] overflow-y-auto pr-1">
           {(config.GeneralWelcomeMsgs ?? []).map((msg, i) => (
-            <div key={i} className="flex items-center gap-2 px-3 py-2 rounded-xl bg-white/50 dark:bg-white/5 border border-gray-200/60 dark:border-white/10 group">
+            <div key={msg} className="flex items-center gap-2 px-3 py-2 rounded-xl bg-white/50 dark:bg-white/5 border border-gray-200/60 dark:border-white/10 group animate-item-in" style={{ animationDelay: `${i * 25}ms` }}>
               <Sparkles className="w-3 h-3 text-[var(--primary-color)]/50 shrink-0" />
               <span className="flex-1 text-[11px] truncate">{msg}</span>
               <button
@@ -279,7 +279,7 @@ export function AutoReply() {
         {/* 列表 */}
         <div className="space-y-1.5 max-h-[220px] overflow-y-auto pr-1">
           {(config.SpecialWelcomeList ?? []).map((entry: SpecialWelcomeEntry, i: number) => (
-            <div key={i} className="flex items-center gap-3 px-4 py-2.5 rounded-xl border bg-white/50 dark:bg-white/5 border-gray-200/60 dark:border-white/10 group">
+            <div key={entry.Uid} className="flex items-center gap-3 px-4 py-2.5 rounded-xl border bg-white/50 dark:bg-white/5 border-gray-200/60 dark:border-white/10 group animate-item-in" style={{ animationDelay: `${i * 25}ms` }}>
               <div className="flex items-center gap-1.5 shrink-0">
                 <Hash className="w-3 h-3 text-gray-400" />
                 <span className="text-[11px] font-mono font-bold text-[var(--primary-color)]">{entry.Uid}</span>
@@ -652,7 +652,7 @@ export function AutoReply() {
           ))}
         </div>
 
-        <div className="flex-1 overflow-y-auto pr-2 scrollbar-none">
+        <div key={activeTab} className="animate-tab-in flex-1 overflow-y-auto pr-2 scrollbar-none">
           {CONTENT[activeTab]}
         </div>
       </GlassCard>

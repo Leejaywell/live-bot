@@ -28,6 +28,11 @@ export function BackgroundBlobs() {
   const smoothRef = useRef({ x: window.innerWidth / 2, y: window.innerHeight / 2 });
   const bubblesRef = useRef<Bubble[]>([]);
 
+  // Smooth primary color transition
+  const targetRgbRef = useRef({ r: 75, g: 142, b: 255 });
+  const smoothRgbAnimRef = useRef({ r: 75, g: 142, b: 255 });
+  const [displayRgb, setDisplayRgb] = useState({ r: 75, g: 142, b: 255 });
+
   const isDark = theme === 'dark';
 
   useEffect(() => {
@@ -60,11 +65,27 @@ export function BackgroundBlobs() {
   useEffect(() => {
     let rafId: number;
     const tick = () => {
+      // Smooth mouse
       smoothRef.current = {
         x: smoothRef.current.x + (mousePos.current.x - smoothRef.current.x) * 0.05,
         y: smoothRef.current.y + (mousePos.current.y - smoothRef.current.y) * 0.05,
       };
       setSmoothMouse({ ...smoothRef.current });
+
+      // Smooth primary color (lerp towards target on every frame)
+      const t = targetRgbRef.current;
+      const s = smoothRgbAnimRef.current;
+      smoothRgbAnimRef.current = {
+        r: s.r + (t.r - s.r) * 0.05,
+        g: s.g + (t.g - s.g) * 0.05,
+        b: s.b + (t.b - s.b) * 0.05,
+      };
+      setDisplayRgb({
+        r: Math.round(smoothRgbAnimRef.current.r),
+        g: Math.round(smoothRgbAnimRef.current.g),
+        b: Math.round(smoothRgbAnimRef.current.b),
+      });
+
       rafId = requestAnimationFrame(tick);
     };
     rafId = requestAnimationFrame(tick);
@@ -78,6 +99,9 @@ export function BackgroundBlobs() {
   const shiftedColor = hslToHex(((h + hueShift) % 360 + 360) % 360, Math.max(35, s), Math.min(72, l + 5));
   const rgb  = hexToRgb(primaryColor) || { r: 75, g: 142, b: 255 };
   const rgb2 = hexToRgb(shiftedColor) || rgb;
+
+  // Keep target ref in sync with latest rgb (updated every render)
+  targetRgbRef.current = rgb;
 
   // Canvas: bubbles rising from bottom with sine wobble
   useEffect(() => {
@@ -233,10 +257,13 @@ export function BackgroundBlobs() {
 
   const pct = (v: number, max: number) => `${(v / max * 100).toFixed(1)}%`;
 
+  // Use displayRgb (smoothly lerped) for all gradient styles
+  const dr = displayRgb;
+
   // Vivid ambient gradient tinted with primary color
   const ambientBg = isDark
-    ? `linear-gradient(135deg, rgba(${rgb.r},${rgb.g},${rgb.b},0.20) 0%, rgba(${rgb2.r},${rgb2.g},${rgb2.b},0.10) 50%, rgba(0,0,0,0) 100%)`
-    : `linear-gradient(135deg, rgba(${rgb.r},${rgb.g},${rgb.b},0.13) 0%, rgba(${rgb2.r},${rgb2.g},${rgb2.b},0.07) 55%, rgba(${rgb.r},${rgb.g},${rgb.b},0.05) 100%)`;
+    ? `linear-gradient(135deg, rgba(${dr.r},${dr.g},${dr.b},0.20) 0%, rgba(${rgb2.r},${rgb2.g},${rgb2.b},0.10) 50%, rgba(0,0,0,0) 100%)`
+    : `linear-gradient(135deg, rgba(${dr.r},${dr.g},${dr.b},0.13) 0%, rgba(${rgb2.r},${rgb2.g},${rgb2.b},0.07) 55%, rgba(${dr.r},${dr.g},${dr.b},0.05) 100%)`;
 
   return (
     <div
@@ -252,7 +279,7 @@ export function BackgroundBlobs() {
         style={{
           background: `
             radial-gradient(ellipse 65% 55% at ${pct(smoothMouse.x, window.innerWidth)} ${pct(smoothMouse.y, window.innerHeight)},
-              rgba(${rgb.r},${rgb.g},${rgb.b},${isDark ? 0.30 : 0.17}) 0%,
+              rgba(${dr.r},${dr.g},${dr.b},${isDark ? 0.30 : 0.17}) 0%,
               transparent 60%),
             radial-gradient(ellipse 55% 50% at ${pct(window.innerWidth - smoothMouse.x, window.innerWidth)} ${pct(window.innerHeight - smoothMouse.y, window.innerHeight)},
               rgba(${rgb2.r},${rgb2.g},${rgb2.b},${isDark ? 0.20 : 0.12}) 0%,
@@ -268,7 +295,7 @@ export function BackgroundBlobs() {
           opacity: isDark ? 0.65 : 0.5,
           background: `
             radial-gradient(ellipse 130% 80% at 15% 10%,
-              rgba(${rgb.r},${rgb.g},${rgb.b},${isDark ? 0.15 : 0.09}) 0%, transparent 55%),
+              rgba(${dr.r},${dr.g},${dr.b},${isDark ? 0.15 : 0.09}) 0%, transparent 55%),
             radial-gradient(ellipse 110% 90% at 90% 80%,
               rgba(${rgb2.r},${rgb2.g},${rgb2.b},${isDark ? 0.12 : 0.08}) 0%, transparent 55%)
           `,
@@ -284,7 +311,7 @@ export function BackgroundBlobs() {
             left: r.x, top: r.y,
             width: 10, height: 10,
             transform: 'translate(-50%,-50%)',
-            border: `2px solid rgba(${rgb.r},${rgb.g},${rgb.b},${isDark ? 0.60 : 0.42})`,
+            border: `2px solid rgba(${dr.r},${dr.g},${dr.b},${isDark ? 0.60 : 0.42})`,
           }}
         />
       ))}

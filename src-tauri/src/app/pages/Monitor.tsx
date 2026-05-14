@@ -366,7 +366,7 @@ export function Monitor() {
             {filteredLogs.map((log) => (
               <div
                 key={log.id}
-                className="flex items-center gap-4 px-6 py-3 hover:bg-black/[0.02] dark:hover:bg-white/[0.02] transition-colors group"
+                className="flex items-center gap-4 px-6 py-3 hover:bg-black/[0.02] dark:hover:bg-white/[0.02] transition-colors group animate-log-in"
               >
                 <span className="text-[11px] text-gray-400 font-mono w-14 shrink-0 font-bold">{log.time}</span>
                 <div className={cn(

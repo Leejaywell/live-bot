@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
-import { HashRouter, Routes, Route } from 'react-router-dom';
+import { HashRouter, Routes, Route, useLocation } from 'react-router-dom';
 import { ChevronRight, LogIn, Home } from 'lucide-react';
 import { Toaster } from 'sonner';
 import { ThemeProvider } from './context/ThemeContext';
@@ -260,7 +260,7 @@ export default function App() {
           />
           <div className="flex-1 flex flex-col overflow-hidden relative">
             {sidebarCollapsed && (
-              <div className="absolute left-4 top-4 z-10">
+              <div className="absolute left-4 top-4 z-10 animate-in fade-in duration-200 delay-200">
                 <IconButton onClick={() => setSidebarCollapsed(false)}>
                   <ChevronRight className="w-4 h-4" />
                 </IconButton>
@@ -282,7 +282,7 @@ export default function App() {
               onRefreshUserInfo={refreshUserInfo}
               showConnectHint={showConnectHint}
             />
-            <main className="flex-1 overflow-y-auto relative">
+            <main className="flex-1 overflow-hidden relative">
               {/* 已登录但未连接房间：透明拦截层 */}
               {isLoggedIn && !hasConnectedRoom && (
                 <div className="absolute inset-0 z-10" onClick={triggerConnectHint} />
@@ -302,15 +302,7 @@ export default function App() {
                   </GlassCard>
                 </div>
               )}
-              <Routes>
-                <Route path="/" element={<Dashboard />} />
-                <Route path="/monitor" element={<Monitor />} />
-                <Route path="/auto-reply" element={<AutoReply />} />
-                <Route path="/ai" element={<AI />} />
-                <Route path="/voice" element={<Voice />} />
-                <Route path="/models" element={<Models />} />
-                <Route path="/stats" element={<Stats />} />
-              </Routes>
+              <AnimatedRoutes />
             </main>
           </div>
 
@@ -379,6 +371,24 @@ export default function App() {
       </HashRouter>
       </LoginContext.Provider>
     </ThemeProvider>
+  );
+}
+
+// 带页面过渡的路由容器
+function AnimatedRoutes() {
+  const location = useLocation();
+  return (
+    <div key={location.pathname} className="animate-page-in h-full overflow-y-auto">
+      <Routes location={location}>
+        <Route path="/" element={<Dashboard />} />
+        <Route path="/monitor" element={<Monitor />} />
+        <Route path="/auto-reply" element={<AutoReply />} />
+        <Route path="/ai" element={<AI />} />
+        <Route path="/voice" element={<Voice />} />
+        <Route path="/models" element={<Models />} />
+        <Route path="/stats" element={<Stats />} />
+      </Routes>
+    </div>
   );
 }
 

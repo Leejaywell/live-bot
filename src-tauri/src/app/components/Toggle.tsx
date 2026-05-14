@@ -22,11 +22,11 @@ export function Toggle({ checked, onChange, disabled }: ToggleProps) {
       )}
     >
       <span
-        className={cn(
-          'inline-block h-[16px] w-[16px] transform rounded-full bg-white shadow-md transition-transform',
-          checked ? 'translate-x-[18px]' : 'translate-x-[2px]',
-          'translate-y-[2px]'
-        )}
+        className="inline-block h-[16px] w-[16px] rounded-full bg-white shadow-md translate-y-[2px]"
+        style={{
+          transform: `translateX(${checked ? 18 : 2}px) translateY(2px)`,
+          transition: 'transform 0.32s cubic-bezier(0.34, 1.56, 0.64, 1)',
+        }}
       />
     </button>
   );

@@ -36,11 +36,17 @@ const navItems = [
   { path: '/models', label: '模型服务', icon: Cpu },
 ];
 
+// Known dimensions (must match Tailwind classes below)
+const ITEM_H   = 42; // h-[42px]
+const ITEM_GAP = 4;  // space-y-1
+const FIRST_MT = 6;  // mt-1.5 on item 0
+
 export function Sidebar({ collapsed, connected, onToggleThemePanel, onToggleSidebar, onToggleSettings, onBlockedClick }: SidebarProps) {
   const location = useLocation();
   const { theme } = useTheme();
 
-  if (collapsed) return null;
+  const activeIdx = navItems.findIndex(item => item.path === location.pathname);
+  const indicatorTop = FIRST_MT + activeIdx * (ITEM_H + ITEM_GAP);
 
   const handleNavClick = (e: React.MouseEvent) => {
     if (!connected) {
@@ -50,49 +56,73 @@ export function Sidebar({ collapsed, connected, onToggleThemePanel, onToggleSide
   };
 
   return (
-    <div className="w-[196px] h-full glass-sidebar backdrop-blur-xl flex flex-col pb-3.5 px-3.5">
-      <div className="flex items-center justify-between px-2 h-[56px] flex-shrink-0">
-        <div className="flex items-center gap-2">
-          <img src={logoUrl} alt="流光" className="w-[28px] h-[28px] rounded-lg" />
-          <span className="font-bold text-[14px]">流光</span>
+    <div
+      className={cn(
+        'h-full glass-sidebar backdrop-blur-xl overflow-hidden shrink-0',
+        'transition-[width,opacity] duration-300 ease-in-out',
+        collapsed ? 'w-0 opacity-0 pointer-events-none' : 'w-[196px] opacity-100',
+      )}
+    >
+      {/* Fixed-width inner so content never wraps during collapse */}
+      <div className="w-[196px] h-full flex flex-col pb-3.5 px-3.5">
+        <div className="flex items-center justify-between px-2 h-[56px] flex-shrink-0">
+          <div className="flex items-center gap-2">
+            <img src={logoUrl} alt="流光" className="w-[28px] h-[28px] rounded-lg" />
+            <span className="font-bold text-[14px] whitespace-nowrap">流光</span>
+          </div>
+          <IconButton onClick={onToggleSidebar} className="opacity-60 hover:opacity-100">
+            <ChevronLeft className="w-4 h-4" />
+          </IconButton>
         </div>
-        <IconButton onClick={onToggleSidebar} className="opacity-60 hover:opacity-100">
-          <ChevronLeft className="w-4 h-4" />
-        </IconButton>
-      </div>
 
-      <nav className="flex-1 space-y-1 mt-5">
-        {navItems.map((item) => {
-          const Icon = item.icon;
-          const isActive = location.pathname === item.path;
+        <nav className="flex-1 space-y-1 mt-5 relative">
+          {/* Sliding active indicator */}
+          {activeIdx >= 0 && (
+            <div
+              className="absolute left-0 right-0 rounded-[12px] pointer-events-none"
+              style={{
+                top: indicatorTop,
+                height: ITEM_H,
+                background: 'var(--primary-color)',
+                boxShadow: '0 8px 16px -4px rgba(var(--primary-rgb), 0.4)',
+                transition: 'top 0.38s cubic-bezier(0.34, 1.56, 0.64, 1)',
+              }}
+            />
+          )}
 
-          return (
-            <Link
-              key={item.path}
-              to={item.path}
-              onClick={handleNavClick}
-              className={cn(
-                'flex items-center gap-3 h-[42px] px-3 rounded-[12px] transition-all duration-300 relative group',
-                item.mt && 'mt-1.5',
-                isActive
-                  ? 'bg-[var(--primary-color)] shadow-[0_8px_16px_-4px_rgba(var(--primary-rgb),0.4)] text-white'
-                  : 'text-gray-500 hover:text-gray-900 dark:hover:text-white hover:bg-white/40 dark:hover:bg-white/5'
-              )}
-            >
-              <Icon className={cn("w-[20px] h-[20px] transition-transform duration-300", !isActive && "group-hover:scale-110")} />
-              <span className="text-[13px] font-black flex-1 tracking-tight">{item.label}</span>
-            </Link>
-          );
-        })}
-      </nav>
+          {navItems.map((item) => {
+            const Icon = item.icon;
+            const isActive = location.pathname === item.path;
 
-      <div className="pt-3 border-t border-white/10 flex gap-2 flex-shrink-0">
-        <IconButton onClick={onToggleSettings}>
-          <SettingsIcon className="w-4 h-4" />
-        </IconButton>
-        <IconButton onClick={onToggleThemePanel}>
-          {theme === 'dark' ? <Moon className="w-4 h-4" /> : <Sun className="w-4 h-4" />}
-        </IconButton>
+            return (
+              <Link
+                key={item.path}
+                to={item.path}
+                onClick={handleNavClick}
+                className={cn(
+                  'flex items-center gap-3 h-[42px] px-3 rounded-[12px] relative z-10 group',
+                  'transition-colors duration-200',
+                  item.mt && 'mt-1.5',
+                  isActive
+                    ? 'text-white'
+                    : 'text-gray-500 hover:text-gray-900 dark:hover:text-white hover:bg-white/40 dark:hover:bg-white/5'
+                )}
+              >
+                <Icon className={cn('w-[20px] h-[20px] transition-transform duration-300', !isActive && 'group-hover:scale-110')} />
+                <span className="text-[13px] font-black flex-1 tracking-tight whitespace-nowrap">{item.label}</span>
+              </Link>
+            );
+          })}
+        </nav>
+
+        <div className="pt-3 border-t border-white/10 flex gap-2 flex-shrink-0">
+          <IconButton onClick={onToggleSettings}>
+            <SettingsIcon className="w-4 h-4" />
+          </IconButton>
+          <IconButton onClick={onToggleThemePanel}>
+            {theme === 'dark' ? <Moon className="w-4 h-4" /> : <Sun className="w-4 h-4" />}
+          </IconButton>
+        </div>
       </div>
     </div>
   );

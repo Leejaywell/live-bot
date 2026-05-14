@@ -384,17 +384,26 @@ export function Voice() {
 
           <div className="flex items-center gap-4">
             <button onClick={() => setSettingsOpen(true)} className="w-9 h-9 rounded-full hover:bg-black/5 dark:hover:bg-white/5 flex items-center justify-center text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 transition-all"><SettingsIcon className="w-4 h-4" /></button>
-            <button
-              onClick={handleMicClick}
-              className={cn(
-                "w-12 h-12 rounded-full flex items-center justify-center transition-all shadow-lg active:scale-95",
-                micActive 
-                  ? "bg-white text-[var(--primary-color)]" 
-                  : "bg-black/5 dark:bg-white/10 text-gray-400"
+            {/* Mic button with pulsing rings when active */}
+            <div className="relative">
+              {micActive && (
+                <>
+                  <div className="absolute inset-0 rounded-full border-2 border-[var(--primary-color)]/50 animate-mic-ring" />
+                  <div className="absolute inset-0 rounded-full border-2 border-[var(--primary-color)]/30 animate-mic-ring" style={{ animationDelay: '0.7s' }} />
+                </>
               )}
-            >
-              {micActive ? <Mic className="w-6 h-6" /> : <MicOff className="w-6 h-6" />}
-            </button>
+              <button
+                onClick={handleMicClick}
+                className={cn(
+                  "relative w-12 h-12 rounded-full flex items-center justify-center transition-all shadow-lg active:scale-95",
+                  micActive
+                    ? "bg-white text-[var(--primary-color)]"
+                    : "bg-black/5 dark:bg-white/10 text-gray-400"
+                )}
+              >
+                {micActive ? <Mic className="w-6 h-6" /> : <MicOff className="w-6 h-6" />}
+              </button>
+            </div>
           </div>
         </div>
 
