@@ -77,6 +77,12 @@ pub enum LiveEvent {
         user: String,
         gift: String,
     },
+    SuperChat {
+        user_id: i64,
+        user: String,
+        text: String,
+        price: i64,
+    },
     Block {
         user: String,
     },
@@ -159,6 +165,7 @@ impl fmt::Display for LiveEvent {
             },
             Self::EntryEffect { user, .. } => write!(f, "进场特效 {user}"),
             Self::GuardBuy { user, gift, .. } => write!(f, "大航海 {user}: {gift}"),
+            Self::SuperChat { user, text, price, .. } => write!(f, "醒目留言 {user} (¥{price}): {text}"),
             Self::Block { user } => write!(f, "禁言 {user}"),
             Self::Popularity { value } => write!(f, "人气 {value}"),
             Self::Pk { kind } => write!(f, "PK {kind:?}"),
@@ -479,6 +486,33 @@ fn collect_notification(packet: Packet<'_>, events: &mut Vec<ParsedLiveEvent>) -
                     user_id,
                     user: user.to_string(),
                     gift: gift.to_string(),
+                },
+                &json,
+            ));
+        }
+        "SUPER_CHAT_MESSAGE" => {
+            let user_id = json
+                .pointer("/data/uid")
+                .and_then(Value::as_i64)
+                .unwrap_or(0);
+            let user = json
+                .pointer("/data/user_info/uname")
+                .and_then(Value::as_str)
+                .unwrap_or("用户");
+            let text = json
+                .pointer("/data/message")
+                .and_then(Value::as_str)
+                .unwrap_or("");
+            let price = json
+                .pointer("/data/price")
+                .and_then(Value::as_i64)
+                .unwrap_or(0);
+            events.push(parsed(
+                LiveEvent::SuperChat {
+                    user_id,
+                    user: user.to_string(),
+                    text: text.to_string(),
+                    price,
                 },
                 &json,
             ));

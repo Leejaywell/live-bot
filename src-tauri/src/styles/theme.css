@@ -2,8 +2,8 @@
 
 :root {
   --font-size: 12px;
-  --primary-color: #007aff;
-  --background: linear-gradient(160deg, #eaeef5 0%, #dfe3eb 100%);
+  --primary-color: #4b8eff;
+  --background: #f0f4ff;
   --foreground: #1a1a1a;
   --card: #ffffff;
   --card-foreground: oklch(0.145 0 0);
@@ -19,9 +19,9 @@
   --accent-foreground: #030213;
   --destructive: #d4183d;
   --destructive-foreground: #ffffff;
-  --border: rgba(0, 0, 0, 0.1);
+  --border: rgba(0, 0, 0, 0.08);
   --input: transparent;
-  --input-background: #f3f3f5;
+  --input-background: rgba(0, 0, 0, 0.04);
   --switch-background: #cbced4;
   --font-weight-medium: 500;
   --font-weight-normal: 400;
@@ -31,7 +31,7 @@
   --chart-3: oklch(0.398 0.07 227.392);
   --chart-4: oklch(0.828 0.189 84.429);
   --chart-5: oklch(0.769 0.188 70.08);
-  --radius: 0.625rem;
+  --radius: 0.75rem;
   --sidebar: oklch(0.985 0 0);
   --sidebar-foreground: oklch(0.145 0 0);
   --sidebar-primary: #030213;
@@ -43,7 +43,7 @@
 }
 
 .dark {
-  --background: linear-gradient(160deg, #14141b 0%, #0c0c10 100%);
+  --background: #0c0c12;
   --foreground: #f5f5f5;
   --card: oklch(0.145 0 0);
   --card-foreground: oklch(0.985 0 0);
@@ -59,7 +59,7 @@
   --accent-foreground: oklch(0.985 0 0);
   --destructive: oklch(0.396 0.141 25.723);
   --destructive-foreground: oklch(0.637 0.237 25.331);
-  --border: oklch(0.269 0 0);
+  --border: rgba(255, 255, 255, 0.1);
   --input: oklch(0.269 0 0);
   --ring: oklch(0.439 0 0);
   --font-weight-medium: 500;
@@ -178,50 +178,46 @@
 
   .glass-card {
     position: relative;
-    background: linear-gradient(135deg, rgba(255, 255, 255, 0.85) 0%, rgba(255, 255, 255, 0.67) 100%);
-    border: 1px solid rgba(0, 0, 0, 0.08);
-    box-shadow: 0 6px 22px rgba(0, 0, 0, 0.11);
+    background: rgba(255, 255, 255, 0.72);
+    border: 1px solid rgba(255, 255, 255, 0.45);
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.04);
+    backdrop-filter: blur(20px);
   }
 
   .dark .glass-card {
-    background: linear-gradient(135deg, rgba(255, 255, 255, 0.08) 0%, rgba(255, 255, 255, 0.04) 100%);
-    border: 1px solid rgba(255, 255, 255, 0.11);
-    box-shadow: 0 6px 22px rgba(0, 0, 0, 0.3);
+    background: rgba(25, 25, 35, 0.65);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.2);
+    backdrop-filter: blur(24px);
   }
 
   .glass-card::before {
-    content: '';
-    position: absolute;
-    top: 0;
-    left: 6px;
-    right: 12px;
-    height: 1px;
-    background: rgba(255, 255, 255, 0.9);
-    border-radius: 1px;
-  }
-
-  .dark .glass-card::before {
-    background: rgba(255, 255, 255, 0.19);
+    display: none;
   }
 
   .glass-topbar {
-    background: linear-gradient(180deg, rgba(255, 255, 255, 0.5) 0%, rgba(255, 255, 255, 0.31) 100%);
+    background: rgba(255, 255, 255, 0.4);
+    backdrop-filter: blur(20px);
+    border-bottom: 1px solid rgba(255, 255, 255, 0.2);
   }
 
   .dark .glass-topbar {
-    background: linear-gradient(180deg, rgba(255, 255, 255, 0.055) 0%, rgba(255, 255, 255, 0.02) 100%);
+    background: rgba(20, 20, 28, 0.4);
+    backdrop-filter: blur(24px);
+    border-bottom: 1px solid rgba(255, 255, 255, 0.05);
   }
 
   .glass-sidebar {
-    background: linear-gradient(135deg, rgba(255, 255, 255, 0.48) 0%, rgba(255, 255, 255, 0.28) 100%);
-    border-right: 1px solid rgba(0, 0, 0, 0.06);
+    background: rgba(255, 255, 255, 0.45);
+    backdrop-filter: blur(20px);
+    border-right: 1px solid rgba(255, 255, 255, 0.2);
   }
 
   .dark .glass-sidebar {
-    background: linear-gradient(135deg, rgba(255, 255, 255, 0.063) 0%, rgba(255, 255, 255, 0.02) 100%);
-    border-right: 1px solid rgba(255, 255, 255, 0.08);
+    background: rgba(20, 20, 28, 0.45);
+    backdrop-filter: blur(24px);
+    border-right: 1px solid rgba(255, 255, 255, 0.05);
   }
-
 
   /* Custom Range Slider Styles */
   input[type="range"] {
@@ -275,19 +271,7 @@
     box-shadow: 0 3px 10px rgba(0, 0, 0, 0.4);
   }
 
-  .slider-hue::-webkit-slider-track {
-    background: linear-gradient(to right,
-      hsl(0, 100%, 50%) 0%,
-      hsl(60, 100%, 50%) 16.66%,
-      hsl(120, 100%, 50%) 33.33%,
-      hsl(180, 100%, 50%) 50%,
-      hsl(240, 100%, 50%) 66.66%,
-      hsl(300, 100%, 50%) 83.33%,
-      hsl(360, 100%, 50%) 100%
-    );
-  }
-
-  .slider-hue::-moz-range-track {
+  .slider-hue {
     background: linear-gradient(to right,
       hsl(0, 100%, 50%) 0%,
       hsl(60, 100%, 50%) 16.66%,
@@ -299,4 +283,3 @@
     );
   }
 }
-

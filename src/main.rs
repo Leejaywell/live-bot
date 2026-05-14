@@ -12,7 +12,7 @@ use tokio::runtime::Runtime;
 use tokio_util::sync::CancellationToken;
 
 #[cfg(feature = "tauri")]
-use tauri::{AppHandle, Emitter};
+use tauri::{AppHandle, Emitter, Manager};
 
 #[derive(Clone)]
 struct SharedState {
@@ -243,8 +243,8 @@ async fn refresh_cookie(state: tauri::State<'_, SharedState>) -> Result<serde_js
 async fn get_system_info() -> Result<serde_json::Value, String> {
     Ok(serde_json::json!({
         "version": env!("CARGO_PKG_VERSION"),
-        "config_path": "etc/bilidanmaku-api.yaml",
-        "db_path": "db/sqliteDataBase.db"
+        "config_path": crate::config::config_path().to_string_lossy(),
+        "db_path": crate::config::db_path().to_string_lossy()
     }))
 }
 
@@ -319,9 +319,10 @@ async fn start_monitor(
         batch_tx,
     };
 
+    let models = model_dir(&app);
     tokio::spawn(async move {
         if let Err(e) =
-            crate::bot::monitor::run_monitor_loop(emitter, http, room_id, cancel, session_id, danmaku_buf)
+            crate::bot::monitor::run_monitor_loop(emitter, http, room_id, cancel, session_id, danmaku_buf, models)
                 .await
         {
             eprintln!("Monitor error: {}", e);
@@ -769,12 +770,17 @@ async fn cookie_refresh_loop(http: api::BiliApi, app: AppHandle) {
 }
 
 #[cfg(feature = "tauri")]
+fn model_dir(app: &AppHandle) -> std::path::PathBuf {
+    app.path()
+        .app_cache_dir()
+        .unwrap_or_else(|_| std::env::current_dir().unwrap_or_default().join("cache"))
+        .join("models")
+}
+
+#[cfg(feature = "tauri")]
 #[tauri::command]
-fn check_voice_models() -> Result<serde_json::Value, String> {
-    let base = std::env::current_dir()
-        .unwrap_or_default()
-        .join("assets")
-        .join("models");
+fn check_voice_models(app: AppHandle) -> Result<serde_json::Value, String> {
+    let base = model_dir(&app);
 
     let vad_ok = base.join("silero_vad.onnx").exists();
     let asr_local_dir = base.join("sherpa-onnx-sense-voice-zh-en-ja-ko-yue-int8-2024-07-17");
@@ -791,10 +797,7 @@ fn check_voice_models() -> Result<serde_json::Value, String> {
 #[cfg(feature = "tauri")]
 #[tauri::command]
 async fn download_sensevoice_model(app: AppHandle) -> Result<String, String> {
-    let base = std::env::current_dir()
-        .unwrap_or_default()
-        .join("assets")
-        .join("models");
+    let base = model_dir(&app);
     let target_dir = base.join("sherpa-onnx-sense-voice-zh-en-ja-ko-yue-int8-2024-07-17");
 
     // 已存在则跳过
@@ -874,14 +877,9 @@ fn main() -> Result<()> {
 
     println!("Loading configuration...");
     let config = AppConfig::load_or_default()?;
-    let storage_path = format!(
-        "{}/{}",
-        config.db_path.trim_end_matches('/'),
-        config.db_name
-    );
-
-    println!("Opening storage at {}...", storage_path);
-    let storage = storage::Storage::open(&storage_path)?;
+    let storage_path = crate::config::db_path();
+    println!("Opening storage at {}...", storage_path.display());
+    let storage = storage::Storage::open(&storage_path.to_string_lossy())?;
 
     let saved_room = std::fs::read_to_string("token/connected_room")
         .ok()

@@ -30,14 +30,7 @@ const AUTO_GROUPS: AutoGroup[] = [
   {
     title: 'AI 机器人', Icon: Bot, mainKey: 'AiReplyToDanmaku', to: '/ai',
     subs: [
-      { label: '新用户欢迎', key: 'NewcomerDanmuEnable' },
       { label: '关注答谢',   key: 'ThanksFocus' },
-    ],
-  },
-  {
-    title: '指定欢迎', Icon: MessageSquare, to: '/auto-reply',
-    subs: [
-      { label: '指定人欢迎', key: 'WelcomeSwitch' },
     ],
   },
   {
@@ -128,12 +121,12 @@ export function Dashboard() {
   };
 
   const statItems = [
-    { label: '本场弹幕', value: stats?.danmu_count  || 0, icon: MessageSquare },
-    { label: '进场人数', value: stats?.entry_count   || 0, icon: Users },
-    { label: '新增关注', value: stats?.follow_count  || 0, icon: Star },
-    { label: '礼物总值', value: stats?.gift_value    || 0, sub: '电池', icon: Gift },
-    { label: '互动数',   value: stats?.interact_count|| 0, icon: Users },
-    { label: '人气峰值', value: stats?.peak_popularity||0, icon: TrendingUp },
+    { label: '本场弹幕', value: stats?.danmu_count  || 0, icon: MessageSquare, color: '#4b8eff' },
+    { label: '进场人数', value: stats?.entry_count   || 0, icon: Users,         color: '#34c759' },
+    { label: '新增关注', value: stats?.follow_count  || 0, icon: Star,          color: '#af52de' },
+    { label: '礼物总值', value: stats?.gift_value    || 0, sub: '电池', icon: Gift, color: '#ff9500' },
+    { label: '互动数',   value: stats?.interact_count|| 0, icon: Users,         color: '#ff2d55' },
+    { label: '人气峰值', value: stats?.peak_popularity||0, icon: TrendingUp,     color: '#007aff' },
   ];
 
   const GroupCard = ({ g }: { g: AutoGroup }) => {
@@ -141,38 +134,38 @@ export function Dashboard() {
     const mainChecked = mainKey != null && config ? !!(config as any)[mainKey] : undefined;
 
     return (
-      <GlassCard className={`p-3.5 ${wide ? 'col-span-2' : ''}`}>
+      <GlassCard className={`p-4 ${wide ? 'col-span-2' : ''} border-white/60 dark:border-white/10`}>
         {/* header */}
-        <div className="flex items-center justify-between mb-2.5">
-          <div className="flex items-center gap-2">
-            <div className="w-6 h-6 rounded-md flex items-center justify-center text-white"
-                 style={{ background: 'var(--primary-color)' }}>
-              <Icon className="w-3.5 h-3.5" />
+        <div className="flex items-center justify-between mb-4">
+          <div className="flex items-center gap-2.5">
+            <div className="w-8 h-8 rounded-xl flex items-center justify-center shadow-sm"
+                 style={{ background: 'rgba(var(--primary-rgb), 0.1)', color: 'var(--primary-color)' }}>
+              <Icon className="w-4 h-4" />
             </div>
-            <span className="text-[12px] font-semibold">{title}</span>
+            <span className="text-[13px] font-bold tracking-tight">{title}</span>
           </div>
-          <div className="flex items-center gap-1">
+          <div className="flex items-center gap-2">
+            {mainChecked != null && (
+              <Toggle checked={mainChecked} onChange={v => toggleAuto(mainKey!, v)} />
+            )}
             {to && (
               <button
                 onClick={() => navigate(to)}
-                className="w-5 h-5 flex items-center justify-center text-gray-400 hover:text-[var(--primary-color)] transition-colors"
+                className="w-6 h-6 rounded-lg flex items-center justify-center text-gray-400 hover:text-[var(--primary-color)] hover:bg-black/5 dark:hover:bg-white/5 transition-all"
                 title="前往设置"
               >
-                <ChevronRight className="w-3.5 h-3.5" />
+                <ChevronRight className="w-4 h-4" />
               </button>
-            )}
-            {mainChecked != null && (
-              <Toggle checked={mainChecked} onChange={v => toggleAuto(mainKey!, v)} />
             )}
           </div>
         </div>
 
         {/* sub-toggles */}
         {subs.length > 0 && (
-          <div className={`pt-2 border-t border-black/5 dark:border-white/10 ${wide ? 'grid grid-cols-2 gap-x-6 gap-y-1.5' : 'space-y-1.5'}`}>
+          <div className={`pt-3 border-t border-black/5 dark:border-white/5 ${wide ? 'grid grid-cols-2 gap-x-8 gap-y-2' : 'space-y-2'}`}>
             {subs.map(sub => (
               <div key={sub.key} className="flex items-center justify-between">
-                <span className="text-[11px] text-gray-500">{sub.label}</span>
+                <span className="text-[12px] text-gray-500 font-medium">{sub.label}</span>
                 <Toggle
                   checked={config ? !!(config as any)[sub.key] : false}
                   onChange={v => toggleAuto(sub.key, v)}
@@ -186,55 +179,30 @@ export function Dashboard() {
   };
 
   return (
-    <div className="p-[18px] space-y-3.5">
+    <div className="p-5 space-y-5 h-full overflow-y-auto scrollbar-none">
       {/* stats */}
-      <div className="grid grid-cols-3 gap-3.5">
+      <div className="grid grid-cols-3 gap-4">
         {statItems.map((stat, i) => (
-          <GlassCard key={i} className="p-4 relative">
-            {isMonitoring && (
-              <div className="absolute top-2 right-2 w-1.5 h-1.5 rounded-full"
-                   style={{ background: 'var(--primary-color)', boxShadow: '0 0 6px var(--primary-color)' }} />
-            )}
-            <div className="text-[11px] text-gray-500 font-semibold tracking-wide mb-1">{stat.label}</div>
-            <div className="text-[19px] font-bold mb-1">{stat.value.toLocaleString()}</div>
-            <div className="text-[10px] text-gray-500">{stat.sub || '本场'}</div>
+          <GlassCard key={i} className="p-5 relative border-white/60 dark:border-white/10">
+            <div className="absolute top-3 right-3 w-1.5 h-1.5 rounded-full"
+                 style={{ background: stat.color, boxShadow: `0 0 8px ${stat.color}` }} />
+            <div className="text-[11px] text-gray-500 font-bold uppercase tracking-wider mb-2">{stat.label}</div>
+            <div className="text-[24px] font-black tracking-tight leading-none mb-1">{stat.value.toLocaleString()}</div>
+            <div className="text-[10px] text-gray-400 font-bold">{stat.sub || '本场'}</div>
           </GlassCard>
         ))}
       </div>
 
       {/* auto features */}
-      <div>
-        <div className="flex items-center gap-3 mb-3">
-          <h2 className="text-[11px] font-bold text-gray-500 tracking-wider">自动化功能</h2>
-          <div className="flex-1 h-px bg-gradient-to-r from-gray-300 dark:from-gray-700 to-transparent" />
+      <div className="space-y-4">
+        <div className="flex items-center gap-3">
+          <h2 className="text-[12px] font-black text-gray-400 uppercase tracking-widest">自动化功能</h2>
+          <div className="flex-1 h-px bg-black/5 dark:bg-white/5" />
         </div>
-        <div className="grid grid-cols-2 gap-3">
+        <div className="grid grid-cols-2 gap-4">
           {AUTO_GROUPS.map(g => <GroupCard key={g.title} g={g} />)}
         </div>
       </div>
-
-      {/* real-time danmu feed */}
-      <GlassCard className="p-4">
-        <div className="flex items-center justify-between mb-3">
-          <h2 className="text-[12px] font-semibold">实时弹幕</h2>
-          <button className="text-[10px] text-gray-500 hover:text-gray-700" onClick={() => setDanmus([])}>清空</button>
-        </div>
-        <div className="space-y-1 max-h-[110px] overflow-y-auto">
-          {danmus.length === 0 && (
-            <div className="text-gray-400 italic text-[11px]">
-              {isMonitoring ? '等待弹幕...' : '开始获取后显示实时弹幕'}
-            </div>
-          )}
-          {danmus.map(d => (
-            <div key={d.id} className="flex items-baseline gap-1.5 text-[11px]">
-              <span className="text-gray-400 font-mono shrink-0">{d.time}</span>
-              <span className="font-medium shrink-0" style={{ color: 'var(--primary-color)' }}>{d.user}</span>
-              <span className="text-gray-700 dark:text-gray-300">{d.content}</span>
-            </div>
-          ))}
-          <div ref={feedEndRef} />
-        </div>
-      </GlassCard>
     </div>
   );
 }

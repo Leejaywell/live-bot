@@ -397,66 +397,67 @@ function ProviderCard({ p, onEdit, onRemove, onToggle, refCount }: {
   const sub     = type === 'asr' ? (p.APIUrl || '未配置地址') : type === 'tts' ? (p.Model || '未设置音色') : (p.Model || '未设置模型');
   // LLM：被机器人引用不可删；ASR/TTS：被启用且是唯一启用的不可删
   const isLlmReferenced = type === 'llm' && (refCount ?? 0) > 0;
-  const isOnlyEnabled   = type !== 'llm' && p.Enabled && (refCount ?? 0) > 0; // refCount 这里传的是该类型启用数
+  const isOnlyEnabled   = type !== 'llm' && p.Enabled && (refCount ?? 0) > 0; 
   const isReferenced    = isLlmReferenced || isOnlyEnabled;
   const refTip = isLlmReferenced
     ? `被 ${refCount} 个机器人引用`
     : isOnlyEnabled ? '唯一启用的服务，请先添加同类服务再删除' : '删除';
 
-  // 卡片主标题：LLM 显示供应商名，ASR/TTS 显示昵称或名称
   const title = type === 'llm' ? p.Name : (p.Nickname || p.Name);
 
   return (
-    <GlassCard className="p-3.5 flex flex-col gap-2.5 relative group">
+    <GlassCard className="p-5 flex flex-col gap-4 relative group transition-all hover:shadow-xl hover:translate-y-[-2px] border-white/60 dark:border-white/10">
       {/* 删除按钮 */}
       <button
         onClick={isReferenced ? () => toast.error(refTip) : onRemove}
-        className={`absolute right-2 top-2 w-5 h-5 rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity ${
-          isReferenced ? 'bg-gray-300 dark:bg-gray-600 cursor-not-allowed' : 'bg-red-500 text-white'
+        className={`absolute right-3 top-3 w-6 h-6 rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 transition-all ${
+          isReferenced ? 'bg-gray-200 dark:bg-gray-800 cursor-not-allowed' : 'bg-red-500/10 hover:bg-red-500 text-red-500 hover:text-white'
         }`}
         title={refTip}>
-        {isReferenced ? <Lock className="w-2.5 h-2.5 text-gray-500 dark:text-gray-400" /> : <X className="w-2.5 h-2.5" />}
+        {isReferenced ? <Lock className="w-3 h-3 text-gray-400" /> : <X className="w-3 h-3" />}
       </button>
 
       {/* 头部 */}
-      <div className="flex items-center gap-2.5">
-        <div className="w-8 h-8 rounded-lg flex items-center justify-center shrink-0"
+      <div className="flex items-center gap-3.5">
+        <div className="w-11 h-11 rounded-2xl flex items-center justify-center shrink-0 transition-transform group-hover:scale-110 shadow-sm"
           style={p.Enabled ? { background: accent } : { background: 'rgba(0,0,0,0.06)' }}>
-          <CardIcon className={`w-4 h-4 ${p.Enabled ? 'text-white' : 'text-gray-400'}`} />
+          <CardIcon className={`w-5.5 h-5.5 ${p.Enabled ? 'text-white' : 'text-gray-400'}`} />
         </div>
         <div className="flex-1 min-w-0">
-          <div className="flex items-center gap-1.5">
-            <span className="text-[12px] font-semibold truncate">{title}</span>
+          <div className="flex items-center gap-2 mb-0.5">
+            <span className="text-[14px] font-bold truncate tracking-tight">{title}</span>
             {isLlmReferenced && (
-              <span className="text-[9px] text-[var(--primary-color)] bg-[var(--primary-color)]/10 px-1.5 py-0.5 rounded-full shrink-0">
+              <span className="text-[9px] text-[var(--primary-color)] bg-[var(--primary-color)]/10 px-2 py-0.5 rounded-full font-bold">
                 {refCount}个机器人
               </span>
             )}
           </div>
-          <div className="text-[10px] text-gray-400 flex items-center gap-1">
-            <span className="px-1 py-px rounded text-[9px] font-medium"
-              style={{ background: `${accent}18`, color: accent }}>{typeLabel}</span>
-            {type !== 'llm' && <span className="truncate">{p.Name}</span>}
+          <div className="text-[10px] flex items-center gap-2">
+            <span className="px-1.5 py-0.5 rounded-md text-[9px] font-black uppercase tracking-wider"
+              style={{ background: `${accent}15`, color: accent }}>{typeLabel}</span>
+            <span className="text-gray-400 font-medium truncate">{p.Name}</span>
           </div>
         </div>
       </div>
 
-      {/* 模型/地址 */}
-      <div className="text-[10px] font-mono text-gray-500 dark:text-gray-400 bg-black/5 dark:bg-white/5 rounded px-2 py-1 truncate">
+      {/* 模型/地址区域 */}
+      <div className="px-3 py-2 rounded-xl bg-black/5 dark:bg-white/5 border border-black/5 dark:border-white/5 font-mono text-[11px] text-gray-500 dark:text-gray-400 truncate leading-relaxed">
         {sub}
       </div>
 
       {/* 操作行 */}
-      <div className="flex items-center justify-between">
+      <div className="flex items-center justify-between mt-1">
         <button onClick={onToggle}
-          className={`flex items-center gap-1 text-[10px] px-2 py-1 rounded-lg transition-colors ${
-            p.Enabled ? 'text-[var(--primary-color)] bg-[var(--primary-color)]/10' : 'text-gray-400 bg-gray-100 dark:bg-white/5 hover:text-gray-600'
+          className={`flex items-center gap-1.5 text-[11px] font-bold px-3 py-1.5 rounded-xl transition-all ${
+            p.Enabled 
+              ? 'text-[var(--primary-color)] bg-[var(--primary-color)]/10 border border-[var(--primary-color)]/20' 
+              : 'text-gray-400 bg-gray-100 dark:bg-white/5 hover:text-gray-600 border border-transparent'
           }`}>
-          <CheckCircle2 className="w-3 h-3" />
+          <CheckCircle2 className={`w-3.5 h-3.5 ${p.Enabled ? 'animate-in zoom-in duration-300' : ''}`} />
           {p.Enabled ? '已启用' : '已停用'}
         </button>
         <button onClick={onEdit}
-          className="text-[10px] text-gray-400 hover:text-[var(--primary-color)] px-2 py-1 rounded-lg hover:bg-[var(--primary-color)]/5 transition-colors">
+          className="text-[11px] font-bold text-gray-400 hover:text-[var(--primary-color)] px-2 py-1 transition-colors">
           编辑
         </button>
       </div>

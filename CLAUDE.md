@@ -44,7 +44,7 @@ First launch creates `etc/`, `token/`, `logs/`, `downloads/` next to the binary'
 ### Layered crates
 
 - `crates/bilibili-live-protocol` — pure WebSocket protocol crate (handshake, zlib/brotli framing, heartbeat, notification parsing). Public types include `LiveEvent` (normalized), `ParsedLiveEvent { event, raw }` (event + original JSON payload), and connection helpers. **Per ADR `docs/adr/0001-...md`, raw JSON is preserved at this boundary** so storage can keep the original payload while rules keep using `LiveEvent`. Don't fold raw JSON into `LiveEvent` itself.
-- Root crate — Bilibili HTTP API (`src/api.rs`), YAML config (`src/config.rs`), token persistence (`src/token.rs`), SQLite storage (`src/storage/mod.rs`), bot rules (`src/bot/`), and the Slint UI shell (`src/main.rs` + `ui/main.slint`).
+- Root crate — Bilibili HTTP API (`src/api.rs`), TOML config (`src/config.rs`), token persistence (`src/token.rs`), SQLite storage (`src/storage/mod.rs`), bot rules (`src/bot/`), and the Slint UI shell (`src/main.rs` + `ui/main.slint`).
 
 ### Event and data loop
 
@@ -66,7 +66,7 @@ The current milestone (see `docs/roadmap.md` "Next Milestone: Event And Data Loo
 
 ### Config
 
-`etc/bilidanmaku-api.yaml`, deserialized by `AppConfig`. Field names use **PascalCase** via `#[serde(rename_all = "PascalCase")]` for compatibility with the upstream `xbclub/BilibiliDanmuRobot` config. New fields should add `#[serde(default)]` to keep older configs loadable.
+`etc/bilidanmaku-api.toml`, deserialized by `AppConfig`. Field names use **PascalCase** via `#[serde(rename_all = "PascalCase")]` for compatibility with the upstream `xbclub/BilibiliDanmuRobot` config. New fields should add `#[serde(default)]` to keep older configs loadable.
 
 ### Slint UI shell
 

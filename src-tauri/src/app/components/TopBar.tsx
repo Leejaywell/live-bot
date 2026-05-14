@@ -95,7 +95,7 @@ export function TopBar({ onToggleNotifications, sidebarCollapsed, isLoggedIn, us
     return () => { unlistenStatus?.(); unlistenOnline?.(); };
   }, [isConnected]);
 
-  // 点击外部关闭用户菜单（需同时排除 portal 中的面板内容）
+  // 点击外部关闭用户菜单
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
       const target = event.target as Node;
@@ -146,7 +146,6 @@ export function TopBar({ onToggleNotifications, sidebarCollapsed, isLoggedIn, us
     onDisconnect();
   };
 
-  // 计时器：仅直播中时运行
   useEffect(() => {
     let timer: NodeJS.Timeout;
     if (isConnected && isLive) {
@@ -171,103 +170,93 @@ export function TopBar({ onToggleNotifications, sidebarCollapsed, isLoggedIn, us
   return (
     <>
       <div
-        className="h-[52px] glass-topbar backdrop-blur-xl flex items-center justify-between pr-4 relative"
+        className="h-[56px] glass-topbar flex items-center justify-between pr-4 relative"
         style={{ paddingLeft: sidebarCollapsed ? '60px' : '16px' }}
       >
         <span
-          className="absolute left-1/2 -translate-x-1/2 text-[12px] pointer-events-none transition-opacity duration-500 select-none"
+          className="absolute left-1/2 -translate-x-1/2 text-[12px] font-bold text-[var(--primary-color)] pointer-events-none transition-opacity duration-500 select-none bg-[var(--primary-color)]/10 px-3 py-1 rounded-full border border-[var(--primary-color)]/20"
           style={{ opacity: showConnectHint ? 1 : 0 }}
         >
           请先连接房间
         </span>
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-4">
           {isConnected ? (
             <>
-              <div className="flex items-center gap-2">
+              <div className="flex items-center gap-2 px-3 py-1.5 rounded-2xl bg-white/40 dark:bg-white/5 border border-white/20">
                 {/* 主播头像 */}
                 {anchorFace ? (
-                  <img src={anchorFace} className="w-7 h-7 rounded-full border border-white/20 flex-shrink-0 object-cover" />
+                  <img src={anchorFace} className="w-6 h-6 rounded-full border border-white/40 flex-shrink-0 object-cover shadow-sm" />
                 ) : (
-                  <div className="w-7 h-7 rounded-full border border-white/20 bg-white/10 flex-shrink-0" />
+                  <div className="w-6 h-6 rounded-full border border-white/20 bg-white/10 flex-shrink-0" />
                 )}
                 {/* 主播名 + 勋章 */}
-                <div className="flex items-center gap-1.5">
-                  <span className="text-[12px] font-semibold">{anchorInfo?.uname || `房间 ${currentRoom}`}</span>
+                <div className="flex items-center gap-2">
+                  <span className="text-[13px] font-bold">{anchorInfo?.uname || `房间 ${currentRoom}`}</span>
                   {anchorInfo?.medal_name && (
-                    <span className="px-1.5 py-0.5 rounded text-[9px] font-bold bg-pink-500/20 text-pink-400 border border-pink-500/30 leading-none">
+                    <span className="px-2 py-0.5 rounded-md text-[9px] font-black bg-gradient-to-br from-pink-500 to-rose-500 text-white shadow-sm leading-none">
                       {anchorInfo.medal_name}
                     </span>
                   )}
                 </div>
-                {/* 粉丝数 */}
-                {anchorInfo && anchorInfo.follower_num > 0 && (
-                  <>
-                    <span className="text-gray-400 text-[11px]">·</span>
-                    <span className="text-[11px] text-gray-400">{formatNum(anchorInfo.follower_num)}粉丝</span>
-                  </>
-                )}
-                <span className="text-gray-400 text-[11px]">·</span>
-                {/* 直播状态 + 时长 + 在线 */}
-                <div className="flex items-center gap-1.5 font-mono text-[11px]">
-                  <div className={`w-[6px] h-[6px] rounded-full flex-shrink-0 ${isLive ? 'bg-green-500 animate-pulse' : 'bg-gray-400'}`} />
-                  <span>{roomCategory}</span>
-                  {isLive && onlineCount > 0 && (
-                    <span className="text-gray-400">{formatNum(onlineCount)}人</span>
-                  )}
-                  {isLive && (
-                    <>
-                      <span className="text-gray-400">·</span>
-                      <span>{formatDuration(liveDuration)}</span>
-                    </>
-                  )}
+                
+                <span className="w-px h-3 bg-black/10 dark:bg-white/10 mx-1" />
+                
+                {/* 直播状态 */}
+                <div className="flex items-center gap-1.5 font-bold text-[11px]">
+                  <div className={`w-[6px] h-[6px] rounded-full flex-shrink-0 ${isLive ? 'bg-green-500 animate-pulse shadow-[0_0_8px_rgba(34,197,94,0.6)]' : 'bg-gray-400'}`} />
+                  <span className={isLive ? 'text-green-600 dark:text-green-400' : 'text-gray-400'}>{roomCategory}</span>
                 </div>
               </div>
-              {/* 退出房间：红色警示样式 */}
-              <button
-                onClick={handleDisconnect}
-                className="inline-flex items-center justify-center gap-1.5 h-[28px] px-4 rounded-[14px] text-[12px] font-medium transition-all
-                           bg-red-500/15 border border-red-400/40 text-red-500 dark:text-red-400
-                           hover:bg-red-500/25 hover:border-red-400/60"
-              >
-                <Unplug className="w-3.5 h-3.5" />退出房间
-              </button>
-              {/* 停止/获取事件 */}
-              {isMonitoring ? (
+
+              <div className="flex items-center gap-2 ml-1">
+                {/* 停止/获取事件 */}
+                {isMonitoring ? (
+                  <button
+                    onClick={handleToggleMonitor}
+                    className="inline-flex items-center justify-center gap-1.5 h-[32px] px-4 rounded-full text-[12px] font-bold transition-all
+                               bg-red-500/10 border border-red-500/20 text-red-500 dark:text-red-400
+                               hover:bg-red-500 hover:text-white hover:border-transparent shadow-sm"
+                  >
+                    <Square className="w-3 h-3 fill-current" />停止事件
+                  </button>
+                ) : (
+                  <button
+                    onClick={handleToggleMonitor}
+                    className="inline-flex items-center justify-center gap-1.5 h-[32px] px-4 rounded-full text-[12px] font-bold text-white transition-all hover:opacity-90 shadow-md active:scale-95"
+                    style={{ background: 'var(--primary-color)' }}
+                  >
+                    <Play className="w-3 h-3 fill-current" />获取弹幕
+                  </button>
+                )}
+
+                {/* 退出房间 */}
                 <button
-                  onClick={handleToggleMonitor}
-                  className="inline-flex items-center justify-center gap-1.5 h-[28px] px-4 rounded-[14px] text-[12px] font-medium transition-all
-                             bg-red-500/15 border border-red-400/40 text-red-500 dark:text-red-400
-                             hover:bg-red-500/25 hover:border-red-400/60"
+                  onClick={handleDisconnect}
+                  className="inline-flex items-center justify-center gap-1.5 h-[32px] px-4 rounded-full text-[12px] font-bold transition-all
+                             bg-white/60 dark:bg-white/10 border border-gray-200 dark:border-white/20 text-gray-500
+                             hover:bg-red-500/10 hover:text-red-500 hover:border-red-500/30"
                 >
-                  <Square className="w-3 h-3" />停止事件
+                  <Unplug className="w-3.5 h-3.5" />退出房间
                 </button>
-              ) : (
-                <button
-                  onClick={handleToggleMonitor}
-                  className="inline-flex items-center justify-center gap-1.5 h-[28px] px-4 rounded-[14px] text-[12px] font-medium text-white transition-all hover:opacity-90"
-                  style={{ background: 'var(--primary-color)' }}
-                >
-                  <Play className="w-3 h-3" />获取弹幕
-                </button>
-              )}
+              </div>
             </>
           ) : isLoggedIn ? (
-            <Button size="sm" variant="primary" onClick={onOpenRoomModal}>
+            <Button size="sm" variant="primary" onClick={onOpenRoomModal} className="shadow-md font-bold">
               <LinkIcon className="w-3.5 h-3.5 mr-1.5" />
               连接直播间
             </Button>
           ) : null}
         </div>
 
-        <div className="flex items-center gap-2">
-          <IconButton onClick={onToggleNotifications}>
-            <Bell className="w-4 h-4" />
+        <div className="flex items-center gap-3">
+          <IconButton onClick={onToggleNotifications} className="bg-white/40 dark:bg-white/5 border border-white/20 hover:border-white/40">
+            <Bell className="w-[18px] h-[18px]" />
           </IconButton>
           {isLoggedIn ? (
             <div className="relative" ref={userMenuRef}>
               <div
                 ref={avatarRef}
-                className="w-[32px] h-[32px] rounded-full flex items-center justify-center cursor-pointer transition-all hover:opacity-80 overflow-hidden border border-white/20"
+                className="w-[36px] h-[36px] rounded-full flex items-center justify-center cursor-pointer transition-all hover:scale-105 active:scale-95 overflow-hidden border-2 border-white shadow-md"
                 onClick={() => {
                   if (!showUserMenu && avatarRef.current) {
                     const rect = avatarRef.current.getBoundingClientRect();
@@ -280,99 +269,69 @@ export function TopBar({ onToggleNotifications, sidebarCollapsed, isLoggedIn, us
                   <img src={avatarSrc} alt="face" className="w-full h-full object-cover" />
                 ) : (
                   <div className="w-full h-full flex items-center justify-center bg-[var(--primary-color)] text-white">
-                    <User className="w-4 h-4" />
+                    <User className="w-5 h-5" />
                   </div>
                 )}
               </div>
 
               {showUserMenu && createPortal(
-                <div ref={menuPanelRef} className="fixed w-72 glass-card backdrop-blur-xl rounded-xl overflow-hidden shadow-lg border border-white/10 z-[9999]" style={{ top: menuPos.top, right: menuPos.right }}>
-                  <div className="p-4 border-b border-white/10">
+                <div ref={menuPanelRef} className="fixed w-72 glass-card backdrop-blur-xl rounded-2xl overflow-hidden shadow-2xl border border-white/30 z-[9999]" style={{ top: menuPos.top, right: menuPos.right }}>
+                  <div className="p-5 border-b border-white/10 bg-white/30 dark:bg-black/10">
                     {/* 头像 + 昵称 */}
-                    <div className="flex items-center gap-3 mb-3">
-                      <div className="w-12 h-12 rounded-full overflow-hidden border border-white/20 flex-shrink-0">
+                    <div className="flex items-center gap-4 mb-4">
+                      <div className="w-14 h-14 rounded-full overflow-hidden border-2 border-white shadow-md flex-shrink-0">
                         {avatarSrc ? (
                           <img src={avatarSrc} alt="face" className="w-full h-full object-cover" />
                         ) : (
                           <div className="w-full h-full flex items-center justify-center bg-[var(--primary-color)] text-white">
-                            <User className="w-5 h-5" />
+                            <User className="w-6 h-6" />
                           </div>
                         )}
                       </div>
                       <div className="min-w-0 flex-1">
                         <div
-                          className="text-[13px] font-semibold truncate"
+                          className="text-[14px] font-bold truncate tracking-tight"
                           style={userInfo?.vip_nickname_color ? { color: userInfo.vip_nickname_color } : undefined}
                         >
                           {userInfo?.uname || '未获取到昵称'}
                         </div>
-                        <div className="flex items-center gap-1 mt-1 flex-wrap">
+                        <div className="flex items-center gap-1.5 mt-1.5 flex-wrap">
                           {userInfo?.level != null && userInfo.level > 0 && (
-                            <span className="px-1.5 py-0.5 rounded text-[9px] font-bold bg-blue-500/20 text-blue-400 border border-blue-500/30">
+                            <span className="px-2 py-0.5 rounded-md text-[9px] font-black bg-blue-500/10 text-blue-500 border border-blue-500/20">
                               Lv.{userInfo.level}
                             </span>
                           )}
                           {userInfo?.vip_status === 1 && (
-                            <span className={`px-1.5 py-0.5 rounded text-[9px] font-bold border ${userInfo.vip_type >= 2 ? 'bg-yellow-500/20 text-yellow-400 border-yellow-500/30' : 'bg-pink-500/20 text-pink-400 border-pink-500/30'}`}>
+                            <span className={`px-2 py-0.5 rounded-md text-[9px] font-black border ${userInfo.vip_type >= 2 ? 'bg-yellow-500/10 text-yellow-600 border-yellow-500/20' : 'bg-pink-500/10 text-pink-500 border-pink-500/20'}`}>
                               {userInfo.vip_type >= 2 ? '年度大会员' : '大会员'}
                             </span>
                           )}
                         </div>
                       </div>
                     </div>
-                    <div className="space-y-1.5 text-[10px] text-gray-400">
-                      <div className="flex justify-between items-center">
-                        <span>UID</span>
-                        <span className="font-mono text-gray-300 select-all">{userInfo?.uid || '---'}</span>
+                    <div className="space-y-2 text-[11px] text-gray-500">
+                      <div className="flex justify-between items-center px-2 py-1 rounded-lg bg-black/5 dark:bg-white/5">
+                        <span className="font-bold">UID</span>
+                        <span className="font-mono text-gray-600 dark:text-gray-300 select-all">{userInfo?.uid || '---'}</span>
                       </div>
                       {userRoom && (
                         <>
-                          <div className="flex justify-between items-center">
-                            <span>直播间号</span>
-                            <span className="font-mono text-gray-300 select-all">{userRoom.room_id}</span>
+                          <div className="flex justify-between items-center px-2 py-1 rounded-lg bg-black/5 dark:bg-white/5">
+                            <span className="font-bold">直播间</span>
+                            <span className="font-mono text-gray-600 dark:text-gray-300 select-all">{userRoom.room_id}</span>
                           </div>
-                          {userRoom.short_id > 0 && userRoom.short_id !== userRoom.room_id && (
-                            <div className="flex justify-between items-center">
-                              <span>短号</span>
-                              <span className="font-mono text-gray-300">{userRoom.short_id}</span>
-                            </div>
-                          )}
-                          <div className="flex justify-between items-center">
-                            <span>直播状态</span>
-                            <span className={`flex items-center gap-1 ${userRoom.live_status === 1 ? 'text-green-400' : 'text-gray-400'}`}>
-                              <span className={`w-1.5 h-1.5 rounded-full inline-block ${userRoom.live_status === 1 ? 'bg-green-400 animate-pulse' : 'bg-gray-400'}`} />
-                              {userRoom.live_status === 1 ? `直播中 · ${userRoom.online.toLocaleString()}人` : '未开播'}
+                          <div className="flex justify-between items-center px-2 py-1 rounded-lg bg-black/5 dark:bg-white/5">
+                            <span className="font-bold">状态</span>
+                            <span className={`flex items-center gap-1.5 font-bold ${userRoom.live_status === 1 ? 'text-green-500' : 'text-gray-400'}`}>
+                              <span className={`w-1.5 h-1.5 rounded-full inline-block ${userRoom.live_status === 1 ? 'bg-green-500 animate-pulse' : 'bg-gray-400'}`} />
+                              {userRoom.live_status === 1 ? `正在直播` : '未开播'}
                             </span>
                           </div>
-                          {userRoom.title && (
-                            <div className="flex justify-between items-center gap-2">
-                              <span className="flex-shrink-0">标题</span>
-                              <span className="text-gray-300 truncate text-right">{userRoom.title}</span>
-                            </div>
-                          )}
                         </>
                       )}
-                      {userInfo?.coins != null && userInfo.coins > 0 && (
-                        <div className="flex justify-between items-center">
-                          <span>硬币</span>
-                          <span className="text-yellow-400 font-mono">{userInfo.coins}</span>
-                        </div>
-                      )}
-                      <div className="flex justify-between">
-                        <span>账号状态</span>
-                        <span className={userInfo?.is_login ? 'text-green-400' : 'text-red-400'}>
-                          {userInfo?.is_login ? '已登录' : '未登录'}
-                        </span>
-                      </div>
-                      {userInfo?.saved_at ? (
-                        <div className="flex justify-between">
-                          <span>Cookie 时间</span>
-                          <span className="font-mono">{formatCookieTime(userInfo.saved_at)}</span>
-                        </div>
-                      ) : null}
                     </div>
                   </div>
-                  <div className="p-2 space-y-0.5">
+                  <div className="p-2.5 space-y-1 bg-white/20 dark:bg-black/5">
                     <button
                       onClick={async () => {
                         if (refreshing) return;
@@ -385,17 +344,17 @@ export function TopBar({ onToggleNotifications, sidebarCollapsed, isLoggedIn, us
                         }
                       }}
                       disabled={refreshing}
-                      className="w-full flex items-center gap-2 px-3 py-2 rounded-lg hover:bg-white/10 text-gray-600 dark:text-gray-300 transition-colors disabled:opacity-60"
+                      className="w-full flex items-center gap-2.5 px-3.5 py-2.5 rounded-xl hover:bg-white/60 dark:hover:bg-white/10 text-gray-600 dark:text-gray-300 transition-all active:scale-[0.98] disabled:opacity-60"
                     >
                       <RefreshCw className={`w-4 h-4 ${refreshing ? 'animate-spin' : ''}`} />
-                      <span className="text-[12px] font-medium">{refreshing ? '刷新中...' : '刷新信息'}</span>
+                      <span className="text-[12px] font-bold">{refreshing ? '正在同步...' : '同步云端信息'}</span>
                     </button>
                     <button
                       onClick={onLogout}
-                      className="w-full flex items-center gap-2 px-3 py-2 rounded-lg hover:bg-red-50 dark:hover:bg-red-900/20 text-red-500 transition-colors"
+                      className="w-full flex items-center gap-2.5 px-3.5 py-2.5 rounded-xl hover:bg-red-500 hover:text-white dark:hover:bg-red-500/20 dark:hover:text-red-400 text-red-500 transition-all active:scale-[0.98]"
                     >
                       <X className="w-4 h-4" />
-                      <span className="text-[12px] font-medium">退出登录</span>
+                      <span className="text-[12px] font-bold">退出当前账号</span>
                     </button>
                   </div>
                 </div>,
@@ -403,9 +362,9 @@ export function TopBar({ onToggleNotifications, sidebarCollapsed, isLoggedIn, us
               )}
             </div>
           ) : (
-            <Button size="sm" variant="primary" onClick={onRequireLogin}>
+            <Button size="sm" variant="primary" onClick={onRequireLogin} className="font-bold shadow-md">
               <LogIn className="w-3.5 h-3.5 mr-1.5" />
-              登录
+              立即登录
             </Button>
           )}
         </div>

@@ -233,6 +233,7 @@ mod tests {
     fn aggregates_multiple_gifts_for_same_user() {
         let mut config = test_config();
         config.thanks_min_cost = 0;
+        config.gift_summary_thanks = false;
         let mut aggregator = GiftAggregator::new(&config);
         let event = LiveEvent::Gift {
             user_id: 1,
@@ -274,7 +275,8 @@ mod tests {
 
     #[test]
     fn records_blind_box_profit_loss() {
-        let config = test_config();
+        let mut config = test_config();
+        config.gift_summary_thanks = false;
         let storage = Storage::open_in_memory().unwrap();
         let mut aggregator = GiftAggregator::new(&config);
 
@@ -301,6 +303,7 @@ mod tests {
     #[test]
     fn uses_gift_alias_and_specific_thanks_template() {
         let mut config = test_config();
+        config.gift_summary_thanks = false;
         config
             .gift_aliases
             .insert("辣条".to_string(), "小零食".to_string());

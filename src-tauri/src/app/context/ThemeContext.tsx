@@ -3,12 +3,23 @@ import React, { createContext, useContext, useState, useEffect } from 'react';
 interface ThemeContextType {
   theme: 'light' | 'dark';
   primaryColor: string;
+  hue: number;
+  saturation: number;
+  lightness: number;
+  blur: number;
   toggleTheme: () => void;
   setPrimaryColor: (color: string) => void;
   setTheme: (theme: 'light' | 'dark') => void;
+  updateTheme: (updates: Partial<{ hue: number; saturation: number; lightness: number; blur: number }>) => void;
+  resetTheme: () => void;
 }
 
 const ThemeContext = createContext<ThemeContextType | undefined>(undefined);
+
+const DEFAULT_HUE = 211;
+const DEFAULT_SATURATION = 100;
+const DEFAULT_LIGHTNESS = 50;
+const DEFAULT_BLUR = 20;
 
 export const themePresets = [
   {
@@ -18,6 +29,7 @@ export const themePresets = [
     primaryLight: '#adc6ff',
     primaryDark: '#005bc1',
     blob: '#4b8eff',
+    hue: 211,
   },
   {
     id: 'pink',
@@ -26,6 +38,7 @@ export const themePresets = [
     primaryLight: '#ffb3b5',
     primaryDark: '#920027',
     blob: '#ff2d55',
+    hue: 343,
   },
   {
     id: 'green',
@@ -34,6 +47,7 @@ export const themePresets = [
     primaryLight: '#53e16f',
     primaryDark: '#00531c',
     blob: '#34c759',
+    hue: 143,
   },
   {
     id: 'orange',
@@ -42,6 +56,7 @@ export const themePresets = [
     primaryLight: '#ffb366',
     primaryDark: '#cc7700',
     blob: '#ff9500',
+    hue: 35,
   },
   {
     id: 'purple',
@@ -50,8 +65,10 @@ export const themePresets = [
     primaryLight: '#d9b3ff',
     primaryDark: '#7d3ba8',
     blob: '#bf5af2',
+    hue: 280,
   },
 ];
+
 
 function hslToHex(h: number, s: number, l: number): string {
   l /= 100;
@@ -93,16 +110,44 @@ export function hexToHsl(hex: string): { h: number; s: number; l: number } {
   };
 }
 
+export function hexToRgb(hex: string): { r: number; g: number; b: number } | null {
+  const result = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(hex);
+  return result ? {
+    r: parseInt(result[1], 16),
+    g: parseInt(result[2], 16),
+    b: parseInt(result[3], 16)
+  } : null;
+}
+
 export { hslToHex };
 
 export function ThemeProvider({ children }: { children: React.ReactNode }) {
   const [theme, setThemeState] = useState<'light' | 'dark'>('light');
+  const [hue, setHue] = useState(DEFAULT_HUE);
+  const [saturation, setSaturation] = useState(DEFAULT_SATURATION);
+  const [lightness, setLightness] = useState(DEFAULT_LIGHTNESS);
+  const [blur, setBlur] = useState(DEFAULT_BLUR);
   const [primaryColor, setPrimaryColorState] = useState(themePresets[0].primary);
+
+  useEffect(() => {
+    const hsl = hexToHsl(primaryColor);
+    setHue(hsl.h);
+    setSaturation(hsl.s);
+    setLightness(hsl.l);
+  }, [primaryColor]);
 
   useEffect(() => {
     document.documentElement.classList.toggle('dark', theme === 'dark');
     document.documentElement.style.setProperty('--primary-color', primaryColor);
-  }, [theme, primaryColor]);
+    document.documentElement.style.setProperty('--primary-hue', hue.toString());
+    document.documentElement.style.setProperty('--glass-blur', `${blur}px`);
+    
+    // Set RGB components for flexible opacity in CSS
+    const rgb = hexToRgb(primaryColor);
+    if (rgb) {
+      document.documentElement.style.setProperty('--primary-rgb', `${rgb.r}, ${rgb.g}, ${rgb.b}`);
+    }
+  }, [theme, primaryColor, hue, blur]);
 
   const toggleTheme = () => {
     setThemeState(prev => prev === 'light' ? 'dark' : 'light');
@@ -116,8 +161,36 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
     setThemeState(newTheme);
   };
 
+  const updateTheme = (updates: Partial<{ hue: number; saturation: number; lightness: number; blur: number }>) => {
+    if (updates.hue !== undefined) {
+      setHue(updates.hue);
+      setPrimaryColorState(hslToHex(updates.hue, saturation, lightness));
+    }
+    if (updates.saturation !== undefined) {
+      setSaturation(updates.saturation);
+      setPrimaryColorState(hslToHex(hue, updates.saturation, lightness));
+    }
+    if (updates.lightness !== undefined) {
+      setLightness(updates.lightness);
+      setPrimaryColorState(hslToHex(hue, saturation, updates.lightness));
+    }
+    if (updates.blur !== undefined) setBlur(updates.blur);
+  };
+
+  const resetTheme = () => {
+    setThemeState('light');
+    setPrimaryColorState(themePresets[0].primary);
+    setHue(DEFAULT_HUE);
+    setSaturation(DEFAULT_SATURATION);
+    setLightness(DEFAULT_LIGHTNESS);
+    setBlur(DEFAULT_BLUR);
+  };
+
   return (
-    <ThemeContext.Provider value={{ theme, primaryColor, toggleTheme, setPrimaryColor, setTheme }}>
+    <ThemeContext.Provider value={{ 
+      theme, primaryColor, hue, saturation, lightness, blur,
+      toggleTheme, setPrimaryColor, setTheme, updateTheme, resetTheme 
+    }}>
       {children}
     </ThemeContext.Provider>
   );

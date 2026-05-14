@@ -1,10 +1,11 @@
 //! streamix-voice — TTS / ASR / VAD pipeline
 //!
 //! Features:
-//!   `tts`      — Edge / MiniMax / Azure / Baidu / VolcEngine TTS（默认启用）
-//!   `asr`      — WhisperLive 流式 ASR 客户端（默认启用）
-//!   `vad`      — sherpa-onnx SenseVoice VAD + ASR（本地 ONNX，可选）
-//!   `denoiser` — GTCRN 频域降噪（需要 ort + ndarray，可选）
+//!   `tts`       — Edge / MiniMax / Azure / Baidu / VolcEngine TTS（默认启用）
+//!   `asr`       — WhisperLive 流式 ASR 客户端（默认启用）
+//!   `vad`       — sherpa-onnx SenseVoice VAD + ASR（本地 ONNX，可选）
+//!   `denoiser`  — GTCRN 频域降噪（需要 ort + ndarray，可选）
+//!   `model-hub` — HuggingFace Hub 模型下载（可选）
 
 pub mod audio;
 pub mod pipeline;
@@ -30,3 +31,8 @@ pub use audio::output::AudioPlayer;
 
 #[cfg(feature = "vad")]
 pub use sherpa_vad::{TurnEvent, SherpaPipeline, SherpaMicCapture};
+
+#[cfg(feature = "model-hub")]
+pub mod model_hub;
+#[cfg(feature = "model-hub")]
+pub use model_hub::{ModelHub, ModelSource, DownloadProgress, DownloadStage};

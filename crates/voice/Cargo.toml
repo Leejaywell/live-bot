@@ -4,11 +4,12 @@ version = "0.1.0"
 edition = "2024"
 description = "TTS / ASR / VAD pipeline for Streamix, ported from SquadyAI/RealtimeAPI (Apache-2.0)"
 
-# tts      — Edge / MiniMax / Azure / Baidu / VolcEngine TTS（默认启用）
-# asr      — WhisperLive 流式 ASR 客户端（默认启用）
-# vad      — sherpa-onnx SenseVoice VAD + ASR（本地 ONNX，按需启用）
-# denoiser — GTCRN 频域降噪（ort + ndarray + rustfft，按需启用）
-# playback — cpal 音频播放（默认启用）
+# tts        — Edge / MiniMax / Azure / Baidu / VolcEngine TTS（默认启用）
+# asr        — WhisperLive 流式 ASR 客户端（默认启用）
+# vad        — sherpa-onnx SenseVoice VAD + ASR（本地 ONNX，按需启用）
+# denoiser   — GTCRN 频域降噪（ort + ndarray + rustfft，按需启用）
+# playback   — cpal 音频播放（默认启用）
+# model-hub  — HuggingFace Hub 模型下载（hf-hub，按需启用）
 [features]
 default = ["tts", "asr", "playback"]
 tts = ["dep:minimp3", "dep:async-stream", "dep:uuid", "dep:lingua"]
@@ -16,6 +17,7 @@ asr = []
 vad = ["dep:sherpa-onnx", "dep:cpal"]
 denoiser = ["dep:ort", "dep:ndarray", "dep:rustfft"]
 playback = ["dep:cpal"]
+model-hub = ["dep:hf-hub"]
 
 [dependencies]
 # 核心
@@ -86,3 +88,6 @@ sherpa-onnx = { version = "1.12", optional = true }
 ort = { version = "2.0.0-rc.12", optional = true }
 ndarray = { version = "0.16", optional = true }
 rustfft = { version = "6", optional = true }
+
+# HuggingFace Hub 模型下载（model-hub feature）
+hf-hub = { version = "0.3", features = ["tokio"], optional = true }

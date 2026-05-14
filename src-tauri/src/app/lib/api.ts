@@ -50,28 +50,15 @@ export interface AppConfig {
   /** 新版机器人列表，各自独立记忆 */
   AiBots: AiBot[];
   AiReplyToDanmaku: boolean;
-  InteractWord: boolean;
-  WelcomeUseAt: boolean;
-  WelcomeDanmu: string[];
-  InteractWordByTime: boolean;
-  WelcomeDanmuByTime: any[];
   EntryEffect: boolean;
-  WelcomeHighWealthy: boolean;
-  WelcomeHighWealthyLevel: number;
   ThanksFocus: boolean;
   ThanksShare: boolean;
   InteractSelf: boolean;
   InteractAnchor: boolean;
   FocusDanmu: string[];
-  WelcomeSwitch: boolean;
-  WelcomeString: Record<string, string>;
-  WelcomeBlacklistWide: string[];
-  WelcomeBlacklist: string[];
   PermanentBlacklistUsers: number[];
   PermanentBlacklistNames: string[];
   SpecialNicknames: Record<string, string>;
-  NewcomerDanmuEnable: boolean;
-  NewcomerDanmuTemplate: string;
   ThanksGift: boolean;
   ThanksGiftTimeout: number;
   ThanksBlindBoxTimeout: number;

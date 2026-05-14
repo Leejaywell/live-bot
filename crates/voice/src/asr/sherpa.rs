@@ -1,7 +1,7 @@
 //! SenseVoice ASR backend via sherpa-onnx
 //!
 //! 模型文件（运行时加载，不嵌入二进制）：
-//!   assets/models/sherpa-onnx-sense-voice-zh-en-ja-ko-yue-int8-2024-07-17/
+//!   <model_dir>/sherpa-onnx-sense-voice-zh-en-ja-ko-yue-int8-2024-07-17/
 //!     model.int8.onnx, tokens.txt
 
 use std::error::Error;

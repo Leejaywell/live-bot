@@ -132,6 +132,10 @@ impl Storage {
                 raw_json text not null,
                 occurred_at text not null
             );
+            create index if not exists idx_interaction_session on interaction_records(session_id);
+            create index if not exists idx_interaction_uid on interaction_records(uid);
+            create index if not exists idx_interaction_room on interaction_records(room_id);
+            create index if not exists idx_interaction_time on interaction_records(occurred_at);
             ",
         )?;
         ensure_column(&conn, "interaction_records", "event_subtype", "text")?;
@@ -146,6 +150,16 @@ impl Storage {
         Ok(Self {
             conn: Mutex::new(conn),
         })
+    }
+
+    #[allow(dead_code)]
+    pub fn danmu_count(&self, uid: i64) -> Result<i64> {
+        let conn = self.conn.lock().expect("storage mutex poisoned");
+        Ok(conn.query_row(
+            "select count from danmu_count where uid = ?1",
+            params![uid],
+            |row| row.get(0),
+        ).optional()?.unwrap_or(0))
     }
 
     pub fn increment_danmu_count(&self, uid: i64, uname: &str) -> Result<i64> {
@@ -901,6 +915,20 @@ impl Storage {
         Ok(())
     }
 
+    pub fn cleanup_old_records(&self, days: i64) -> Result<usize> {
+        let conn = self.conn.lock().expect("storage mutex poisoned");
+        let cutoff = (Local::now() - chrono::Duration::days(days)).to_rfc3339();
+        let count = conn.execute(
+            "delete from interaction_records where occurred_at < ?1",
+            params![cutoff],
+        )?;
+        conn.execute(
+            "delete from blind_box_stat where created_at < ?1",
+            params![cutoff],
+        )?;
+        Ok(count)
+    }
+
     #[cfg(test)]
     pub fn blind_box_profit_loss(&self, uid: i64) -> Result<i64> {
         let conn = self.conn.lock().expect("storage mutex poisoned");
@@ -1029,6 +1057,7 @@ fn latest_optional_i64(conn: &Connection, uid: i64, column: &str) -> Result<Opti
 mod tests {
     use bilibili_live_protocol::{InteractKind, LiveEvent, ParsedLiveEvent, PkEventKind};
     use chrono::{Local, TimeZone};
+    use rusqlite::params;
     use serde_json::json;
 
     use super::Storage;
@@ -1673,5 +1702,35 @@ mod tests {
         assert_eq!(detail.medal_level, Some(21));
         assert_eq!(detail.guard_level, Some(3));
         assert_eq!(detail.wealth_level, Some(18));
+    }
+
+    #[test]
+    fn cleanup_old_records_removes_expired_data() {
+        let storage = Storage::open_in_memory().unwrap();
+        let session_id = "test_session";
+        let room_id = 8792912;
+
+        // Insert a fresh record
+        storage.record_interaction(session_id, room_id, &ParsedLiveEvent {
+            event: LiveEvent::Danmu { user_id: 1, user: "a".to_string(), text: "now".to_string() },
+            raw: json!({"cmd":"DANMU_MSG"}),
+        }).unwrap();
+
+        // Manual insert of an old record (SQLite specific)
+        {
+            let conn = storage.conn.lock().unwrap();
+            let old_time = (Local::now() - chrono::Duration::days(40)).to_rfc3339();
+            conn.execute(
+                "insert into interaction_records (session_id, room_id, event_type, raw_json, occurred_at) values (?1, ?2, ?3, ?4, ?5)",
+                params![session_id, room_id, "danmu", "{}", old_time],
+            ).unwrap();
+        }
+
+        assert_eq!(storage.session_danmu_count(session_id).unwrap(), 2);
+
+        // Cleanup records older than 30 days
+        let deleted = storage.cleanup_old_records(30).unwrap();
+        assert_eq!(deleted, 1);
+        assert_eq!(storage.session_danmu_count(session_id).unwrap(), 1);
     }
 }

@@ -29,12 +29,12 @@ interface SidebarProps {
 
 const navItems = [
   { path: '/', label: '仪表盘', icon: LayoutDashboard },
+  { path: '/stats', label: '数据统计', icon: BarChart3, wip: true },
   { path: '/monitor', label: '弹幕管理', icon: Radio },
   { path: '/auto-reply', label: '自动回复', icon: MessageSquare },
   { path: '/ai', label: 'AI 机器人', icon: Bot },
   { path: '/voice', label: '语音交互', icon: Mic },
   { path: '/models', label: '模型服务', icon: Cpu },
-  { path: '/stats', label: '数据统计', icon: BarChart3, wip: true },
   { path: '/pk', label: 'PK 与活动', icon: Swords, wip: true },
 ];
 
@@ -74,24 +74,16 @@ export function Sidebar({ collapsed, connected, onToggleThemePanel, onToggleSide
               to={item.path}
               onClick={handleNavClick}
               className={cn(
-                'flex items-center gap-3 h-[44px] px-3 rounded-xl transition-all',
+                'flex items-center gap-3 h-[42px] px-3 rounded-[12px] transition-all duration-300 relative group',
                 isActive
-                  ? 'bg-gradient-to-br from-[var(--primary-color)]/20 to-[var(--primary-color)]/15 border border-[var(--primary-color)]/30'
-                  : 'hover:bg-white/20 dark:hover:bg-white/5'
+                  ? 'bg-[var(--primary-color)] shadow-[0_8px_16px_-4px_rgba(var(--primary-rgb),0.4)] text-white'
+                  : 'text-gray-500 hover:text-gray-900 dark:hover:text-white hover:bg-white/40 dark:hover:bg-white/5'
               )}
             >
-              {isActive && (
-                <div
-                  className="w-[28px] h-[28px] rounded-lg flex items-center justify-center"
-                  style={{ background: 'var(--primary-color)', color: 'white' }}
-                >
-                  <Icon className="w-4 h-4" />
-                </div>
-              )}
-              {!isActive && <Icon className="w-4 h-4 ml-1" />}
-              <span className="text-[12px] font-medium flex-1" style={isActive ? { color: 'var(--primary-color)' } : {}}>{item.label}</span>
+              <Icon className={cn("w-[18px] h-[18px] transition-transform duration-300", !isActive && "group-hover:scale-110")} />
+              <span className="text-[13px] font-bold flex-1 tracking-tight">{item.label}</span>
               {item.wip && (
-                <span className="text-[9px] text-gray-400 dark:text-gray-500 font-normal">待开发</span>
+                <span className={isActive ? "text-white/60" : "text-gray-400 dark:text-gray-500"} style={{ fontSize: '9px' }}>待开发</span>
               )}
             </Link>
           );

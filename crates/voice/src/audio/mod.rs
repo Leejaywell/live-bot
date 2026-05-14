@@ -17,6 +17,7 @@
 //!
 //! ### 转换规则
 //! ```rust
+//! # let sample_i16: i16 = 1000;
 //! // 从 i16 转换到归一化 f32
 //! let normalized = sample_i16 as f32 / i16::MAX as f32;
 //!

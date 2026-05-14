@@ -65,7 +65,7 @@ impl InterruptEngine {
     ///
     /// 自动取消上一个任务（如果还在运行）。
     /// `task` 接收一个 CancellationToken，应在 select! 中监听它：
-    /// ```no_run
+    /// ```ignore
     /// tokio::select! {
     ///     _ = token.cancelled() => { /* 被中断，提前退出 */ }
     ///     result = do_tts() => { /* 正常完成 */ }

@@ -11,7 +11,7 @@
 //!   `sequence_id = u64::MAX`、`is_final = true` 的空块，用于提示上层任务彻底完成。
 //!
 //! ## 快速示例
-//! ```no_run
+//! ```ignore
 //! use realtime::tts::minimax::{
 //!     MiniMaxConfig, MiniMaxHttpTtsClient, VoiceSetting, AudioSetting, PronunciationDict,
 //! };

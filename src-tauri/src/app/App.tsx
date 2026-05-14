@@ -242,13 +242,28 @@ export default function App() {
   return (
     <ThemeProvider>
       <Toaster
-        position="top-center"
+        position="top-right"
         richColors
-        duration={1500}
+        duration={2000}
         closeButton
-        offset={72}
+        containerStyle={{
+          right: '20px',
+          top: '64px',
+          pointerEvents: 'none'
+        }}
         toastOptions={{
-          style: { width: 'fit-content', maxWidth: 360, fontSize: 12, padding: '8px 12px', minHeight: 36 },
+          style: { 
+            fontSize: '11px',
+            fontWeight: 600,
+            background: 'rgba(255, 255, 255, 0.92)',
+            backdropFilter: 'blur(20px)',
+            border: '1px solid rgba(255, 255, 255, 0.4)',
+            boxShadow: '0 4px 16px rgba(0, 0, 0, 0.06)',
+            borderRadius: '16px',
+            padding: '6px 14px',
+            width: 'fit-content',
+            pointerEvents: 'auto'
+          },
         }}
       />
       <LoginContext.Provider value={isLoggedIn}>

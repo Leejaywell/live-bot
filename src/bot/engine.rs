@@ -34,7 +34,6 @@ impl BotEngine {
         self.track_danmu(event, storage);
         out.extend(self.help(event));
         out.extend(self.keyword_reply(event));
-        out.extend(self.welcome(event));
         out.extend(self.thanks(event));
         out.extend(self.pk_and_activity_notice(event));
         out
@@ -141,41 +140,6 @@ impl BotEngine {
         }
     }
 
-    fn welcome(&self, event: &LiveEvent) -> Vec<String> {
-        match event {
-            LiveEvent::Interact {
-                kind: InteractKind::Entry,
-                user_id,
-                user,
-            } => self.welcome_user(*user_id, user),
-            LiveEvent::EntryEffect {
-                user_id,
-                user,
-                guard_level,
-                wealth_level,
-            } => {
-                if !self.config.entry_effect {
-                    return Vec::new();
-                }
-                if let Some(msg) = self.specified_welcome(*user_id) {
-                    return vec![msg];
-                }
-                let decorated_user = guard_label(*guard_level)
-                    .map(|label| format!("{label} {user}"))
-                    .or_else(|| {
-                        (self.config.welcome_high_wealthy
-                            && *wealth_level >= self.config.welcome_high_wealthy_level as i64)
-                            .then(|| user.clone())
-                    });
-                decorated_user
-                    .and_then(|name| self.render_welcome(&name))
-                    .into_iter()
-                    .collect()
-            }
-            _ => Vec::new(),
-        }
-    }
-
     fn thanks(&self, event: &LiveEvent) -> Vec<String> {
         match event {
             LiveEvent::Interact {
@@ -208,6 +172,9 @@ impl BotEngine {
             }
             LiveEvent::GuardBuy { user, gift, .. } if self.config.thanks_gift => {
                 vec![format!("感谢 {user} 的 {gift}")]
+            }
+            LiveEvent::SuperChat { user, text, price, .. } => {
+                vec![format!("感谢 {user} 的 SC (¥{price})：{text}")]
             }
             _ => Vec::new(),
         }
@@ -242,28 +209,19 @@ impl BotEngine {
                         user, gift, price, ..
                     },
             } => {
-                let mut out = vec!["识别到红包，欢迎弹幕已临时关闭".to_string()];
                 if self.config.thanks_gift {
-                    out.insert(0, format!("感谢 {user} {price}电池的 {gift}"));
+                    vec![format!("感谢 {user} {price}电池的 {gift}")]
+                } else {
+                    Vec::new()
                 }
-                out
-            }
-            LiveEvent::RedPocket {
-                kind: RedPocketKind::WinnerList,
-            } => {
-                vec!["红包结束，欢迎弹幕已恢复默认".to_string()]
             }
             LiveEvent::RedPocket { .. } => Vec::new(),
             LiveEvent::AnchorLottery {
                 kind: AnchorLotteryKind::Start,
-            } => {
-                vec!["识别到天选，欢迎弹幕已临时关闭".to_string()]
-            }
+            } => Vec::new(),
             LiveEvent::AnchorLottery {
                 kind: AnchorLotteryKind::Award | AnchorLotteryKind::End,
-            } => {
-                vec!["天选结束，欢迎弹幕已恢复默认".to_string()]
-            }
+            } => Vec::new(),
             LiveEvent::AnchorLottery {
                 kind: AnchorLotteryKind::Other(command),
             } => {
@@ -276,67 +234,27 @@ impl BotEngine {
         }
     }
 
-    fn welcome_user(&self, user_id: i64, user: &str) -> Vec<String> {
-        if let Some(msg) = self.specified_welcome(user_id) {
-            return vec![msg];
-        }
-        if !self.config.interact_word || self.is_welcome_blacklisted(user) {
-            return Vec::new();
-        }
-        self.render_welcome(&self.display_name(user_id, user))
-            .into_iter()
-            .collect()
-    }
+    #[allow(dead_code)]
+    pub fn ai_prompt(&self, event: &LiveEvent) -> Option<String> {
+        let LiveEvent::Danmu { text, .. } = event else {
+            return None;
+        };
 
-    fn specified_welcome(&self, user_id: i64) -> Option<String> {
-        self.config
-            .welcome_switch
-            .then(|| {
-                self.config
-                    .welcome_string
-                    .get(&user_id.to_string())
-                    .cloned()
-            })
-            .flatten()
-    }
+        if self.config.talk_robot_cmd.is_empty() {
+            return None;
+        }
 
-    fn render_welcome(&self, user: &str) -> Option<String> {
-        let template = if self.config.interact_word_by_time {
-            self.time_welcome_template()
-                .or_else(|| choose(&self.config.welcome_danmu))
+        if self.config.fuzzy_match_cmd {
+            if text.contains(&self.config.talk_robot_cmd) {
+                Some(text.replace(&self.config.talk_robot_cmd, "").trim().to_string())
+            } else {
+                None
+            }
+        } else if text.starts_with(&self.config.talk_robot_cmd) {
+            Some(text[self.config.talk_robot_cmd.len()..].trim().to_string())
         } else {
-            choose(&self.config.welcome_danmu)
-        }?;
-        Some(template.replace("{user}", &short_name(user, 3, self.config.danmu_len)))
-    }
-
-    fn time_welcome_template(&self) -> Option<String> {
-        let key = time_key(chrono::Local::now().hour() as u32);
-        self.config
-            .welcome_danmu_by_time
-            .iter()
-            .find(|entry| entry.enabled && entry.key == key && !entry.danmu.is_empty())
-            .and_then(|entry| choose(&entry.danmu))
-    }
-
-    fn is_welcome_blacklisted(&self, user: &str) -> bool {
-        self.config
-            .welcome_blacklist
-            .iter()
-            .any(|item| item == user)
-            || self
-                .config
-                .welcome_blacklist_wide
-                .iter()
-                .any(|item| user.contains(item))
-    }
-
-    fn display_name(&self, user_id: i64, user: &str) -> String {
-        self.config
-            .special_nicknames
-            .get(&user_id.to_string())
-            .cloned()
-            .unwrap_or_else(|| user.to_string())
+            None
+        }
     }
 }
 
@@ -359,15 +277,7 @@ fn short_name(value: &str, reserve: usize, danmu_len: i32) -> String {
     }
 }
 
-fn guard_label(level: i64) -> Option<&'static str> {
-    match level {
-        1 => Some("总督"),
-        2 => Some("提督"),
-        3 => Some("舰长"),
-        _ => None,
-    }
-}
-
+#[cfg(test)]
 fn time_key(hour: u32) -> &'static str {
     match hour {
         0 | 1 => "midnight",
@@ -380,20 +290,9 @@ fn time_key(hour: u32) -> &'static str {
     }
 }
 
-trait TimeExt {
-    fn hour(&self) -> u32;
-}
-
-impl TimeExt for chrono::DateTime<chrono::Local> {
-    fn hour(&self) -> u32 {
-        use chrono::Timelike;
-        Timelike::hour(self)
-    }
-}
-
 #[cfg(test)]
 mod tests {
-    use bilibili_live_protocol::{InteractKind, LiveEvent};
+    use bilibili_live_protocol::{InteractKind, LiveEvent, PkEventKind};
 
     use super::{BotEngine, short_name, time_key};
     use crate::bot::testsupport::test_config;
@@ -414,28 +313,6 @@ mod tests {
         );
 
         assert!(replies.is_empty());
-    }
-
-    #[test]
-    fn welcome_uses_special_nickname() {
-        let mut config = test_config();
-        config.welcome_string.clear();
-        config.welcome_danmu = vec!["欢迎 {user}".to_string()];
-        config
-            .special_nicknames
-            .insert("42".to_string(), "榜一".to_string());
-        let engine = BotEngine::new(config);
-
-        let replies = engine.handle_event(
-            &LiveEvent::Interact {
-                kind: InteractKind::Entry,
-                user_id: 42,
-                user: "alice".to_string(),
-            },
-            None,
-        );
-
-        assert_eq!(replies, vec!["欢迎 榜一"]);
     }
 
     #[test]
@@ -474,47 +351,9 @@ mod tests {
     }
 
     #[test]
-    fn welcome_uses_specified_user_first() {
-        let mut config = test_config();
-        config
-            .welcome_string
-            .insert("42".to_string(), "专属欢迎".to_string());
-        let engine = BotEngine::new(config);
-
-        let replies = engine.handle_event(
-            &LiveEvent::Interact {
-                kind: InteractKind::Entry,
-                user_id: 42,
-                user: "alice".to_string(),
-            },
-            None,
-        );
-
-        assert_eq!(replies, vec!["专属欢迎"]);
-    }
-
-    #[test]
-    fn welcome_respects_wide_blacklist() {
-        let mut config = test_config();
-        config.welcome_string.clear();
-        config.welcome_blacklist_wide = vec!["广告".to_string()];
-        let engine = BotEngine::new(config);
-
-        let replies = engine.handle_event(
-            &LiveEvent::Interact {
-                kind: InteractKind::Entry,
-                user_id: 7,
-                user: "广告号".to_string(),
-            },
-            None,
-        );
-
-        assert!(replies.is_empty());
-    }
-
-    #[test]
     fn thanks_follow_emits_base_and_extra_message() {
         let mut config = test_config();
+        config.thanks_focus = true; // MUST ENABLE
         config.focus_danmu = vec!["贴贴~".to_string()];
         let engine = BotEngine::new(config);
 
@@ -528,6 +367,96 @@ mod tests {
         );
 
         assert_eq!(replies, vec!["感谢 alice 的关注!", "贴贴~"]);
+    }
+
+    #[test]
+    fn thanks_superchat_emits_message() {
+        let config = test_config();
+        let engine = BotEngine::new(config);
+
+        let replies = engine.handle_event(
+            &LiveEvent::SuperChat {
+                user_id: 1,
+                user: "alice".to_string(),
+                text: "你好".to_string(),
+                price: 100,
+            },
+            None,
+        );
+
+        assert_eq!(replies, vec!["感谢 alice 的 SC (¥100)：你好"]);
+    }
+
+    #[test]
+    fn keyword_reply_matches_substring() {
+        let mut config = test_config();
+        config.keyword_reply = true;
+        config.keyword_reply_list.insert("吃饭".to_string(), "我也想吃".to_string());
+        let engine = BotEngine::new(config);
+
+        let replies = engine.handle_event(
+            &LiveEvent::Danmu {
+                user_id: 1,
+                user: "u".to_string(),
+                text: "你吃饭了吗".to_string(),
+            },
+            None,
+        );
+
+        assert_eq!(replies, vec!["我也想吃"]);
+    }
+
+    #[test]
+    fn thanks_share_emits_message() {
+        let mut config = test_config();
+        config.thanks_share = true;
+        config.focus_danmu.clear(); // Clear to avoid random extra message
+        let engine = BotEngine::new(config);
+
+        let replies = engine.handle_event(
+            &LiveEvent::Interact {
+                kind: InteractKind::Share,
+                user_id: 1,
+                user: "alice".to_string(),
+            },
+            None,
+        );
+
+        assert_eq!(replies, vec!["感谢 alice 的分享!"]);
+    }
+
+    #[test]
+    fn thanks_guardbuy_emits_message() {
+        let mut config = test_config();
+        config.thanks_gift = true;
+        let engine = BotEngine::new(config);
+
+        let replies = engine.handle_event(
+            &LiveEvent::GuardBuy {
+                user_id: 1,
+                user: "alice".to_string(),
+                gift: "舰长".to_string(),
+            },
+            None,
+        );
+
+        assert_eq!(replies, vec!["感谢 alice 的 舰长"]);
+    }
+
+    #[test]
+    fn block_msg_emits_message_when_enabled() {
+        let mut config = test_config();
+        config.show_block_msg = true;
+        let engine = BotEngine::new(config);
+
+        let replies = engine.handle_event(
+            &LiveEvent::Block {
+                user: "bad_user".to_string(),
+            },
+            None,
+        );
+
+        assert_eq!(replies, vec!["bad_user 被禁言"]);
     }
 
     #[test]
@@ -578,4 +507,71 @@ mod tests {
         assert!(!replies.is_empty());
         assert!(replies.iter().any(|line| line.contains("互动")));
     }
+
+    #[test]
+    fn comprehensive_switch_coverage() {
+        let mut config = test_config();
+        
+        // 1. Keyword Reply Switch
+        config.keyword_reply = false;
+        config.keyword_reply_list.insert("测试".to_string(), "回复".to_string());
+        let engine = BotEngine::new(config.clone());
+        let event = LiveEvent::Danmu { user_id: 1, user: "u".to_string(), text: "测试消息".to_string() };
+        assert!(engine.handle_event(&event, None).is_empty(), "Keyword reply should be disabled");
+        
+        config.keyword_reply = true;
+        let engine = BotEngine::new(config.clone());
+        assert!(!engine.handle_event(&event, None).is_empty(), "Keyword reply should be enabled");
+
+        // 2. Thanks Focus Switch
+        config.thanks_focus = false;
+        let engine = BotEngine::new(config.clone());
+        let event = LiveEvent::Interact { kind: InteractKind::Follow, user_id: 1, user: "u".to_string() };
+        assert!(engine.handle_event(&event, None).is_empty(), "Thanks focus should be disabled");
+        
+        config.thanks_focus = true;
+        let engine = BotEngine::new(config.clone());
+        assert!(!engine.handle_event(&event, None).is_empty(), "Thanks focus should be enabled");
+
+        // 3. Thanks Share Switch
+        config.thanks_share = false;
+        let engine = BotEngine::new(config.clone());
+        let event = LiveEvent::Interact { kind: InteractKind::Share, user_id: 1, user: "u".to_string() };
+        assert!(engine.handle_event(&event, None).is_empty(), "Thanks share should be disabled");
+        
+        config.thanks_share = true;
+        let engine = BotEngine::new(config.clone());
+        assert!(!engine.handle_event(&event, None).is_empty(), "Thanks share should be enabled");
+
+        // 4. PK Notice Switch
+        config.pk_notice = false;
+        let engine = BotEngine::new(config.clone());
+        let event = LiveEvent::Pk { kind: PkEventKind::Start { init_room_id: 1, match_room_id: 2 } };
+        assert!(engine.handle_event(&event, None).is_empty(), "PK notice should be disabled");
+        
+        config.pk_notice = true;
+        let engine = BotEngine::new(config.clone());
+        assert!(!engine.handle_event(&event, None).is_empty(), "PK notice should be enabled");
+
+        // 5. Block Msg Switch
+        config.show_block_msg = false;
+        let engine = BotEngine::new(config.clone());
+        let event = LiveEvent::Block { user: "u".to_string() };
+        assert!(engine.handle_event(&event, None).is_empty(), "Block msg should be disabled");
+        
+        config.show_block_msg = true;
+        let engine = BotEngine::new(config.clone());
+        assert!(!engine.handle_event(&event, None).is_empty(), "Block msg should be enabled");
+        
+        // 6. Thanks Gift Switch (GuardBuy)
+        config.thanks_gift = false;
+        let engine = BotEngine::new(config.clone());
+        let event = LiveEvent::GuardBuy { user_id: 1, user: "u".to_string(), gift: "舰长".to_string() };
+        assert!(engine.handle_event(&event, None).is_empty(), "Thanks gift should be disabled for GuardBuy");
+        
+        config.thanks_gift = true;
+        let engine = BotEngine::new(config.clone());
+        assert!(!engine.handle_event(&event, None).is_empty(), "Thanks gift should be enabled for GuardBuy");
+    }
 }
+

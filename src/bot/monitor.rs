@@ -26,17 +26,14 @@ pub async fn run_monitor_loop<E: EventEmitter>(
     cancel: CancellationToken,
     current_session_id: Arc<Mutex<Option<String>>>,
     danmaku_buffer: Arc<Mutex<Vec<String>>>,
+    model_dir: std::path::PathBuf,
 ) -> Result<()> {
     let _ = app.emit("monitor-status", json!("运行中"));
     let _ = app.emit("monitor-log", json!("直播间监听已启动"));
 
     let config = AppConfig::load_or_default()?;
-    let storage_path = format!(
-        "{}/{}",
-        config.db_path.trim_end_matches('/'),
-        config.db_name
-    );
-    let storage = Arc::new(Storage::open(&storage_path)?);
+    let storage_path = crate::config::db_path();
+    let storage = Arc::new(Storage::open(&storage_path.to_string_lossy())?);
 
     let engine = Arc::new(BotEngine::new(config.clone()));
     let bot_config = Arc::new(config.clone());
@@ -122,10 +119,6 @@ pub async fn run_monitor_loop<E: EventEmitter>(
     // VAD 麦克风捕获：检测主播语音段，触发 TTS 打断 + 话轮结束事件
     #[cfg(feature = "vad")]
     let _mic_capture: Option<streamix_voice::SherpaMicCapture> = if config.vad_enabled {
-        let model_dir = std::env::current_dir()
-            .unwrap_or_default()
-            .join("assets")
-            .join("models");
         let vad_model     = model_dir.join("silero_vad.onnx");
         let asr_url       = resolve_asr_url(&config);
         // 本地 ASR 只在没有外部 ASR URL 时启用
@@ -262,6 +255,9 @@ pub async fn run_monitor_loop<E: EventEmitter>(
     let poll_storage = storage.clone();
     let poll_session = current_session_id.clone();
     let poll_task = tokio::spawn(async move {
+        // Run DB cleanup on startup
+        let _ = poll_storage.cleanup_old_records(30);
+
         let mut last_status = -1;
         loop {
             tokio::select! {

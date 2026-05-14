@@ -3,9 +3,9 @@
 //! 架构：
 //!   麦克风 PCM (cpal) → sherpa VoiceActivityDetector → 语音段 → SherpaAsrBackend（可选）
 //!
-//! 模型文件（运行时加载）：
-//!   assets/models/silero_vad.onnx  — VAD
-//!   assets/models/sherpa-onnx-sense-voice-zh-en-ja-ko-yue-int8-2024-07-17/
+//! 模型文件（运行时加载，路径由调用方传入）：
+//!   <model_dir>/silero_vad.onnx  — VAD
+//!   <model_dir>/sherpa-onnx-sense-voice-zh-en-ja-ko-yue-int8-2024-07-17/
 //!     model.int8.onnx, tokens.txt  — ASR（可选）
 
 use std::path::PathBuf;

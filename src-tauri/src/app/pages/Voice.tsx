@@ -332,289 +332,96 @@ export function Voice() {
   return (
     <>
       <style>{STYLES}</style>
-      <div className="h-full flex flex-col gap-3 p-4 overflow-hidden">
+      <div className="h-full flex flex-col gap-4 p-5 overflow-hidden">
 
         {/* ══ 上栏：服务配置 + 麦克风 ════════════════════════════════════════ */}
-        <GlassCard className="shrink-0 px-5 py-4">
-          <div className="flex items-center gap-4 flex-wrap">
+        <div className="flex items-center justify-between shrink-0 bg-white/40 dark:bg-white/5 border border-white/60 dark:border-white/10 rounded-[24px] px-6 py-3 shadow-xl">
+          <div className="flex items-center gap-6">
 
             {/* LLM */}
-            <div className="flex items-center gap-2">
-              <span className="text-[10px] text-gray-400 whitespace-nowrap font-medium">LLM</span>
+            <div className="flex items-center gap-3">
+              <span className="text-[11px] font-black text-gray-400 uppercase tracking-widest">LLM</span>
               <GlassSelect value={llmId} onChange={onLlmChange} options={llmOpts} emptyHint="去配置" />
             </div>
 
-            <div className="w-px h-4 bg-black/8 dark:bg-white/12 shrink-0" />
+            <div className="w-px h-4 bg-black/10 dark:bg-white/10" />
 
             {/* ASR */}
-            <div className="flex items-center gap-2">
-              <span className="text-[10px] text-gray-400 whitespace-nowrap font-medium">ASR</span>
+            <div className="flex items-center gap-3">
+              <span className="text-[11px] font-black text-gray-400 uppercase tracking-widest">ASR</span>
               <Toggle checked={asrEnabled} onChange={onAsrToggle} />
               <GlassSelect value={asrId} onChange={onAsrChange} options={asrOpts} disabled={!asrEnabled} emptyHint="去配置" />
-              {/* 模型缺失警告 */}
-              {modelStatus && !vadModelOk && (
-                <span className="flex items-center gap-1 text-[10px] text-red-500" title={modelStatus.asr_model_dir}>
-                  <AlertTriangle className="w-3 h-3" />缺少 VAD 模型
-                </span>
-              )}
-              {modelStatus && vadModelOk && !asrModelOk && hasAsrConfig && (
-                <span className="flex items-center gap-1 text-[10px] text-amber-500">
-                  <AlertCircle className="w-3 h-3" />缺少 ASR 模型 — 请到「模型服务」页下载
-                </span>
-              )}
-              {asrList(config).length === 0 && (
-                <span className="flex items-center gap-1 text-[10px] text-amber-500">
-                  <AlertCircle className="w-3 h-3" />麦克风需要 ASR
-                </span>
-              )}
             </div>
 
-            <div className="w-px h-4 bg-black/8 dark:bg-white/12 shrink-0" />
+            <div className="w-px h-4 bg-black/10 dark:bg-white/10" />
 
             {/* TTS */}
-            <div className="flex items-center gap-2">
-              <span className="text-[10px] text-gray-400 whitespace-nowrap font-medium">TTS</span>
+            <div className="flex items-center gap-3">
+              <span className="text-[11px] font-black text-gray-400 uppercase tracking-widest">TTS</span>
               <Toggle checked={ttsEnabled} onChange={onTtsToggle} />
               <GlassSelect value={ttsId} onChange={onTtsChange} options={ttsOpts} disabled={!ttsEnabled} emptyHint="去配置" />
 
               {/* 声音选择按钮 */}
               {ttsEnabled && ttsOpts.length > 0 && (
-                <>
-                  <button
-                    onClick={() => setVoiceOpen(true)}
-                    className="flex items-center gap-1 h-[30px] pl-2.5 pr-2.5 rounded-xl text-[11px]
-                               bg-white/60 dark:bg-white/8 border border-gray-200 dark:border-white/15
-                               hover:bg-white/80 dark:hover:bg-white/15 transition-colors
-                               text-gray-600 dark:text-gray-300 max-w-[170px] truncate"
-                    title={ttsVoice}
-                  >
-                    <span className="truncate">
-                      {(() => {
-                        const v = (['edge_tts','minimax_tts','volcano_engine'] as TtsProvider[]).reduce<TtsProvider | undefined>((found, p) => found ?? findVoice(p, ttsVoice), undefined);
-                        return v ? `${v.name}` : (ttsVoice || '选择声音');
-                      })()}
-                    </span>
-                    <ChevronDown className="w-3 h-3 shrink-0 opacity-50" />
-                  </button>
-                </>
+                <button
+                  onClick={() => setVoiceOpen(true)}
+                  className="flex items-center gap-2 h-[34px] px-4 rounded-full text-[11px] font-bold
+                             bg-white/80 dark:bg-white/10 border border-white/40
+                             hover:bg-white transition-all text-gray-600 dark:text-gray-200"
+                >
+                  <span>
+                    {(() => {
+                      const v = (['edge_tts','minimax_tts','volcano_engine'] as TtsProvider[]).reduce<TtsProvider | undefined>((found, p) => found ?? findVoice(p, ttsVoice), undefined);
+                      return v ? `${v.name}` : (ttsVoice || '声音');
+                    })()}
+                  </span>
+                  <ChevronDown className="w-3 h-3 opacity-50" />
+                </button>
               )}
-            </div>
-            <VoicePicker
-              open={voiceOpen}
-              onClose={() => setVoiceOpen(false)}
-              providers={config ? availableProviders((config.AiProviders ?? []).filter(p => p.ProviderType === 'tts').map(p => p.Name)) : ['edge_tts']}
-              currentVoice={ttsVoice}
-              onSelect={v => { setTtsVoice(v); onVoiceChange(v); }}
-            />
-
-            <div className="flex-1" />
-
-            {/* 状态 + 延迟 */}
-            <div className="flex items-center gap-2">
-              {micActive && latency > 0 && (
-                <div className="flex items-center gap-1 text-[10px] text-gray-400 font-mono">
-                  <Activity className="w-3 h-3" />{latency}ms
-                </div>
-              )}
-              <div className="flex items-center gap-1.5">
-                <div className="w-[6px] h-[6px] rounded-full transition-all"
-                  style={{
-                    background:  micActive ? '#34c759' : '#d1d5db',
-                    boxShadow:   micActive ? '0 0 6px #34c75988' : 'none',
-                    animation:   micActive ? 'dot-blink 1.4s ease-in-out infinite' : 'none',
-                  }} />
-                <span className={cn('text-[10px] font-medium', micActive ? 'text-emerald-500 dark:text-emerald-400' : 'text-gray-400')}>
-                  {micState === 'off' ? '空闲' : micState === 'listening' ? '聆听中' : 'AI 回应'}
-                </span>
-              </div>
-            </div>
-
-            <div className="w-px h-4 bg-black/8 dark:bg-white/12 shrink-0" />
-
-            {/* 麦克风按钮 */}
-            <div className="relative flex items-center justify-center shrink-0">
-              {micActive && (
-                <>
-                  <div className="absolute rounded-full pointer-events-none"
-                    style={{ width: 54, height: 54, border: `1.5px solid ${micColor}`, animation: 'mic-ring 1.8s ease-out infinite' }} />
-                  <div className="absolute rounded-full pointer-events-none"
-                    style={{ width: 54, height: 54, border: `1.5px solid ${micColor}`, animation: 'mic-ring 1.8s ease-out infinite', animationDelay: '0.9s' }} />
-                </>
-              )}
-              <button
-                onClick={handleMicClick}
-                title={!micEnabled ? micBlockReasons.join('；') : (micActive ? '点击关闭麦克风' : '点击开启麦克风')}
-                className={cn(
-                  'relative z-10 w-[42px] h-[42px] rounded-full flex items-center justify-center transition-all',
-                  micEnabled ? 'hover:scale-105 active:scale-95' : 'cursor-not-allowed opacity-50',
-                )}
-                style={{
-                  background: micActive
-                    ? `linear-gradient(145deg, ${micColor}, ${micColor}bb)`
-                    : micEnabled
-                      ? 'linear-gradient(145deg, rgba(0,0,0,0.10), rgba(0,0,0,0.07))'
-                      : 'rgba(0,0,0,0.05)',
-                  boxShadow: micActive
-                    ? `0 6px 22px ${micColor}45, 0 0 0 2px ${micColor}22`
-                    : '0 2px 10px rgba(0,0,0,0.08)',
-                }}>
-                {micActive
-                  ? <Mic    className="w-5 h-5 text-white" />
-                  : <MicOff className={cn('w-5 h-5', micEnabled ? 'text-gray-500' : 'text-gray-300')} />
-                }
-              </button>
             </div>
           </div>
 
-          {/* 波形行（仅麦克风激活时展开） */}
-          <div className={cn(
-            'overflow-hidden transition-all',
-            micActive ? 'max-h-[60px] mt-3.5 opacity-100' : 'max-h-0 opacity-0',
-          )}>
-            <FullWave active={micActive} color={micColor} barCount={50} />
+          <div className="flex items-center gap-4">
+            <button className="w-9 h-9 rounded-full hover:bg-black/5 dark:hover:bg-white/5 flex items-center justify-center text-gray-400 transition-all"><SettingsIcon className="w-4 h-4" /></button>
+            <button
+              onClick={handleMicClick}
+              className={cn(
+                "w-12 h-12 rounded-full flex items-center justify-center transition-all shadow-lg active:scale-95",
+                micActive 
+                  ? "bg-white text-[var(--primary-color)]" 
+                  : "bg-black/5 dark:bg-white/10 text-gray-400"
+              )}
+            >
+              {micActive ? <Mic className="w-6 h-6" /> : <MicOff className="w-6 h-6" />}
+            </button>
           </div>
-        </GlassCard>
+        </div>
 
         {/* ══ 下栏：实时字幕 ══════════════════════════════════════════════════ */}
-        <GlassCard className="flex-1 flex flex-col overflow-hidden min-h-0 relative">
-          {/* 语音激活时的波纹背景特效 */}
-          {micActive && (
-            <div className="absolute inset-0 flex items-center justify-center pointer-events-none overflow-hidden rounded-[18px]">
-              {/* 脉冲背景光晕 */}
-              <div className="absolute w-[500px] h-[500px] rounded-full"
-                style={{
-                  background: `radial-gradient(circle, ${micColor}18 0%, transparent 65%)`,
-                  animation: 'ripple-bg 2.4s ease-in-out infinite',
-                }} />
-              {/* 三层涟漪圆环 */}
-              {[0, 0.8, 1.6].map((delay, i) => (
-                <div key={i} className="absolute rounded-full border"
-                  style={{
-                    width: 120 + i * 80,
-                    height: 120 + i * 80,
-                    borderColor: `${micColor}35`,
-                    animation: `ripple-expand 2.8s ease-out infinite`,
-                    animationDelay: `${delay}s`,
-                  }} />
-              ))}
-            </div>
-          )}
-          {/* 头部 */}
-          <div className="relative z-10 flex items-center justify-between px-5 py-3 border-b border-black/5 dark:border-white/8 shrink-0">
-            <div className="flex items-center gap-2">
-              <div className="w-[6px] h-[6px] rounded-full shrink-0"
-                style={{
-                  background:  micActive ? '#34c759' : '#d1d5db',
-                  boxShadow:   micActive ? '0 0 6px #34c75980' : 'none',
-                  animation:   micActive ? 'dot-blink 1.4s ease-in-out infinite' : 'none',
-                }} />
-              <span className="text-[12px] font-semibold">实时字幕</span>
-            </div>
-            {subtitles.length > 0 && (
-              <button onClick={() => setSubtitles([])}
-                className="text-[10px] text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 transition-colors px-2 py-0.5 rounded-lg hover:bg-black/5 dark:hover:bg-white/8">
-                清空
-              </button>
-            )}
+        <GlassCard className="flex-1 flex flex-col overflow-hidden border-white/60 dark:border-white/10 bg-white/40 shadow-2xl relative">
+          <div className="absolute top-6 left-6 flex items-center gap-2">
+             <div className="w-1.5 h-1.5 rounded-full bg-[var(--primary-color)]" />
+             <span className="text-[13px] font-bold text-gray-700">实时字幕</span>
           </div>
-
-          {/* 字幕内容 */}
-          <div ref={subRef} className="relative z-10 flex-1 overflow-y-auto px-5 py-4 space-y-3">
-            {subtitles.length === 0 ? (
-              <div className="h-full flex flex-col items-center justify-center gap-2.5 opacity-35 select-none">
-                <MessageSquareText className="w-9 h-9 text-gray-400" />
-                {modelStatus && (!vadModelOk || !asrModelOk) ? (
-                  <div className="text-[11px] text-gray-400 text-center leading-relaxed space-y-1.5 max-w-[320px]">
-                    <p className="font-semibold text-amber-500">缺少语音识别模型文件</p>
-                    {!vadModelOk && (
-                      <p>请下载 silero_vad.onnx 到 assets/models/ 目录</p>
-                    )}
-                    {vadModelOk && !asrModelOk && !hasAnyAsrUrl && (
-                      <p>请到「模型服务」页添加 SenseVoice ASR 并下载模型</p>
-                    )}
-                  </div>
-                ) : (
-                  <p className="text-[11px] text-gray-400 text-center leading-relaxed">
-                    {!micEnabled
-                      ? '请先在「模型服务」中配置 ASR，再开启麦克风'
-                      : micActive
-                        ? '等待语音输入或弹幕...'
-                        : '开启麦克风后，实时字幕将显示在此处'}
-                  </p>
-                )}
-              </div>
-            ) : (
-              subtitles.map(s => (
-                <div key={s.id}
-                  className={cn('flex items-start gap-2', s.role === 'ai' ? 'justify-end' : 'justify-start')}
-                  style={{ animation: 'sub-in 0.2s ease-out' }}>
-                  {s.role === 'user' && (
-                    <span className="shrink-0 text-[9px] font-semibold px-1.5 py-0.5 rounded-full mt-0.5 bg-black/6 dark:bg-white/10 text-gray-500">
-                      弹
-                    </span>
-                  )}
-                  <div className={cn(
-                    'flex items-end max-w-[80%] text-[12px] leading-relaxed transition-colors duration-700',
-                    s.fresh
-                      ? s.role === 'ai'
-                        ? 'text-[var(--primary-color)] font-medium'
-                        : 'text-gray-800 dark:text-gray-100 font-medium'
-                      : 'text-gray-400 dark:text-gray-500',
-                  )}>
-                    {s.text}
-                    {s.fresh && <SubWave role={s.role} />}
-                  </div>
-                  {s.role === 'ai' && (
-                    <span className="shrink-0 text-[9px] font-semibold px-1.5 py-0.5 rounded-full mt-0.5 bg-[var(--primary-color)]/12 text-[var(--primary-color)]">
-                      AI
-                    </span>
-                  )}
-                </div>
-              ))
-            )}
+          
+          <div className="flex-1 flex flex-col items-center justify-center gap-6 opacity-30 select-none">
+             <MessageSquareText className="w-20 h-20 text-gray-300" />
+             <p className="text-[14px] font-bold tracking-widest text-gray-400">开启麦克风后，实时字幕将显示在此处</p>
           </div>
-
-          {/* 底部最新字幕高亮 + 波浪特效 */}
-          {latestFresh && (
-            <div className={cn(
-              'relative z-10 shrink-0 px-5 py-3 border-t flex items-center gap-2.5',
-              latestFresh.role === 'ai'
-                ? 'border-[var(--primary-color)]/12 bg-[var(--primary-color)]/5'
-                : 'border-black/5 dark:border-white/8 bg-black/2 dark:bg-white/2',
-            )}>
-              <span className={cn(
-                'shrink-0 text-[9px] font-bold px-1.5 py-0.5 rounded-full',
-                latestFresh.role === 'ai'
-                  ? 'bg-[var(--primary-color)]/15 text-[var(--primary-color)]'
-                  : 'bg-black/8 dark:bg-white/12 text-gray-500',
-              )}>
-                {latestFresh.role === 'ai' ? 'AI' : '弹幕'}
-              </span>
-              <span className={cn(
-                'flex-1 text-[13px] font-medium leading-snug truncate',
-                latestFresh.role === 'ai' ? 'text-[var(--primary-color)]' : 'text-gray-800 dark:text-gray-100',
-              )}>
-                {latestFresh.text}
-              </span>
-              {/* 底部栏专属大波浪 */}
-              <div className="flex items-end gap-[2.5px] shrink-0" style={{ height: 18 }}>
-                {[0, 1, 2, 3, 4, 5, 6].map(i => {
-                  const color = latestFresh.role === 'ai' ? 'var(--primary-color)' : '#6b7280';
-                  return (
-                    <div key={i} className="w-[3px] rounded-full"
-                      style={{
-                        background: color,
-                        height: `${55 + (i % 3) * 20}%`,
-                        animation: `wave-bar ${0.42 + (i % 4) * 0.11}s ease-in-out infinite`,
-                        animationDelay: `${i * 0.07}s`,
-                      }} />
-                  );
-                })}
-              </div>
-            </div>
-          )}
+          
+          <div className="p-10">
+             <FullWave active={micActive} color={micActive ? 'var(--primary-color)' : '#e5e7eb'} barCount={80} />
+          </div>
         </GlassCard>
       </div>
+
+      <VoicePicker
+        open={voiceOpen}
+        onClose={() => setVoiceOpen(false)}
+        providers={config ? availableProviders((config.AiProviders ?? []).filter(p => p.ProviderType === 'tts').map(p => p.Name)) : ['edge_tts']}
+        currentVoice={ttsVoice}
+        onSelect={v => { setTtsVoice(v); onVoiceChange(v); }}
+      />
     </>
   );
 }
@@ -622,11 +429,11 @@ export function Voice() {
 // ── 工具：从 config 过滤各类 provider ─────────────────────────────────────────
 
 function llmList(config: AppConfig | null) {
-  return (config?.AiProviders ?? []).filter(p => (p.ProviderType === 'llm' || !p.ProviderType));
+  return (config?.AiProviders ?? []).filter(p => (p.ProviderType === 'llm' || !p.ProviderType) && p.Enabled);
 }
 function asrList(config: AppConfig | null) {
-  return (config?.AiProviders ?? []).filter(p => p.ProviderType === 'asr');
+  return (config?.AiProviders ?? []).filter(p => p.ProviderType === 'asr' && p.Enabled);
 }
 function ttsList(config: AppConfig | null) {
-  return (config?.AiProviders ?? []).filter(p => p.ProviderType === 'tts');
+  return (config?.AiProviders ?? []).filter(p => p.ProviderType === 'tts' && p.Enabled);
 }

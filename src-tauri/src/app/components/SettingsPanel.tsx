@@ -16,7 +16,6 @@ export function SettingsPanel({ onClose }: SettingsPanelProps) {
   const [systemInfo, setSystemInfo] = useState<SystemInfo | null>(null);
   const [config, setConfig] = useState<AppConfig | null>(null);
   const [saving, setSaving] = useState(false);
-  const [newWelcomeTemplate, setNewWelcomeTemplate] = useState('');
   const [newFocusTemplate, setNewFocusTemplate] = useState('');
 
   useEffect(() => {
@@ -140,50 +139,6 @@ export function SettingsPanel({ onClose }: SettingsPanelProps) {
                   placeholder="语音交互模式下 AI 的系统提示词..."
                 />
                 <p className="text-[10px] text-gray-400">固定用于语音搭子场景，提示词中可使用 {"{{gender}}"} 占位符</p>
-              </div>
-
-              <div className="space-y-1.5">
-                <div className="flex items-center justify-between">
-                  <label className="text-[11px] text-gray-500">欢迎模板（随机选一条，支持 {'{user}'}）：</label>
-                  <span className="text-[10px] text-gray-400">{config?.WelcomeDanmu?.length ?? 0} 条</span>
-                </div>
-                <div className="space-y-1 max-h-[100px] overflow-y-auto">
-                  {(config?.WelcomeDanmu ?? []).map((t, i) => (
-                    <div key={i} className="flex items-center gap-2 px-2.5 py-1.5 rounded-lg bg-black/5 dark:bg-white/5 border border-gray-200 dark:border-white/10 group">
-                      <span className="flex-1 text-[11px] truncate">{t}</span>
-                      <button
-                        className="opacity-0 group-hover:opacity-100 text-gray-400 hover:text-red-500 transition-opacity"
-                        onClick={() => updateField('WelcomeDanmu', (config?.WelcomeDanmu ?? []).filter((_, j) => j !== i))}
-                      >
-                        <X className="w-3 h-3" />
-                      </button>
-                    </div>
-                  ))}
-                </div>
-                <div className="flex gap-2">
-                  <Input
-                    value={newWelcomeTemplate}
-                    onChange={e => setNewWelcomeTemplate(e.target.value)}
-                    onKeyDown={e => {
-                      if (e.key === 'Enter' && newWelcomeTemplate.trim()) {
-                        updateField('WelcomeDanmu', [...(config?.WelcomeDanmu ?? []), newWelcomeTemplate.trim()]);
-                        setNewWelcomeTemplate('');
-                      }
-                    }}
-                    placeholder="欢迎 {user} 来到直播间！"
-                    className="flex-1 h-8 text-[11px]"
-                  />
-                  <button
-                    onClick={() => {
-                      if (!newWelcomeTemplate.trim()) return;
-                      updateField('WelcomeDanmu', [...(config?.WelcomeDanmu ?? []), newWelcomeTemplate.trim()]);
-                      setNewWelcomeTemplate('');
-                    }}
-                    className="w-8 h-8 rounded-lg bg-[var(--primary-color)] text-white flex items-center justify-center hover:opacity-90 transition-opacity shrink-0"
-                  >
-                    <Plus className="w-3.5 h-3.5" />
-                  </button>
-                </div>
               </div>
 
               {/* 关注答谢附言 */}

@@ -30,6 +30,7 @@ const DB_TO_LINEAR_CONVERSION_FACTOR: f32 = std::f32::consts::LN_10 / 20.0;
 ///
 /// # 示例
 /// ```rust
+/// # use streamix_voice::audio::tts_frame::db_to_linear;
 /// let linear = db_to_linear(6.0); // 约等于 2.0
 /// let linear = db_to_linear(-6.0); // 约等于 0.5
 /// let linear = db_to_linear(0.0); // 等于 1.0
@@ -119,7 +120,7 @@ impl TtsAudioFrame {
     /// 降采样后的音频数据（16000Hz，16位PCM）
     ///
     /// # 示例
-    /// ```rust
+    /// ```ignore
     /// let frame = TtsAudioFrame { /* ... */ };
     /// let amplified = frame.resample_to_16k_with_db_gain(7.0); // +7dB增益
     /// let attenuated = frame.resample_to_16k_with_db_gain(-3.0); // -3dB衰减

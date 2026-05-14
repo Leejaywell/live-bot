@@ -224,7 +224,7 @@ export function System() {
         <div className="space-y-3">
           <div className="flex items-center gap-4">
             <label className="w-24 text-[11px] text-gray-500 shrink-0">路径</label>
-            <span className="font-mono text-[11px]">{sysInfo?.config_path ?? 'etc/bilidanmaku-api.yaml'}</span>
+            <span className="font-mono text-[11px]">{sysInfo?.config_path ?? 'streamix.toml'}</span>
           </div>
         </div>
         <div className="flex gap-3 mt-4">
@@ -255,7 +255,7 @@ export function System() {
         <div className="space-y-3">
           <div className="flex items-center gap-4">
             <label className="w-24 text-[11px] text-gray-500 shrink-0">DB 路径</label>
-            <span className="font-mono text-[11px]">{sysInfo?.db_path ?? 'db/sqliteDataBase.db'}</span>
+            <span className="font-mono text-[11px]">{sysInfo?.db_path ?? 'db/streamix.db'}</span>
           </div>
         </div>
         <div className="flex gap-3 mt-4">
