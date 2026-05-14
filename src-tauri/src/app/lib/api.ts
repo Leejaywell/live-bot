@@ -28,6 +28,8 @@ export interface AiBot {
 
 export interface AppConfig {
   AutoUpdate: boolean;
+  MinimizeToTray: boolean;
+  LaunchAtStartup: boolean;
   RoomId: number;
   WsServerUrl: string;
   DanmuLen: number;

@@ -7,6 +7,7 @@ import {
   Download,
   CheckCircle2,
   AlertCircle,
+  Settings,
 } from 'lucide-react';
 import { useState, useEffect } from 'react';
 import { Button } from './Button';
@@ -14,6 +15,8 @@ import { Modal, ModalCloseButton } from './Modal';
 import { api, SystemInfo } from '../lib/api';
 import { toast } from 'sonner';
 import { cn } from '../lib/utils';
+import { useConfig } from '../context/ConfigContext';
+import { Toggle } from './Toggle';
 
 interface SettingsPanelProps {
   onClose: () => void;
@@ -107,9 +110,12 @@ function ModelCard({ title, desc, size, installed, dl, onDownload }: ModelCardPr
 }
 
 export function SettingsPanel({ onClose }: SettingsPanelProps) {
+  const { config, updateConfig } = useConfig();
   const [systemInfo, setSystemInfo] = useState<SystemInfo | null>(null);
   const [checking, setChecking] = useState(false);
   const [tab, setTab] = useState<SettingsTab>('basic');
+
+  // ... (rest of the state and effects)
 
   // Models tab state
   const [modelStatus, setModelStatus] = useState<{ vad_model_ok: boolean; asr_local_model_ok: boolean } | null>(null);
@@ -285,27 +291,62 @@ export function SettingsPanel({ onClose }: SettingsPanelProps) {
               </div>
             </div>
 
-            {/* 检查更新 */}
+            {/* 系统设置 */}
             <div>
               <div className="flex items-center gap-2 mb-3">
-                <RefreshCw className="w-4 h-4 text-[var(--primary-color)]" />
-                <h3 className="text-[13px] font-semibold">检查更新</h3>
+                <Settings className="w-4 h-4 text-[var(--primary-color)]" />
+                <h3 className="text-[13px] font-semibold">系统设置</h3>
               </div>
-              <div className="bg-white/40 dark:bg-white/5 rounded-lg p-3.5 border border-gray-200 dark:border-white/10">
-                <div className="flex items-center justify-between mb-3">
-                  <div className="text-[11px] text-gray-600 dark:text-gray-400">
-                    当前版本 <span className="font-mono font-bold">v{systemInfo?.version || '0.0.0'}</span>
+              <div className="bg-white/40 dark:bg-white/5 rounded-lg p-3.5 border border-gray-200 dark:border-white/10 space-y-4">
+                <div className="flex items-center justify-between">
+                  <div className="space-y-0.5">
+                    <div className="text-[12px] font-medium text-gray-800 dark:text-gray-200">自动检查更新</div>
+                    <div className="text-[10px] text-gray-500">启动时自动检查并提示新版本</div>
                   </div>
+                  <Toggle
+                    checked={config?.AutoUpdate ?? true}
+                    onChange={(val) => updateConfig({ AutoUpdate: val })}
+                  />
                 </div>
-                <Button
-                  variant="default"
-                  size="sm"
-                  className="w-full"
-                  onClick={handleCheckUpdate}
-                  disabled={checking}
-                >
-                  {checking ? '检查中...' : '检查更新'}
-                </Button>
+
+                <div className="flex items-center justify-between">
+                  <div className="space-y-0.5">
+                    <div className="text-[12px] font-medium text-gray-800 dark:text-gray-200">最小化至托盘</div>
+                    <div className="text-[10px] text-gray-500">关闭或最小化时隐藏到系统托盘</div>
+                  </div>
+                  <Toggle
+                    checked={config?.MinimizeToTray ?? true}
+                    onChange={(val) => updateConfig({ MinimizeToTray: val })}
+                  />
+                </div>
+
+                <div className="flex items-center justify-between">
+                  <div className="space-y-0.5">
+                    <div className="text-[12px] font-medium text-gray-800 dark:text-gray-200">开机自启动</div>
+                    <div className="text-[10px] text-gray-500">在系统启动时自动运行流光</div>
+                  </div>
+                  <Toggle
+                    checked={config?.LaunchAtStartup ?? false}
+                    onChange={(val) => updateConfig({ LaunchAtStartup: val })}
+                  />
+                </div>
+
+                <div className="pt-2 border-t border-gray-100 dark:border-white/5">
+                  <div className="flex items-center justify-between mb-3">
+                    <div className="text-[11px] text-gray-600 dark:text-gray-400">
+                      当前版本 <span className="font-mono font-bold">v{systemInfo?.version || '0.0.0'}</span>
+                    </div>
+                  </div>
+                  <Button
+                    variant="default"
+                    size="sm"
+                    className="w-full"
+                    onClick={handleCheckUpdate}
+                    disabled={checking}
+                  >
+                    {checking ? '检查中...' : '检查更新'}
+                  </Button>
+                </div>
               </div>
             </div>
           </>

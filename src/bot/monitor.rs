@@ -499,42 +499,15 @@ pub async fn run_monitor_loop<E: EventEmitter>(
                         let danmu_uid = *user_id;
                         let danmu_uname = danmu_uname.clone();
 
-                        // @昵称 触发（遍历 ai_bots，已启用的机器人）
-                        for bot in &event_engine.config.ai_bots {
-                            if !bot.enabled { continue; }
-                            let trigger = format!("@{}", bot.nickname);
-                            if text.starts_with(&trigger) {
-                                matched = true;
-                                let prompt = text[trigger.len()..].trim().to_string();
-                                if !prompt.is_empty() {
-                                    let ai_http = ai_http.clone();
-                                    let ai_config = Arc::clone(&bot_config);
-                                    let ai_tx = event_tx.clone();
-                                    let ai_router = event_tts_router.clone();
-                                    let bot_id = bot.id.clone();
-                                    let nickname = bot.nickname.clone();
-                                    let ai_memory = session_memory.clone();
-                                    let ai_uname = danmu_uname.clone();
-                                    let ai_agent = event_agent.clone();
-                                    tokio::spawn(async move {
-                                        let reply = call_ai(&ai_http, &ai_config, &bot_id, &prompt, danmu_uid, &ai_uname, &ai_memory, &ai_agent).await;
-                                        if let Some(ref r) = ai_router {
-                                            let _ = r.speak_ai(reply.clone()).await;
-                                        }
-                                        let _ = ai_tx.send(format!("[{}]{}", nickname, reply)).await;
-                                    });
-                                }
-                                break;
-                            }
-                        }
-
-                        // 昵称模糊匹配（消息中包含昵称；未启用则静默）
-                        if !matched {
+                        if bot_config.ai_reply_to_danmaku {
+                            // @昵称 触发（遍历 ai_bots，已启用的机器人）
                             for bot in &event_engine.config.ai_bots {
-                                if !bot.nickname.is_empty() && text.contains(bot.nickname.as_str()) {
+                                if !bot.enabled { continue; }
+                                let trigger = format!("@{}", bot.nickname);
+                                if text.starts_with(&trigger) {
                                     matched = true;
-                                    if bot.enabled {
-                                        let prompt = text.clone();
+                                    let prompt = text[trigger.len()..].trim().to_string();
+                                    if !prompt.is_empty() {
                                         let ai_http = ai_http.clone();
                                         let ai_config = Arc::clone(&bot_config);
                                         let ai_tx = event_tx.clone();
@@ -555,29 +528,90 @@ pub async fn run_monitor_loop<E: EventEmitter>(
                                     break;
                                 }
                             }
-                        }
 
-                        // 裸 @ 触发，使用第一个启用的机器人
-                        if !matched && text.starts_with('@') {
-                            let prompt = text[1..].trim().to_string();
-                            if !prompt.is_empty() {
-                                if let Some(bot) = event_engine.config.ai_bots.iter().find(|b| b.enabled) {
-                                    let ai_http = ai_http.clone();
-                                    let ai_config = Arc::clone(&bot_config);
-                                    let ai_tx = event_tx.clone();
-                                    let ai_router = event_tts_router.clone();
-                                    let bot_id = bot.id.clone();
-                                    let nickname = bot.nickname.clone();
-                                    let ai_memory = session_memory.clone();
-                                    let ai_uname = danmu_uname.clone();
-                                    let ai_agent = event_agent.clone();
-                                    tokio::spawn(async move {
-                                        let reply = call_ai(&ai_http, &ai_config, &bot_id, &prompt, danmu_uid, &ai_uname, &ai_memory, &ai_agent).await;
-                                        if let Some(ref r) = ai_router {
-                                            let _ = r.speak_ai(reply.clone()).await;
+                            // 昵称模糊匹配（消息中包含昵称；未启用则静默）
+                            if !matched {
+                                for bot in &event_engine.config.ai_bots {
+                                    if !bot.nickname.is_empty() && text.contains(bot.nickname.as_str()) {
+                                        matched = true;
+                                        if bot.enabled {
+                                            let prompt = text.clone();
+                                            let ai_http = ai_http.clone();
+                                            let ai_config = Arc::clone(&bot_config);
+                                            let ai_tx = event_tx.clone();
+                                            let ai_router = event_tts_router.clone();
+                                            let bot_id = bot.id.clone();
+                                            let nickname = bot.nickname.clone();
+                                            let ai_memory = session_memory.clone();
+                                            let ai_uname = danmu_uname.clone();
+                                            let ai_agent = event_agent.clone();
+                                            tokio::spawn(async move {
+                                                let reply = call_ai(&ai_http, &ai_config, &bot_id, &prompt, danmu_uid, &ai_uname, &ai_memory, &ai_agent).await;
+                                                if let Some(ref r) = ai_router {
+                                                    let _ = r.speak_ai(reply.clone()).await;
+                                                }
+                                                let _ = ai_tx.send(format!("[{}]{}", nickname, reply)).await;
+                                            });
                                         }
-                                        let _ = ai_tx.send(format!("[{}]{}", nickname, reply)).await;
-                                    });
+                                        break;
+                                    }
+                                }
+                            }
+
+                            // 裸 @ 触发，使用第一个启用的机器人
+                            if !matched && text.starts_with('@') {
+                                let prompt = text[1..].trim().to_string();
+                                if !prompt.is_empty() {
+                                    if let Some(bot) = event_engine.config.ai_bots.iter().find(|b| b.enabled) {
+                                        let ai_http = ai_http.clone();
+                                        let ai_config = Arc::clone(&bot_config);
+                                        let ai_tx = event_tx.clone();
+                                        let ai_router = event_tts_router.clone();
+                                        let bot_id = bot.id.clone();
+                                        let nickname = bot.nickname.clone();
+                                        let ai_memory = session_memory.clone();
+                                        let ai_uname = danmu_uname.clone();
+                                        let ai_agent = event_agent.clone();
+                                        tokio::spawn(async move {
+                                            let reply = call_ai(&ai_http, &ai_config, &bot_id, &prompt, danmu_uid, &ai_uname, &ai_memory, &ai_agent).await;
+                                            if let Some(ref r) = ai_router {
+                                                let _ = r.speak_ai(reply.clone()).await;
+                                            }
+                                            let _ = ai_tx.send(format!("[{}]{}", nickname, reply)).await;
+                                        });
+                                    }
+                                }
+                            }
+
+                            // 旧版命令触发（使用第一个启用的机器人）
+                            if !matched && !bot_config.talk_robot_cmd.is_empty() {
+                                let trigger = &bot_config.talk_robot_cmd;
+                                if (bot_config.fuzzy_match_cmd && text.contains(trigger)) || text.starts_with(trigger) {
+                                    let prompt = if text.starts_with(trigger) {
+                                        text[trigger.len()..].trim().to_string()
+                                    } else {
+                                        text.clone()
+                                    };
+                                    if !prompt.is_empty() {
+                                        if let Some(bot) = event_engine.config.ai_bots.iter().find(|b| b.enabled) {
+                                            let ai_http = ai_http.clone();
+                                            let ai_config = Arc::clone(&bot_config);
+                                            let ai_tx = event_tx.clone();
+                                            let ai_router = event_tts_router.clone();
+                                            let bot_id = bot.id.clone();
+                                            let nickname = bot.nickname.clone();
+                                            let ai_memory = session_memory.clone();
+                                            let ai_uname = danmu_uname.clone();
+                                            let ai_agent = event_agent.clone();
+                                            tokio::spawn(async move {
+                                                let reply = call_ai(&ai_http, &ai_config, &bot_id, &prompt, danmu_uid, &ai_uname, &ai_memory, &ai_agent).await;
+                                                if let Some(ref r) = ai_router {
+                                                    let _ = r.speak_ai(reply.clone()).await;
+                                                }
+                                                let _ = ai_tx.send(format!("[{}]{}", nickname, reply)).await;
+                                            });
+                                        }
+                                    }
                                 }
                             }
                         }

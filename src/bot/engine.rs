@@ -207,7 +207,7 @@ impl BotEngine {
             LiveEvent::GuardBuy { user, gift, .. } if self.config.thanks_gift => {
                 vec![format!("感谢 {user} 的 {gift}")]
             }
-            LiveEvent::SuperChat { user, text, price, .. } => {
+            LiveEvent::SuperChat { user, text, price, .. } if self.config.thanks_super_chat => {
                 vec![format!("感谢 {user} 的 SC (¥{price})：{text}")]
             }
             _ => Vec::new(),

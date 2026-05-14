@@ -623,8 +623,9 @@ async fn perform_update(app: AppHandle) -> Result<(), String> {
     let app_handle = app.clone();
     let mut downloaded: u64 = 0;
 
-    update
-        .download_and_install(
+    // 1. Download
+    let installer = update
+        .download(
             move |chunk, total| {
                 downloaded += chunk as u64;
                 let _ = tauri::Emitter::emit(
@@ -637,6 +638,87 @@ async fn perform_update(app: AppHandle) -> Result<(), String> {
         )
         .await
         .map_err(|e| e.to_string())?;
+
+    // 2. Prompt user with changelog
+    use tauri_plugin_dialog::DialogExt;
+    let (tx, rx) = tokio::sync::oneshot::channel();
+    
+    let changelog = update.body.as_deref().unwrap_or("无更新日志");
+    let message = format!("新版本 v{} 已下载完成。\n\n【更新日志】\n{}\n\n是否现在安装并重启？", update.version, changelog);
+
+    app.dialog()
+        .message(message)
+        .title("软件更新")
+        .kind(tauri_plugin_dialog::MessageDialogKind::Info)
+        .buttons(tauri_plugin_dialog::MessageDialogButtons::OkCancelCustom(
+            "现在安装".to_string(),
+            "下次再说".to_string(),
+        ))
+        .show(move |result| {
+            let _ = tx.send(result);
+        });
+
+    if rx.await.unwrap_or(false) {
+        // 3. Install
+        update.install(installer).map_err(|e| e.to_string())?;
+    }
+
+    Ok(())
+}
+
+#[cfg(feature = "tauri")]
+#[tauri::command]
+async fn download_update(app: AppHandle) -> Result<(), String> {
+    use tauri_plugin_updater::UpdaterExt;
+
+    let update = app
+        .updater()
+        .map_err(|e| e.to_string())?
+        .check()
+        .await
+        .map_err(|e| e.to_string())?;
+
+    let Some(update) = update else {
+        return Err("already_latest".to_string());
+    };
+
+    let app_handle = app.clone();
+    let mut downloaded: u64 = 0;
+
+    let installer = update
+        .download(
+            move |chunk, total| {
+                downloaded += chunk as u64;
+                let _ = tauri::Emitter::emit(
+                    &app_handle,
+                    "update-download-progress",
+                    serde_json::json!({ "downloaded": downloaded, "total": total }),
+                );
+            },
+            || {},
+        )
+        .await
+        .map_err(|e| e.to_string())?;
+
+    // Store the installer in state or just prompt immediately after manual download too
+    use tauri_plugin_dialog::DialogExt;
+    let (tx, rx) = tokio::sync::oneshot::channel();
+    let changelog = update.body.as_deref().unwrap_or("无更新日志");
+    app.dialog()
+        .message(format!("新版本 v{} 已下载完成。\n\n【更新日志】\n{}\n\n是否现在安装并重启？", update.version, changelog))
+        .title("下载完成")
+        .kind(tauri_plugin_dialog::MessageDialogKind::Info)
+        .buttons(tauri_plugin_dialog::MessageDialogButtons::OkCancelCustom(
+            "现在安装".to_string(),
+            "下次再说".to_string(),
+        ))
+        .show(move |result| {
+            let _ = tx.send(result);
+        });
+
+    if rx.await.unwrap_or(false) {
+        update.install(installer).map_err(|e| e.to_string())?;
+    }
 
     Ok(())
 }
@@ -663,6 +745,7 @@ async fn update_check_loop(app: AppHandle) {
                 if let Ok(Some(update)) = u.check().await {
                     if config.auto_update {
                         println!("[Updater] Found update v{}, starting auto update...", update.version);
+                        // Download in background
                         let _ = perform_update(app.clone()).await;
                     } else {
                         // Check if we notified today
@@ -688,6 +771,24 @@ async fn update_check_loop(app: AppHandle) {
 
         // Check every 6 hours
         tokio::time::sleep(std::time::Duration::from_secs(6 * 3600)).await;
+    }
+}
+
+async fn db_cleanup_loop(storage: Arc<storage::Storage>) {
+    loop {
+        println!("[Storage] Running daily database cleanup...");
+        match storage.cleanup_old_records(30) {
+            Ok(count) => {
+                if count > 0 {
+                    println!("[Storage] Cleaned up {} old records (older than 30 days)", count);
+                }
+            }
+            Err(e) => {
+                eprintln!("[Storage] Database cleanup failed: {}", e);
+            }
+        }
+        // Run once every 24 hours
+        tokio::time::sleep(std::time::Duration::from_secs(24 * 3600)).await;
     }
 }
 
@@ -909,15 +1010,19 @@ fn main() -> Result<()> {
     };
 
     println!("Starting Tauri builder...");
+    let storage_for_cleanup = state.storage.clone();
     tauri::Builder::default()
         .plugin(tauri_plugin_shell::init())
         .plugin(tauri_plugin_updater::Builder::new().build())
         .plugin(tauri_plugin_notification::init())
         .plugin(tauri_plugin_process::init())
+        .plugin(tauri_plugin_dialog::init())
         .manage(state)
         .setup(move |app| {
             let handle_for_update = app.handle().clone();
             tauri::async_runtime::spawn(update_check_loop(handle_for_update));
+
+            tauri::async_runtime::spawn(db_cleanup_loop(storage_for_cleanup));
 
             Ok(())
         })

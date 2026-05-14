@@ -33,6 +33,10 @@ pub fn db_path() -> PathBuf {
 pub struct AppConfig {
     #[serde(default = "default_true")]
     pub auto_update: bool,
+    #[serde(default = "default_true")]
+    pub minimize_to_tray: bool,
+    #[serde(default)]
+    pub launch_at_startup: bool,
     #[serde(default = "default_room_id")]
     pub room_id: i64,
     #[serde(default = "default_ws_url")]
@@ -96,6 +100,8 @@ pub struct AppConfig {
     pub permanent_blacklist_names: Vec<String>,
     #[serde(default)]
     pub special_nicknames: BTreeMap<String, String>,
+    #[serde(default)]
+    pub thanks_super_chat: bool,
     #[serde(default)]
     pub thanks_gift: bool,
     #[serde(default)]
@@ -290,6 +296,8 @@ impl Default for AppConfig {
     fn default() -> Self {
         Self {
             auto_update: true,
+            minimize_to_tray: true,
+            launch_at_startup: false,
             room_id: 3,
             ws_server_url: "wss://broadcastlv.chat.bilibili.com:2245/sub".to_string(),
             danmu_len: 20,
@@ -344,6 +352,7 @@ impl Default for AppConfig {
             permanent_blacklist_users: Vec::new(),
             permanent_blacklist_names: Vec::new(),
             special_nicknames: BTreeMap::new(),
+            thanks_super_chat: true,
             thanks_gift: true,
             thanks_gift_timeout: 3,
             thanks_blind_box_timeout: 6,

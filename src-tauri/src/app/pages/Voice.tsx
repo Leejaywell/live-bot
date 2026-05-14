@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { GlassCard } from '../components/GlassCard';
 import { Toggle } from '../components/Toggle';
+import { Input } from '../components/Input';
 import { cn } from '../lib/utils';
 import { api, AppConfig } from '../lib/api';
 import { Link } from 'react-router-dom';
@@ -57,10 +58,30 @@ function parseLog(text: string): SubLine | null {
     const rest = text.slice(3);
     const idx  = rest.indexOf(': ');
     if (idx < 0) return null;
-    return { id: `${Date.now()}-${Math.random()}`, role: 'user', text: rest.slice(idx + 2), fresh: true };
+    return { id: `${Date.now()}-${Math.random()}`, role: 'user', text: rest.slice(idx + 2).trim(), fresh: true };
+  }
+  if (text.startsWith('机器人发送: ')) {
+    const rest = text.slice(7);
+    const m = rest.match(/^\[([^\]]+)\](.+)$/);
+    if (m) return { id: `${Date.now()}-${Math.random()}`, role: 'ai', text: m[2].trim(), fresh: true };
+    return { id: `${Date.now()}-${Math.random()}`, role: 'ai', text: rest.trim(), fresh: true };
   }
   const m = text.match(/^\[([^\]]+)\](.+)$/);
-  if (m) return { id: `${Date.now()}-${Math.random()}`, role: 'ai', text: m[2], fresh: true };
+  if (m) {
+    const tag = m[1];
+    const content = m[2].trim();
+    if (tag === 'ASR') {
+      if (content.startsWith('识别结果: ')) {
+        return { id: `${Date.now()}-${Math.random()}`, role: 'user', text: content.slice(5).trim(), fresh: true };
+      }
+      return null;
+    }
+    if (tag === 'ASR→AI') {
+      return { id: `${Date.now()}-${Math.random()}`, role: 'ai', text: content, fresh: true };
+    }
+    // 其他带中括号的消息尝试作为 AI 回复（如直连 logs）
+    return { id: `${Date.now()}-${Math.random()}`, role: 'ai', text: content, fresh: true };
+  }
   return null;
 }
 
@@ -487,7 +508,7 @@ export function Voice() {
           <div>
             <label className="text-[12px] text-gray-500 mb-2 block font-medium">系统提示词</label>
             <textarea
-              className="w-full h-64 px-4 py-3 rounded-xl bg-white/60 dark:bg-white/10 border border-gray-200 dark:border-white/20 text-[13px] leading-relaxed focus:outline-none focus:ring-2 focus:ring-[var(--primary-color)]/50 resize-none"
+              className="w-full h-32 px-4 py-3 rounded-xl bg-white/60 dark:bg-white/10 border border-gray-200 dark:border-white/20 text-[13px] leading-relaxed focus:outline-none focus:ring-2 focus:ring-[var(--primary-color)]/50 resize-none"
               value={config?.VoiceSystemPrompt ?? ''}
               onChange={e => scheduleSave({ VoiceSystemPrompt: e.target.value })}
               placeholder="语音交互模式下 AI 的系统提示词..."
@@ -495,6 +516,44 @@ export function Voice() {
             <p className="text-[11px] text-gray-400 mt-1.5">
               可使用 <code className="bg-black/5 px-1 rounded">{'{gender}'}</code> 占位符，自动替换为所选 AI 性别
             </p>
+          </div>
+
+          <div className="h-px bg-black/5 dark:bg-white/10" />
+
+          <div className="space-y-3">
+            <div className="flex items-center justify-between">
+              <span className="text-[12px] font-bold">OBS WebSocket 设置</span>
+              <Toggle checked={config?.ObsEnabled ?? false} onChange={v => scheduleSave({ ObsEnabled: v })} />
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-1">
+                <label className="text-[10px] text-gray-400 font-bold uppercase">主机</label>
+                <Input
+                  value={config?.ObsHost ?? 'localhost'}
+                  onChange={e => scheduleSave({ ObsHost: e.target.value })}
+                  className="h-8 text-[11px]"
+                />
+              </div>
+              <div className="space-y-1">
+                <label className="text-[10px] text-gray-400 font-bold uppercase">端口</label>
+                <Input
+                  type="number"
+                  value={String(config?.ObsPort ?? 4455)}
+                  onChange={e => scheduleSave({ ObsPort: parseInt(e.target.value) || 4455 })}
+                  className="h-8 text-[11px]"
+                />
+              </div>
+            </div>
+            <div className="space-y-1">
+              <label className="text-[10px] text-gray-400 font-bold uppercase">密码</label>
+              <Input
+                type="password"
+                value={config?.ObsPassword ?? ''}
+                onChange={e => scheduleSave({ ObsPassword: e.target.value })}
+                className="h-8 text-[11px]"
+                placeholder="留空表示无密码"
+              />
+            </div>
           </div>
         </div>
       </Modal>

@@ -1,4 +1,4 @@
-import { Bot, MessageSquare, Gift, Users, Star, TrendingUp, Radio, ShieldCheck, Clock, ChevronRight } from 'lucide-react';
+import { Bot, MessageSquare, Gift, Users, Star, TrendingUp, Radio, ShieldCheck, Clock, ChevronRight, Heart } from 'lucide-react';
 import { GlassCard } from '../components/GlassCard';
 import { Toggle } from '../components/Toggle';
 import { useState, useEffect, useRef } from 'react';
@@ -56,8 +56,13 @@ type AutoGroup  = { title: string; Icon: React.ElementType; mainKey?: keyof AppC
 const AUTO_GROUPS: AutoGroup[] = [
   {
     title: 'AI 机器人', Icon: Bot, mainKey: 'AiReplyToDanmaku', to: '/ai',
+    subs: [],
+  },
+  {
+    title: '互动答谢', Icon: Heart, to: '/auto-reply?tab=fans',
     subs: [
       { label: '关注答谢', key: 'ThanksFocus' },
+      { label: '分享答谢', key: 'ThanksShare' },
     ],
   },
   {
@@ -72,10 +77,10 @@ const AUTO_GROUPS: AutoGroup[] = [
     subs: [
       { label: '特效入场', key: 'EntryEffect' },
       { label: '礼物感谢', key: 'ThanksGift' },
+      { label: 'SC 感谢',   key: 'ThanksSuperChat' },
       { label: 'PK 提醒',  key: 'PkNotice' },
       { label: '禁言提醒', key: 'ShowBlockMsg' },
       { label: '盲盒统计', key: 'BlindBoxProfitLossStat' },
-      { label: '签到开关', key: 'SignInEnable' },
     ],
   },
   {
@@ -102,20 +107,25 @@ export function Dashboard() {
     const interval = setInterval(refreshStats, 5000);
 
     let unlisten: (() => void) | undefined;
+    let unlistenStats: (() => void) | undefined;
     const setup = async () => {
       try {
         unlisten = await api.onMonitorLog((log) => {
           const entry = parseDanmu(log);
           if (entry) setDanmus(prev => [...prev, entry].slice(-50));
         });
+        unlistenStats = await api.onSessionSummary((summary) => {
+          setStats(summary);
+        });
       } catch (err) {
-        console.error('Failed to setup monitor log listener:', err);
+        console.error('Failed to setup monitor listeners:', err);
       }
     };
     setup();
 
     return () => {
       if (unlisten) unlisten();
+      if (unlistenStats) unlistenStats();
       clearInterval(interval);
     };
   }, []);

@@ -318,6 +318,13 @@ export function AutoReply() {
           </div>
           <Toggle checked={config.ThanksShare ?? false} onChange={() => toggle('ThanksShare')} />
         </div>
+        <div className="flex items-center justify-between">
+          <div>
+            <div className="text-[12px] font-medium">醒目留言感谢 (SC)</div>
+            <div className="text-[10px] text-gray-400">收到醒目留言时自动发送感谢弹幕</div>
+          </div>
+          <Toggle checked={config.ThanksSuperChat ?? false} onChange={() => toggle('ThanksSuperChat')} />
+        </div>
       </div>
 
       <div className="h-px bg-gradient-to-r from-blue-400/40 via-blue-400/15 to-transparent" />
@@ -373,47 +380,129 @@ export function AutoReply() {
 
   const GiftTab = (
     <div className="space-y-5">
-      <div className="flex items-center justify-between">
-        <div>
-          <span className="text-[12px] font-medium">礼物感谢</span>
-          <span className="text-[10px] text-gray-500 ml-2">收到礼物时自动发送感谢弹幕</span>
-        </div>
-        <Toggle checked={config.ThanksGift ?? false} onChange={() => toggle('ThanksGift')} />
-      </div>
+      <div className="grid grid-cols-2 gap-4">
+        <div className="space-y-4">
+          <div className="flex items-center justify-between">
+            <div>
+              <span className="text-[12px] font-medium">礼物感谢</span>
+              <span className="text-[10px] text-gray-500 ml-2">收到礼物时自动发送感谢弹幕</span>
+            </div>
+            <Toggle checked={config.ThanksGift ?? false} onChange={() => toggle('ThanksGift')} />
+          </div>
 
-      <div className="flex items-center justify-between">
-        <div>
-          <div className="text-[12px] font-medium">礼物聚合感谢</div>
-          <div className="text-[10px] text-gray-400">相同时间段内的礼物合并一次感谢</div>
-        </div>
-        <Toggle checked={config.GiftSummaryThanks ?? false} onChange={() => toggle('GiftSummaryThanks')} />
-      </div>
+          <div className="flex items-center justify-between">
+            <div>
+              <div className="text-[12px] font-medium">礼物聚合感谢</div>
+              <div className="text-[10px] text-gray-400">相同时间段内的礼物合并一次感谢</div>
+            </div>
+            <Toggle checked={config.GiftSummaryThanks ?? false} onChange={() => toggle('GiftSummaryThanks')} />
+          </div>
 
-      <div className="h-px bg-gradient-to-r from-blue-400/40 via-blue-400/15 to-transparent" />
+          <div className="h-px bg-black/5 dark:bg-white/5" />
 
-      <div className="flex items-center justify-between">
-        <div>
-          <div className="text-[12px] font-medium">礼物感谢频率</div>
-          <div className="text-[10px] text-gray-400">礼物聚合感谢的等待时间（秒）</div>
-        </div>
-        <div className="flex items-center gap-2">
-          <button onClick={() => save({ ...config, ThanksGiftTimeout: Math.max(0, (config.ThanksGiftTimeout ?? 3) - 1) })} className="w-7 h-7 rounded-lg bg-white/60 dark:bg-white/10 border border-gray-200 dark:border-white/20 hover:bg-white/80 flex items-center justify-center text-[14px] font-medium transition-colors">−</button>
-          <span className="font-mono text-[13px] w-6 text-center select-none">{config.ThanksGiftTimeout ?? 3}</span>
-          <button onClick={() => save({ ...config, ThanksGiftTimeout: (config.ThanksGiftTimeout ?? 3) + 1 })} className="w-7 h-7 rounded-lg bg-white/60 dark:bg-white/10 border border-gray-200 dark:border-white/20 hover:bg-white/80 flex items-center justify-center text-[14px] font-medium transition-colors">+</button>
-          <span className="text-[11px] text-gray-500">秒</span>
-        </div>
-      </div>
+          <div className="flex items-center justify-between">
+            <div>
+              <div className="text-[12px] font-medium">礼物感谢频率</div>
+              <div className="text-[10px] text-gray-400">礼物聚合感谢的等待时间（秒）</div>
+            </div>
+            <div className="flex items-center gap-2">
+              <button onClick={() => save({ ...config, ThanksGiftTimeout: Math.max(0, (config.ThanksGiftTimeout ?? 3) - 1) })} className="w-7 h-7 rounded-lg bg-white/60 dark:bg-white/10 border border-gray-200 dark:border-white/20 hover:bg-white/80 flex items-center justify-center text-[14px] font-medium transition-colors">−</button>
+              <span className="font-mono text-[13px] w-6 text-center select-none">{config.ThanksGiftTimeout ?? 3}</span>
+              <button onClick={() => save({ ...config, ThanksGiftTimeout: (config.ThanksGiftTimeout ?? 3) + 1 })} className="w-7 h-7 rounded-lg bg-white/60 dark:bg-white/10 border border-gray-200 dark:border-white/20 hover:bg-white/80 flex items-center justify-center text-[14px] font-medium transition-colors">+</button>
+            </div>
+          </div>
 
-      <div className="flex items-center justify-between">
-        <div>
-          <div className="text-[12px] font-medium">最低礼物价值</div>
-          <div className="text-[10px] text-gray-400">低于此价值（电池）的礼物不感谢，0 表示全部感谢</div>
+          <div className="flex items-center justify-between">
+            <div>
+              <div className="text-[12px] font-medium">最低礼物价值</div>
+              <div className="text-[10px] text-gray-400">低于此价值（电池）的礼物不感谢</div>
+            </div>
+            <div className="flex items-center gap-2">
+              <button onClick={() => save({ ...config, ThanksMinCost: Math.max(0, (config.ThanksMinCost ?? 0) - 10) })} className="w-7 h-7 rounded-lg bg-white/60 dark:bg-white/10 border border-gray-200 dark:border-white/20 hover:bg-white/80 flex items-center justify-center text-[14px] font-medium transition-colors">−</button>
+              <span className="font-mono text-[13px] w-10 text-center select-none">{config.ThanksMinCost ?? 0}</span>
+              <button onClick={() => save({ ...config, ThanksMinCost: (config.ThanksMinCost ?? 0) + 10 })} className="w-7 h-7 rounded-lg bg-white/60 dark:bg-white/10 border border-gray-200 dark:border-white/20 hover:bg-white/80 flex items-center justify-center text-[14px] font-medium transition-colors">+</button>
+            </div>
+          </div>
+
+          <div className="h-px bg-black/5 dark:bg-white/5" />
+
+          <div className="space-y-1.5">
+            <label className="text-[11px] text-gray-500 font-bold uppercase tracking-wider">聚合感谢模板</label>
+            <Input
+              value={config.GiftSummaryTemplate ?? ''}
+              onChange={e => setConfig({ ...config, GiftSummaryTemplate: e.target.value })}
+              onBlur={() => save(config!)}
+              className="h-9 text-[11px]"
+              placeholder="本轮收到 {count} 件礼物，价值 {value} 电池"
+            />
+          </div>
         </div>
-        <div className="flex items-center gap-2">
-          <button onClick={() => save({ ...config, ThanksMinCost: Math.max(0, (config.ThanksMinCost ?? 0) - 10) })} className="w-7 h-7 rounded-lg bg-white/60 dark:bg-white/10 border border-gray-200 dark:border-white/20 hover:bg-white/80 flex items-center justify-center text-[14px] font-medium transition-colors">−</button>
-          <span className="font-mono text-[13px] w-10 text-center select-none">{config.ThanksMinCost ?? 0}</span>
-          <button onClick={() => save({ ...config, ThanksMinCost: (config.ThanksMinCost ?? 0) + 10 })} className="w-7 h-7 rounded-lg bg-white/60 dark:bg-white/10 border border-gray-200 dark:border-white/20 hover:bg-white/80 flex items-center justify-center text-[14px] font-medium transition-colors">+</button>
-          <span className="text-[11px] text-gray-500">电池</span>
+
+        <div className="space-y-4">
+          {/* 礼物模板 */}
+          <div className="space-y-2">
+            <label className="text-[11px] text-gray-500 font-bold uppercase tracking-wider">特定礼物模板</label>
+            <div className="space-y-1 max-h-[160px] overflow-y-auto pr-1">
+              {Object.entries(config.GiftThanksTemplates ?? {}).map(([gift, tmpl]) => (
+                <div key={gift} className="flex items-center gap-2 px-3 py-1.5 rounded-xl bg-white/50 dark:bg-white/5 border border-gray-200/60 dark:border-white/10 group">
+                  <span className="text-[11px] font-bold text-[var(--primary-color)] w-16 truncate">{gift}</span>
+                  <span className="flex-1 text-[11px] truncate opacity-70">{tmpl}</span>
+                  <button onClick={() => {
+                    const next = { ...config.GiftThanksTemplates };
+                    delete next[gift];
+                    save({ ...config, GiftThanksTemplates: next });
+                  }} className="opacity-0 group-hover:opacity-100 text-gray-400 hover:text-red-500"><X className="w-3 h-3" /></button>
+                </div>
+              ))}
+            </div>
+            <div className="flex gap-1.5">
+              <Input id="gift-tmpl-name" placeholder="礼物名" className="w-20 h-8 text-[11px]" />
+              <Input id="gift-tmpl-val" placeholder="感谢模板" className="flex-1 h-8 text-[11px]" />
+              <Button size="sm" className="h-8 w-8 p-0" onClick={() => {
+                const name = (document.getElementById('gift-tmpl-name') as HTMLInputElement).value;
+                const val = (document.getElementById('gift-tmpl-val') as HTMLInputElement).value;
+                if (name && val) {
+                  save({ ...config, GiftThanksTemplates: { ...config.GiftThanksTemplates, [name]: val } });
+                  (document.getElementById('gift-tmpl-name') as HTMLInputElement).value = '';
+                  (document.getElementById('gift-tmpl-val') as HTMLInputElement).value = '';
+                }
+              }}><Plus className="w-3.5 h-3.5" /></Button>
+            </div>
+          </div>
+
+          <div className="h-px bg-black/5 dark:bg-white/5" />
+
+          {/* 礼物别名 */}
+          <div className="space-y-2">
+            <label className="text-[11px] text-gray-500 font-bold uppercase tracking-wider">礼物别名</label>
+            <div className="space-y-1 max-h-[160px] overflow-y-auto pr-1">
+              {Object.entries(config.GiftAliases ?? {}).map(([gift, alias]) => (
+                <div key={gift} className="flex items-center gap-2 px-3 py-1.5 rounded-xl bg-white/50 dark:bg-white/5 border border-gray-200/60 dark:border-white/10 group">
+                  <span className="text-[11px] font-bold w-16 truncate">{gift}</span>
+                  <span className="text-[11px] opacity-40">→</span>
+                  <span className="flex-1 text-[11px] truncate opacity-70">{alias}</span>
+                  <button onClick={() => {
+                    const next = { ...config.GiftAliases };
+                    delete next[gift];
+                    save({ ...config, GiftAliases: next });
+                  }} className="opacity-0 group-hover:opacity-100 text-gray-400 hover:text-red-500"><X className="w-3 h-3" /></button>
+                </div>
+              ))}
+            </div>
+            <div className="flex gap-1.5">
+              <Input id="gift-alias-name" placeholder="原名" className="w-20 h-8 text-[11px]" />
+              <Input id="gift-alias-val" placeholder="别名" className="flex-1 h-8 text-[11px]" />
+              <Button size="sm" className="h-8 w-8 p-0" onClick={() => {
+                const name = (document.getElementById('gift-alias-name') as HTMLInputElement).value;
+                const val = (document.getElementById('gift-alias-val') as HTMLInputElement).value;
+                if (name && val) {
+                  save({ ...config, GiftAliases: { ...config.GiftAliases, [name]: val } });
+                  (document.getElementById('gift-alias-name') as HTMLInputElement).value = '';
+                  (document.getElementById('gift-alias-val') as HTMLInputElement).value = '';
+                }
+              }}><Plus className="w-3.5 h-3.5" /></Button>
+            </div>
+          </div>
         </div>
       </div>
     </div>
