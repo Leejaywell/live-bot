@@ -23,7 +23,7 @@ pub struct LoginUrl {
 #[derive(Debug)]
 pub enum LoginPoll {
     Pending(String),
-    Success(token::CookieJar, String), // cookie + refresh_token
+    Success(String, String), // cookie_string + refresh_token
     Expired(String),
 }
 
@@ -122,14 +122,10 @@ impl BiliApi {
 
         match body.data.code {
             0 => {
-                let jar = token::collect_set_cookie(&headers);
+                let cookie = token::parse_set_cookie(&headers);
                 // After success, visit a main page to get more security cookies (like sec_ck)
-                let _ = self.client.get("https://live.bilibili.com/").header(reqwest::header::COOKIE, &jar.cookie_string).send().await;
-                
-                Ok(LoginPoll::Success(
-                    jar,
-                    body.data.refresh_token,
-                ))
+                let _ = self.client.get("https://live.bilibili.com/").header(reqwest::header::COOKIE, &cookie).send().await;
+                Ok(LoginPoll::Success(cookie, body.data.refresh_token))
             }
             86038 => Ok(LoginPoll::Expired(body.data.message)),
             _ => Ok(LoginPoll::Pending(body.data.message)),
@@ -163,7 +159,7 @@ impl BiliApi {
         &self,
         refresh_token: &str,
         cookie: &str,
-    ) -> Result<(token::CookieJar, String)> {
+    ) -> Result<(String, String)> {
         let csrf = extract_cookie(cookie, "bili_jct").unwrap_or_default();
         let response = self
             .client
@@ -181,7 +177,7 @@ impl BiliApi {
         if body.code != 0 {
             return Err(anyhow!("刷新 cookie 失败: {}", body.message));
         }
-        Ok((token::collect_set_cookie(&headers), body.data.refresh_token))
+        Ok((token::parse_set_cookie(&headers), body.data.refresh_token))
     }
 
     pub async fn room_init(&self, room_id: i64) -> Result<RoomInfo> {

@@ -1,24 +1,58 @@
-use std::collections::BTreeMap;
+use std::path::PathBuf;
 
 use anyhow::Result;
 use reqwest::header::{HeaderMap, SET_COOKIE};
+use serde::{Deserialize, Serialize};
+use std::collections::BTreeMap;
 
-const TOKEN_TXT: &str = "token/bili_token.txt";
-const TOKEN_JSON: &str = "token/bili_token.json";
-const REFRESH_TOKEN: &str = "token/bili_refresh_token.txt";
+const APP_ID: &str = "com.streamix.app";
 
-#[derive(Debug, Clone)]
-pub struct CookieJar {
-    pub cookie_string: String,
-    pub cookie_map: BTreeMap<String, String>,
+// ── 路径 ──────────────────────────────────────────────────────────────────────
+
+fn auth_dir() -> PathBuf {
+    dirs::data_dir()
+        .unwrap_or_else(|| PathBuf::from("."))
+        .join(APP_ID)
+        .join("auth")
 }
 
-pub fn read_cookie_string() -> Result<String> {
-    Ok(std::fs::read_to_string(TOKEN_TXT)?)
+fn session_path() -> PathBuf {
+    auth_dir().join("session.json")
 }
 
-pub fn cookie_file_modified_secs() -> Option<i64> {
-    std::fs::metadata(TOKEN_TXT)
+fn connected_room_path() -> PathBuf {
+    auth_dir().join("connected_room")
+}
+
+// ── Session ───────────────────────────────────────────────────────────────────
+
+/// 持久化的认证凭据，存储在 auth/session.json。
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+pub struct Session {
+    pub cookie: String,
+    #[serde(default)]
+    pub refresh_token: String,
+}
+
+pub fn read_session() -> Result<Session> {
+    let content = std::fs::read_to_string(session_path())?;
+    Ok(serde_json::from_str(&content)?)
+}
+
+pub fn write_session(session: &Session) -> Result<()> {
+    let dir = auth_dir();
+    std::fs::create_dir_all(&dir)?;
+    std::fs::write(session_path(), serde_json::to_string_pretty(session)?)?;
+    Ok(())
+}
+
+pub fn delete_session() -> Result<()> {
+    let _ = std::fs::remove_file(session_path());
+    Ok(())
+}
+
+pub fn session_saved_at() -> Option<i64> {
+    std::fs::metadata(session_path())
         .ok()?
         .modified()
         .ok()?
@@ -29,63 +63,38 @@ pub fn cookie_file_modified_secs() -> Option<i64> {
         .ok()
 }
 
-pub fn write_cookie(cookie: &CookieJar) -> Result<()> {
-    std::fs::create_dir_all("token")?;
-    std::fs::write(TOKEN_TXT, &cookie.cookie_string)?;
-    std::fs::write(
-        TOKEN_JSON,
-        serde_json::to_string_pretty(&cookie.cookie_map)?,
-    )?;
-    Ok(())
-}
+// ── Connected room ────────────────────────────────────────────────────────────
 
-pub fn write_refresh_token(refresh_token: &str) -> Result<()> {
-    std::fs::create_dir_all("token")?;
-    std::fs::write(REFRESH_TOKEN, refresh_token)?;
-    Ok(())
-}
-
-pub fn read_refresh_token() -> Option<String> {
-    std::fs::read_to_string(REFRESH_TOKEN)
+pub fn read_connected_room() -> Option<i64> {
+    std::fs::read_to_string(connected_room_path())
         .ok()
-        .filter(|s| !s.trim().is_empty())
+        .and_then(|s| s.trim().parse().ok())
 }
 
-pub fn delete_cookie() -> Result<()> {
-    let _ = std::fs::remove_file(TOKEN_TXT);
-    let _ = std::fs::remove_file(TOKEN_JSON);
-    let _ = std::fs::remove_file(REFRESH_TOKEN);
+pub fn write_connected_room(room_id: i64) -> Result<()> {
+    let dir = auth_dir();
+    std::fs::create_dir_all(&dir)?;
+    std::fs::write(connected_room_path(), room_id.to_string())?;
     Ok(())
 }
 
-pub fn collect_set_cookie(headers: &HeaderMap) -> CookieJar {
-    let mut cookie_map = BTreeMap::new();
-    let mut cookie_string = String::new();
+pub fn delete_connected_room() {
+    let _ = std::fs::remove_file(connected_room_path());
+}
 
+// ── Cookie parsing ────────────────────────────────────────────────────────────
+
+/// HTTP 响应头中的 Set-Cookie 解析为 cookie 字符串。
+pub fn parse_set_cookie(headers: &HeaderMap) -> String {
+    let mut map = BTreeMap::new();
     for value in headers.get_all(SET_COOKIE) {
-        let Ok(raw) = value.to_str() else {
-            continue;
-        };
-        let Some(pair) = raw.split(';').next() else {
-            continue;
-        };
-        let Some((key, val)) = pair.split_once('=') else {
-            continue;
-        };
-        cookie_map
-            .entry(key.to_string())
-            .or_insert_with(|| val.to_string());
+        let Ok(raw) = value.to_str() else { continue };
+        let Some(pair) = raw.split(';').next() else { continue };
+        let Some((key, val)) = pair.split_once('=') else { continue };
+        map.entry(key.to_string()).or_insert_with(|| val.to_string());
     }
-
-    for (key, value) in &cookie_map {
-        cookie_string.push_str(key);
-        cookie_string.push('=');
-        cookie_string.push_str(value);
-        cookie_string.push_str("; ");
-    }
-
-    CookieJar {
-        cookie_string,
-        cookie_map,
-    }
+    map.iter()
+        .map(|(k, v)| format!("{k}={v}"))
+        .collect::<Vec<_>>()
+        .join("; ")
 }

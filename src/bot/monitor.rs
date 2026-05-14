@@ -43,7 +43,7 @@ pub async fn run_monitor_loop<E: EventEmitter>(
 
     let (send_tx, send_rx) = mpsc::channel::<String>(1000);
     let (gift_tx, gift_rx) = mpsc::channel::<bilibili_live_protocol::LiveEvent>(1000);
-    let send_cookie = token::read_cookie_string().ok();
+    let send_cookie = token::read_session().ok().map(|s| s.cookie).filter(|c| !c.is_empty());
 
     // Session 记忆：对话历史窗口 + 发言者档案
     use crate::bot::memory::SessionMemory;
@@ -330,7 +330,7 @@ pub async fn run_monitor_loop<E: EventEmitter>(
     let ws_session = current_session_id.clone();
     let ws_danmaku = danmaku_buffer.clone();
     let ws_task = tokio::spawn(async move {
-        let original_cookie = token::read_cookie_string().unwrap_or_default();
+        let original_cookie = token::read_session().ok().map(|s| s.cookie).unwrap_or_default();
 
         loop {
             let bot_config = bot_config.clone();

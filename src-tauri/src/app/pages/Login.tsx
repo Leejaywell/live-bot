@@ -1,4 +1,5 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
+import { invoke } from '@tauri-apps/api/core';
 import { GlassCard } from '../components/GlassCard';
 import { Button } from '../components/Button';
 import { Input } from '../components/Input';
@@ -15,6 +16,7 @@ export function Login() {
   const [loginUrl, setLoginUrl] = useState<LoginUrl | null>(null);
   const [loginStatus, setLoginStatus] = useState<string>('等待扫码…');
   const [loading, setLoading] = useState(false);
+  const pollingRef = useRef(false);
 
   useEffect(() => {
     refreshUserInfo();
@@ -83,24 +85,38 @@ export function Login() {
       setLoginUrl(url);
       setShowQRModal(true);
       setLoginStatus('等待扫码…');
-
-      const unlisten = await api.onLoginStatus((status) => {
-        setLoginStatus(status);
-        if (status === '登录成功') {
-          setTimeout(() => {
-            setShowQRModal(false);
-            refreshUserInfo();
-          }, 1500);
-        }
-      });
-
-      return () => {
-        unlisten();
-      };
     } catch (err) {
       toast.error(`获取登录二维码失败: ${err}`);
     }
   };
+
+  // 二维码轮询
+  useEffect(() => {
+    if (!showQRModal || !loginUrl) return;
+    pollingRef.current = true;
+
+    const poll = async () => {
+      while (pollingRef.current) {
+        try {
+          const res = await invoke<any>('poll_login', { key: loginUrl.qrcode_key });
+          if (!pollingRef.current) break;
+          if (res.status === 'Success') {
+            setLoginStatus('登录成功');
+            setTimeout(() => { setShowQRModal(false); refreshUserInfo(); }, 1500);
+            break;
+          } else if (res.status === 'Expired') {
+            setLoginStatus('二维码已过期，请刷新');
+            break;
+          }
+        } catch (err) {
+          console.error('poll_login error:', err);
+        }
+        await new Promise(r => setTimeout(r, 2000));
+      }
+    };
+    poll();
+    return () => { pollingRef.current = false; };
+  }, [showQRModal, loginUrl]);
 
   return (
     <div className="p-[18px]">

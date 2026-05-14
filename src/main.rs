@@ -77,63 +77,40 @@ async fn save_config(config: AppConfig) -> Result<(), String> {
     config.save().map_err(|e| e.to_string())
 }
 
+fn user_info_json(info: &api::UserInfo, saved_at: i64) -> serde_json::Value {
+    serde_json::json!({
+        "uid":               info.uid,
+        "uname":             info.uname,
+        "face":              info.face,
+        "level":             info.level,
+        "vip_status":        info.vip_status,
+        "vip_type":          info.vip_type,
+        "coins":             info.coins,
+        "vip_nickname_color": info.vip_nickname_color,
+        "is_login":          true,
+        "saved_at":          saved_at,
+    })
+}
+
+fn not_logged_in_json(saved_at: i64) -> serde_json::Value {
+    serde_json::json!({
+        "uid": 0, "uname": "", "face": "", "level": 0,
+        "vip_status": 0, "vip_type": 0, "coins": 0.0, "vip_nickname_color": "",
+        "is_login": false, "saved_at": saved_at,
+    })
+}
+
 #[cfg(feature = "tauri")]
 #[tauri::command]
 async fn get_user_info(state: tauri::State<'_, SharedState>) -> Result<serde_json::Value, String> {
-    let saved_at = token::cookie_file_modified_secs().unwrap_or(0);
-    let cookie = match token::read_cookie_string() {
-        Ok(c) => c,
-        Err(_) => {
-            return Ok(serde_json::json!({
-                "uid": 0, "uname": "", "face": "", "is_login": false, "saved_at": saved_at
-            }));
-        }
+    let saved_at = token::session_saved_at().unwrap_or(0);
+    let session = match token::read_session() {
+        Ok(s) if !s.cookie.is_empty() => s,
+        _ => return Ok(not_logged_in_json(saved_at)),
     };
-    match state.http.user_info(&cookie).await {
-        Ok(info) => Ok(serde_json::json!({
-            "uid": info.uid,
-            "uname": info.uname,
-            "face": info.face,
-            "level": info.level,
-            "vip_status": info.vip_status,
-            "vip_type": info.vip_type,
-            "coins": info.coins,
-            "vip_nickname_color": info.vip_nickname_color,
-            "is_login": true,
-            "saved_at": saved_at
-        })),
-        Err(_) => {
-            // Cookie expired — try refresh_token
-            if let Some(rt) = token::read_refresh_token() {
-                if let Ok((new_cookie, new_rt)) = state.http.refresh_cookie(&rt, &cookie).await {
-                    let _ = token::write_cookie(&new_cookie);
-                    if !new_rt.is_empty() {
-                        let _ = token::write_refresh_token(&new_rt);
-                    }
-                    // Retry user_info with new cookie
-                    if let Ok(info) = state.http.user_info(&new_cookie.cookie_string).await {
-                        let new_saved_at = token::cookie_file_modified_secs().unwrap_or(0);
-                        return Ok(serde_json::json!({
-                            "uid": info.uid,
-                            "uname": info.uname,
-                            "face": info.face,
-                            "level": info.level,
-                            "vip_status": info.vip_status,
-                            "vip_type": info.vip_type,
-                            "coins": info.coins,
-                            "vip_nickname_color": info.vip_nickname_color,
-                            "is_login": true,
-                            "saved_at": new_saved_at
-                        }));
-                    }
-                }
-            }
-            Ok(serde_json::json!({
-                "uid": 0, "uname": "", "face": "", "level": 0,
-                "vip_status": 0, "vip_type": 0, "coins": 0.0, "vip_nickname_color": "",
-                "is_login": false, "saved_at": saved_at
-            }))
-        }
+    match state.http.user_info(&session.cookie).await {
+        Ok(info) => Ok(user_info_json(&info, saved_at)),
+        Err(_)   => Ok(not_logged_in_json(saved_at)),
     }
 }
 
@@ -151,34 +128,20 @@ async fn poll_login(
 ) -> Result<serde_json::Value, String> {
     match state.http.poll_login(&key).await {
         Ok(api::LoginPoll::Success(cookie, refresh_token)) => {
-            token::write_cookie(&cookie).map_err(|e| e.to_string())?;
-            if !refresh_token.is_empty() {
-                let _ = token::write_refresh_token(&refresh_token);
-            }
-            // Immediately fetch user info after saving cookie
-            let cookie_str = &cookie.cookie_string;
-            match state.http.user_info(cookie_str).await {
-                Ok(info) => Ok(serde_json::json!({
-                    "status": "Success",
-                    "uid": info.uid,
-                    "uname": info.uname,
-                    "face": info.face,
-                    "level": info.level,
-                    "vip_status": info.vip_status,
-                    "vip_type": info.vip_type,
-                    "coins": info.coins,
-                    "vip_nickname_color": info.vip_nickname_color,
-                    "is_login": true
-                })),
+            let session = token::Session { cookie, refresh_token };
+            token::write_session(&session).map_err(|e| e.to_string())?;
+            let saved_at = token::session_saved_at().unwrap_or(0);
+            match state.http.user_info(&session.cookie).await {
+                Ok(info) => {
+                    let mut v = user_info_json(&info, saved_at);
+                    v["status"] = serde_json::json!("Success");
+                    Ok(v)
+                }
                 Err(_) => Ok(serde_json::json!({ "status": "Success" })),
             }
         }
-        Ok(api::LoginPoll::Expired(msg)) => {
-            Ok(serde_json::json!({ "status": "Expired", "message": msg }))
-        }
-        Ok(api::LoginPoll::Pending(msg)) => {
-            Ok(serde_json::json!({ "status": "Scanning", "message": msg }))
-        }
+        Ok(api::LoginPoll::Expired(msg)) => Ok(serde_json::json!({ "status": "Expired",   "message": msg })),
+        Ok(api::LoginPoll::Pending(msg)) => Ok(serde_json::json!({ "status": "Scanning",  "message": msg })),
         Err(e) => Err(e.to_string()),
     }
 }
@@ -212,28 +175,33 @@ async fn get_room_by_uid(
 #[cfg(feature = "tauri")]
 #[tauri::command]
 async fn logout() -> Result<(), String> {
-    token::delete_cookie().map_err(|e| e.to_string())
+    token::delete_session().map_err(|e| e.to_string())
 }
 
 #[cfg(feature = "tauri")]
 #[tauri::command]
 async fn refresh_cookie(state: tauri::State<'_, SharedState>) -> Result<serde_json::Value, String> {
-    let rt = token::read_refresh_token().ok_or("没有 refresh_token")?;
-    let cookie = token::read_cookie_string().map_err(|e| e.to_string())?;
+    let session = token::read_session().map_err(|e| e.to_string())?;
+    if session.refresh_token.is_empty() {
+        return Err("没有 refresh_token".into());
+    }
     let (new_cookie, new_rt) = state
         .http
-        .refresh_cookie(&rt, &cookie)
+        .refresh_cookie(&session.refresh_token, &session.cookie)
         .await
         .map_err(|e| e.to_string())?;
-    token::write_cookie(&new_cookie).map_err(|e| e.to_string())?;
-    if !new_rt.is_empty() {
-        let _ = token::write_refresh_token(&new_rt);
-    }
-    let saved_at = token::cookie_file_modified_secs().unwrap_or(0);
-    match state.http.user_info(&new_cookie.cookie_string).await {
-        Ok(info) => Ok(serde_json::json!({
-            "success": true, "uid": info.uid, "uname": info.uname, "face": info.face, "saved_at": saved_at
-        })),
+    let new_session = token::Session {
+        cookie:        new_cookie,
+        refresh_token: if new_rt.is_empty() { session.refresh_token } else { new_rt },
+    };
+    token::write_session(&new_session).map_err(|e| e.to_string())?;
+    let saved_at = token::session_saved_at().unwrap_or(0);
+    match state.http.user_info(&new_session.cookie).await {
+        Ok(info) => {
+            let mut v = user_info_json(&info, saved_at);
+            v["success"] = serde_json::json!(true);
+            Ok(v)
+        }
         Err(_) => Ok(serde_json::json!({ "success": true, "saved_at": saved_at })),
     }
 }
@@ -427,10 +395,10 @@ async fn send_danmu(state: tauri::State<'_, SharedState>, message: String) -> Re
     if room_id == 0 {
         return Err("未连接直播间".to_string());
     }
-    let cookie = token::read_cookie_string().map_err(|e| e.to_string())?;
+    let session = token::read_session().map_err(|e| e.to_string())?;
     state
         .http
-        .send_danmu(room_id, &message, &cookie)
+        .send_danmu(room_id, &message, &session.cookie)
         .await
         .map_err(|e| e.to_string())
 }
@@ -497,8 +465,8 @@ async fn set_connected_room(
     let mut room = state.connected_room.lock().map_err(|e| e.to_string())?;
     *room = room_id;
     match room_id {
-        Some(id) => std::fs::write("token/connected_room", id.to_string()).map_err(|e| e.to_string())?,
-        None => { let _ = std::fs::remove_file("token/connected_room"); }
+        Some(id) => token::write_connected_room(id).map_err(|e| e.to_string())?,
+        None => token::delete_connected_room(),
     }
     Ok(())
 }
@@ -735,27 +703,24 @@ async fn update_check_loop(app: AppHandle) {
 
 #[cfg(feature = "tauri")]
 async fn try_refresh_cookie_once(http: &api::BiliApi, app: &AppHandle) {
-    let Ok(cookie) = token::read_cookie_string() else { return };
-    let needs_refresh = match http.check_cookie_refresh_needed(&cookie).await {
+    let Ok(session) = token::read_session() else { return };
+    if session.cookie.is_empty() || session.refresh_token.is_empty() { return; }
+    let needs_refresh = match http.check_cookie_refresh_needed(&session.cookie).await {
         Ok(v) => v,
         Err(_) => return,
     };
-    if !needs_refresh {
-        return;
-    }
-    let Some(rt) = token::read_refresh_token() else { return };
-    match http.refresh_cookie(&rt, &cookie).await {
+    if !needs_refresh { return; }
+    match http.refresh_cookie(&session.refresh_token, &session.cookie).await {
         Ok((new_cookie, new_rt)) => {
-            let _ = token::write_cookie(&new_cookie);
-            if !new_rt.is_empty() {
-                let _ = token::write_refresh_token(&new_rt);
-            }
+            let new_session = token::Session {
+                cookie:        new_cookie,
+                refresh_token: if new_rt.is_empty() { session.refresh_token } else { new_rt },
+            };
+            let _ = token::write_session(&new_session);
             let _ = tauri::Emitter::emit(app, "cookie-refreshed", serde_json::json!({ "success": true }));
-            println!("[cookie] 自动刷新成功");
+            println!("[auth] cookie 自动刷新成功");
         }
-        Err(e) => {
-            println!("[cookie] 自动刷新失败: {e}");
-        }
+        Err(e) => eprintln!("[auth] cookie 自动刷新失败: {e}"),
     }
 }
 
@@ -876,14 +841,12 @@ fn main() -> Result<()> {
     ensure_dirs()?;
 
     println!("Loading configuration...");
-    let config = AppConfig::load_or_default()?;
+    let _config = AppConfig::load_or_default()?;
     let storage_path = crate::config::db_path();
     println!("Opening storage at {}...", storage_path.display());
     let storage = storage::Storage::open(&storage_path.to_string_lossy())?;
 
-    let saved_room = std::fs::read_to_string("token/connected_room")
-        .ok()
-        .and_then(|s| s.trim().parse::<i64>().ok());
+    let saved_room = token::read_connected_room();
 
     let state = SharedState {
         runtime: Arc::new(Runtime::new()?),
