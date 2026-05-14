@@ -1,9 +1,20 @@
 import { useEffect, useState, useRef } from 'react';
 import { useTheme, hexToRgb, hexToHsl, hslToHex } from '../context/ThemeContext';
 
+function hsl2rgb(h: number, s: number, l: number): [number, number, number] {
+  s /= 100; l /= 100;
+  const a = s * Math.min(l, 1 - l);
+  const f = (n: number) => {
+    const k = (n + h / 30) % 12;
+    return l - a * Math.max(-1, Math.min(k - 3, 9 - k, 1));
+  };
+  return [Math.round(f(0) * 255), Math.round(f(8) * 255), Math.round(f(4) * 255)];
+}
+
 interface Bubble {
   x: number; y: number; r: number;
   vy: number; wobble: number; phase: number; speed: number; opacity: number;
+  hue: number;
   popping: boolean; popT: number;
 }
 
@@ -78,9 +89,6 @@ export function BackgroundBlobs() {
     let W = (canvas.width  = window.innerWidth);
     let H = (canvas.height = window.innerHeight);
 
-    const { h: ph, s: ps, l: pl } = hexToHsl(primaryColor);
-    const baseRgb = hexToRgb(primaryColor) || { r: 75, g: 142, b: 255 };
-
     const COUNT = 18;
     const mkBubble = (): Bubble => ({
       x: Math.random() * W,
@@ -91,6 +99,7 @@ export function BackgroundBlobs() {
       phase: Math.random() * Math.PI * 2,
       speed: Math.random() * 0.014 + 0.007,
       opacity: Math.random() * 0.22 + (isDark ? 0.16 : 0.12),
+      hue: Math.random() * 360,
       popping: false, popT: 0,
     });
     // Reuse existing bubbles if available (theme/color change), else create fresh
@@ -144,12 +153,6 @@ export function BackgroundBlobs() {
     const draw = () => {
       ctx.clearRect(0, 0, W, H);
 
-      // Recompute shifted color dynamically from mouse position
-      const mxNorm = smoothRef.current.x / W;
-      const dynShift = (mxNorm - 0.5) * 70;
-      const dynColor = hslToHex(((ph + dynShift) % 360 + 360) % 360, Math.max(35, ps), Math.min(72, pl + 5));
-      const sr = hexToRgb(dynColor) || baseRgb;
-
       bubbles.forEach(b => {
         // Popping animation
         if (b.popping) {
@@ -158,11 +161,11 @@ export function BackgroundBlobs() {
           const popOp = Math.max(0, 1 - b.popT * 1.8) * b.opacity * 2.2;
 
           if (b.popT >= 1 || popOp <= 0) {
-            // Respawn
             b.popping = false; b.popT = 0;
             b.y = H + b.r + Math.random() * 80;
             b.x = Math.random() * W;
             b.r = Math.random() * 80 + 28;
+            b.hue = Math.random() * 360;
             b.opacity = Math.random() * 0.22 + (isDark ? 0.16 : 0.12);
             b.vy = -(Math.random() * 0.35 + 0.15);
             return;
@@ -171,12 +174,8 @@ export function BackgroundBlobs() {
           const drawX = b.x + Math.sin(b.phase) * b.wobble;
           const drawY = b.y;
           const R = b.r * sc;
-          const t2 = Math.min(b.popT / 0.5, 1);
-          const br = Math.round(baseRgb.r + (sr.r - baseRgb.r) * t2);
-          const bg = Math.round(baseRgb.g + (sr.g - baseRgb.g) * t2);
-          const bb2 = Math.round(baseRgb.b + (sr.b - baseRgb.b) * t2);
+          const [br, bg, bb] = hsl2rgb(b.hue, 80, isDark ? 65 : 58);
 
-          // Draw pop fragments (small dots radiating outward)
           const fragCount = 6;
           for (let fi = 0; fi < fragCount; fi++) {
             const angle = (fi / fragCount) * Math.PI * 2;
@@ -186,21 +185,21 @@ export function BackgroundBlobs() {
             const fr = b.r * 0.12 * (1 - b.popT);
             ctx.beginPath();
             ctx.arc(fx, fy, Math.max(1, fr), 0, Math.PI * 2);
-            ctx.fillStyle = `rgba(${br},${bg},${bb2},${popOp * 0.8})`;
+            ctx.fillStyle = `rgba(${br},${bg},${bb},${popOp * 0.8})`;
             ctx.fill();
           }
-          drawBubble(drawX, drawY, R, popOp, br, bg, bb2);
+          drawBubble(drawX, drawY, R, popOp, br, bg, bb);
           return;
         }
 
         b.phase += b.speed;
         b.y += b.vy;
 
-        // Respawn at bottom when bubble exits top
         if (b.y + b.r < -10) {
           b.y = H + b.r + Math.random() * 60;
           b.x = Math.random() * W;
           b.r = Math.random() * 80 + 28;
+          b.hue = Math.random() * 360;
           b.opacity = Math.random() * 0.22 + (isDark ? 0.16 : 0.12);
           b.vy = -(Math.random() * 0.35 + 0.15);
         }
@@ -216,9 +215,9 @@ export function BackgroundBlobs() {
         const op   = near ? Math.min(b.opacity * 2.4, isDark ? 0.60 : 0.50) : b.opacity;
         const sc   = near ? 1 + t * 0.18 : 1;
 
-        const br = Math.round(baseRgb.r + (sr.r - baseRgb.r) * t);
-        const bg = Math.round(baseRgb.g + (sr.g - baseRgb.g) * t);
-        const bb = Math.round(baseRgb.b + (sr.b - baseRgb.b) * t);
+        const sat = 72 + t * 16;
+        const lit = isDark ? 58 + t * 18 : 52 + t * 14;
+        const [br, bg, bb] = hsl2rgb(b.hue, sat, lit);
 
         drawBubble(drawX, drawY, b.r * sc, op, br, bg, bb);
       });
