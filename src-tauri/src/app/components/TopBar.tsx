@@ -217,7 +217,7 @@ export function TopBar({ onToggleNotifications, sidebarCollapsed, isLoggedIn, us
                                bg-red-500/10 border border-red-500/20 text-red-500 dark:text-red-400
                                hover:bg-red-500 hover:text-white hover:border-transparent shadow-sm"
                   >
-                    <Square className="w-3 h-3 fill-current" />停止事件
+                    <Square className="w-3 h-3 fill-current" />停止监听
                   </button>
                 ) : (
                   <button
@@ -225,16 +225,16 @@ export function TopBar({ onToggleNotifications, sidebarCollapsed, isLoggedIn, us
                     className="inline-flex items-center justify-center gap-1.5 h-[32px] px-4 rounded-full text-[12px] font-bold text-white transition-all hover:opacity-90 shadow-md active:scale-95"
                     style={{ background: 'var(--primary-color)' }}
                   >
-                    <Play className="w-3 h-3 fill-current" />获取弹幕
+                    <Play className="w-3 h-3 fill-current" />开始监听
                   </button>
                 )}
 
-                {/* 退出房间 */}
+                {/* 退出房间 — 与停止监听相同样式 */}
                 <button
                   onClick={handleDisconnect}
                   className="inline-flex items-center justify-center gap-1.5 h-[32px] px-4 rounded-full text-[12px] font-bold transition-all
-                             bg-white/60 dark:bg-white/10 border border-gray-200 dark:border-white/20 text-gray-500
-                             hover:bg-red-500/10 hover:text-red-500 hover:border-red-500/30"
+                             bg-red-500/10 border border-red-500/20 text-red-500 dark:text-red-400
+                             hover:bg-red-500 hover:text-white hover:border-transparent shadow-sm"
                 >
                   <Unplug className="w-3.5 h-3.5" />退出房间
                 </button>

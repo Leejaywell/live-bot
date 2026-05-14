@@ -30,7 +30,14 @@ const AUTO_GROUPS: AutoGroup[] = [
   {
     title: 'AI 机器人', Icon: Bot, mainKey: 'AiReplyToDanmaku', to: '/ai',
     subs: [
-      { label: '关注答谢',   key: 'ThanksFocus' },
+      { label: '关注答谢', key: 'ThanksFocus' },
+    ],
+  },
+  {
+    title: '指定欢迎', Icon: Star, to: '/auto-reply',
+    subs: [
+      { label: '欢迎自己', key: 'InteractSelf' },
+      { label: '欢迎主播', key: 'InteractAnchor' },
     ],
   },
   {
@@ -40,8 +47,8 @@ const AUTO_GROUPS: AutoGroup[] = [
       { label: '礼物感谢', key: 'ThanksGift' },
       { label: 'PK 提醒',  key: 'PkNotice' },
       { label: '禁言提醒', key: 'ShowBlockMsg' },
-      { label: '欢迎主播', key: 'InteractAnchor' },
       { label: '盲盒统计', key: 'BlindBoxProfitLossStat' },
+      { label: '签到开关', key: 'SignInEnable' },
     ],
   },
   {
@@ -134,28 +141,34 @@ export function Dashboard() {
     const mainChecked = mainKey != null && config ? !!(config as any)[mainKey] : undefined;
 
     return (
-      <GlassCard className={`p-4 ${wide ? 'col-span-2' : ''} border-white/60 dark:border-white/10`}>
+      <GlassCard className={`p-4 ${wide ? 'col-span-2' : ''} border-white/60 dark:border-white/10 overflow-hidden`}>
+        {/* card accent glow */}
+        <div className="absolute -top-8 -right-8 w-28 h-28 rounded-full pointer-events-none"
+             style={{ background: 'radial-gradient(circle, rgba(var(--primary-rgb),0.10) 0%, transparent 70%)' }} />
+
         {/* header */}
-        <div className="flex items-center justify-between mb-4">
+        <div className={`flex items-center justify-between ${subs.length > 0 ? 'mb-4' : ''}`}>
           <div className="flex items-center gap-2.5">
             <div className="w-8 h-8 rounded-xl flex items-center justify-center shadow-sm"
-                 style={{ background: 'rgba(var(--primary-rgb), 0.1)', color: 'var(--primary-color)' }}>
+                 style={{ background: 'rgba(var(--primary-rgb), 0.12)', color: 'var(--primary-color)' }}>
               <Icon className="w-4 h-4" />
             </div>
             <span className="text-[13px] font-bold tracking-tight">{title}</span>
           </div>
           <div className="flex items-center gap-2">
-            {mainChecked != null && (
-              <Toggle checked={mainChecked} onChange={v => toggleAuto(mainKey!, v)} />
-            )}
             {to && (
               <button
                 onClick={() => navigate(to)}
-                className="w-6 h-6 rounded-lg flex items-center justify-center text-gray-400 hover:text-[var(--primary-color)] hover:bg-black/5 dark:hover:bg-white/5 transition-all"
+                className="w-7 h-7 rounded-lg flex items-center justify-center border transition-all active:scale-95
+                           border-[var(--primary-color)]/25 text-[var(--primary-color)] bg-[var(--primary-color)]/6
+                           hover:bg-[var(--primary-color)]/18 hover:border-[var(--primary-color)]/50"
                 title="前往设置"
               >
                 <ChevronRight className="w-4 h-4" />
               </button>
+            )}
+            {mainChecked != null && (
+              <Toggle checked={mainChecked} onChange={v => toggleAuto(mainKey!, v)} />
             )}
           </div>
         </div>

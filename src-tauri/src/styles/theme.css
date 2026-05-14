@@ -271,6 +271,29 @@
     box-shadow: 0 3px 10px rgba(0, 0, 0, 0.4);
   }
 
+  /* Sonner toast - slide from right edge */
+  @keyframes toast-enter-right {
+    from { transform: translateX(110%); opacity: 0; }
+    to   { transform: translateX(0);    opacity: 1; }
+  }
+  @keyframes toast-exit-right {
+    from { transform: translateX(0);    opacity: 1; }
+    to   { transform: translateX(110%); opacity: 0; }
+  }
+
+  [data-sonner-toast].toast-edge {
+    animation: toast-enter-right 0.45s cubic-bezier(0.16, 1, 0.3, 1) both !important;
+  }
+  [data-sonner-toast].toast-edge[data-removed='true'] {
+    animation: toast-exit-right 0.3s ease-in both !important;
+  }
+
+  .dark [data-sonner-toast].toast-edge {
+    background: rgba(28, 28, 38, 0.94) !important;
+    border-color: rgba(255, 255, 255, 0.10) !important;
+    color: #f0f0f5 !important;
+  }
+
   .slider-hue {
     background: linear-gradient(to right,
       hsl(0, 100%, 50%) 0%,

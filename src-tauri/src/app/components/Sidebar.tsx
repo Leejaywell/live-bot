@@ -27,8 +27,8 @@ interface SidebarProps {
 }
 
 const navItems = [
-  { path: '/', label: '仪表盘', icon: LayoutDashboard },
-  { path: '/stats', label: '数据统计', icon: BarChart3, wip: true },
+  { path: '/', label: '仪表盘', icon: LayoutDashboard, mt: true },
+  { path: '/stats', label: '数据统计', icon: BarChart3 },
   { path: '/monitor', label: '弹幕管理', icon: Radio },
   { path: '/auto-reply', label: '自动回复', icon: MessageSquare },
   { path: '/ai', label: 'AI 机器人', icon: Bot },
@@ -51,7 +51,7 @@ export function Sidebar({ collapsed, connected, onToggleThemePanel, onToggleSide
 
   return (
     <div className="w-[196px] h-full glass-sidebar backdrop-blur-xl flex flex-col pb-3.5 px-3.5">
-      <div className="flex items-center justify-between mb-2 px-2 h-[52px] flex-shrink-0">
+      <div className="flex items-center justify-between px-2 h-[56px] flex-shrink-0">
         <div className="flex items-center gap-2">
           <img src={logoUrl} alt="流光" className="w-[28px] h-[28px] rounded-lg" />
           <span className="font-bold text-[14px]">流光</span>
@@ -61,7 +61,7 @@ export function Sidebar({ collapsed, connected, onToggleThemePanel, onToggleSide
         </IconButton>
       </div>
 
-      <nav className="flex-1 space-y-1">
+      <nav className="flex-1 space-y-1 mt-5">
         {navItems.map((item) => {
           const Icon = item.icon;
           const isActive = location.pathname === item.path;
@@ -73,6 +73,7 @@ export function Sidebar({ collapsed, connected, onToggleThemePanel, onToggleSide
               onClick={handleNavClick}
               className={cn(
                 'flex items-center gap-3 h-[42px] px-3 rounded-[12px] transition-all duration-300 relative group',
+                item.mt && 'mt-1.5',
                 isActive
                   ? 'bg-[var(--primary-color)] shadow-[0_8px_16px_-4px_rgba(var(--primary-rgb),0.4)] text-white'
                   : 'text-gray-500 hover:text-gray-900 dark:hover:text-white hover:bg-white/40 dark:hover:bg-white/5'
@@ -80,9 +81,6 @@ export function Sidebar({ collapsed, connected, onToggleThemePanel, onToggleSide
             >
               <Icon className={cn("w-[18px] h-[18px] transition-transform duration-300", !isActive && "group-hover:scale-110")} />
               <span className="text-[13px] font-bold flex-1 tracking-tight">{item.label}</span>
-              {item.wip && (
-                <span className={isActive ? "text-white/60" : "text-gray-400 dark:text-gray-500"} style={{ fontSize: '9px' }}>待开发</span>
-              )}
             </Link>
           );
         })}

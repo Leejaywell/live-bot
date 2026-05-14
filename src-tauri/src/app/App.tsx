@@ -217,36 +217,35 @@ export default function App() {
       <Toaster
         position="top-right"
         richColors
-        duration={2000}
-        closeButton
+        duration={2500}
         containerStyle={{
-          right: '20px',
+          right: '0px',
           top: '64px',
-          pointerEvents: 'none'
         }}
         toastOptions={{
-          style: { 
+          className: 'toast-edge',
+          style: {
             fontSize: '11px',
             fontWeight: 600,
-            background: 'rgba(255, 255, 255, 0.92)',
+            background: 'rgba(255, 255, 255, 0.94)',
             backdropFilter: 'blur(20px)',
-            border: '1px solid rgba(255, 255, 255, 0.4)',
-            boxShadow: '0 4px 16px rgba(0, 0, 0, 0.06)',
-            borderRadius: '16px',
-            padding: '6px 14px',
+            border: '1px solid rgba(255, 255, 255, 0.45)',
+            borderRight: 'none',
+            boxShadow: '-4px 6px 20px rgba(0, 0, 0, 0.07)',
+            borderRadius: '14px 0 0 14px',
+            padding: '7px 14px',
             width: 'fit-content',
-            pointerEvents: 'auto'
+            minWidth: '160px',
           },
         }}
       />
       <LoginContext.Provider value={isLoggedIn}>
       <HashRouter>
-        <div 
-          className="w-full h-screen overflow-hidden flex relative" 
-          style={{ background: 'var(--background)' }}
+        <BackgroundBlobs />
+        <div
+          className="w-full h-screen overflow-hidden flex relative z-[1]"
           onContextMenu={(e) => e.preventDefault()}
         >
-          <BackgroundBlobs />
           <Sidebar
             collapsed={sidebarCollapsed}
             connected={hasConnectedRoom}

@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import { ChevronDown } from 'lucide-react';
 import { HexColorPicker } from 'react-colorful';
 import { useTheme, themePresets } from '../context/ThemeContext';
@@ -8,10 +8,21 @@ interface ThemePanelProps {
   onClose: () => void;
 }
 
-export function ThemePanel({ onClose: _onClose }: ThemePanelProps) {
+export function ThemePanel({ onClose }: ThemePanelProps) {
   const { theme, setTheme, primaryColor, setPrimaryColor } = useTheme();
   const [showCustom, setShowCustom] = useState(false);
   const [customColor, setCustomColor] = useState(primaryColor);
+  const panelRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const handleMouseDown = (e: MouseEvent) => {
+      if (panelRef.current && !panelRef.current.contains(e.target as Node)) {
+        onClose();
+      }
+    };
+    document.addEventListener('mousedown', handleMouseDown);
+    return () => document.removeEventListener('mousedown', handleMouseDown);
+  }, [onClose]);
 
   const handlePreset = (color: string) => {
     setPrimaryColor(color);
@@ -25,7 +36,7 @@ export function ThemePanel({ onClose: _onClose }: ThemePanelProps) {
   };
 
   return (
-    <div className="fixed bottom-4 left-4 w-60 z-[10001] pointer-events-none flex items-end justify-start">
+    <div ref={panelRef} className="fixed bottom-4 left-4 w-72 z-[10001] pointer-events-none flex items-end justify-start">
       <GlassCard className="w-full pointer-events-auto shadow-2xl border border-white/10 flex flex-col animate-in slide-in-from-bottom-4 duration-300 rounded-[20px] overflow-hidden">
 
         {/* 明亮 / 深邃 */}
