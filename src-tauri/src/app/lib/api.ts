@@ -99,6 +99,9 @@ export interface AppConfig {
   VoiceSystemPrompt: string;
   /** 语音 AI 性别：女AI / 男AI */
   VoiceGender: string;
+  GeneralWelcomeEnabled: boolean;
+  GeneralWelcomeMsgs: string[];
+  SpecialWelcomeList: SpecialWelcomeEntry[];
 }
 
 export interface UserInfo {
@@ -158,6 +161,18 @@ export interface UserDetailResult {
   wealth_level: number | null;
 }
 
+export interface SpecialWelcomeEntry {
+  Uid: string;
+  Msg: string;
+}
+
+export interface UserGiftStat {
+  uid: number;
+  uname: string;
+  gift_value: number;
+  gift_count: number;
+}
+
 export interface SystemInfo {
   version: string;
   config_path: string;
@@ -200,6 +215,7 @@ export const api = {
   // Stats
   getStats: (days: number) => invoke<any>('get_stats', { days }),
   getGiftStats: (days: number, n: number) => invoke<any[]>('get_gift_stats', { days, n }),
+  getUserGiftStats: (days: number, n: number) => invoke<UserGiftStat[]>('get_user_gift_stats', { days, n }),
 
   // PK
   getPkSummary: () => invoke<any>('get_pk_summary'),

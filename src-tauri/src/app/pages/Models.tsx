@@ -487,7 +487,36 @@ export function Models() {
   const [errors,       setErrors]       = useState<Record<string, boolean>>({});
   const [showTypePick, setShowTypePick] = useState(false);
 
-  useEffect(() => { api.loadConfig().then(setConfig).catch(console.error); }, []);
+  useEffect(() => {
+    api.loadConfig().then(c => {
+      const providers = c.AiProviders ?? [];
+      const hasTts = providers.some(p => p.ProviderType === 'tts');
+      if (providers.length === 0) {
+        const tts = blankProvider('tts', 1);
+        const asr: AiProvider = {
+          Id: `asr-${Date.now() + 1}`,
+          ProviderType: 'asr',
+          Name: ASR_PROVIDERS[1].label,
+          Model: ASR_PROVIDERS[1].value,
+          APIUrl: '',
+          APIKey: '',
+          SystemPrompt: '',
+          TriggerCommand: 'zh',
+          FuzzyMatch: false,
+          Nickname: 'ASR1',
+          Enabled: true,
+        };
+        const next = { ...c, AiProviders: [tts, asr] };
+        api.saveConfig(next).then(() => setConfig(next)).catch(console.error);
+      } else if (!hasTts) {
+        const tts = blankProvider('tts', 1);
+        const next = { ...c, AiProviders: [tts, ...providers] };
+        api.saveConfig(next).then(() => setConfig(next)).catch(console.error);
+      } else {
+        setConfig(c);
+      }
+    }).catch(console.error);
+  }, []);
 
   const handleAdd = () => setShowTypePick(true);
 

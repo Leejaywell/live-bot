@@ -171,6 +171,25 @@ pub struct AppConfig {
     /// 语音 AI 性别：女AI / 男AI
     #[serde(default = "default_voice_gender")]
     pub voice_gender: String,
+    /// 通用欢迎语：开启后对所有进场观众发送欢迎弹幕
+    #[serde(default)]
+    pub general_welcome_enabled: bool,
+    /// 通用欢迎语模板列表（随机选一条），{user} 替换为用户昵称
+    #[serde(default = "default_general_welcome_msgs")]
+    pub general_welcome_msgs: Vec<String>,
+    /// 特定欢迎语列表（按 UID 精准匹配）
+    #[serde(default)]
+    pub special_welcome_list: Vec<SpecialWelcomeEntry>,
+}
+
+/// 特定用户欢迎语配置（按 UID 精准匹配）
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(rename_all = "PascalCase")]
+pub struct SpecialWelcomeEntry {
+    /// 用户 UID（字符串存储，精准匹配）
+    pub uid: String,
+    /// 发送的欢迎弹幕，{user} 替换为用户昵称
+    pub msg: String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -363,6 +382,9 @@ impl Default for AppConfig {
             tts_pitch: 0.0,
             voice_system_prompt: default_voice_system_prompt(),
             voice_gender: default_voice_gender(),
+            general_welcome_enabled: false,
+            general_welcome_msgs: default_general_welcome_msgs(),
+            special_welcome_list: Vec::new(),
         }
     }
 }
@@ -372,6 +394,15 @@ fn default_true() -> bool { true }
 fn default_asr_language() -> String { "zh".to_string() }
 fn default_tts_speed() -> f32 { 1.0 }
 fn default_provider_type() -> String { "llm".to_string() }
+fn default_general_welcome_msgs() -> Vec<String> {
+    vec![
+        "欢迎 {user} 进入直播间！".to_string(),
+        "欢迎欢迎！热烈欢迎 {user} 来到直播间~".to_string(),
+        "{user} 来啦！感谢关注，欢迎入驻！".to_string(),
+        "嗷～ {user} 悄悄进来了，快来互动吧！".to_string(),
+        "哇！{user} 到了，直播间又多了位新朋友！".to_string(),
+    ]
+}
 
 fn default_voice_gender() -> String { "女AI".to_string() }
 

@@ -103,17 +103,21 @@ export default function App() {
   useEffect(() => {
     if (!isLoggedIn || !loginChecked) return;
     const timer = setInterval(async () => {
-      const info = await api.getUserInfo();
-      if (!info.is_login) {
-        setIsLoggedIn(false);
-        setUserInfo(null);
-        setHasConnectedRoom(false);
-        setShowLoginModal(true);
-        fetchLoginQr();
+      try {
+        const info = await api.getUserInfo();
+        if (!info.is_login) {
+          setIsLoggedIn(false);
+          setUserInfo(null);
+          setHasConnectedRoom(false);
+          setShowLoginModal(true);
+          fetchLoginQr();
+        }
+      } catch {
+        // 网络错误 — session 可能仍有效，不弹出重新登录
       }
     }, 60000);
     return () => clearInterval(timer);
-  }, [isLoggedIn, loginChecked, refreshUserInfo]);
+  }, [isLoggedIn, loginChecked]);
 
   const fetchLoginQr = async () => {
     setLoadingQr(true);

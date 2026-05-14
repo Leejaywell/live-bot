@@ -59,16 +59,16 @@ export function BackgroundBlobs() {
     const { h: ph, s: ps, l: pl } = hexToHsl(primaryColor);
     const baseRgb = hexToRgb(primaryColor) || { r: 75, g: 142, b: 255 };
 
-    const COUNT = 30;
+    const COUNT = 18;
     const bubbles = Array.from({ length: COUNT }, (_, i) => ({
       x:       Math.random() * W,
-      y:       H - Math.random() * H,   // spread across full height initially
-      r:       Math.random() * 40 + 8,
-      vy:      -(Math.random() * 0.5 + 0.22),  // upward
-      wobble:  Math.random() * 24 + 8,
+      y:       H - Math.random() * H,
+      r:       Math.random() * 80 + 28,
+      vy:      -(Math.random() * 0.35 + 0.15),
+      wobble:  Math.random() * 45 + 20,
       phase:   Math.random() * Math.PI * 2,
       speed:   Math.random() * 0.014 + 0.007,
-      opacity: Math.random() * 0.20 + (isDark ? 0.10 : 0.06),
+      opacity: Math.random() * 0.22 + (isDark ? 0.16 : 0.12),
     }));
 
     const draw = () => {
@@ -88,9 +88,9 @@ export function BackgroundBlobs() {
         if (b.y + b.r < -10) {
           b.y = H + b.r + Math.random() * 60;
           b.x = Math.random() * W;
-          b.r = Math.random() * 40 + 8;
-          b.opacity = Math.random() * 0.20 + (isDark ? 0.10 : 0.06);
-          b.vy = -(Math.random() * 0.5 + 0.22);
+          b.r = Math.random() * 80 + 28;
+          b.opacity = Math.random() * 0.22 + (isDark ? 0.16 : 0.12);
+          b.vy = -(Math.random() * 0.35 + 0.15);
         }
 
         const drawX = b.x + Math.sin(b.phase) * b.wobble;
@@ -101,36 +101,61 @@ export function BackgroundBlobs() {
         const dist = Math.sqrt(dx * dx + dy * dy);
         const near = dist < 260;
         const t    = near ? Math.max(0, 1 - dist / 260) : 0;
-        const op   = near ? Math.min(b.opacity * 2.8, isDark ? 0.55 : 0.42) : b.opacity;
-        const sc   = near ? 1 + t * 0.22 : 1;
+        const op   = near ? Math.min(b.opacity * 2.4, isDark ? 0.60 : 0.50) : b.opacity;
+        const sc   = near ? 1 + t * 0.18 : 1;
 
         const br = Math.round(baseRgb.r + (sr.r - baseRgb.r) * t);
         const bg = Math.round(baseRgb.g + (sr.g - baseRgb.g) * t);
         const bb = Math.round(baseRgb.b + (sr.b - baseRgb.b) * t);
 
-        const gr = ctx.createRadialGradient(drawX, drawY, 0, drawX, drawY, b.r * sc);
-        if (isDark) {
-          gr.addColorStop(0,   `rgba(${br},${bg},${bb},${op * 1.4})`);
-          gr.addColorStop(0.35,`rgba(${br},${bg},${bb},${op})`);
-          gr.addColorStop(0.8, `rgba(${br},${bg},${bb},${op * 0.2})`);
-          gr.addColorStop(1,   'rgba(0,0,0,0)');
-        } else {
-          gr.addColorStop(0,   `rgba(255,255,255,${op * 1.6})`);
-          gr.addColorStop(0.3, `rgba(${br},${bg},${bb},${op})`);
-          gr.addColorStop(0.8, `rgba(${br},${bg},${bb},${op * 0.18})`);
-          gr.addColorStop(1,   'rgba(255,255,255,0)');
-        }
+        const R = b.r * sc;
 
+        // Clip to bubble circle so glare stays inside
+        ctx.save();
         ctx.beginPath();
-        ctx.arc(drawX, drawY, b.r * sc, 0, Math.PI * 2);
+        ctx.arc(drawX, drawY, R, 0, Math.PI * 2);
+        ctx.clip();
+
+        // Body fill — offset centre for 3-D sphere look
+        const gr = ctx.createRadialGradient(
+          drawX - R * 0.28, drawY - R * 0.28, 0,
+          drawX, drawY, R,
+        );
+        if (isDark) {
+          gr.addColorStop(0,    `rgba(${Math.min(br+55,255)},${Math.min(bg+55,255)},${Math.min(bb+55,255)},${op * 0.50})`);
+          gr.addColorStop(0.55, `rgba(${br},${bg},${bb},${op * 0.80})`);
+          gr.addColorStop(0.88, `rgba(${br},${bg},${bb},${op * 1.05})`);
+          gr.addColorStop(1,    `rgba(${br},${bg},${bb},0)`);
+        } else {
+          gr.addColorStop(0,    `rgba(255,255,255,${op * 1.4})`);
+          gr.addColorStop(0.38, `rgba(${br},${bg},${bb},${op * 0.55})`);
+          gr.addColorStop(0.80, `rgba(${br},${bg},${bb},${op * 0.88})`);
+          gr.addColorStop(0.93, `rgba(${br},${bg},${bb},${op * 1.0})`);
+          gr.addColorStop(1,    `rgba(${br},${bg},${bb},0)`);
+        }
+        ctx.beginPath();
+        ctx.arc(drawX, drawY, R, 0, Math.PI * 2);
         ctx.fillStyle = gr;
         ctx.fill();
 
-        // Ring outline — more visible in dark mode
+        // White glare highlight (top-left, balloon shine)
+        const gX = drawX - R * 0.30, gY = drawY - R * 0.32, gR = R * 0.44;
+        const glare = ctx.createRadialGradient(gX, gY, 0, gX, gY, gR);
+        glare.addColorStop(0,   `rgba(255,255,255,${isDark ? 0.38 : 0.60})`);
+        glare.addColorStop(0.5, `rgba(255,255,255,${isDark ? 0.12 : 0.22})`);
+        glare.addColorStop(1,   'rgba(255,255,255,0)');
         ctx.beginPath();
-        ctx.arc(drawX, drawY, b.r * sc, 0, Math.PI * 2);
-        ctx.strokeStyle = `rgba(${br},${bg},${bb},${isDark ? op * 0.6 : op * 0.25})`;
-        ctx.lineWidth = isDark ? 1 : 0.6;
+        ctx.arc(gX, gY, gR, 0, Math.PI * 2);
+        ctx.fillStyle = glare;
+        ctx.fill();
+
+        ctx.restore();
+
+        // Clear edge stroke drawn outside clip
+        ctx.beginPath();
+        ctx.arc(drawX, drawY, R, 0, Math.PI * 2);
+        ctx.strokeStyle = `rgba(${br},${bg},${bb},${Math.min(op * 3.2, isDark ? 0.72 : 0.58)})`;
+        ctx.lineWidth = isDark ? 2.0 : 1.6;
         ctx.stroke();
       });
 

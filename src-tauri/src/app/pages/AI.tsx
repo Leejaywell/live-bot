@@ -8,7 +8,7 @@ import { Toggle } from '../components/Toggle';
 import { IconButton } from '../components/IconButton';
 import {
   Send, Volume2, Bot, Sparkles, Zap, Brain, MessageCircle,
-  AlertCircle, Cpu, Plus, X, Pencil, Trash2, FileText, ChevronDown, Loader2, CheckCircle2, Settings as SettingsIcon
+  AlertCircle, Cpu, Plus, X, Pencil, ChevronDown, Settings as SettingsIcon
 } from 'lucide-react';
 import { api, AppConfig, AiBot, AiProvider } from '../lib/api';
 import { toast } from 'sonner';
@@ -43,23 +43,57 @@ interface ChatMessage {
 
 // ── 机器人编辑弹窗 ─────────────────────────────────────────────────────────────
 
-function BotEditModal({ bot, isNew, allBots, llmProviders, onSave, onClose }: any) {
+function BotEditModal({ bot, isNew, llmProviders, onSave, onClose }: any) {
   const [draft, setDraft] = useState<AiBot>({ ...bot });
   const patch = (p: Partial<AiBot>) => setDraft(prev => ({ ...prev, ...p }));
   return (
     <div className="fixed inset-0 bg-black/30 backdrop-blur-sm flex items-center justify-center z-[100]">
-      <GlassCard className="w-[400px] p-6 shadow-2xl border border-white/10">
-        <h2 className="text-[14px] font-bold mb-4">{isNew ? '添加机器人' : '编辑机器人'}</h2>
-        <div className="space-y-4">
-          <Input value={draft.Nickname} onChange={e => patch({ Nickname: e.target.value })} placeholder="机器人昵称" className="w-full" />
-          <select value={draft.ProviderId} onChange={e => patch({ ProviderId: e.target.value })} className="w-full h-10 px-3 rounded-xl bg-black/5 dark:bg-white/5 border-none text-[13px]">
-            <option value="">选择模型...</option>
-            {llmProviders.map((p: any) => <option key={p.Id} value={p.Id}>{p.Name}</option>)}
-          </select>
+      <GlassCard className="w-[420px] shadow-2xl border border-white/20 overflow-hidden">
+        {/* Header */}
+        <div className="flex items-center justify-between px-6 py-4 border-b border-black/5 dark:border-white/10 bg-white/40 dark:bg-black/20 shrink-0">
+          <div>
+            <h2 className="text-[14px] font-bold">{isNew ? '添加机器人' : '编辑机器人'}</h2>
+            <p className="text-[10px] text-gray-400 mt-0.5">配置名称和使用的语言模型</p>
+          </div>
+          <button onClick={onClose} className="w-7 h-7 rounded-lg hover:bg-black/5 dark:hover:bg-white/10 flex items-center justify-center transition-colors">
+            <X className="w-4 h-4 text-gray-500" />
+          </button>
         </div>
-        <div className="flex gap-2 mt-6">
+        {/* Body */}
+        <div className="p-6 space-y-4">
+          <div>
+            <label className="text-[11px] text-gray-500 mb-1.5 block">机器人名称</label>
+            <Input
+              value={draft.Nickname}
+              onChange={e => patch({ Nickname: e.target.value })}
+              placeholder="例如：二狗、AI助手"
+              className="w-full h-10"
+            />
+          </div>
+          <div>
+            <label className="text-[11px] text-gray-500 mb-1.5 block">使用的 LLM 模型</label>
+            <div className="relative">
+              <select
+                value={draft.ProviderId}
+                onChange={e => patch({ ProviderId: e.target.value })}
+                className="w-full h-10 pl-3 pr-8 rounded-xl appearance-none bg-white/60 dark:bg-white/10 border border-gray-200 dark:border-white/20 text-[13px] focus:outline-none focus:ring-2 focus:ring-[var(--primary-color)]/50"
+              >
+                <option value="">-- 选择语言模型 --</option>
+                {llmProviders.map((p: any) => <option key={p.Id} value={p.Id}>{p.Name}</option>)}
+              </select>
+              <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-gray-400 pointer-events-none" />
+            </div>
+            {llmProviders.length === 0 && (
+              <p className="text-[10px] text-amber-500 mt-1">请先在「模型服务」页添加 LLM 供应商</p>
+            )}
+          </div>
+        </div>
+        {/* Footer */}
+        <div className="flex gap-2 px-6 pb-6">
           <Button variant="default" className="flex-1" onClick={onClose}>取消</Button>
-          <Button variant="primary" className="flex-1" onClick={() => onSave(draft)}>保存</Button>
+          <Button variant="primary" className="flex-1" onClick={() => onSave(draft)}>
+            {isNew ? '添加' : '保存'}
+          </Button>
         </div>
       </GlassCard>
     </div>
@@ -78,6 +112,8 @@ export function AI() {
   const [isNewBot,      setIsNewBot]      = useState(false);
   const [ttsVoice,      setTtsVoice]      = useState('zh-CN-XiaoxiaoNeural');
   const [voiceOpen,     setVoiceOpen]     = useState(false);
+  const [settingsOpen,  setSettingsOpen]  = useState(false);
+  const [promptDraft,   setPromptDraft]   = useState('');
   const loggedIn = useLoggedIn();
   const msgEndRef = useRef<HTMLDivElement>(null);
 
@@ -86,6 +122,7 @@ export function AI() {
       setConfig(c);
       setSendToDanmaku(c.AiReplyToDanmaku ?? false);
       if (c.TtsVoice) setTtsVoice(c.TtsVoice);
+      setPromptDraft(c.AiAssistantPrompt ?? '');
     }).catch(console.error);
   }, []);
 
@@ -107,6 +144,31 @@ export function AI() {
     if (!config) return;
     setIsNewBot(true);
     setEditingBot({ Id: `bot-${Date.now()}`, ProviderId: '', Nickname: `机器人${bots.length + 1}`, SystemPrompt: DEFAULT_SYSTEM_PROMPT, Enabled: true });
+  };
+
+  const handleSaveBot = async (draft: AiBot) => {
+    if (!config) return;
+    const next: AppConfig = isNewBot
+      ? { ...config, AiBots: [...bots, draft] }
+      : { ...config, AiBots: bots.map(b => b.Id === draft.Id ? draft : b) };
+    setConfig(next);
+    await api.saveConfig(next);
+    setEditingBot(null);
+    setIsNewBot(false);
+  };
+
+  const handleEditBot = (bot: AiBot, e: React.MouseEvent) => {
+    e.stopPropagation();
+    setIsNewBot(false);
+    setEditingBot({ ...bot });
+  };
+
+  const handleRemoveBot = async (bot: AiBot, e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (!config) return;
+    const next = { ...config, AiBots: bots.filter(b => b.Id !== bot.Id) };
+    setConfig(next);
+    await api.saveConfig(next);
   };
 
   const handleSendMessage = async () => {
@@ -131,7 +193,6 @@ export function AI() {
     <div className="h-full flex flex-col gap-4 p-5 overflow-hidden">
       <div className="flex items-center justify-between shrink-0">
         <div className="flex items-center gap-4 flex-1">
-          <h2 className="text-[13px] font-black text-gray-700 dark:text-gray-200">AI 机器人</h2>
           <div className="flex gap-2.5 flex-1 overflow-x-auto pb-0.5 scrollbar-none">
             {bots.map((bot, idx) => {
               const prov = (config.AiProviders ?? []).find(p => p.Id === bot.ProviderId);
@@ -139,16 +200,35 @@ export function AI() {
               const color = BOT_COLORS[idx % BOT_COLORS.length];
               const isEnabled = bot.Enabled;
               return (
-                <div key={bot.Id} className="relative group/card shrink-0" onClick={() => handleToggleBot(bot)}>
-                  <div className={cn("h-[42px] px-4 rounded-[16px] flex flex-col justify-center transition-all cursor-pointer border shadow-sm", isEnabled ? "text-white border-transparent" : "bg-white/50 dark:bg-white/5 border-gray-200 dark:border-white/10 opacity-60")} style={isEnabled ? { background: color, boxShadow: `0 8px 16px -4px ${color}60` } : undefined}>
-                    <div className="flex items-center gap-1.5"><Icon className="w-3.5 h-3.5" /><span className="text-[12px] font-black">{bot.Nickname}</span></div>
-                    <div className="text-[9px] font-bold opacity-70">{prov ? prov.Name : '未配置'}</div>
+                <div key={bot.Id} className="relative group/card shrink-0">
+                  {/* Hover actions — edit & remove */}
+                  <div className="absolute -top-2 right-0.5 flex gap-0.5 opacity-0 group-hover/card:opacity-100 transition-all z-10 pointer-events-none group-hover/card:pointer-events-auto">
+                    <button
+                      onClick={e => handleEditBot(bot, e)}
+                      className="w-[18px] h-[18px] rounded-full bg-white dark:bg-gray-800 border border-gray-200 dark:border-white/20 shadow flex items-center justify-center hover:bg-[var(--primary-color)] hover:border-transparent hover:text-white transition-all"
+                    >
+                      <Pencil className="w-2 h-2" />
+                    </button>
+                    <button
+                      onClick={e => handleRemoveBot(bot, e)}
+                      className="w-[18px] h-[18px] rounded-full bg-white dark:bg-gray-800 border border-gray-200 dark:border-white/20 shadow flex items-center justify-center hover:bg-red-500 hover:border-transparent hover:text-white transition-all"
+                    >
+                      <X className="w-2 h-2" />
+                    </button>
+                  </div>
+                  <div
+                    className={cn("h-[54px] px-5 rounded-[18px] flex flex-col justify-center transition-all cursor-pointer border shadow-sm", isEnabled ? "text-white border-transparent" : "bg-white/50 dark:bg-white/5 border-gray-200 dark:border-white/10 opacity-60")}
+                    style={isEnabled ? { background: color, boxShadow: `0 8px 18px -4px ${color}65` } : undefined}
+                    onClick={() => handleToggleBot(bot)}
+                  >
+                    <div className="flex items-center gap-1.5"><Icon className="w-3.5 h-3.5" /><span className="text-[13px] font-black">{bot.Nickname}</span></div>
+                    <div className="text-[10px] font-bold opacity-70">{prov ? prov.Name : '未配置'}</div>
                   </div>
                 </div>
               );
             })}
             {bots.length < MAX_BOTS && (
-              <button onClick={handleAddBot} className="h-[42px] px-5 rounded-[16px] border border-dashed border-gray-300 flex items-center gap-2 text-gray-400 hover:text-[var(--primary-color)] transition-all bg-black/[0.02]">
+              <button onClick={handleAddBot} className="h-[54px] px-6 rounded-[18px] border border-dashed border-gray-300 flex items-center gap-2 text-gray-400 hover:text-[var(--primary-color)] hover:border-[var(--primary-color)]/40 transition-all bg-black/[0.02]">
                 <Plus className="w-4 h-4" /><span className="text-[12px] font-bold">添加</span>
               </button>
             )}
@@ -180,7 +260,9 @@ export function AI() {
             {firstEnabled && <span className="text-[11px] font-bold text-gray-400">默认 <span className="text-gray-600">{firstEnabled.Nickname}</span> · @昵称 指定</span>}
           </div>
           <div className="flex items-center gap-2">
-            <SettingsIcon className="w-4 h-4 text-gray-400" />
+            <button onClick={() => { setPromptDraft(config?.AiAssistantPrompt ?? ''); setSettingsOpen(true); }} className="w-8 h-8 rounded-full hover:bg-white/60 flex items-center justify-center transition-colors" title="AI 助手提示词">
+              <SettingsIcon className="w-4 h-4 text-gray-400 hover:text-[var(--primary-color)]" />
+            </button>
             <button onClick={() => setTestMessages([])} className="h-8 px-4 rounded-full border border-gray-200 text-[11px] font-bold text-gray-500 hover:bg-white/60">清空对话</button>
           </div>
         </div>
@@ -213,6 +295,43 @@ export function AI() {
       </GlassCard>
 
       <VoicePicker open={voiceOpen} onClose={() => setVoiceOpen(false)} providers={config ? availableProviders((config.AiProviders ?? []).filter(p => p.ProviderType === 'tts' && p.Enabled).map(p => p.Name)) : ['edge_tts']} currentVoice={ttsVoice} onSelect={v => { setTtsVoice(v); setConfig({ ...config!, TtsVoice: v }); api.saveConfig({ ...config!, TtsVoice: v }); }} />
+
+      {settingsOpen && (
+        <div className="fixed inset-0 bg-black/30 backdrop-blur-sm flex items-center justify-center z-[100]">
+          <GlassCard className="w-[480px] p-6 shadow-2xl border border-white/10">
+            <div className="flex items-center justify-between mb-4">
+              <h2 className="text-[14px] font-bold">AI 助手设置</h2>
+              <button onClick={() => setSettingsOpen(false)} className="w-7 h-7 rounded-lg hover:bg-white/10 flex items-center justify-center transition-colors">
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+            <div className="space-y-1.5">
+              <label className="text-[11px] text-gray-500 block">AI 助手提示词（界面对话使用）：</label>
+              <textarea
+                className="w-full h-40 px-3 py-2 rounded-lg bg-white/60 dark:bg-white/10 border border-gray-200 dark:border-white/20 text-[12px] focus:outline-none focus:ring-2 focus:ring-[var(--primary-color)]/50 resize-none"
+                value={promptDraft}
+                onChange={e => setPromptDraft(e.target.value)}
+                placeholder="AI 界面聊天使用的系统提示词..."
+              />
+            </div>
+            <div className="flex gap-2 mt-4">
+              <Button variant="default" className="flex-1" onClick={() => setSettingsOpen(false)}>取消</Button>
+              <Button variant="primary" className="flex-1" onClick={async () => {
+                if (!config) return;
+                const next = { ...config, AiAssistantPrompt: promptDraft };
+                try {
+                  await api.saveConfig(next);
+                  setConfig(next);
+                  toast.success('保存成功');
+                  setSettingsOpen(false);
+                } catch (err) {
+                  toast.error(`保存失败: ${err}`);
+                }
+              }}>保存</Button>
+            </div>
+          </GlassCard>
+        </div>
+      )}
     </div>
   );
 }

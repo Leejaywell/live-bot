@@ -182,30 +182,41 @@ export function TopBar({ onToggleNotifications, sidebarCollapsed, isLoggedIn, us
         <div className="flex items-center gap-4">
           {isConnected ? (
             <>
-              <div className="flex items-center gap-2 px-3 py-1.5 rounded-2xl bg-white/40 dark:bg-white/5 border border-white/20">
+              <div className="flex items-center gap-2.5 px-3.5 py-2 rounded-2xl bg-white/40 dark:bg-white/5 border border-white/20">
                 {/* 主播头像 */}
                 {anchorFace ? (
-                  <img src={anchorFace} className="w-6 h-6 rounded-full border border-white/40 flex-shrink-0 object-cover shadow-sm" />
+                  <img src={anchorFace} className="w-9 h-9 rounded-full border-2 border-white/50 flex-shrink-0 object-cover shadow-sm" />
                 ) : (
-                  <div className="w-6 h-6 rounded-full border border-white/20 bg-white/10 flex-shrink-0" />
+                  <div className="w-9 h-9 rounded-full border-2 border-white/20 bg-white/10 flex-shrink-0" />
                 )}
                 {/* 主播名 + 勋章 */}
-                <div className="flex items-center gap-2">
-                  <span className="text-[13px] font-bold">{anchorInfo?.uname || `房间 ${currentRoom}`}</span>
-                  {anchorInfo?.medal_name && (
-                    <span className="px-2 py-0.5 rounded-md text-[9px] font-black bg-gradient-to-br from-pink-500 to-rose-500 text-white shadow-sm leading-none">
-                      {anchorInfo.medal_name}
-                    </span>
-                  )}
+                <div className="flex flex-col gap-0.5">
+                  <div className="flex items-center gap-2">
+                    <span className="text-[15px] font-black tracking-tight">{anchorInfo?.uname || `房间 ${currentRoom}`}</span>
+                    {anchorInfo?.medal_name && (
+                      <span className="px-2 py-0.5 rounded-md text-[9px] font-black bg-gradient-to-br from-pink-500 to-rose-500 text-white shadow-sm leading-none">
+                        {anchorInfo.medal_name}
+                      </span>
+                    )}
+                  </div>
+                  {/* 直播状态行 */}
+                  <div className="flex items-center gap-1.5">
+                    <div className={`w-[5px] h-[5px] rounded-full flex-shrink-0 ${isLive ? 'bg-green-500 animate-pulse shadow-[0_0_6px_rgba(34,197,94,0.6)]' : 'bg-gray-400'}`} />
+                    <span className={`text-[11px] font-semibold ${isLive ? 'text-green-600 dark:text-green-400' : 'text-gray-400'}`}>{roomCategory}</span>
+                    {isLive && onlineCount > 0 && (
+                      <span className="text-[10px] text-gray-400 font-medium">· {formatNum(onlineCount)} 人气</span>
+                    )}
+                  </div>
                 </div>
-                
-                <span className="w-px h-3 bg-black/10 dark:bg-white/10 mx-1" />
-                
-                {/* 直播状态 */}
-                <div className="flex items-center gap-1.5 font-bold text-[11px]">
-                  <div className={`w-[6px] h-[6px] rounded-full flex-shrink-0 ${isLive ? 'bg-green-500 animate-pulse shadow-[0_0_8px_rgba(34,197,94,0.6)]' : 'bg-gray-400'}`} />
-                  <span className={isLive ? 'text-green-600 dark:text-green-400' : 'text-gray-400'}>{roomCategory}</span>
-                </div>
+
+                <span className="w-px h-6 bg-black/10 dark:bg-white/10 mx-0.5" />
+
+                {/* 直播时长 */}
+                {isLive && (
+                  <div className="text-[12px] font-mono font-bold text-gray-600 dark:text-gray-300">
+                    {formatDuration(liveDuration)}
+                  </div>
+                )}
               </div>
 
               <div className="flex items-center gap-2 ml-1">

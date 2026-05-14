@@ -4,6 +4,7 @@ use std::sync::Mutex;
 use bilibili_live_protocol::{
     AnchorLotteryKind, InteractKind, LiveEvent, PkEventKind, RedPocketKind,
 };
+use rand::prelude::IndexedRandom;
 
 use crate::config::AppConfig;
 use crate::storage::Storage;
@@ -32,11 +33,44 @@ impl BotEngine {
 
         let mut out = Vec::new();
         self.track_danmu(event, storage);
+        out.extend(self.welcome(event));
         out.extend(self.help(event));
         out.extend(self.keyword_reply(event));
         out.extend(self.thanks(event));
         out.extend(self.pk_and_activity_notice(event));
         out
+    }
+
+    fn welcome(&self, event: &LiveEvent) -> Vec<String> {
+        let LiveEvent::Interact {
+            kind: InteractKind::Entry,
+            user_id,
+            user,
+            ..
+        } = event
+        else {
+            return Vec::new();
+        };
+
+        // Special welcome (UID exact match) takes priority
+        let uid_str = user_id.to_string();
+        for sw in &self.config.special_welcome_list {
+            if !sw.uid.is_empty() && sw.uid == uid_str {
+                return vec![sw.msg.replace("{user}", user)];
+            }
+        }
+
+        // General welcome — random pick from template list
+        if self.config.general_welcome_enabled {
+            let msgs = &self.config.general_welcome_msgs;
+            if !msgs.is_empty() {
+                let mut rng = rand::rng();
+                let tmpl = msgs.choose(&mut rng).unwrap();
+                return vec![tmpl.replace("{user}", user)];
+            }
+        }
+
+        Vec::new()
     }
 
     fn keyword_reply(&self, event: &LiveEvent) -> Vec<String> {

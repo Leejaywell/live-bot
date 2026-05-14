@@ -1,12 +1,12 @@
 import { useState, useEffect } from 'react';
 import { GlassCard } from '../components/GlassCard';
-import { AreaChart, Area, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
-import { api } from '../lib/api';
+import { api, UserGiftStat } from '../lib/api';
 
 export function Stats() {
   const [period, setPeriod] = useState('0'); // 0 for today
   const [summary, setSummary] = useState<any>(null);
   const [giftStats, setGiftStats] = useState<any[]>([]);
+  const [userGiftStats, setUserGiftStats] = useState<UserGiftStat[]>([]);
 
   useEffect(() => {
     loadStats();
@@ -15,12 +15,14 @@ export function Stats() {
   const loadStats = async () => {
     try {
       const days = parseInt(period);
-      const [s, g] = await Promise.all([
+      const [s, g, u] = await Promise.all([
         api.getStats(days),
-        api.getGiftStats(days, 5)
+        api.getGiftStats(days, 5),
+        api.getUserGiftStats(days, 5),
       ]);
       setSummary(s);
       setGiftStats(g);
+      setUserGiftStats(u);
     } catch (err) {
       console.error('Failed to load stats:', err);
     }
@@ -71,6 +73,7 @@ export function Stats() {
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        {/* Gift item top 5 */}
         <GlassCard className="p-5">
           <h2 className="text-[12px] font-semibold mb-4">礼物 TOP 5</h2>
           <div className="space-y-4">
@@ -81,8 +84,8 @@ export function Stats() {
                   <span className="text-gray-500">{gift.count}个 · {gift.value}电池</span>
                 </div>
                 <div className="h-1.5 bg-gray-100 dark:bg-gray-800 rounded-full overflow-hidden">
-                  <div 
-                    className="h-full bg-[var(--primary-color)] opacity-80" 
+                  <div
+                    className="h-full bg-[var(--primary-color)] opacity-80"
                     style={{ width: `${(gift.value / (giftStats[0].value || 1)) * 100}%` }}
                   />
                 </div>
@@ -93,24 +96,30 @@ export function Stats() {
           </div>
         </GlassCard>
 
+        {/* User gift value ranking */}
         <GlassCard className="p-5">
-          <h2 className="text-[12px] font-semibold mb-4">人气趋势 (示例数据)</h2>
-          <ResponsiveContainer width="100%" height={200}>
-            <AreaChart data={[
-              { time: '1', v: 10 }, { time: '2', v: 25 }, { time: '3', v: 15 }, 
-              { time: '4', v: 40 }, { time: '5', v: 35 }, { time: '6', v: 50 }
-            ]}>
-              <defs>
-                <linearGradient id="colorValue" x1="0" y1="0" x2="0" y2="1">
-                  <stop offset="5%" stopColor="var(--primary-color)" stopOpacity={0.3}/>
-                  <stop offset="95%" stopColor="var(--primary-color)" stopOpacity={0}/>
-                </linearGradient>
-              </defs>
-              <CartesianGrid strokeDasharray="3 3" opacity={0.1} />
-              <Tooltip />
-              <Area type="monotone" dataKey="v" stroke="var(--primary-color)" fillOpacity={1} fill="url(#colorValue)" />
-            </AreaChart>
-          </ResponsiveContainer>
+          <h2 className="text-[12px] font-semibold mb-4">观众礼物排行 TOP 5</h2>
+          <div className="space-y-4">
+            {userGiftStats.length > 0 ? userGiftStats.map((user, i) => (
+              <div key={user.uid} className="space-y-1">
+                <div className="flex justify-between text-[11px] items-center">
+                  <div className="flex items-center gap-2">
+                    <span className="text-[10px] font-black text-gray-400 w-4">#{i + 1}</span>
+                    <span className="font-medium truncate max-w-[110px]">{user.uname}</span>
+                  </div>
+                  <span className="text-gray-500 shrink-0">{user.gift_count}个 · {user.gift_value}电池</span>
+                </div>
+                <div className="h-1.5 bg-gray-100 dark:bg-gray-800 rounded-full overflow-hidden">
+                  <div
+                    className="h-full bg-[var(--primary-color)] opacity-80"
+                    style={{ width: `${(user.gift_value / (userGiftStats[0].gift_value || 1)) * 100}%` }}
+                  />
+                </div>
+              </div>
+            )) : (
+              <div className="text-gray-400 text-center py-10 italic">暂无礼物数据</div>
+            )}
+          </div>
         </GlassCard>
       </div>
     </div>

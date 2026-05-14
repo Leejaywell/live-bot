@@ -32,6 +32,14 @@ pub struct GiftStat {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
+pub struct UserGiftStat {
+    pub uid: i64,
+    pub uname: String,
+    pub gift_value: i64,
+    pub gift_count: i64,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
 pub struct UserDetail {
     pub uid: i64,
     pub uname: Option<String>,
@@ -878,6 +886,46 @@ impl Storage {
                 name: row.get(0)?,
                 value: row.get(1)?,
                 count: row.get(2)?,
+            })
+        })?;
+
+        let mut result = Vec::new();
+        for row in rows {
+            result.push(row?);
+        }
+        Ok(result)
+    }
+
+    pub fn user_gift_top_n(&self, days: i64, n: i32) -> Result<Vec<UserGiftStat>> {
+        let start_date = if days == 0 {
+            today_key()
+        } else {
+            let start = Local::now() - chrono::Duration::days(days);
+            format!(
+                "{:04}-{:02}-{:02}",
+                start.year(),
+                start.month(),
+                start.day()
+            )
+        };
+
+        let conn = self.conn.lock().expect("storage mutex poisoned");
+        let mut stmt = conn.prepare(
+            "
+            SELECT uid, uname, SUM(gift_count * gift_price) as gift_value, SUM(gift_count) as gift_count
+            FROM interaction_records
+            WHERE occurred_at >= ?1 AND event_type = 'gift' AND uid IS NOT NULL AND uname IS NOT NULL
+            GROUP BY uid
+            ORDER BY gift_value DESC
+            LIMIT ?2
+            ",
+        )?;
+        let rows = stmt.query_map(params![start_date, n], |row| {
+            Ok(UserGiftStat {
+                uid: row.get(0)?,
+                uname: row.get(1)?,
+                gift_value: row.get(2)?,
+                gift_count: row.get(3)?,
             })
         })?;
 

@@ -110,7 +110,15 @@ async fn get_user_info(state: tauri::State<'_, SharedState>) -> Result<serde_jso
     };
     match state.http.user_info(&session.cookie).await {
         Ok(info) => Ok(user_info_json(&info, saved_at)),
-        Err(_)   => Ok(not_logged_in_json(saved_at)),
+        Err(e) => {
+            let msg = e.to_string();
+            if msg.contains("登录状态无效") {
+                Ok(not_logged_in_json(saved_at))
+            } else {
+                // Network / HTTP error — return Err so the frontend can ignore gracefully
+                Err(format!("network_error: {msg}"))
+            }
+        }
     }
 }
 
@@ -313,6 +321,16 @@ async fn get_gift_stats(
     n: i32,
 ) -> Result<Vec<storage::GiftStat>, String> {
     state.storage.gift_top_n(days, n).map_err(|e| e.to_string())
+}
+
+#[cfg(feature = "tauri")]
+#[tauri::command]
+async fn get_user_gift_stats(
+    state: tauri::State<'_, SharedState>,
+    days: i64,
+    n: i32,
+) -> Result<Vec<storage::UserGiftStat>, String> {
+    state.storage.user_gift_top_n(days, n).map_err(|e| e.to_string())
 }
 
 #[cfg(feature = "tauri")]
@@ -827,6 +845,7 @@ fn main() -> Result<()> {
             get_monitor_status,
             get_stats,
             get_gift_stats,
+            get_user_gift_stats,
             get_pk_summary,
             get_pk_history,
             send_danmu,
