@@ -79,8 +79,8 @@ export function Sidebar({ collapsed, connected, onToggleThemePanel, onToggleSide
                   : 'text-gray-500 hover:text-gray-900 dark:hover:text-white hover:bg-white/40 dark:hover:bg-white/5'
               )}
             >
-              <Icon className={cn("w-[18px] h-[18px] transition-transform duration-300", !isActive && "group-hover:scale-110")} />
-              <span className="text-[13px] font-bold flex-1 tracking-tight">{item.label}</span>
+              <Icon className={cn("w-[20px] h-[20px] transition-transform duration-300", !isActive && "group-hover:scale-110")} />
+              <span className="text-[13px] font-black flex-1 tracking-tight">{item.label}</span>
             </Link>
           );
         })}

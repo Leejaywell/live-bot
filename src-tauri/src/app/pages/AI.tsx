@@ -48,19 +48,19 @@ function BotEditModal({ bot, isNew, llmProviders, onSave, onClose }: any) {
   const patch = (p: Partial<AiBot>) => setDraft(prev => ({ ...prev, ...p }));
   return (
     <div className="fixed inset-0 bg-black/30 backdrop-blur-sm flex items-center justify-center z-[100]">
-      <GlassCard className="w-[460px] max-h-[90vh] shadow-2xl border border-white/20 overflow-hidden flex flex-col">
+      <GlassCard className="w-[420px] shadow-2xl border border-white/20 overflow-hidden">
         {/* Header */}
-        <div className="flex items-center justify-between px-6 py-4 border-b border-black/5 dark:border-white/10 bg-white/40 dark:bg-black/20 shrink-0">
+        <div className="flex items-center justify-between px-6 py-4 border-b border-black/5 dark:border-white/10 shrink-0">
           <div>
             <h2 className="text-[14px] font-bold">{isNew ? '添加机器人' : '编辑机器人'}</h2>
-            <p className="text-[10px] text-gray-400 mt-0.5">配置名称、模型和人设提示词</p>
+            <p className="text-[10px] text-gray-400 mt-0.5">配置机器人名称和语言模型</p>
           </div>
           <button onClick={onClose} className="w-7 h-7 rounded-lg hover:bg-black/5 dark:hover:bg-white/10 flex items-center justify-center transition-colors">
             <X className="w-4 h-4 text-gray-500" />
           </button>
         </div>
         {/* Body */}
-        <div className="flex-1 overflow-y-auto p-6 space-y-4">
+        <div className="p-6 space-y-4">
           <div>
             <label className="text-[11px] text-gray-500 mb-1.5 block">机器人名称</label>
             <Input
@@ -71,14 +71,14 @@ function BotEditModal({ bot, isNew, llmProviders, onSave, onClose }: any) {
             />
           </div>
           <div>
-            <label className="text-[11px] text-gray-500 mb-1.5 block">使用的 LLM 模型</label>
+            <label className="text-[11px] text-gray-500 mb-1.5 block">LLM 供应商</label>
             <div className="relative">
               <select
                 value={draft.ProviderId}
                 onChange={e => patch({ ProviderId: e.target.value })}
                 className="w-full h-10 pl-3 pr-8 rounded-xl appearance-none bg-white/60 dark:bg-white/10 border border-gray-200 dark:border-white/20 text-[13px] focus:outline-none focus:ring-2 focus:ring-[var(--primary-color)]/50"
               >
-                <option value="">-- 选择语言模型 --</option>
+                <option value="">-- 选择 LLM 供应商 --</option>
                 {llmProviders.map((p: any) => <option key={p.Id} value={p.Id}>{p.Name}</option>)}
               </select>
               <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-gray-400 pointer-events-none" />
@@ -87,19 +87,9 @@ function BotEditModal({ bot, isNew, llmProviders, onSave, onClose }: any) {
               <p className="text-[10px] text-amber-500 mt-1">请先在「模型服务」页添加 LLM 供应商</p>
             )}
           </div>
-          <div>
-            <label className="text-[11px] text-gray-500 mb-1.5 block">人设提示词</label>
-            <textarea
-              value={draft.SystemPrompt}
-              onChange={e => patch({ SystemPrompt: e.target.value })}
-              placeholder={`例如：你叫"${draft.Nickname || '小助手'}"，是一个热情活泼的直播间互动机器人，说话简短风趣，经常使用表情包词汇。`}
-              className="w-full h-28 px-3 py-2.5 rounded-xl bg-white/60 dark:bg-white/10 border border-gray-200 dark:border-white/20 text-[12px] resize-none focus:outline-none focus:ring-2 focus:ring-[var(--primary-color)]/50 leading-relaxed"
-            />
-            <p className="text-[10px] text-gray-400 mt-1">支持 {`{{name}}`} 替换为机器人名称</p>
-          </div>
         </div>
         {/* Footer */}
-        <div className="flex gap-2 px-6 pb-6 pt-2 border-t border-black/5 dark:border-white/10 shrink-0">
+        <div className="flex gap-2 px-6 pb-6">
           <Button variant="default" className="flex-1" onClick={onClose}>取消</Button>
           <Button variant="primary" className="flex-1" onClick={() => onSave(draft)}>
             {isNew ? '添加' : '保存'}
@@ -121,6 +111,7 @@ export function AI() {
   const [editingBot,    setEditingBot]    = useState<AiBot | null>(null);
   const [isNewBot,      setIsNewBot]      = useState(false);
   const [ttsVoice,      setTtsVoice]      = useState('zh-CN-XiaoxiaoNeural');
+  const [ttsProviderId, setTtsProviderId] = useState('');
   const [voiceOpen,     setVoiceOpen]     = useState(false);
   const [settingsOpen,  setSettingsOpen]  = useState(false);
   const [promptDraft,   setPromptDraft]   = useState('');
@@ -133,6 +124,9 @@ export function AI() {
       setSendToDanmaku(c.AiReplyToDanmaku ?? false);
       if (c.TtsVoice) setTtsVoice(c.TtsVoice);
       setPromptDraft(c.AiAssistantPrompt ?? '');
+      const ttsProviders = (c.AiProviders ?? []).filter(p => p.ProviderType === 'tts' && p.Enabled);
+      const saved = c.ActiveTtsProviderId && ttsProviders.find(p => p.Id === c.ActiveTtsProviderId);
+      setTtsProviderId(saved ? c.ActiveTtsProviderId : (ttsProviders[0]?.Id ?? ''));
     }).catch(console.error);
   }, []);
 
@@ -257,16 +251,36 @@ export function AI() {
                <input type="checkbox" checked={sendToDanmaku} onChange={e => setSendToDanmaku(e.target.checked)} className="w-3.5 h-3.5 rounded-md accent-[var(--primary-color)]" id="reply-danmu" />
                <label htmlFor="reply-danmu" className="text-[11px] font-bold text-gray-600 cursor-pointer">AI 回复到弹幕</label>
             </div>
-            <div className="flex items-center gap-2 px-3 py-1.5 rounded-full bg-white/80 border border-white/40">
-               <Volume2 className="w-3.5 h-3.5 text-gray-400" />
-               <button onClick={() => setVoiceOpen(true)} className="flex items-center gap-1 text-[11px] font-bold text-gray-600">
-                  {(() => {
-                    const v = (['edge_tts','minimax_tts','volcano_engine'] as TtsProvider[]).reduce<TtsVoice | undefined>((found, p) => found ?? findVoice(p, ttsVoice), undefined);
-                    return v ? `${v.name}` : (ttsVoice || '选择声音');
-                  })()}
-                  <ChevronDown className="w-3 h-3 opacity-50" />
-               </button>
-            </div>
+            {(() => {
+              const ttsProviders = (config?.AiProviders ?? []).filter(p => p.ProviderType === 'tts' && p.Enabled);
+              if (ttsProviders.length === 0) return null;
+              const curProv = ttsProviders.find(p => p.Id === ttsProviderId) ?? ttsProviders[0];
+              const v = (['edge_tts','minimax_tts','volcano_engine'] as TtsProvider[]).reduce<TtsVoice | undefined>((found, p) => found ?? findVoice(p, ttsVoice), undefined);
+              return (
+                <div className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-full bg-white/80 border border-white/40">
+                  <Volume2 className="w-3.5 h-3.5 text-gray-400 shrink-0" />
+                  {ttsProviders.length > 1 && (
+                    <div className="relative">
+                      <select value={ttsProviderId} onChange={e => {
+                        const id = e.target.value;
+                        setTtsProviderId(id);
+                        const prov = ttsProviders.find(p => p.Id === id);
+                        if (prov) { setTtsVoice(prov.Model || 'zh-CN-XiaoxiaoNeural'); api.saveConfig({ ...config!, ActiveTtsProviderId: id }); }
+                      }} className="h-[22px] pl-1.5 pr-5 rounded-lg appearance-none text-[11px] font-bold bg-transparent border-0 focus:outline-none text-gray-600 cursor-pointer">
+                        {ttsProviders.map(p => <option key={p.Id} value={p.Id}>{p.Nickname || p.Name}</option>)}
+                      </select>
+                      <ChevronDown className="absolute right-0.5 top-1/2 -translate-y-1/2 w-3 h-3 text-gray-400 pointer-events-none" />
+                    </div>
+                  )}
+                  {ttsProviders.length === 1 && <span className="text-[11px] font-bold text-gray-500">{curProv.Nickname || curProv.Name}</span>}
+                  <span className="w-px h-3 bg-gray-200 shrink-0" />
+                  <button onClick={() => setVoiceOpen(true)} className="flex items-center gap-0.5 text-[11px] font-bold text-gray-600">
+                    {v ? v.name : (ttsVoice || '选声音')}
+                    <ChevronDown className="w-3 h-3 opacity-50" />
+                  </button>
+                </div>
+              );
+            })()}
             {firstEnabled && <span className="text-[11px] font-bold text-gray-400">默认 <span className="text-gray-600">{firstEnabled.Nickname}</span> · @昵称 指定</span>}
           </div>
           <div className="flex items-center gap-2">

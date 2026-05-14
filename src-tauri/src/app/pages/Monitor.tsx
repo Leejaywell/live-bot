@@ -5,6 +5,8 @@ import { Input } from '../components/Input';
 import { Toggle } from '../components/Toggle';
 import { RefreshCw, ChevronDown } from 'lucide-react';
 import { api, AiProvider } from '../lib/api';
+import { TtsProvider, availableProviders, findVoice } from '../lib/voices';
+import { VoicePicker } from '../components/VoicePicker';
 import { toast } from 'sonner';
 import { useLoggedIn } from '../context/LoginContext';
 import { cn } from '../lib/utils';
@@ -59,12 +61,6 @@ const typeBadge: Record<LogType, string> = {
   system: '系统',
 };
 
-const EDGE_VOICES = [
-  { value: 'zh-CN-XiaoxiaoNeural', label: '晓晓' },
-  { value: 'zh-CN-YunjianNeural',  label: '云健' },
-  { value: 'zh-CN-XiaoyiNeural',   label: '晓伊' },
-  { value: 'zh-CN-YunxiNeural',    label: '云希' },
-];
 
 function GSelect({ value, onChange, options }: {
   value: string; onChange: (v: string) => void;
@@ -101,6 +97,7 @@ export function Monitor() {
   const [selectedTtsId, setSelectedTtsId] = useState('');
   const [ttsVoice, setTtsVoice] = useState('');
   const ttsVoiceRef = useRef('');
+  const [voiceOpen, setVoiceOpen] = useState(false);
 
   // Keep refs in sync with state
   useEffect(() => { isPausedRef.current = isPaused; }, [isPaused]);
@@ -275,9 +272,11 @@ export function Monitor() {
     return true;
   });
 
-  const selectedProvider = ttsProviders.find(p => p.Id === selectedTtsId);
-  const isEdgeProvider = selectedProvider?.Name?.includes('Edge');
-  const voiceOptions = isEdgeProvider ? EDGE_VOICES : [];
+  const ttsVoiceLabel = (() => {
+    const ps = ['edge_tts', 'minimax_tts', 'volcano_engine'] as TtsProvider[];
+    for (const p of ps) { const v = findVoice(p, ttsVoice); if (v) return v.name; }
+    return ttsVoice || '声音';
+  })();
 
   return (
     <div className="p-5 h-full flex flex-col gap-4 overflow-hidden">
@@ -320,27 +319,18 @@ export function Monitor() {
             {/* TTS controls — visible when enabled */}
             {isTtsEnabled && ttsProviders.length > 0 && (
               <>
-                {ttsProviders.length > 1 && (
-                  <GSelect
-                    value={selectedTtsId}
-                    onChange={handleTtsProviderChange}
-                    options={ttsProviders.map(p => ({ value: p.Id, label: p.Nickname || p.Name }))}
-                  />
-                )}
-                {voiceOptions.length > 0 ? (
-                  <GSelect
-                    value={ttsVoice}
-                    onChange={v => { setTtsVoice(v); ttsVoiceRef.current = v; }}
-                    options={voiceOptions}
-                  />
-                ) : (
-                  <input
-                    value={ttsVoice}
-                    onChange={e => { setTtsVoice(e.target.value); ttsVoiceRef.current = e.target.value; }}
-                    placeholder="Voice ID"
-                    className="h-[26px] px-2.5 rounded-lg text-[11px] font-mono bg-white/60 dark:bg-white/10 border border-gray-200 dark:border-white/20 focus:outline-none w-36"
-                  />
-                )}
+                <GSelect
+                  value={selectedTtsId}
+                  onChange={handleTtsProviderChange}
+                  options={ttsProviders.map(p => ({ value: p.Id, label: p.Nickname || p.Name }))}
+                />
+                <button
+                  onClick={() => setVoiceOpen(true)}
+                  className="flex items-center gap-1.5 h-[26px] px-2.5 rounded-lg text-[11px] bg-white/60 dark:bg-white/10 border border-gray-200 dark:border-white/20 hover:bg-white/80 dark:hover:bg-white/15 transition-all text-gray-600 dark:text-gray-200"
+                >
+                  <span>{ttsVoiceLabel}</span>
+                  <ChevronDown className="w-3 h-3 opacity-50" />
+                </button>
               </>
             )}
           </div>
@@ -450,6 +440,14 @@ export function Monitor() {
           </button>
         </div>
       </GlassCard>
+
+      <VoicePicker
+        open={voiceOpen}
+        onClose={() => setVoiceOpen(false)}
+        providers={availableProviders(ttsProviders.map(p => p.Name))}
+        currentVoice={ttsVoice}
+        onSelect={v => { setTtsVoice(v); ttsVoiceRef.current = v; }}
+      />
     </div>
   );
 }

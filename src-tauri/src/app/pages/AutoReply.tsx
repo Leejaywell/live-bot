@@ -241,7 +241,7 @@ export function AutoReply() {
         </div>
       </div>
 
-      <div className="h-px bg-black/5 dark:bg-white/8" />
+      <div className="h-px bg-gradient-to-r from-blue-400/40 via-blue-400/15 to-transparent" />
 
       {/* 特定欢迎语 */}
       <div className="space-y-3">
@@ -251,31 +251,26 @@ export function AutoReply() {
         </div>
 
         {/* 添加表单 */}
-        <div className="flex items-end gap-2">
-          <div className="w-[80px] shrink-0">
-            <label className="text-[10px] text-gray-500 mb-1 block flex items-center gap-1">
-              <Hash className="w-2.5 h-2.5" />UID
-            </label>
-            <Input
+        <div className="flex items-stretch rounded-xl border border-gray-200/80 dark:border-white/10 overflow-hidden bg-white/60 dark:bg-white/5">
+          <div className="flex items-center gap-1.5 px-3 w-[115px] shrink-0 border-r border-gray-200/80 dark:border-white/10">
+            <Hash className="w-3 h-3 text-gray-300 shrink-0" />
+            <input
               value={newSpecialUid}
               onChange={e => setNewSpecialUid(e.target.value)}
-              placeholder="123456"
-              className="h-9 text-[11px] font-mono"
+              placeholder="UID"
+              className="w-full h-[40px] text-[11px] font-mono bg-transparent outline-none text-gray-700 dark:text-gray-200 placeholder:text-gray-300 dark:placeholder:text-gray-600"
             />
           </div>
-          <div className="flex-1">
-            <label className="text-[10px] text-gray-500 mb-1 block">专属欢迎弹幕（支持 {'{user}'}）</label>
-            <Input
-              value={newSpecialMsg}
-              onChange={e => setNewSpecialMsg(e.target.value)}
-              placeholder="欢迎我的大哥 {user} 回来！"
-              className="h-9 text-[11px]"
-              onKeyDown={e => e.key === 'Enter' && addSpecialWelcome()}
-            />
-          </div>
+          <input
+            value={newSpecialMsg}
+            onChange={e => setNewSpecialMsg(e.target.value)}
+            placeholder="专属欢迎弹幕，支持 {user}"
+            className="flex-1 h-[40px] px-3 text-[11px] bg-transparent outline-none text-gray-700 dark:text-gray-200 placeholder:text-gray-300 dark:placeholder:text-gray-600"
+            onKeyDown={e => e.key === 'Enter' && addSpecialWelcome()}
+          />
           <button
             onClick={addSpecialWelcome}
-            className="w-9 h-9 rounded-lg bg-[var(--primary-color)] text-white flex items-center justify-center hover:opacity-90 shrink-0"
+            className="w-[42px] bg-[var(--primary-color)] text-white flex items-center justify-center hover:opacity-90 transition-opacity shrink-0"
           >
             <Plus className="w-3.5 h-3.5" />
           </button>
@@ -322,7 +317,7 @@ export function AutoReply() {
         </div>
       </div>
 
-      <div className="h-px bg-black/5 dark:bg-white/8" />
+      <div className="h-px bg-gradient-to-r from-blue-400/40 via-blue-400/15 to-transparent" />
 
       <div className="space-y-3">
         <div className="flex items-center justify-between">
@@ -391,7 +386,7 @@ export function AutoReply() {
         <Toggle checked={config.GiftSummaryThanks ?? false} onChange={() => toggle('GiftSummaryThanks')} />
       </div>
 
-      <div className="h-px bg-black/5 dark:bg-white/8" />
+      <div className="h-px bg-gradient-to-r from-blue-400/40 via-blue-400/15 to-transparent" />
 
       <div className="flex items-center justify-between">
         <div>
@@ -603,7 +598,7 @@ export function AutoReply() {
         <Button size="sm" variant="primary" className="h-8 px-5 text-[11px]" onClick={() => save(config)}>保存</Button>
       </div>
 
-      <div className="h-px bg-black/5 dark:bg-white/8" />
+      <div className="h-px bg-gradient-to-r from-blue-400/40 via-blue-400/15 to-transparent" />
 
       {/* 互动过滤 toggles */}
       <div className="space-y-1">
