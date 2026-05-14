@@ -15,17 +15,18 @@ export function Toggle({ checked, onChange, disabled }: ToggleProps) {
       disabled={disabled}
       onClick={() => !disabled && onChange(!checked)}
       className={cn(
-        'relative inline-flex h-[20px] w-[36px] rounded-full transition-all disabled:opacity-50',
+        'relative inline-block h-[20px] w-[36px] rounded-full transition-colors duration-200 disabled:opacity-50',
         checked
-          ? 'bg-gradient-to-b from-[var(--primary-color)] to-[var(--primary-color)] shadow-[0_2px_8px_var(--primary-color)]'
-          : 'bg-gradient-to-b from-[#d9d9de] to-[#d4d4d9]'
+          ? 'bg-[var(--primary-color)] shadow-[0_2px_8px_rgba(var(--primary-rgb),0.4)]'
+          : 'bg-[#d4d4d9] dark:bg-[#4a4a52]'
       )}
     >
       <span
-        className="inline-block h-[16px] w-[16px] rounded-full bg-white shadow-md translate-y-[2px]"
+        className="absolute top-[2px] h-[16px] w-[16px] rounded-full bg-white"
         style={{
-          transform: `translateX(${checked ? 18 : 2}px) translateY(2px)`,
-          transition: 'transform 0.32s cubic-bezier(0.34, 1.56, 0.64, 1)',
+          left: checked ? '18px' : '2px',
+          transition: 'left 0.2s cubic-bezier(0.4, 0, 0.2, 1)',
+          boxShadow: '0 1px 3px rgba(0,0,0,0.18)',
         }}
       />
     </button>
