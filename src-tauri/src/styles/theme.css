@@ -488,4 +488,11 @@
     border-color: rgba(var(--primary-rgb), 0.38);
     box-shadow: 0 0 0 3px rgba(var(--primary-rgb), 0.07), 0 2px 6px rgba(0,0,0,0.05);
   }
+
+  /* AutoReply tab-colored input bottom accent */
+  [style*="--tab-color"] input:not([type="range"]):not([type="checkbox"]):not([type="radio"]):not([type="color"]):not(:disabled):focus,
+  [style*="--tab-color"] textarea:not(:disabled):focus {
+    border-bottom-color: var(--tab-color) !important;
+    box-shadow: 0 1px 0 0 var(--tab-color), 0 0 0 3px color-mix(in srgb, var(--tab-color) 10%, transparent) !important;
+  }
 }

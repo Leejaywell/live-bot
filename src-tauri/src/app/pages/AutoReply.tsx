@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Plus, X, Clock, ShieldCheck, Gift, Heart, Activity, MessageSquare, Hash, Sparkles } from 'lucide-react';
+import { Plus, X, Clock, ShieldCheck, Gift, Heart, Activity, MessageSquare, Hash, Sparkles, Volume2 } from 'lucide-react';
 import { GlassCard } from '../components/GlassCard';
 import { Button } from '../components/Button';
 import { Input } from '../components/Input';
@@ -10,13 +10,13 @@ import { useSearchParams } from 'react-router-dom';
 
 type TabId = 'welcome' | 'fans' | 'gift' | 'timed' | 'filter' | 'system';
 
-const TABS: { id: TabId; label: string; Icon: any }[] = [
-  { id: 'welcome',  label: '欢迎语',   Icon: MessageSquare },
-  { id: 'fans',     label: '粉丝互动', Icon: Heart },
-  { id: 'gift',     label: '礼物感谢', Icon: Gift },
-  { id: 'timed',    label: '定时任务', Icon: Clock },
-  { id: 'filter',   label: '过滤防护', Icon: ShieldCheck },
-  { id: 'system',   label: '系统事件', Icon: Activity },
+const TABS: { id: TabId; label: string; Icon: any; color: string }[] = [
+  { id: 'welcome',  label: '欢迎语',   Icon: MessageSquare, color: '#4b8eff' },
+  { id: 'fans',     label: '粉丝互动', Icon: Heart,         color: '#ff2d55' },
+  { id: 'gift',     label: '礼物感谢', Icon: Gift,          color: '#ff9f0a' },
+  { id: 'timed',    label: '定时任务', Icon: Clock,         color: '#af52de' },
+  { id: 'filter',   label: '过滤防护', Icon: ShieldCheck,   color: '#ff3b30' },
+  { id: 'system',   label: '系统事件', Icon: Activity,      color: '#34c759' },
 ];
 
 const WELCOME_PRESETS = [
@@ -54,6 +54,9 @@ export function AutoReply() {
   const [freqUnit, setFreqUnit] = useState<'s' | 'm'>('m');
   const [newCron, setNewCron] = useState('');
   const [newCronMsg, setNewCronMsg] = useState('');
+
+  // 弹幕播报（内存态，不持久化）
+  const [danmuAnnounce, setDanmuAnnounce] = useState(false);
 
   // 黑名单
   const [blackUidInput, setBlackUidInput] = useState('');
@@ -426,6 +429,17 @@ export function AutoReply() {
         <Toggle checked={config.CronDanmu} onChange={() => toggle('CronDanmu')} />
       </div>
 
+      <div className="flex items-center justify-between">
+        <div className="flex items-center gap-2">
+          <Volume2 className="w-3.5 h-3.5 text-gray-400" />
+          <div>
+            <span className="text-[12px] font-medium">弹幕播报</span>
+            <span className="text-[10px] text-gray-500 ml-2">弹幕管理中朗读弹幕内容（临时开关）</span>
+          </div>
+        </div>
+        <Toggle checked={danmuAnnounce} onChange={v => { setDanmuAnnounce(v); sessionStorage.setItem('danmuAnnounce', String(v)); }} />
+      </div>
+
       {/* Single-row input area */}
       <div className="flex items-center gap-2 p-3 rounded-2xl bg-black/5 dark:bg-white/5 border border-dashed border-gray-300 dark:border-white/10">
         {/* Mode toggle */}
@@ -632,25 +646,31 @@ export function AutoReply() {
     system:  SystemTab,
   };
 
+  const activeColor = TABS.find(t => t.id === activeTab)?.color ?? 'var(--primary-color)';
+
   return (
     <div className="p-5 h-full flex flex-col">
-      <GlassCard className="flex-1 p-5 flex flex-col overflow-hidden border-white/60 dark:border-white/10">
-        <div className="flex gap-1.5 mb-6 p-1.5 rounded-2xl bg-black/5 dark:bg-black/20 shrink-0 overflow-x-auto scrollbar-none">
-          {TABS.map(({ id, label, Icon }) => (
+      <GlassCard className="flex-1 p-5 flex flex-col overflow-hidden border-white/60 dark:border-white/10" style={{ '--tab-color': activeColor } as React.CSSProperties}>
+        <div className="flex gap-1.5 mb-5 p-1.5 rounded-2xl bg-black/5 dark:bg-black/20 shrink-0 overflow-x-auto scrollbar-none">
+          {TABS.map(({ id, label, Icon, color }) => (
             <button
               key={id}
               onClick={() => setActiveTab(id)}
               className={`flex-1 min-w-[72px] flex items-center justify-center gap-1.5 py-2 px-2 rounded-xl text-[11px] font-bold transition-all ${
                 activeTab === id
-                  ? 'bg-white dark:bg-white/20 shadow-md text-[var(--primary-color)]'
+                  ? 'bg-white dark:bg-white/20 shadow-md'
                   : 'text-gray-500 hover:text-gray-700 dark:hover:text-gray-300'
               }`}
+              style={activeTab === id ? { color } : undefined}
             >
               <Icon className="w-3.5 h-3.5 shrink-0" />
               {label}
             </button>
           ))}
         </div>
+
+        {/* Colored accent bar matching active tab */}
+        <div className="h-px mb-4 rounded-full shrink-0 transition-all duration-300" style={{ background: `linear-gradient(90deg, ${activeColor}60, ${activeColor}20, transparent)` }} />
 
         <div key={activeTab} className="animate-tab-in flex-1 overflow-y-auto pr-2 scrollbar-none">
           {CONTENT[activeTab]}

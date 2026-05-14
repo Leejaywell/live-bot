@@ -1,5 +1,5 @@
 {
-  "productName": "Streamix",
+  "productName": "流光",
   "version": "0.1.0",
   "identifier": "com.streamix.app",
   "build": {
@@ -12,7 +12,7 @@
     "macOSPrivateApi": true,
     "windows": [
       {
-        "title": "Streamix",
+        "title": "流光",
         "width": 1080,
         "height": 720,
         "resizable": true,

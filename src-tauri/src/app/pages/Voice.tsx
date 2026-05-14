@@ -6,7 +6,7 @@ import { api, AppConfig } from '../lib/api';
 import { Link } from 'react-router-dom';
 import { Mic, MicOff, ChevronDown, Cpu, MessageSquareText, Settings as SettingsIcon, AlertCircle } from 'lucide-react';
 import { toast } from 'sonner';
-import { TtsProvider, availableProviders, findVoice } from '../lib/voices';
+import { TtsProvider, TtsVoice, availableProviders, findVoice } from '../lib/voices';
 import { VoicePicker } from '../components/VoicePicker';
 import { Modal, ModalCloseButton } from '../components/Modal';
 
@@ -187,7 +187,7 @@ export function Voice() {
       if (asr) setAsrId(asr.Id);
       if (tts) setTtsId(tts.Id);
       if (cfg.TtsVoice) setTtsVoice(cfg.TtsVoice);
-      setTtsEnabled(cfg.TtsEnabled ?? false);
+      setTtsEnabled(false); // always start off; runtime-only
       if (asr) setAsrEnabled(true);
     }).catch(console.error).finally(() => setLoading(false));
   }, []);
@@ -205,7 +205,7 @@ export function Voice() {
   const onLlmChange  = (id: string) => { setLlmId(id);  scheduleSave({ ActiveProviderId: id }); };
   const onAsrChange  = (id: string) => { setAsrId(id); scheduleSave({ ActiveAsrProviderId: id }); };
   const onTtsChange  = (id: string) => { setTtsId(id); scheduleSave({ ActiveTtsProviderId: id }); };
-  const onTtsToggle  = (v: boolean) => { setTtsEnabled(v); scheduleSave({ TtsEnabled: v }); };
+  const onTtsToggle  = (v: boolean) => { setTtsEnabled(v); };
   const onVoiceChange  = (v: string) => { setTtsVoice(v); scheduleSave({ TtsVoice: v }); };
   const onAsrToggle  = (v: boolean) => {
     setAsrEnabled(v);
@@ -367,16 +367,14 @@ export function Voice() {
               {ttsEnabled && ttsOpts.length > 0 && (
                 <button
                   onClick={() => setVoiceOpen(true)}
-                  className="flex items-center gap-2 h-[34px] px-4 rounded-full text-[11px] font-bold
-                             bg-white/80 dark:bg-white/10 border border-white/40
-                             hover:bg-white transition-all text-gray-600 dark:text-gray-200"
+                  className="flex items-center gap-1.5 h-[30px] px-3 rounded-xl text-[11px] font-bold
+                             bg-white/60 dark:bg-white/10 border border-gray-200 dark:border-white/20
+                             hover:bg-white/80 transition-all text-gray-600 dark:text-gray-200"
                 >
-                  <span>
-                    {(() => {
-                      const v = (['edge_tts','minimax_tts','volcano_engine'] as TtsProvider[]).reduce<TtsProvider | undefined>((found, p) => found ?? findVoice(p, ttsVoice), undefined);
-                      return v ? `${v.name}` : (ttsVoice || '声音');
-                    })()}
-                  </span>
+                  {(() => {
+                    const v = (['edge_tts','minimax_tts','volcano_engine'] as TtsProvider[]).reduce<TtsVoice | undefined>((found, p) => found ?? findVoice(p, ttsVoice), undefined);
+                    return v ? v.name : (ttsVoice || '声音');
+                  })()}
                   <ChevronDown className="w-3 h-3 opacity-50" />
                 </button>
               )}

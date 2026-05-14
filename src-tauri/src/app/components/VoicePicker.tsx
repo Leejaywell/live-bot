@@ -52,9 +52,9 @@ export function VoicePicker({ open, onClose, providers, currentVoice, onSelect }
     <div className="fixed inset-0 z-[99999] flex items-center justify-center" onClick={onClose}>
       <div className={cn('absolute inset-0 bg-black/30 backdrop-blur-sm', closing ? 'animate-backdrop-out' : 'animate-backdrop-in')} />
       <div ref={ref} onClick={e => e.stopPropagation()}
-        className={cn('relative w-[420px] max-h-[520px] bg-white dark:bg-gray-900 rounded-2xl shadow-2xl border border-gray-200 dark:border-white/10 flex flex-col overflow-hidden', closing ? 'animate-modal-out' : 'animate-modal-in')}>
+        className={cn('relative w-[420px] max-h-[520px] glass-card rounded-[18px] backdrop-blur-xl shadow-2xl border border-white/60 dark:border-white/10 flex flex-col overflow-hidden', closing ? 'animate-modal-out' : 'animate-modal-in')}>
         {/* Header */}
-        <div className="flex items-center justify-between px-4 py-3 border-b border-gray-200 dark:border-white/10 shrink-0">
+        <div className="flex items-center justify-between px-4 py-3 border-b border-white/10 shrink-0">
           <div className="flex items-center gap-2">
             <Volume2 className="w-4 h-4 text-[var(--primary-color)]" />
             <span className="text-[12px] font-semibold">选择 TTS 声音</span>
@@ -65,7 +65,7 @@ export function VoicePicker({ open, onClose, providers, currentVoice, onSelect }
         </div>
 
         {/* Filters */}
-        <div className="flex items-center gap-2 px-4 py-2.5 border-b border-gray-100 dark:border-white/5 bg-gray-50 dark:bg-white/3 shrink-0 flex-wrap">
+        <div className="flex items-center gap-2 px-4 py-2.5 border-b border-white/10 bg-white/20 dark:bg-white/5 shrink-0 flex-wrap">
           {/* Provider tabs */}
           <div className="flex items-center gap-0.5 p-0.5 rounded-lg bg-gray-200/60 dark:bg-white/8">
             {providers.map(k => (
@@ -106,7 +106,7 @@ export function VoicePicker({ open, onClose, providers, currentVoice, onSelect }
               <button key={v.id}
                 onClick={() => { onSelect(v.id); onClose(); }}
                 className={cn(
-                  'w-full flex items-center gap-2.5 px-3 py-2 rounded-lg text-left transition-colors hover:bg-gray-100 dark:hover:bg-white/8',
+                  'w-full flex items-center gap-2.5 px-3 py-2 rounded-lg text-left transition-colors hover:bg-black/5 dark:hover:bg-white/8',
                   currentVoice === v.id ? 'bg-[var(--primary-color)]/8 border border-[var(--primary-color)]/20' : 'border border-transparent',
                 )}>
                 <div className="flex-1 min-w-0">

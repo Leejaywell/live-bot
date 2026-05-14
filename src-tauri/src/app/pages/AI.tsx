@@ -254,28 +254,14 @@ export function AI() {
               const curProv = ttsProviders.find(p => p.Id === ttsProviderId) ?? ttsProviders[0];
               const v = (['edge_tts','minimax_tts','volcano_engine'] as TtsProvider[]).reduce<TtsVoice | undefined>((found, p) => found ?? findVoice(p, ttsVoice), undefined);
               return (
-                <div className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-full bg-white/80 border border-white/40">
+                <button
+                  onClick={() => setVoiceOpen(true)}
+                  className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-full bg-white/80 border border-white/40 text-[11px] font-bold text-gray-600 hover:bg-white transition-colors"
+                >
                   <Volume2 className="w-3.5 h-3.5 text-gray-400 shrink-0" />
-                  {ttsProviders.length > 1 && (
-                    <div className="relative">
-                      <select value={ttsProviderId} onChange={e => {
-                        const id = e.target.value;
-                        setTtsProviderId(id);
-                        const prov = ttsProviders.find(p => p.Id === id);
-                        if (prov) { setTtsVoice(prov.Model || 'zh-CN-XiaoxiaoNeural'); api.saveConfig({ ...config!, ActiveTtsProviderId: id }); }
-                      }} className="h-[22px] pl-1.5 pr-5 rounded-lg appearance-none text-[11px] font-bold bg-transparent border-0 focus:outline-none text-gray-600 cursor-pointer">
-                        {ttsProviders.map(p => <option key={p.Id} value={p.Id}>{p.Nickname || p.Name}</option>)}
-                      </select>
-                      <ChevronDown className="absolute right-0.5 top-1/2 -translate-y-1/2 w-3 h-3 text-gray-400 pointer-events-none" />
-                    </div>
-                  )}
-                  {ttsProviders.length === 1 && <span className="text-[11px] font-bold text-gray-500">{curProv.Nickname || curProv.Name}</span>}
-                  <span className="w-px h-3 bg-gray-200 shrink-0" />
-                  <button onClick={() => setVoiceOpen(true)} className="flex items-center gap-0.5 text-[11px] font-bold text-gray-600">
-                    {v ? v.name : (ttsVoice || '选声音')}
-                    <ChevronDown className="w-3 h-3 opacity-50" />
-                  </button>
-                </div>
+                  {v ? v.name : (ttsVoice || '选声音')}
+                  <ChevronDown className="w-3 h-3 opacity-50" />
+                </button>
               );
             })()}
             {firstEnabled && <span className="text-[11px] font-bold text-gray-400">默认 <span className="text-gray-600">{firstEnabled.Nickname}</span> · @昵称 指定</span>}
@@ -332,7 +318,6 @@ export function AI() {
           />
         </div>
         <div className="flex gap-2 mt-4">
-          <Button variant="default" className="flex-1" onClick={() => setSettingsOpen(false)}>取消</Button>
           <Button variant="primary" className="flex-1" onClick={async () => {
             if (!config) return;
             const next = { ...config, AiAssistantPrompt: promptDraft };

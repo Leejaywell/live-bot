@@ -67,8 +67,8 @@ export function Sidebar({ collapsed, connected, onToggleThemePanel, onToggleSide
       <div className="w-[196px] h-full flex flex-col pb-3.5 px-3.5">
         <div className="flex items-center justify-between px-2 h-[56px] flex-shrink-0">
           <div className="flex items-center gap-2">
-            <img src={logoUrl} alt="流光" className="w-[28px] h-[28px] rounded-lg" />
-            <span className="font-bold text-[14px] whitespace-nowrap">流光</span>
+            <img src={logoUrl} alt="流光" className="w-[34px] h-[34px] rounded-xl" />
+            <span className="font-black text-[15px] whitespace-nowrap tracking-tight">流光</span>
           </div>
           <IconButton onClick={onToggleSidebar} className="opacity-60 hover:opacity-100">
             <ChevronLeft className="w-4 h-4" />
@@ -108,7 +108,7 @@ export function Sidebar({ collapsed, connected, onToggleThemePanel, onToggleSide
                     : 'text-gray-500 hover:text-gray-900 dark:hover:text-white hover:bg-white/40 dark:hover:bg-white/5'
                 )}
               >
-                <Icon className={cn('w-[20px] h-[20px] transition-transform duration-300', !isActive && 'group-hover:scale-110')} />
+                <Icon className={cn('w-[15px] h-[15px] transition-transform duration-300 shrink-0', !isActive && 'group-hover:scale-110')} />
                 <span className="text-[13px] font-black flex-1 tracking-tight whitespace-nowrap">{item.label}</span>
               </Link>
             );

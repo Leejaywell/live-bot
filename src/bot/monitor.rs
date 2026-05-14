@@ -712,11 +712,12 @@ async fn call_ai(
 ) -> String {
     // 找 bot（人设信息）
     let Some(bot) = config.ai_bots.iter().find(|b| b.id == bot_id) else {
-        return "机器人配置不存在".to_string();
+        eprintln!("[AI] bot {bot_id} not found");
+        return String::new();
     };
-    // 找 provider（API 连接信息）
     let Some(provider) = config.ai_providers.iter().find(|p| p.id == bot.provider_id) else {
-        return "机器人引用的模型服务不存在".to_string();
+        eprintln!("[AI] provider not found for bot {bot_id}");
+        return String::new();
     };
 
     let (history, system_prompt, enriched_prompt) = {
@@ -737,7 +738,7 @@ async fn call_ai(
     let reply = agent
         .run_with_provider(http, provider, &system_prompt, &history, &enriched_prompt)
         .await
-        .unwrap_or_else(|_| "机器人坏掉了...".to_string());
+        .unwrap_or_else(|e| { eprintln!("[AI] 调用失败: {e}"); String::new() });
 
     {
         let mut mem = memory.lock().unwrap();
@@ -757,10 +758,12 @@ async fn call_ai_voice(
     agent:  &Arc<crate::bot::agent::AgentRuntime>,
 ) -> String {
     let Some(bot) = config.ai_bots.iter().find(|b| b.id == bot_id) else {
-        return "机器人配置不存在".to_string();
+        eprintln!("[AI voice] bot {bot_id} not found");
+        return String::new();
     };
     let Some(provider) = config.ai_providers.iter().find(|p| p.id == bot.provider_id) else {
-        return "机器人引用的模型服务不存在".to_string();
+        eprintln!("[AI voice] provider not found for bot {bot_id}");
+        return String::new();
     };
     let sys = config.voice_system_prompt.replace("{{gender}}", &config.voice_gender);
     let (history, enriched_prompt) = {
@@ -770,7 +773,7 @@ async fn call_ai_voice(
     let reply = agent
         .run_with_provider(http, provider, &sys, &history, &enriched_prompt)
         .await
-        .unwrap_or_else(|_| "机器人坏掉了...".to_string());
+        .unwrap_or_else(|e| { eprintln!("[AI] 调用失败: {e}"); String::new() });
     {
         let mut mem = memory.lock().unwrap();
         mem.push_turn(bot_id, prompt.to_string(), reply.clone());

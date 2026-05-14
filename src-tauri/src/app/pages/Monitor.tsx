@@ -90,9 +90,9 @@ export function Monitor() {
   const [isPaused, setIsPaused] = useState(false);
   const isPausedRef = useRef(false);
 
-  // TTS announce state
-  const [isTtsEnabled, setIsTtsEnabled] = useState(false);
-  const isTtsEnabledRef = useRef(false);
+  // TTS announce state — runtime only, synced via sessionStorage with AutoReply
+  const [isTtsEnabled, setIsTtsEnabled] = useState(() => sessionStorage.getItem('danmuAnnounce') === 'true');
+  const isTtsEnabledRef = useRef(sessionStorage.getItem('danmuAnnounce') === 'true');
   const [ttsProviders, setTtsProviders] = useState<AiProvider[]>([]);
   const [selectedTtsId, setSelectedTtsId] = useState('');
   const [ttsVoice, setTtsVoice] = useState('');
@@ -144,6 +144,7 @@ export function Monitor() {
 
     api.getMonitorLogs().then(rawLogs => {
       bufferRef.current = (rawLogs || [])
+        .filter(l => !l.includes('机器人坏掉了') && !l.startsWith('自动弹幕已发送'))
         .map(parseMonitorLog)
         .filter((e): e is LogEntry => e !== null)
         .slice(-200);
@@ -160,8 +161,8 @@ export function Monitor() {
             if (entry) {
               bufferRef.current.push(entry);
               // TTS announce new danmaku
-              if (isTtsEnabledRef.current && entry.type === 'danmu' && ttsVoiceRef.current) {
-                const text = entry.content || entry.text;
+              if (isTtsEnabledRef.current && entry.type === 'danmu' && entry.user && ttsVoiceRef.current) {
+                const text = `${entry.user}说${entry.content || entry.text}`;
                 invoke('speak_text_cmd', { text, voice: ttsVoiceRef.current }).catch(console.error);
               }
             }
@@ -242,6 +243,7 @@ export function Monitor() {
     const next = !isTtsEnabled;
     setIsTtsEnabled(next);
     isTtsEnabledRef.current = next;
+    sessionStorage.setItem('danmuAnnounce', String(next));
   };
 
   const sendDanmu = async () => {
@@ -316,22 +318,15 @@ export function Monitor() {
               <Toggle checked={isTtsEnabled} onChange={toggleTts} />
             </div>
 
-            {/* TTS controls — visible when enabled */}
+            {/* TTS voice select — visible when enabled */}
             {isTtsEnabled && ttsProviders.length > 0 && (
-              <>
-                <GSelect
-                  value={selectedTtsId}
-                  onChange={handleTtsProviderChange}
-                  options={ttsProviders.map(p => ({ value: p.Id, label: p.Nickname || p.Name }))}
-                />
-                <button
-                  onClick={() => setVoiceOpen(true)}
-                  className="flex items-center gap-1.5 h-[26px] px-2.5 rounded-lg text-[11px] bg-white/60 dark:bg-white/10 border border-gray-200 dark:border-white/20 hover:bg-white/80 dark:hover:bg-white/15 transition-all text-gray-600 dark:text-gray-200"
-                >
-                  <span>{ttsVoiceLabel}</span>
-                  <ChevronDown className="w-3 h-3 opacity-50" />
-                </button>
-              </>
+              <button
+                onClick={() => setVoiceOpen(true)}
+                className="flex items-center gap-1.5 h-[26px] px-2.5 rounded-lg text-[11px] bg-white/60 dark:bg-white/10 border border-gray-200 dark:border-white/20 hover:bg-white/80 dark:hover:bg-white/15 transition-all text-gray-600 dark:text-gray-200"
+              >
+                <span>{ttsVoiceLabel}</span>
+                <ChevronDown className="w-3 h-3 opacity-50" />
+              </button>
             )}
           </div>
 

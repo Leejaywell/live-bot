@@ -102,6 +102,8 @@ export interface AppConfig {
   GeneralWelcomeEnabled: boolean;
   GeneralWelcomeMsgs: string[];
   SpecialWelcomeList: SpecialWelcomeEntry[];
+  /** 弹幕播报开关（仅内存，不持久化） */
+  DanmuAnnounce?: boolean;
 }
 
 export interface UserInfo {
