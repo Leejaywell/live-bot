@@ -39,7 +39,7 @@ tauri-plugin-dialog = { version = "2.0.0", optional = true }
 tauri-build = { version = "2.0.5", features = [], optional = true }
 
 [features]
-default = ["tauri", "vad", "asr", "playback"]
+default = ["tauri", "vad", "asr", "playback", "model-hub"]
 tauri = [
     "dep:tauri",
     "dep:tauri-build",
@@ -50,6 +50,7 @@ tauri = [
     "dep:tauri-plugin-notification",
     "dep:tauri-plugin-dialog"
 ]
+model-hub = ["streamix-voice/model-hub"]
 vad = ["streamix-voice/vad"]
 asr = ["streamix-voice/asr"]
 playback = ["streamix-voice/playback"]

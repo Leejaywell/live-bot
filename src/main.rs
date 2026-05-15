@@ -26,6 +26,8 @@ struct SharedState {
     /// 预览 TTS（AI页播放按钮）：(router, 当前声音, cancel)
     #[cfg(feature = "tauri")]
     preview_tts: Arc<Mutex<Option<(streamix_voice::SpeakerRouter, String, CancellationToken)>>>,
+    #[cfg(feature = "tauri")]
+    model_dl_cancels: Arc<Mutex<std::collections::HashMap<String, CancellationToken>>>,
 }
 
 struct MonitorHandle {
@@ -196,6 +198,78 @@ async fn get_system_info() -> Result<serde_json::Value, String> {
     }))
 }
 
+/// 在 monitor 启动前自动补全缺失的本地模型文件。
+/// 通过 ModelHub 下载单文件（VAD），对需要解压的模型复用现有 dl_* 函数。
+#[cfg(all(feature = "tauri", feature = "model-hub"))]
+async fn auto_download_models(
+    app: &AppHandle,
+    model_dir: &std::path::Path,
+    config: &AppConfig,
+    cancel: CancellationToken,
+) {
+    use streamix_voice::{ModelHub, ModelSource, DownloadStage};
+
+    let hub = ModelHub::new(model_dir);
+
+    // ── VAD (silero_vad.onnx, ~1.8 MB) ───────────────────────────────────────
+    let vad_path = model_dir.join("silero_vad.onnx");
+    if !vad_path.exists() && !cancel.is_cancelled() {
+        let _ = app.emit("monitor-log", serde_json::json!("正在自动下载 VAD 模型…"));
+        let use_mirror = detect_china_ip().await;
+        let url = if use_mirror {
+            "https://mirror.ghproxy.com/https://github.com/snakers4/silero-vad/raw/master/src/silero_vad/data/silero_vad.onnx"
+        } else {
+            "https://github.com/snakers4/silero-vad/raw/master/src/silero_vad/data/silero_vad.onnx"
+        };
+
+        let (tx, mut rx) = tokio::sync::mpsc::channel::<streamix_voice::DownloadProgress>(64);
+        let app_c = app.clone();
+        tokio::spawn(async move {
+            while let Some(p) = rx.recv().await {
+                if p.stage == DownloadStage::Done { break; }
+                let pct = p.total.map(|t| (p.downloaded as f64 / t as f64 * 99.0) as u32).unwrap_or(0);
+                let mut payload = serde_json::json!({
+                    "model_id": "silero-vad", "stage": "downloading", "pct": pct,
+                    "downloaded_mb": format!("{:.1}", p.downloaded as f64 / 1_048_576.0),
+                });
+                if let Some(t) = p.total {
+                    payload["total_mb"] = format!("{:.1}", t as f64 / 1_048_576.0).into();
+                }
+                let _ = app_c.emit("model-dl-progress", payload);
+            }
+        });
+
+        let result = tokio::select! {
+            _ = cancel.cancelled() => return,
+            r = hub.ensure(ModelSource::url(url, "silero_vad.onnx"), Some(tx)) => r,
+        };
+        match result {
+            Ok(_) => {
+                let _ = app.emit("model-dl-progress",
+                    serde_json::json!({"model_id": "silero-vad", "stage": "done", "pct": 100u32}));
+                let _ = app.emit("monitor-log", serde_json::json!("VAD 模型就绪"));
+            }
+            Err(e) => {
+                let _ = app.emit("monitor-log", serde_json::json!(format!("VAD 模型下载失败: {e}")));
+            }
+        }
+    }
+
+    // ── SenseVoice ASR（仅当无外部 ASR URL 时使用本地模型）───────────────────
+    #[cfg(feature = "vad")]
+    {
+        let asr_url = crate::bot::monitor::resolve_asr_url(config);
+        let sv_dir = model_dir.join("sherpa-onnx-sense-voice-zh-en-ja-ko-yue-int8-2024-07-17");
+        if asr_url.is_empty() && !sv_dir.join("model.int8.onnx").exists() && !cancel.is_cancelled() {
+            let _ = app.emit("monitor-log", serde_json::json!("正在自动下载 SenseVoice 模型（约 300 MB）…"));
+            match dl_sensevoice(app.clone(), cancel.clone()).await {
+                Ok(_)  => { let _ = app.emit("monitor-log", serde_json::json!("SenseVoice 模型就绪")); }
+                Err(e) => { let _ = app.emit("monitor-log", serde_json::json!(format!("SenseVoice 下载失败: {e}"))); }
+            }
+        }
+    }
+}
+
 #[cfg(feature = "tauri")]
 #[tauri::command]
 async fn start_monitor(
@@ -268,7 +342,17 @@ async fn start_monitor(
     };
 
     let models = model_dir(&app);
+    #[cfg(feature = "model-hub")]
+    let auto_dl_app = app.clone();
+    #[cfg(feature = "model-hub")]
+    let auto_dl_cancel = cancel.clone();
     tokio::spawn(async move {
+        // 自动补全缺失模型后再启动引擎
+        #[cfg(feature = "model-hub")]
+        if let Ok(cfg) = AppConfig::load_or_default() {
+            auto_download_models(&auto_dl_app, &models, &cfg, auto_dl_cancel).await;
+        }
+
         if let Err(e) =
             crate::bot::monitor::run_monitor_loop(emitter, http, room_id, cancel, session_id, danmaku_buf, models)
                 .await
@@ -827,155 +911,415 @@ fn model_dir(app: &AppHandle) -> std::path::PathBuf {
 }
 
 #[cfg(feature = "tauri")]
+fn emit_mdl(app: &AppHandle, model_id: &str, stage: &str, pct: u32, downloaded_mb: Option<f64>, total_mb: Option<f64>) {
+    let mut payload = serde_json::json!({ "model_id": model_id, "stage": stage, "pct": pct });
+    if let Some(d) = downloaded_mb { payload["downloaded_mb"] = format!("{:.1}", d).into(); }
+    if let Some(t) = total_mb { payload["total_mb"] = format!("{:.1}", t).into(); }
+    let _ = app.emit("model-dl-progress", payload);
+}
+
+#[cfg(feature = "tauri")]
+async fn stream_to_file(
+    app: &AppHandle,
+    model_id: &str,
+    mut resp: reqwest::Response,
+    path: &std::path::Path,
+    cancel: &CancellationToken,
+    overall: &mut u64,
+    total: u64,
+) -> Result<u64, String> {
+    use tokio::io::AsyncWriteExt;
+    let mut file = tokio::fs::File::create(path).await.map_err(|e| format!("创建文件失败: {e}"))?;
+    let mut written: u64 = 0;
+    loop {
+        tokio::select! {
+            biased;
+            _ = cancel.cancelled() => {
+                drop(file);
+                let _ = tokio::fs::remove_file(path).await;
+                emit_mdl(app, model_id, "cancelled", 0, None, None);
+                return Err("已取消下载".to_string());
+            }
+            chunk_result = resp.chunk() => {
+                match chunk_result {
+                    Err(e) => return Err(format!("下载中断: {e}")),
+                    Ok(None) => break,
+                    Ok(Some(chunk)) => {
+                        file.write_all(&chunk).await.map_err(|e| format!("写入失败: {e}"))?;
+                        written += chunk.len() as u64;
+                        *overall += chunk.len() as u64;
+                        if total > 0 {
+                            let pct = ((*overall as f64 / total as f64) * 100.0).min(99.0) as u32;
+                            emit_mdl(app, model_id, "downloading", pct,
+                                Some(*overall as f64 / 1_048_576.0),
+                                Some(total as f64 / 1_048_576.0));
+                        }
+                    }
+                }
+            }
+        }
+    }
+    file.flush().await.map_err(|e| e.to_string())?;
+    Ok(written)
+}
+
+#[cfg(feature = "tauri")]
 #[tauri::command]
-fn check_voice_models(app: AppHandle) -> Result<serde_json::Value, String> {
+fn check_models(app: AppHandle) -> Result<serde_json::Value, String> {
     let base = model_dir(&app);
+    let _ = std::fs::create_dir_all(&base);
 
     let vad_ok = base.join("silero_vad.onnx").exists();
-    let asr_local_dir = base.join("sherpa-onnx-sense-voice-zh-en-ja-ko-yue-int8-2024-07-17");
-    let asr_local_ok = asr_local_dir.join("model.int8.onnx").exists()
-        && asr_local_dir.join("tokens.txt").exists();
+    let sv_dir = base.join("sherpa-onnx-sense-voice-zh-en-ja-ko-yue-int8-2024-07-17");
+    let sensevoice_ok = sv_dir.join("model.int8.onnx").exists() && sv_dir.join("tokens.txt").exists();
+    let pf_dir = base.join("sherpa-onnx-paraformer-zh-2023-09-14");
+    let paraformer_ok = pf_dir.join("model.int8.onnx").exists() || pf_dir.join("model.onnx").exists();
+    let wd = base.join("whisper");
+    let kokoro_dir = base.join("kokoro");
+    let kokoro_ok = kokoro_dir.join("kokoro-v1.0.int8.onnx").exists() || kokoro_dir.join("kokoro-v1.0.onnx").exists();
 
     Ok(serde_json::json!({
-        "vad_model_ok": vad_ok,
-        "asr_local_model_ok": asr_local_ok,
-        "asr_model_dir": asr_local_dir.to_string_lossy(),
+        "model_dir": base.to_string_lossy(),
+        "models": {
+            "silero-vad": vad_ok,
+            "sensevoice": sensevoice_ok,
+            "paraformer": paraformer_ok,
+            "whisper-tiny": wd.join("ggml-tiny.bin").exists(),
+            "whisper-small": wd.join("ggml-small.bin").exists(),
+            "whisper-medium": wd.join("ggml-medium.bin").exists(),
+            "kokoro": kokoro_ok,
+        }
     }))
 }
 
 #[cfg(feature = "tauri")]
 #[tauri::command]
-async fn download_sensevoice_model(app: AppHandle) -> Result<String, String> {
+async fn delete_model(app: AppHandle, model_id: String) -> Result<String, String> {
     let base = model_dir(&app);
-    let target_dir = base.join("sherpa-onnx-sense-voice-zh-en-ja-ko-yue-int8-2024-07-17");
-
-    // 已存在则跳过
-    if target_dir.join("model.int8.onnx").exists() && target_dir.join("tokens.txt").exists() {
-        return Ok("SenseVoice 模型已存在".to_string());
+    match model_id.as_str() {
+        "silero-vad" => {
+            let p = base.join("silero_vad.onnx");
+            if p.exists() { std::fs::remove_file(p).map_err(|e| e.to_string())?; }
+            Ok("VAD 模型已删除".to_string())
+        }
+        "sensevoice" => {
+            let d = base.join("sherpa-onnx-sense-voice-zh-en-ja-ko-yue-int8-2024-07-17");
+            if d.exists() { std::fs::remove_dir_all(d).map_err(|e| e.to_string())?; }
+            let tmp = base.join("_sensevoice_dl.tar.bz2");
+            if tmp.exists() { let _ = std::fs::remove_file(tmp); }
+            Ok("SenseVoice 模型已删除".to_string())
+        }
+        "paraformer" => {
+            let d = base.join("sherpa-onnx-paraformer-zh-2023-09-14");
+            if d.exists() { std::fs::remove_dir_all(d).map_err(|e| e.to_string())?; }
+            let tmp = base.join("_paraformer_dl.tar.bz2");
+            if tmp.exists() { let _ = std::fs::remove_file(tmp); }
+            Ok("Paraformer 模型已删除".to_string())
+        }
+        "whisper-tiny" | "whisper-small" | "whisper-medium" => {
+            let size = model_id.strip_prefix("whisper-").unwrap();
+            let p = base.join("whisper").join(format!("ggml-{}.bin", size));
+            if p.exists() { std::fs::remove_file(p).map_err(|e| e.to_string())?; }
+            Ok(format!("Whisper {} 模型已删除", size))
+        }
+        "kokoro" => {
+            let d = base.join("kokoro");
+            if d.exists() { std::fs::remove_dir_all(d).map_err(|e| e.to_string())?; }
+            Ok("Kokoro TTS 模型已删除".to_string())
+        }
+        _ => Err(format!("未知模型: {}", model_id)),
     }
+}
+
+// ---- private download helpers ----
+
+#[cfg(feature = "tauri")]
+async fn dl_silero_vad(app: AppHandle, cancel: CancellationToken) -> Result<String, String> {
+    let mid = "silero-vad";
+    let base = model_dir(&app);
+    let out = base.join("silero_vad.onnx");
+    if out.exists() { return Ok("VAD 模型已存在".to_string()); }
 
     let use_mirror = detect_china_ip().await;
-    let direct = "https://github.com/k2-fsa/sherpa-onnx/releases/download/asr-models/sherpa-onnx-sense-voice-zh-en-ja-ko-yue-int8-2024-07-17.tar.bz2";
-    let mirror = "https://ghproxy.com/https://github.com/k2-fsa/sherpa-onnx/releases/download/asr-models/sherpa-onnx-sense-voice-zh-en-ja-ko-yue-int8-2024-07-17.tar.bz2";
-    let url = if use_mirror { mirror } else { direct };
+    let url = if use_mirror {
+        "https://mirror.ghproxy.com/https://github.com/snakers4/silero-vad/raw/master/src/silero_vad/data/silero_vad.onnx"
+    } else {
+        "https://github.com/snakers4/silero-vad/raw/master/src/silero_vad/data/silero_vad.onnx"
+    };
+
+    let client = reqwest::Client::builder().timeout(std::time::Duration::from_secs(120)).build().map_err(|e| e.to_string())?;
+    emit_mdl(&app, mid, "downloading", 0, None, None);
+
+    let resp = client.get(url).send().await.map_err(|e| format!("下载失败: {e}"))?;
+    if !resp.status().is_success() { return Err(format!("下载失败: HTTP {}", resp.status())); }
+    let total = resp.content_length().unwrap_or(0);
+
+    std::fs::create_dir_all(&base).map_err(|e| e.to_string())?;
+    let mut overall = 0u64;
+    stream_to_file(&app, mid, resp, &out, &cancel, &mut overall, total).await?;
+
+    if out.exists() { emit_mdl(&app, mid, "done", 100, None, None); Ok("VAD 模型下载完成".to_string()) }
+    else { Err("下载后未找到模型文件".to_string()) }
+}
+
+#[cfg(feature = "tauri")]
+async fn dl_sensevoice(app: AppHandle, cancel: CancellationToken) -> Result<String, String> {
+    let mid = "sensevoice";
+    let base = model_dir(&app);
+    let filename = "sherpa-onnx-sense-voice-zh-en-ja-ko-yue-int8-2024-07-17.tar.bz2";
+    let target_dir = base.join("sherpa-onnx-sense-voice-zh-en-ja-ko-yue-int8-2024-07-17");
+
+    let use_mirror = detect_china_ip().await;
+    let direct_url = format!("https://github.com/k2-fsa/sherpa-onnx/releases/download/asr-models/{}", filename);
+    let mirror_url = format!("https://mirror.ghproxy.com/https://github.com/k2-fsa/sherpa-onnx/releases/download/asr-models/{}", filename);
+    let primary_url = if use_mirror { &mirror_url } else { &direct_url };
+
+    let client = reqwest::Client::builder()
+        .timeout(std::time::Duration::from_secs(1800))
+        .build().map_err(|e| e.to_string())?;
+
     let tmp = base.join("_sensevoice_dl.tar.bz2");
 
-    let _ = app.emit("voice-model-progress", serde_json::json!({ "stage": "downloading", "pct": 0u32 }));
+    emit_mdl(&app, mid, "downloading", 0, None, None);
 
-    // 下载
-    let client = reqwest::Client::builder()
-        .timeout(std::time::Duration::from_secs(600))
-        .build()
-        .map_err(|e| e.to_string())?;
+    let mut success = false;
+    let mut last_err = String::new();
 
-    let mut resp = client.get(url).send().await.map_err(|e| format!("下载失败: {e}"))?;
-    let total = resp.content_length().unwrap_or(0);
-    let mut downloaded: u64 = 0;
-    let _file = std::fs::File::create(&tmp).map_err(|e| e.to_string())?;
+    for attempt in 1..=3u32 {
+        if attempt > 1 { tokio::time::sleep(std::time::Duration::from_secs(5)).await; }
 
-    use tokio::io::AsyncWriteExt;
-    let tmp_path = tmp.clone();
-    let app2 = app.clone();
+        let downloaded_bytes = if tmp.exists() { std::fs::metadata(&tmp).map(|m| m.len()).unwrap_or(0) } else { 0 };
+        let fallback_url = if use_mirror { &direct_url } else { &mirror_url };
+        let request = if downloaded_bytes > 0 {
+            client.get(primary_url.as_str()).header(reqwest::header::RANGE, format!("bytes={}-", downloaded_bytes))
+        } else { client.get(primary_url.as_str()) };
 
-    // 使用同步 IO 写文件，异步收数据
-    let mut tmp_file = tokio::fs::File::from_std(std::fs::File::create(&tmp_path).map_err(|e| e.to_string())?);
-    while let Some(chunk) = resp.chunk().await.map_err(|e| format!("下载中断: {e}"))? {
-        tmp_file.write_all(&chunk).await.map_err(|e| format!("写入失败: {e}"))?;
-        downloaded += chunk.len() as u64;
-        if total > 0 {
-            let pct = ((downloaded as f64 / total as f64) * 100.0) as u32;
-            let _ = app2.emit("voice-model-progress", serde_json::json!({
-                "stage": "downloading",
-                "pct": pct,
-                "downloaded_mb": format!("{:.1}", downloaded as f64 / 1_048_576.0),
-                "total_mb": format!("{:.1}", total as f64 / 1_048_576.0),
-            }));
+        let mut resp = match request.send().await {
+            Ok(r) if r.status().is_success() || r.status() == reqwest::StatusCode::PARTIAL_CONTENT => r,
+            Ok(_) => match client.get(fallback_url.as_str()).send().await {
+                Ok(gr) if gr.status().is_success() => gr,
+                Ok(gr) => { last_err = format!("HTTP {}", gr.status()); continue; }
+                Err(e) => { last_err = e.to_string(); continue; }
+            },
+            Err(e) => { last_err = e.to_string(); continue; }
+        };
+
+        let is_partial = resp.status() == reqwest::StatusCode::PARTIAL_CONTENT;
+        let total = if is_partial { resp.content_length().unwrap_or(0) + downloaded_bytes } else { resp.content_length().unwrap_or(0) };
+        let mut current = if is_partial { downloaded_bytes } else { 0 };
+
+        std::fs::create_dir_all(&base).map_err(|e| e.to_string())?;
+
+        use tokio::io::AsyncWriteExt;
+        let mut file = if is_partial && tmp.exists() {
+            tokio::fs::OpenOptions::new().append(true).open(&tmp).await.map_err(|e| e.to_string())?
+        } else { tokio::fs::File::create(&tmp).await.map_err(|e| e.to_string())? };
+
+        let mut stream_ok = true;
+        'stream: loop {
+            tokio::select! {
+                biased;
+                _ = cancel.cancelled() => {
+                    drop(file);
+                    let _ = tokio::fs::remove_file(&tmp).await;
+                    emit_mdl(&app, mid, "cancelled", 0, None, None);
+                    return Err("已取消下载".to_string());
+                }
+                chunk_result = resp.chunk() => {
+                    match chunk_result {
+                        Err(e) => { stream_ok = false; last_err = e.to_string(); break 'stream; }
+                        Ok(None) => break 'stream,
+                        Ok(Some(c)) => {
+                            if let Err(e) = file.write_all(&c).await { stream_ok = false; last_err = e.to_string(); break 'stream; }
+                            current += c.len() as u64;
+                            if total > 0 {
+                                let pct = ((current as f64 / total as f64) * 100.0) as u32;
+                                emit_mdl(&app, mid, "downloading", pct,
+                                    Some(current as f64 / 1_048_576.0), Some(total as f64 / 1_048_576.0));
+                            }
+                        }
+                    }
+                }
+            }
         }
-    }
-    drop(tmp_file);
-
-    let _ = app.emit("voice-model-progress", serde_json::json!({ "stage": "extracting", "pct": 100u32 }));
-
-    // 解压
-    std::fs::create_dir_all(&base).map_err(|e| e.to_string())?;
-    let output = std::process::Command::new("tar")
-        .arg("xf")
-        .arg(&tmp)
-        .arg("-C")
-        .arg(&base)
-        .output()
-        .map_err(|e| format!("解压失败: {e}"))?;
-
-    if !output.status.success() {
-        let stderr = String::from_utf8_lossy(&output.stderr);
-        return Err(format!("解压失败: {}", stderr));
+        if stream_ok { file.flush().await.map_err(|e| e.to_string())?; success = true; break; }
     }
 
-    // 清理临时文件
+    if !success { return Err(format!("下载多次失败: {}", last_err)); }
+
+    emit_mdl(&app, mid, "extracting", 100, None, None);
+    let out = std::process::Command::new("tar").arg("xf").arg(&tmp).arg("-C").arg(&base)
+        .output().map_err(|e| format!("解压失败: {e}"))?;
+    if !out.status.success() { return Err(format!("解压失败: {}", String::from_utf8_lossy(&out.stderr))); }
     let _ = std::fs::remove_file(&tmp);
 
     if target_dir.join("model.int8.onnx").exists() {
-        let _ = app.emit("voice-model-progress", serde_json::json!({ "stage": "done", "pct": 100u32 }));
-        Ok("SenseVoice 模型下载完成".to_string())
-    } else {
-        Err("解压后未找到模型文件，请检查目录结构".to_string())
+        emit_mdl(&app, mid, "done", 100, None, None);
+        Ok("SenseVoice 模型已准备就绪".to_string())
+    } else { Err("模型文件校验失败".to_string()) }
+}
+
+#[cfg(feature = "tauri")]
+async fn dl_paraformer(app: AppHandle, cancel: CancellationToken) -> Result<String, String> {
+    let mid = "paraformer";
+    let base = model_dir(&app);
+    let filename = "sherpa-onnx-paraformer-zh-2023-09-14.tar.bz2";
+    let target_dir = base.join("sherpa-onnx-paraformer-zh-2023-09-14");
+    let tmp = base.join("_paraformer_dl.tar.bz2");
+
+    let use_mirror = detect_china_ip().await;
+    let direct = format!("https://github.com/k2-fsa/sherpa-onnx/releases/download/asr-models/{}", filename);
+    let mirror = format!("https://mirror.ghproxy.com/https://github.com/k2-fsa/sherpa-onnx/releases/download/asr-models/{}", filename);
+    let url = if use_mirror { &mirror } else { &direct };
+
+    let client = reqwest::Client::builder().timeout(std::time::Duration::from_secs(1800)).build().map_err(|e| e.to_string())?;
+    emit_mdl(&app, mid, "downloading", 0, None, None);
+
+    let resp = client.get(url.as_str()).send().await.map_err(|e| format!("下载失败: {e}"))?;
+    if !resp.status().is_success() { return Err(format!("下载失败: HTTP {}", resp.status())); }
+    let total = resp.content_length().unwrap_or(0);
+
+    std::fs::create_dir_all(&base).map_err(|e| e.to_string())?;
+    let mut overall = 0u64;
+    stream_to_file(&app, mid, resp, &tmp, &cancel, &mut overall, total).await?;
+
+    emit_mdl(&app, mid, "extracting", 100, None, None);
+    let out = std::process::Command::new("tar").arg("xf").arg(&tmp).arg("-C").arg(&base)
+        .output().map_err(|e| format!("解压失败: {e}"))?;
+    let _ = std::fs::remove_file(&tmp);
+    if !out.status.success() { return Err(format!("解压失败: {}", String::from_utf8_lossy(&out.stderr))); }
+
+    if target_dir.join("model.int8.onnx").exists() || target_dir.join("model.onnx").exists() {
+        emit_mdl(&app, mid, "done", 100, None, None);
+        Ok("Paraformer 模型已准备就绪".to_string())
+    } else { Err("模型文件校验失败".to_string()) }
+}
+
+#[cfg(feature = "tauri")]
+async fn dl_whisper(app: AppHandle, cancel: CancellationToken, size: &str) -> Result<String, String> {
+    let mid = format!("whisper-{}", size);
+    let base = model_dir(&app);
+    let wd = base.join("whisper");
+    let out = wd.join(format!("ggml-{}.bin", size));
+    if out.exists() { return Ok(format!("Whisper {} 模型已存在", size)); }
+
+    let use_mirror = detect_china_ip().await;
+    let hf_base = if use_mirror { "https://hf-mirror.com" } else { "https://huggingface.co" };
+    let url = format!("{}/ggerganov/whisper.cpp/resolve/main/ggml-{}.bin", hf_base, size);
+
+    let client = reqwest::Client::builder().timeout(std::time::Duration::from_secs(3600)).build().map_err(|e| e.to_string())?;
+    emit_mdl(&app, &mid, "downloading", 0, None, None);
+
+    let resp = client.get(&url).send().await.map_err(|e| format!("下载失败: {e}"))?;
+    if !resp.status().is_success() { return Err(format!("下载失败: HTTP {}", resp.status())); }
+    let total = resp.content_length().unwrap_or(0);
+
+    std::fs::create_dir_all(&wd).map_err(|e| e.to_string())?;
+    let mut overall = 0u64;
+    stream_to_file(&app, &mid, resp, &out, &cancel, &mut overall, total).await?;
+
+    if out.exists() { emit_mdl(&app, &mid, "done", 100, None, None); Ok(format!("Whisper {} 模型下载完成", size)) }
+    else { Err("下载后未找到模型文件".to_string()) }
+}
+
+#[cfg(feature = "tauri")]
+async fn dl_kokoro(app: AppHandle, cancel: CancellationToken) -> Result<String, String> {
+    let mid = "kokoro";
+    let base = model_dir(&app);
+    let kd = base.join("kokoro");
+    let model_file = kd.join("kokoro-v1.0.int8.onnx");
+    if model_file.exists() { return Ok("Kokoro 模型已存在".to_string()); }
+
+    let use_mirror = detect_china_ip().await;
+    let hf_base = if use_mirror { "https://hf-mirror.com" } else { "https://huggingface.co" };
+    // onnx-community mirror is public (no auth required); model is at onnx/model_quantized.onnx
+    let hf_id = "onnx-community/Kokoro-82M-v1.0-ONNX";
+
+    std::fs::create_dir_all(&kd).map_err(|e| e.to_string())?;
+    std::fs::create_dir_all(kd.join("voices")).map_err(|e| e.to_string())?;
+
+    let client = reqwest::Client::builder().timeout(std::time::Duration::from_secs(600)).build().map_err(|e| e.to_string())?;
+
+    let model_remote = "onnx/model_quantized.onnx";
+    let total_size: u64 = client.head(&format!("{}/{}/resolve/main/{}", hf_base, hf_id, model_remote))
+        .send().await.ok()
+        .and_then(|r| if r.status().is_success() {
+            r.headers().get(reqwest::header::CONTENT_LENGTH)?.to_str().ok()?.parse().ok()
+        } else { None })
+        .unwrap_or(92_000_000);
+
+    emit_mdl(&app, mid, "downloading", 0, None, None);
+
+    let model_url = format!("{}/{}/resolve/main/{}", hf_base, hf_id, model_remote);
+    let resp = match client.get(&model_url).send().await {
+        Ok(r) if r.status().is_success() => r,
+        Ok(r) => return Err(format!("主模型下载失败: HTTP {}", r.status())),
+        Err(e) => return Err(format!("网络错误: {e}")),
+    };
+
+    let mut overall = 0u64;
+    stream_to_file(&app, mid, resp, &model_file, &cancel, &mut overall, total_size).await
+        .map_err(|e| { std::fs::remove_dir_all(&kd).ok(); e })?;
+
+    // Optional files: config, tokenizer, Chinese voices
+    let optional: &[(&str, &str)] = &[
+        ("config.json", "config.json"),
+        ("tokenizer.json", "tokenizer.json"),
+        ("voices/zf_xiaoxiao.bin", "voices/zf_xiaoxiao.bin"),
+        ("voices/zm_yunxi.bin", "voices/zm_yunxi.bin"),
+    ];
+    for (remote, local) in optional {
+        if cancel.is_cancelled() {
+            std::fs::remove_dir_all(&kd).ok();
+            emit_mdl(&app, mid, "cancelled", 0, None, None);
+            return Err("已取消下载".to_string());
+        }
+        let url = format!("{}/{}/resolve/main/{}", hf_base, hf_id, remote);
+        let out = kd.join(local);
+        match client.get(&url).send().await {
+            Ok(r) if r.status().is_success() => {
+                match stream_to_file(&app, mid, r, &out, &cancel, &mut overall, total_size).await {
+                    Err(e) if e.contains("已取消") => { std::fs::remove_dir_all(&kd).ok(); return Err(e); }
+                    _ => {}
+                }
+            }
+            Ok(r) => println!("[Kokoro] skip {} ({})", remote, r.status()),
+            Err(e) => println!("[Kokoro] skip {} ({})", remote, e),
+        }
     }
+
+    emit_mdl(&app, mid, "done", 100, None, None);
+    Ok("Kokoro TTS 模型下载完成".to_string())
 }
 
 #[cfg(feature = "tauri")]
 #[tauri::command]
-async fn download_vad_model(app: AppHandle) -> Result<String, String> {
-    let base = model_dir(&app);
-    let out_path = base.join("silero_vad.onnx");
+async fn download_model(app: AppHandle, state: tauri::State<'_, SharedState>, model_id: String) -> Result<String, String> {
+    let cancel = CancellationToken::new();
+    state.model_dl_cancels.lock().unwrap().insert(model_id.clone(), cancel.clone());
 
-    if out_path.exists() {
-        return Ok("VAD 模型已存在".to_string());
+    let result = match model_id.as_str() {
+        "silero-vad"   => dl_silero_vad(app, cancel).await,
+        "sensevoice"   => dl_sensevoice(app, cancel).await,
+        "paraformer"   => dl_paraformer(app, cancel).await,
+        "whisper-tiny"   => dl_whisper(app, cancel, "tiny").await,
+        "whisper-small"  => dl_whisper(app, cancel, "small").await,
+        "whisper-medium" => dl_whisper(app, cancel, "medium").await,
+        "kokoro"       => dl_kokoro(app, cancel).await,
+        _ => Err(format!("未知模型: {}", model_id)),
+    };
+
+    state.model_dl_cancels.lock().unwrap().remove(&model_id);
+    result
+}
+
+#[cfg(feature = "tauri")]
+#[tauri::command]
+async fn cancel_model_download(model_id: String, state: tauri::State<'_, SharedState>) -> Result<(), String> {
+    if let Some(cancel) = state.model_dl_cancels.lock().unwrap().remove(&model_id) {
+        cancel.cancel();
     }
-
-    let use_mirror = detect_china_ip().await;
-    let direct = "https://github.com/snakers4/silero-vad/raw/master/files/silero_vad.onnx";
-    let mirror = "https://ghproxy.com/https://github.com/snakers4/silero-vad/raw/master/files/silero_vad.onnx";
-    let url = if use_mirror { mirror } else { direct };
-
-    let _ = app.emit("vad-model-progress", serde_json::json!({ "stage": "downloading", "pct": 0u32 }));
-
-    let client = reqwest::Client::builder()
-        .timeout(std::time::Duration::from_secs(120))
-        .build()
-        .map_err(|e| e.to_string())?;
-
-    let mut resp = client.get(url).send().await.map_err(|e| format!("下载失败: {e}"))?;
-    let total = resp.content_length().unwrap_or(0);
-    let mut downloaded: u64 = 0;
-
-    std::fs::create_dir_all(&base).map_err(|e| e.to_string())?;
-
-    use tokio::io::AsyncWriteExt;
-    let mut file = tokio::fs::File::from_std(
-        std::fs::File::create(&out_path).map_err(|e| e.to_string())?,
-    );
-
-    while let Some(chunk) = resp.chunk().await.map_err(|e| format!("下载中断: {e}"))? {
-        file.write_all(&chunk).await.map_err(|e| format!("写入失败: {e}"))?;
-        downloaded += chunk.len() as u64;
-        if total > 0 {
-            let pct = ((downloaded as f64 / total as f64) * 100.0) as u32;
-            let _ = app.emit("vad-model-progress", serde_json::json!({
-                "stage": "downloading",
-                "pct": pct,
-                "downloaded_mb": format!("{:.2}", downloaded as f64 / 1_048_576.0),
-                "total_mb": format!("{:.2}", total as f64 / 1_048_576.0),
-            }));
-        }
-    }
-    drop(file);
-
-    if out_path.exists() {
-        let _ = app.emit("vad-model-progress", serde_json::json!({ "stage": "done", "pct": 100u32 }));
-        Ok("VAD 模型下载完成".to_string())
-    } else {
-        Err("下载后未找到模型文件".to_string())
-    }
+    Ok(())
 }
 
 #[cfg(feature = "tauri")]
@@ -1007,12 +1351,15 @@ fn main() -> Result<()> {
         monitor_log_buffer: Arc::new(Mutex::new(Vec::new())),
         #[cfg(feature = "tauri")]
         preview_tts: Arc::new(Mutex::new(None)),
+        #[cfg(feature = "tauri")]
+        model_dl_cancels: Arc::new(Mutex::new(std::collections::HashMap::new())),
     };
 
     println!("Starting Tauri builder...");
     let storage_for_cleanup = state.storage.clone();
     tauri::Builder::default()
         .plugin(tauri_plugin_shell::init())
+        .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_updater::Builder::new().build())
         .plugin(tauri_plugin_notification::init())
         .plugin(tauri_plugin_process::init())
@@ -1059,9 +1406,10 @@ fn main() -> Result<()> {
             get_monitor_logs,
             speak_text_cmd,
             get_recent_danmaku,
-            check_voice_models,
-            download_sensevoice_model,
-            download_vad_model,
+            check_models,
+            download_model,
+            cancel_model_download,
+            delete_model,
             open_folder
         ])
         .run(tauri::generate_context!())

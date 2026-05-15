@@ -37,6 +37,8 @@ pub struct AppConfig {
     pub minimize_to_tray: bool,
     #[serde(default)]
     pub launch_at_startup: bool,
+    #[serde(default)]
+    pub disable_background_effects: bool,
     #[serde(default = "default_room_id")]
     pub room_id: i64,
     #[serde(default = "default_ws_url")]
@@ -298,6 +300,7 @@ impl Default for AppConfig {
             auto_update: true,
             minimize_to_tray: true,
             launch_at_startup: false,
+            disable_background_effects: false,
             room_id: 3,
             ws_server_url: "wss://broadcastlv.chat.bilibili.com:2245/sub".to_string(),
             danmu_len: 20,

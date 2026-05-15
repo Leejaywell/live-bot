@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Plus, X, Clock, ShieldCheck, Gift, Heart, Activity, MessageSquare, Hash, Sparkles, Volume2 } from 'lucide-react';
 import { GlassCard } from '../components/GlassCard';
 import { Button } from '../components/Button';
@@ -54,9 +54,6 @@ export function AutoReply() {
   const [freqUnit, setFreqUnit] = useState<'s' | 'm'>('m');
   const [newCron, setNewCron] = useState('');
   const [newCronMsg, setNewCronMsg] = useState('');
-
-  // 弹幕播报（内存态，不持久化）
-  const [danmuAnnounce, setDanmuAnnounce] = useState(false);
 
   // 黑名单
   const [blackUidInput, setBlackUidInput] = useState('');
@@ -379,130 +376,172 @@ export function AutoReply() {
   );
 
   const GiftTab = (
-    <div className="space-y-5">
-      <div className="grid grid-cols-2 gap-4">
-        <div className="space-y-4">
-          <div className="flex items-center justify-between">
-            <div>
-              <span className="text-[12px] font-medium">礼物感谢</span>
-              <span className="text-[10px] text-gray-500 ml-2">收到礼物时自动发送感谢弹幕</span>
+    <div className="space-y-6">
+      <div className="grid grid-cols-2 gap-6">
+        {/* 左侧：核心设置 */}
+        <div className="space-y-5">
+          <section className="space-y-3">
+            <div className="flex items-center gap-2 mb-1">
+              <Gift className="w-3.5 h-3.5 text-[var(--primary-color)]" />
+              <h3 className="text-[12px] font-bold uppercase tracking-wider text-gray-500">基础感谢</h3>
             </div>
-            <Toggle checked={config.ThanksGift ?? false} onChange={() => toggle('ThanksGift')} />
-          </div>
+            
+            <div className="bg-black/[0.02] dark:bg-white/[0.02] rounded-2xl p-4 border border-black/5 dark:border-white/5 space-y-4">
+              <div className="flex items-center justify-between">
+                <div>
+                  <div className="text-[12px] font-semibold">启用礼物感谢</div>
+                  <div className="text-[10px] text-gray-400">收到礼物后自动发送感谢弹幕</div>
+                </div>
+                <Toggle checked={config.ThanksGift ?? false} onChange={() => toggle('ThanksGift')} />
+              </div>
 
-          <div className="flex items-center justify-between">
-            <div>
-              <div className="text-[12px] font-medium">礼物聚合感谢</div>
-              <div className="text-[10px] text-gray-400">相同时间段内的礼物合并一次感谢</div>
+              <div className="h-px bg-black/5 dark:bg-white/5" />
+
+              <div className="flex items-center justify-between">
+                <div>
+                  <div className="text-[12px] font-semibold">最低感谢价值</div>
+                  <div className="text-[10px] text-gray-400">低于此价值（电池）的礼物不触发</div>
+                </div>
+                <div className="flex items-center gap-2">
+                  <button onClick={() => save({ ...config, ThanksMinCost: Math.max(0, (config.ThanksMinCost ?? 0) - 10) })} className="w-7 h-7 rounded-lg bg-white dark:bg-white/10 border border-gray-200 dark:border-white/10 hover:bg-gray-50 flex items-center justify-center text-[12px] shadow-sm">−</button>
+                  <span className="font-mono text-[12px] w-8 text-center">{config.ThanksMinCost ?? 0}</span>
+                  <button onClick={() => save({ ...config, ThanksMinCost: (config.ThanksMinCost ?? 0) + 10 })} className="w-7 h-7 rounded-lg bg-white dark:bg-white/10 border border-gray-200 dark:border-white/10 hover:bg-gray-50 flex items-center justify-center text-[12px] shadow-sm">+</button>
+                </div>
+              </div>
             </div>
-            <Toggle checked={config.GiftSummaryThanks ?? false} onChange={() => toggle('GiftSummaryThanks')} />
-          </div>
+          </section>
 
-          <div className="h-px bg-black/5 dark:bg-white/5" />
-
-          <div className="flex items-center justify-between">
-            <div>
-              <div className="text-[12px] font-medium">礼物感谢频率</div>
-              <div className="text-[10px] text-gray-400">礼物聚合感谢的等待时间（秒）</div>
+          <section className="space-y-3">
+            <div className="flex items-center gap-2 mb-1">
+              <Activity className="w-3.5 h-3.5 text-[var(--primary-color)]" />
+              <h3 className="text-[12px] font-bold uppercase tracking-wider text-gray-500">聚合策略</h3>
             </div>
-            <div className="flex items-center gap-2">
-              <button onClick={() => save({ ...config, ThanksGiftTimeout: Math.max(0, (config.ThanksGiftTimeout ?? 3) - 1) })} className="w-7 h-7 rounded-lg bg-white/60 dark:bg-white/10 border border-gray-200 dark:border-white/20 hover:bg-white/80 flex items-center justify-center text-[14px] font-medium transition-colors">−</button>
-              <span className="font-mono text-[13px] w-6 text-center select-none">{config.ThanksGiftTimeout ?? 3}</span>
-              <button onClick={() => save({ ...config, ThanksGiftTimeout: (config.ThanksGiftTimeout ?? 3) + 1 })} className="w-7 h-7 rounded-lg bg-white/60 dark:bg-white/10 border border-gray-200 dark:border-white/20 hover:bg-white/80 flex items-center justify-center text-[14px] font-medium transition-colors">+</button>
-            </div>
-          </div>
+            
+            <div className="bg-black/[0.02] dark:bg-white/[0.02] rounded-2xl p-4 border border-black/5 dark:border-white/5 space-y-4">
+              <div className="flex items-center justify-between">
+                <div>
+                  <div className="text-[12px] font-semibold">启用聚合感谢</div>
+                  <div className="text-[10px] text-gray-400">短时间内多个礼物合并为一条</div>
+                </div>
+                <Toggle checked={config.GiftSummaryThanks ?? false} onChange={() => toggle('GiftSummaryThanks')} />
+              </div>
 
-          <div className="flex items-center justify-between">
-            <div>
-              <div className="text-[12px] font-medium">最低礼物价值</div>
-              <div className="text-[10px] text-gray-400">低于此价值（电池）的礼物不感谢</div>
-            </div>
-            <div className="flex items-center gap-2">
-              <button onClick={() => save({ ...config, ThanksMinCost: Math.max(0, (config.ThanksMinCost ?? 0) - 10) })} className="w-7 h-7 rounded-lg bg-white/60 dark:bg-white/10 border border-gray-200 dark:border-white/20 hover:bg-white/80 flex items-center justify-center text-[14px] font-medium transition-colors">−</button>
-              <span className="font-mono text-[13px] w-10 text-center select-none">{config.ThanksMinCost ?? 0}</span>
-              <button onClick={() => save({ ...config, ThanksMinCost: (config.ThanksMinCost ?? 0) + 10 })} className="w-7 h-7 rounded-lg bg-white/60 dark:bg-white/10 border border-gray-200 dark:border-white/20 hover:bg-white/80 flex items-center justify-center text-[14px] font-medium transition-colors">+</button>
-            </div>
-          </div>
+              <div className="flex items-center justify-between">
+                <div>
+                  <div className="text-[12px] font-semibold">聚合等待时间</div>
+                  <div className="text-[10px] text-gray-400">收到礼物后等待更多礼物的时长</div>
+                </div>
+                <div className="flex items-center gap-2">
+                  <button onClick={() => save({ ...config, ThanksGiftTimeout: Math.max(0, (config.ThanksGiftTimeout ?? 3) - 1) })} className="w-7 h-7 rounded-lg bg-white dark:bg-white/10 border border-gray-200 dark:border-white/10 hover:bg-gray-50 flex items-center justify-center text-[12px] shadow-sm">−</button>
+                  <span className="font-mono text-[12px] w-8 text-center">{config.ThanksGiftTimeout ?? 3}s</span>
+                  <button onClick={() => save({ ...config, ThanksGiftTimeout: (config.ThanksGiftTimeout ?? 3) + 1 })} className="w-7 h-7 rounded-lg bg-white dark:bg-white/10 border border-gray-200 dark:border-white/10 hover:bg-gray-50 flex items-center justify-center text-[12px] shadow-sm">+</button>
+                </div>
+              </div>
 
-          <div className="h-px bg-black/5 dark:bg-white/5" />
-
-          <div className="space-y-1.5">
-            <label className="text-[11px] text-gray-500 font-bold uppercase tracking-wider">聚合感谢模板</label>
-            <Input
-              value={config.GiftSummaryTemplate ?? ''}
-              onChange={e => setConfig({ ...config, GiftSummaryTemplate: e.target.value })}
-              onBlur={() => save(config!)}
-              className="h-9 text-[11px]"
-              placeholder="本轮收到 {count} 件礼物，价值 {value} 电池"
-            />
-          </div>
+              <div className="space-y-2">
+                <div className="text-[11px] font-bold text-gray-400 uppercase tracking-tight">聚合感谢模板</div>
+                <Input
+                  value={config.GiftSummaryTemplate ?? ''}
+                  onChange={e => setConfig({ ...config, GiftSummaryTemplate: e.target.value })}
+                  onBlur={() => save(config!)}
+                  className="h-9 text-[11px] bg-white dark:bg-white/5"
+                  placeholder="本轮收到 {count} 件礼物，价值 {value} 电池"
+                />
+              </div>
+            </div>
+          </section>
         </div>
 
-        <div className="space-y-4">
-          {/* 礼物模板 */}
-          <div className="space-y-2">
-            <label className="text-[11px] text-gray-500 font-bold uppercase tracking-wider">特定礼物模板</label>
-            <div className="space-y-1 max-h-[160px] overflow-y-auto pr-1">
-              {Object.entries(config.GiftThanksTemplates ?? {}).map(([gift, tmpl]) => (
-                <div key={gift} className="flex items-center gap-2 px-3 py-1.5 rounded-xl bg-white/50 dark:bg-white/5 border border-gray-200/60 dark:border-white/10 group">
-                  <span className="text-[11px] font-bold text-[var(--primary-color)] w-16 truncate">{gift}</span>
-                  <span className="flex-1 text-[11px] truncate opacity-70">{tmpl}</span>
-                  <button onClick={() => {
-                    const next = { ...config.GiftThanksTemplates };
-                    delete next[gift];
-                    save({ ...config, GiftThanksTemplates: next });
-                  }} className="opacity-0 group-hover:opacity-100 text-gray-400 hover:text-red-500"><X className="w-3 h-3" /></button>
-                </div>
-              ))}
+        {/* 右侧：模板与别名 */}
+        <div className="space-y-5">
+          <section className="space-y-3">
+            <div className="flex items-center gap-2 mb-1">
+              <MessageSquare className="w-3.5 h-3.5 text-[var(--primary-color)]" />
+              <h3 className="text-[12px] font-bold uppercase tracking-wider text-gray-500">特定礼物模板</h3>
             </div>
-            <div className="flex gap-1.5">
-              <Input id="gift-tmpl-name" placeholder="礼物名" className="w-20 h-8 text-[11px]" />
-              <Input id="gift-tmpl-val" placeholder="感谢模板" className="flex-1 h-8 text-[11px]" />
-              <Button size="sm" className="h-8 w-8 p-0" onClick={() => {
-                const name = (document.getElementById('gift-tmpl-name') as HTMLInputElement).value;
-                const val = (document.getElementById('gift-tmpl-val') as HTMLInputElement).value;
-                if (name && val) {
-                  save({ ...config, GiftThanksTemplates: { ...config.GiftThanksTemplates, [name]: val } });
-                  (document.getElementById('gift-tmpl-name') as HTMLInputElement).value = '';
-                  (document.getElementById('gift-tmpl-val') as HTMLInputElement).value = '';
-                }
-              }}><Plus className="w-3.5 h-3.5" /></Button>
+            
+            <div className="bg-black/[0.02] dark:bg-white/[0.02] rounded-2xl p-4 border border-black/5 dark:border-white/5 space-y-3">
+              <div className="space-y-1.5 max-h-[140px] overflow-y-auto pr-1 custom-scrollbar">
+                {Object.entries(config.GiftThanksTemplates ?? {}).map(([gift, tmpl]) => (
+                  <div key={gift} className="flex items-center gap-2 px-3 py-2 rounded-xl bg-white dark:bg-white/10 border border-black/5 dark:border-white/5 group animate-item-in">
+                    <span className="text-[11px] font-bold text-[var(--primary-color)] w-16 truncate">{gift}</span>
+                    <span className="flex-1 text-[11px] truncate opacity-70 italic">{tmpl}</span>
+                    <button onClick={() => {
+                      const next = { ...config.GiftThanksTemplates };
+                      delete next[gift];
+                      save({ ...config, GiftThanksTemplates: next });
+                    }} className="opacity-0 group-hover:opacity-100 text-gray-400 hover:text-red-500 transition-all"><X className="w-3.5 h-3.5" /></button>
+                  </div>
+                ))}
+                {Object.keys(config.GiftThanksTemplates ?? {}).length === 0 && (
+                  <div className="py-4 text-center text-[10px] text-gray-400 italic">暂无特定模板</div>
+                )}
+              </div>
+              <div className="flex gap-2">
+                <Input id="gift-tmpl-name" placeholder="礼物名" className="w-20 h-9 text-[11px] bg-white dark:bg-white/5" />
+                <Input id="gift-tmpl-val" placeholder="感谢模板" className="flex-1 h-9 text-[11px] bg-white dark:bg-white/5" />
+                <button
+                  onClick={() => {
+                    const name = (document.getElementById('gift-tmpl-name') as HTMLInputElement).value.trim();
+                    const val = (document.getElementById('gift-tmpl-val') as HTMLInputElement).value.trim();
+                    if (name && val) {
+                      save({ ...config, GiftThanksTemplates: { ...config.GiftThanksTemplates, [name]: val } });
+                      (document.getElementById('gift-tmpl-name') as HTMLInputElement).value = '';
+                      (document.getElementById('gift-tmpl-val') as HTMLInputElement).value = '';
+                    }
+                  }}
+                  className="w-9 h-9 rounded-xl bg-[var(--primary-color)] text-white flex items-center justify-center hover:opacity-90 shadow-sm shrink-0"
+                >
+                  <Plus className="w-4 h-4" />
+                </button>
+              </div>
             </div>
-          </div>
+          </section>
 
-          <div className="h-px bg-black/5 dark:bg-white/5" />
-
-          {/* 礼物别名 */}
-          <div className="space-y-2">
-            <label className="text-[11px] text-gray-500 font-bold uppercase tracking-wider">礼物别名</label>
-            <div className="space-y-1 max-h-[160px] overflow-y-auto pr-1">
-              {Object.entries(config.GiftAliases ?? {}).map(([gift, alias]) => (
-                <div key={gift} className="flex items-center gap-2 px-3 py-1.5 rounded-xl bg-white/50 dark:bg-white/5 border border-gray-200/60 dark:border-white/10 group">
-                  <span className="text-[11px] font-bold w-16 truncate">{gift}</span>
-                  <span className="text-[11px] opacity-40">→</span>
-                  <span className="flex-1 text-[11px] truncate opacity-70">{alias}</span>
-                  <button onClick={() => {
-                    const next = { ...config.GiftAliases };
-                    delete next[gift];
-                    save({ ...config, GiftAliases: next });
-                  }} className="opacity-0 group-hover:opacity-100 text-gray-400 hover:text-red-500"><X className="w-3 h-3" /></button>
-                </div>
-              ))}
+          <section className="space-y-3">
+            <div className="flex items-center gap-2 mb-1">
+              <Hash className="w-3.5 h-3.5 text-[var(--primary-color)]" />
+              <h3 className="text-[12px] font-bold uppercase tracking-wider text-gray-500">礼物别名</h3>
             </div>
-            <div className="flex gap-1.5">
-              <Input id="gift-alias-name" placeholder="原名" className="w-20 h-8 text-[11px]" />
-              <Input id="gift-alias-val" placeholder="别名" className="flex-1 h-8 text-[11px]" />
-              <Button size="sm" className="h-8 w-8 p-0" onClick={() => {
-                const name = (document.getElementById('gift-alias-name') as HTMLInputElement).value;
-                const val = (document.getElementById('gift-alias-val') as HTMLInputElement).value;
-                if (name && val) {
-                  save({ ...config, GiftAliases: { ...config.GiftAliases, [name]: val } });
-                  (document.getElementById('gift-alias-name') as HTMLInputElement).value = '';
-                  (document.getElementById('gift-alias-val') as HTMLInputElement).value = '';
-                }
-              }}><Plus className="w-3.5 h-3.5" /></Button>
+            
+            <div className="bg-black/[0.02] dark:bg-white/[0.02] rounded-2xl p-4 border border-black/5 dark:border-white/5 space-y-3">
+              <div className="space-y-1.5 max-h-[140px] overflow-y-auto pr-1 custom-scrollbar">
+                {Object.entries(config.GiftAliases ?? {}).map(([gift, alias]) => (
+                  <div key={gift} className="flex items-center gap-2 px-3 py-2 rounded-xl bg-white dark:bg-white/10 border border-black/5 dark:border-white/5 group animate-item-in">
+                    <span className="text-[11px] font-bold w-16 truncate">{gift}</span>
+                    <span className="text-[10px] text-gray-400">→</span>
+                    <span className="flex-1 text-[11px] truncate text-[var(--primary-color)] font-medium">{alias}</span>
+                    <button onClick={() => {
+                      const next = { ...config.GiftAliases };
+                      delete next[gift];
+                      save({ ...config, GiftAliases: next });
+                    }} className="opacity-0 group-hover:opacity-100 text-gray-400 hover:text-red-500 transition-all"><X className="w-3.5 h-3.5" /></button>
+                  </div>
+                ))}
+                {Object.keys(config.GiftAliases ?? {}).length === 0 && (
+                  <div className="py-4 text-center text-[10px] text-gray-400 italic">暂无别名配置</div>
+                )}
+              </div>
+              <div className="flex gap-2">
+                <Input id="gift-alias-name" placeholder="原名" className="w-20 h-9 text-[11px] bg-white dark:bg-white/5" />
+                <Input id="gift-alias-val" placeholder="别名" className="flex-1 h-9 text-[11px] bg-white dark:bg-white/5" />
+                <button
+                  onClick={() => {
+                    const name = (document.getElementById('gift-alias-name') as HTMLInputElement).value.trim();
+                    const val = (document.getElementById('gift-alias-val') as HTMLInputElement).value.trim();
+                    if (name && val) {
+                      save({ ...config, GiftAliases: { ...config.GiftAliases, [name]: val } });
+                      (document.getElementById('gift-alias-name') as HTMLInputElement).value = '';
+                      (document.getElementById('gift-alias-val') as HTMLInputElement).value = '';
+                    }
+                  }}
+                  className="w-9 h-9 rounded-xl bg-[var(--primary-color)] text-white flex items-center justify-center hover:opacity-90 shadow-sm shrink-0"
+                >
+                  <Plus className="w-4 h-4" />
+                </button>
+              </div>
             </div>
-          </div>
+          </section>
         </div>
       </div>
     </div>
@@ -516,17 +555,6 @@ export function AutoReply() {
           <span className="text-[10px] text-gray-500 ml-2">按固定频率或 Cron 表达式自动发送弹幕</span>
         </div>
         <Toggle checked={config.CronDanmu} onChange={() => toggle('CronDanmu')} />
-      </div>
-
-      <div className="flex items-center justify-between">
-        <div className="flex items-center gap-2">
-          <Volume2 className="w-3.5 h-3.5 text-gray-400" />
-          <div>
-            <span className="text-[12px] font-medium">弹幕播报</span>
-            <span className="text-[10px] text-gray-500 ml-2">弹幕管理中朗读弹幕内容（临时开关）</span>
-          </div>
-        </div>
-        <Toggle checked={danmuAnnounce} onChange={v => { setDanmuAnnounce(v); sessionStorage.setItem('danmuAnnounce', String(v)); }} />
       </div>
 
       {/* Single-row input area */}

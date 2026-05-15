@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import React, { useState, useEffect } from 'react';
 import { GlassCard } from '../components/GlassCard';
 import { Button } from '../components/Button';
 import { Input } from '../components/Input';
@@ -225,20 +225,20 @@ function AsrFields({ p, set }: { p: AiProvider; set: (patch: Partial<AiProvider>
   // 检查 SenseVoice 模型状态
   useEffect(() => {
     if (!isSenseVoice) return;
-    api.checkVoiceModels().then(m => setSvModelOk(m.asr_local_model_ok)).catch(() => {});
+    api.checkModels().then(m => setSvModelOk(m.models['sensevoice'] ?? false)).catch(() => {});
   }, [isSenseVoice]);
 
   // 监听下载进度
   useEffect(() => {
     if (!isSenseVoice) return;
     let unl: (() => void) | undefined;
-    api.onVoiceModelProgress(data => {
+    api.onModelDlProgress(data => {
+      if (data.model_id !== 'sensevoice') return;
       if (data.stage === 'downloading') { setSvDlStage('downloading'); setSvDlPct(data.pct); }
       else if (data.stage === 'extracting') { setSvDlStage('extracting'); }
       else if (data.stage === 'done') {
         setSvDlStage('done');
         setSvModelOk(true);
-        api.checkVoiceModels().then(m => setSvModelOk(m.asr_local_model_ok)).catch(() => {});
         toast.success('SenseVoice 模型下载完成');
       }
     }).then(f => { unl = f; });
@@ -247,7 +247,7 @@ function AsrFields({ p, set }: { p: AiProvider; set: (patch: Partial<AiProvider>
 
   const handleSvDownload = async () => {
     setSvDlStage('downloading'); setSvDlPct(0);
-    try { await api.downloadSensevoiceModel(); }
+    try { await api.downloadModel('sensevoice'); }
     catch (e) { setSvDlStage('error'); toast.error(`下载失败: ${e}`); }
   };
 

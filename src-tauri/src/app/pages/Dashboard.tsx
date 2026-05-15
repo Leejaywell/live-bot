@@ -1,8 +1,10 @@
+import React, { useState, useEffect, useRef } from 'react';
 import { Bot, MessageSquare, Gift, Users, Star, TrendingUp, Radio, ShieldCheck, Clock, ChevronRight, Heart } from 'lucide-react';
 import { GlassCard } from '../components/GlassCard';
 import { Toggle } from '../components/Toggle';
-import { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { api, AppConfig } from '../lib/api';
+import { toast } from 'sonner';
 
 // ── Count-up animation ────────────────────────────────────────────────────────
 function CountUp({ value }: { value: number }) {
@@ -30,8 +32,6 @@ function CountUp({ value }: { value: number }) {
 
   return <>{display.toLocaleString()}</>;
 }
-import { api, AppConfig } from '../lib/api';
-import { toast } from 'sonner';
 
 // ── Danmu feed ────────────────────────────────────────────────────────────────
 interface DanmuEntry { id: number; user: string; content: string; time: string }

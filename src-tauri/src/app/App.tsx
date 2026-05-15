@@ -1,8 +1,9 @@
-import { useState, useEffect, useCallback, useRef } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { HashRouter, Routes, Route, useLocation } from 'react-router-dom';
 import { ChevronRight, LogIn, Home } from 'lucide-react';
 import { Toaster } from 'sonner';
 import { ThemeProvider } from './context/ThemeContext';
+import { ConfigProvider } from './context/ConfigContext';
 import { LoginContext } from './context/LoginContext';
 import { BackgroundBlobs } from './components/BackgroundBlobs';
 import { TopBar } from './components/TopBar';
@@ -290,7 +291,11 @@ export default function App() {
           },
         }}
       />
-      <LoginContext.Provider value={isLoggedIn}>
+      <LoginContext.Provider value={{
+        isLoggedIn, setIsLoggedIn, userInfo, setUserInfo, loginChecked,
+        refreshUserInfo, openLoginModal: () => setShowLoginModal(true)
+      }}>
+      <ConfigProvider>
       <HashRouter>
         <BackgroundBlobs />
         <div
@@ -413,6 +418,7 @@ export default function App() {
           </Modal>
         </div>
       </HashRouter>
+      </ConfigProvider>
       </LoginContext.Provider>
     </ThemeProvider>
   );

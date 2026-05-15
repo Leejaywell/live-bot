@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useCallback } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { GlassCard } from '../components/GlassCard';
 import { Toggle } from '../components/Toggle';
 import { Input } from '../components/Input';
@@ -181,7 +181,7 @@ export function Voice() {
   const [settingsOpen, setSettingsOpen] = useState(false);
 
   // 模型状态
-  const [modelStatus, setModelStatus] = useState<{ vad_model_ok: boolean; asr_local_model_ok: boolean; asr_model_dir: string } | null>(null);
+  const [modelStatus, setModelStatus] = useState<{ model_dir: string; models: Record<string, boolean> } | null>(null);
 
   const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const subRef    = useRef<HTMLDivElement>(null);
@@ -191,7 +191,7 @@ export function Voice() {
   useEffect(() => {
     Promise.all([
       api.loadConfig(),
-      api.checkVoiceModels().catch(() => null),
+      api.checkModels().catch(() => null),
     ]).then(([cfg, models]) => {
       setConfig(cfg);
       setModelStatus(models);
@@ -277,10 +277,10 @@ export function Voice() {
   // ── 麦克风 ──────────────────────────────────────────────────────────────────
 
   const hasAsrConfig  = asrList(config).length > 0 && !!asrId && asrEnabled;
-  const vadModelOk    = modelStatus?.vad_model_ok ?? false;
+  const vadModelOk    = modelStatus?.models['silero-vad'] ?? false;
   // ASR 可用条件：有外部 ASR URL（provider 或旧版配置）或本地模型完整
   const hasAnyAsrUrl  = !!(config?.AsrUrl) || asrList(config).some(p => p.Id === asrId && !!p.APIUrl);
-  const asrModelOk    = hasAnyAsrUrl || (modelStatus?.asr_local_model_ok ?? false);
+  const asrModelOk    = hasAnyAsrUrl || (modelStatus?.models['sensevoice'] ?? false);
   const micEnabled    = hasAsrConfig && vadModelOk && asrModelOk;
 
   // 麦克风不可用的原因

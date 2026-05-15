@@ -940,7 +940,7 @@ fn resolve_tts_engine(config: &AppConfig) -> streamix_voice::TtsEngine {
 
 /// 根据 config 中 active_asr_provider_id 解析 ASR WebSocket URL。
 /// 未配置时返回 config.asr_url（兼容旧字段）。
-fn resolve_asr_url(config: &AppConfig) -> String {
+pub(crate) fn resolve_asr_url(config: &AppConfig) -> String {
     let asr_provider = if config.active_asr_provider_id.is_empty() {
         None
     } else {

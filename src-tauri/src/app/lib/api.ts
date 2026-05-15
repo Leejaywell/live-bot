@@ -251,13 +251,12 @@ export const api = {
     listen<any>('session-summary', (e) => callback(e.payload)),
 
   // Voice model status
-  checkVoiceModels: () => invoke<{ vad_model_ok: boolean; asr_local_model_ok: boolean; asr_model_dir: string }>('check_voice_models'),
-  downloadSensevoiceModel: () => invoke<string>('download_sensevoice_model'),
-  downloadVadModel: () => invoke<string>('download_vad_model'),
-  onVoiceModelProgress: (callback: (data: { stage: string; pct: number; downloaded_mb?: string; total_mb?: string }) => void) =>
-    listen<{ stage: string; pct: number; downloaded_mb?: string; total_mb?: string }>('voice-model-progress', (e) => callback(e.payload)),
-  onVadModelProgress: (callback: (data: { stage: string; pct: number; downloaded_mb?: string; total_mb?: string }) => void) =>
-    listen<{ stage: string; pct: number; downloaded_mb?: string; total_mb?: string }>('vad-model-progress', (e) => callback(e.payload)),
+  checkModels: () => invoke<{ model_dir: string; models: Record<string, boolean> }>('check_models'),
+  downloadModel: (modelId: string) => invoke<string>('download_model', { modelId }),
+  cancelModelDownload: (modelId: string) => invoke<void>('cancel_model_download', { modelId }),
+  deleteModel: (modelId: string) => invoke<string>('delete_model', { modelId }),
+  onModelDlProgress: (callback: (data: { model_id: string; stage: string; pct: number; downloaded_mb?: string; total_mb?: string }) => void) =>
+    listen<{ model_id: string; stage: string; pct: number; downloaded_mb?: string; total_mb?: string }>('model-dl-progress', (e) => callback(e.payload)),
   openFolder: (path: string) => invoke<void>('open_folder', { path }),
 
   // Danmaku polling (replaces Tauri event broadcast)
