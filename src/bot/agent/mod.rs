@@ -88,7 +88,7 @@ pub async fn call_ai(
     };
 
     let (history, system_prompt, enriched_prompt) = {
-        let mut mem = memory.lock().unwrap();
+        let mut mem = memory.lock().unwrap_or_else(|e| e.into_inner());
         let count = mem.note_speaker(uid, uname);
         let hint = if count > 1 {
             format!("（{}第{}次与你对话）", uname, count)
@@ -108,7 +108,7 @@ pub async fn call_ai(
         .unwrap_or_else(|e| { eprintln!("[AI] 调用失败: {e}"); String::new() });
 
     {
-        let mut mem = memory.lock().unwrap();
+        let mut mem = memory.lock().unwrap_or_else(|e| e.into_inner());
         mem.push_turn(bot_id, prompt.to_string(), reply.clone());
     }
 
@@ -134,7 +134,7 @@ pub async fn call_ai_voice(
     };
     let sys = config.voice_system_prompt.replace("{{gender}}", &config.voice_gender);
     let (history, enriched_prompt) = {
-        let mem = memory.lock().unwrap();
+        let mem = memory.lock().unwrap_or_else(|e| e.into_inner());
         (mem.history_pairs(bot_id), prompt.to_string())
     };
     let reply = agent
@@ -142,7 +142,7 @@ pub async fn call_ai_voice(
         .await
         .unwrap_or_else(|e| { eprintln!("[AI] 调用失败: {e}"); String::new() });
     {
-        let mut mem = memory.lock().unwrap();
+        let mut mem = memory.lock().unwrap_or_else(|e| e.into_inner());
         mem.push_turn(bot_id, prompt.to_string(), reply.clone());
     }
     reply

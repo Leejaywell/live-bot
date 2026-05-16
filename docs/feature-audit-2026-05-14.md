@@ -7,17 +7,9 @@
 
 ## 一、功能清单与触发逻辑
 
-### 1. 关键词自动回复
+### 1. ~~关键词自动回复~~（已移除）
 
-**配置字段**：`KeywordReply` / `KeywordReplyList`  
-**触发路径**：
-```
-Danmu 事件 → BotEngine.keyword_reply()
-  → config.keyword_reply == true
-  → 遍历 keyword_reply_list，text.contains(关键词)
-  → 命中第一条 → 回复对应值
-```
-**已知问题**：用 `.find()` 只取第一条命中，多关键词同时满足时后续规则不执行。
+> 此功能已从产品规划中移除，相关配置字段保留在 config.rs 中但不再维护对应 UI 和文档。
 
 ---
 
@@ -283,16 +275,16 @@ Danmu 事件 → BotEngine.track_danmu()
 | 🔴 高 | 开关无效 | `AiReplyToDanmaku` — UI 有开关（Dashboard + AI 页），后端 monitor.rs 从不读取，设置后零效果 |
 | 🔴 高 | 开关无效 | `TalkRobotCmd` / `FuzzyMatchCmd` — 旧版 AI 触发词，新架构下 monitor.rs 完全不读取 |
 | 🔴 高 | 渲染缺失 | Voice 页「实时字幕」区域：`subtitles` 数组有数据但无渲染逻辑，字幕永远不显示 |
-| 🟡 中 | 配置UI缺失 | 礼物感谢详细配置（ThanksMinCost / 模板 / 别名）— AutoReply 页标"开发中"，无法在 UI 配置 |
-| 🟡 中 | 配置UI缺失 | OBS 连接参数（host/port/password）— Voice 页无对应输入控件，只能手动改 TOML |
-| 🟡 中 | 功能缺开关 | SC 醒目留言感谢 — 硬编码，无开关，无法关闭 |
-| 🟡 中 | 功能缺开关 | `ThanksShare`（分享答谢）— Dashboard 没有 Toggle |
-| 🟡 中 | 开关归属混乱 | `ThanksFocus` 放在「AI 机器人」卡片下，实际是粉丝互动功能 |
-| 🟡 中 | 路径不一致 | AI 页面测试对话无历史记忆、不走 AgentRuntime，与直播实际 AI 行为不一致 |
-| 🟡 中 | 统计口径偏差 | Dashboard 统计按今日日期而非 session_id 过滤，跨日场次数据丢失 |
-| 🟢 低 | 字段未实现 | `DrawByLot` / `SignInEnable` / `LotteryEnable` — api.ts 有定义，config.rs 无对应字段，后端完全未实现 |
-| 🟢 低 | 引擎识别脆弱 | TTS 引擎按 provider name 字符串匹配，命名不含关键词时静默降级为 Edge TTS |
-| 🟢 低 | 触发器冲突 | AI 昵称前缀冲突（"二狗" vs "二狗Plus"），`starts_with` 可能错误触发错误的 bot |
+| 🟡 中 | 配置UI缺失 | 礼物感谢详细配置（ThanksMinCost / 模板 / 别名）— AutoReply 页标"开发中"，无法在 UI 配置（计划中） |
+| 🟡 中 | 配置UI缺失 | OBS 连接参数（host/port/password）— Voice 页无对应输入控件，只能手动改 TOML（计划中） |
+| 🟡 中 | 功能缺开关 | SC 醒目留言感谢 — 硬编码，无开关，无法关闭（计划中） |
+| 🟡 中 | 功能缺开关 | `ThanksShare`（分享答谢）— Dashboard 没有 Toggle（计划中） |
+| 🟡 中 | 开关归属混乱 | `ThanksFocus` 放在「AI 机器人」卡片下，实际是粉丝互动功能（计划中） |
+| 🟡 中 | 路径不一致 | AI 页面测试对话无历史记忆、不走 AgentRuntime，与直播实际 AI 行为不一致（计划中） |
+| 🟡 中 | 统计口径偏差 | Dashboard 统计按今日日期而非 session_id 过滤，跨日场次数据丢失（计划中） |
+| 🟢 低 | 字段未实现 | `DrawByLot` / `SignInEnable` / `LotteryEnable` — api.ts 有定义，config.rs 无对应字段（计划中） |
+| 🟢 低 | 引擎识别脆弱 | TTS 引擎按 provider name 字符串匹配，命名不含关键词时静默降级为 Edge TTS（计划中） |
+| 🟢 低 | 触发器冲突 | AI 昵称前缀冲突（"二狗" vs "二狗Plus"），`starts_with` 可能错误触发错误的 bot（计划中） |
 
 ---
 
@@ -312,12 +304,14 @@ Danmu 事件 → BotEngine.track_danmu()
 
 ---
 
-## 四、完全未实现的功能（前端字段存在，后端无对应）
+## 四、计划中的功能（前端字段存在，后端待实现）
 
-| 字段 | api.ts 中类型 | 后端状态 |
+以下功能已在 api.ts 中定义字段，后端实现**计划中**，暂不排期：
+
+| 字段 | api.ts 中类型 | 状态 |
 |---|---|---|
-| `DrawByLot` | boolean | config.rs 无此字段，后端未实现 |
-| `DrawLotsList` | string[] | 同上 |
-| `SignInEnable` | boolean | config.rs 无此字段，后端未实现 |
-| `LotteryEnable` | boolean | config.rs 无此字段，后端未实现 |
-| `LotteryUrl` | string | config.rs 无此字段，后端未实现 |
+| `DrawByLot` | boolean | 计划中 |
+| `DrawLotsList` | string[] | 计划中 |
+| `SignInEnable` | boolean | 计划中 |
+| `LotteryEnable` | boolean | 计划中 |
+| `LotteryUrl` | string | 计划中 |

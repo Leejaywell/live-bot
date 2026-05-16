@@ -315,7 +315,7 @@ pub async fn run_monitor_loop<E: EventEmitter>(
             tokio::select! {
                 _ = stats_cancel.cancelled() => return,
                 _ = tokio::time::sleep(std::time::Duration::from_secs(2)) => {
-                    let session_id = stats_session.lock().unwrap().clone();
+                    let session_id = stats_session.lock().unwrap_or_else(|e| e.into_inner()).clone();
                     if let Some(id) = session_id {
                         if let Ok(summary) = stats_storage.live_session_summary(&id) {
                             let _ = stats_app.emit("session-summary", serde_json::json!(summary));

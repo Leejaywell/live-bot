@@ -40,6 +40,15 @@ pub struct UserGiftStat {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
+pub struct DailyStats {
+    pub date: String,
+    pub danmu_count: i64,
+    pub entry_count: i64,
+    pub gift_count: i64,
+    pub follow_count: i64,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
 pub struct UserDetail {
     pub uid: i64,
     pub uname: Option<String>,
@@ -856,6 +865,45 @@ impl Storage {
             unknown_count,
         })
     }
+
+    pub fn daily_interaction_counts(&self, days: i64) -> Result<Vec<DailyStats>> {
+        let start_date = if days <= 0 {
+            today_key()
+        } else {
+            let start = Local::now() - chrono::Duration::days(days);
+            format!("{:04}-{:02}-{:02}", start.year(), start.month(), start.day())
+        };
+        let conn = self.conn.lock().expect("storage mutex poisoned");
+        let mut stmt = conn.prepare(
+            "
+            select
+                date(occurred_at) as day,
+                count(case when event_type = 'danmu' then 1 end) as danmu_count,
+                count(case when event_type = 'interact' and event_subtype = 'entry' then 1 end) as entry_count,
+                count(case when event_type = 'gift' then 1 end) as gift_count,
+                count(case when event_type = 'interact' and event_subtype in ('follow','mutual_follow') then 1 end) as follow_count
+            from interaction_records
+            where occurred_at >= ?1
+            group by date(occurred_at)
+            order by day asc
+            ",
+        )?;
+        let rows = stmt.query_map(params![start_date], |row| {
+            Ok(DailyStats {
+                date: row.get(0)?,
+                danmu_count: row.get(1)?,
+                entry_count: row.get(2)?,
+                gift_count: row.get(3)?,
+                follow_count: row.get(4)?,
+            })
+        })?;
+        let mut result = Vec::new();
+        for row in rows {
+            result.push(row?);
+        }
+        Ok(result)
+    }
+
 
     pub fn gift_top_n(&self, days: i64, n: i32) -> Result<Vec<GiftStat>> {
         let start_date = if days == 0 {

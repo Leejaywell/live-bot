@@ -1,5 +1,9 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Bot, MessageSquare, Gift, Users, Star, TrendingUp, Radio, ShieldOff, Clock, ChevronRight, Heart } from 'lucide-react';
+import {
+  Bot, MessageSquare, Gift, Users, Star, TrendingUp,
+  ShieldOff, Clock, ChevronRight, Heart,
+  Bell, Mic, BarChart2, AlertCircle,
+} from 'lucide-react';
 import { GlassCard } from '../components/GlassCard';
 import { Toggle } from '../components/Toggle';
 import { useNavigate } from 'react-router-dom';
@@ -50,47 +54,99 @@ function parseDanmu(text: string): DanmuEntry | null {
 }
 
 // ── Auto-feature groups ───────────────────────────────────────────────────────
-type SubToggle  = { label: string; key: keyof AppConfig };
-type AutoGroup  = { title: string; Icon: React.ElementType; mainKey?: keyof AppConfig; subs: SubToggle[]; wide?: boolean; to?: string; countKey?: keyof AppConfig };
+type SubToggle = { label: string; key: keyof AppConfig };
+type AutoGroup = {
+  title: string;
+  Icon: React.ElementType;
+  mainKey?: keyof AppConfig;
+  subs: SubToggle[];
+  to?: string;
+  countKey?: keyof AppConfig;
+  aiCard?: boolean;
+};
 
 const AUTO_GROUPS: AutoGroup[] = [
   {
-    title: 'AI 机器人', Icon: Bot, mainKey: 'AiReplyToDanmaku', to: '/ai',
+    title: 'AI 机器人',
+    Icon: Bot,
+    to: '/ai',
     subs: [],
+    aiCard: true,
   },
   {
-    title: '互动答谢', Icon: Heart, to: '/auto-reply?tab=fans',
+    title: '欢迎问候',
+    Icon: MessageSquare,
+    mainKey: 'GeneralWelcomeEnabled',
+    to: '/auto-reply?tab=welcome',
     subs: [
-      { label: '关注答谢', key: 'ThanksFocus' },
-      { label: '分享答谢', key: 'ThanksShare' },
+      { label: '欢迎自己入场', key: 'InteractSelf' },
+      { label: '欢迎主播入场', key: 'InteractAnchor' },
     ],
   },
   {
-    title: '欢迎过滤', Icon: Star, to: '/auto-reply?tab=system',
+    title: '互动感谢',
+    Icon: Heart,
+    to: '/auto-reply?tab=fans',
     subs: [
-      { label: '欢迎自己', key: 'InteractSelf' },
-      { label: '欢迎主播', key: 'InteractAnchor' },
+      { label: '关注答谢',   key: 'ThanksFocus' },
+      { label: '分享答谢',   key: 'ThanksShare' },
+      { label: '礼物感谢',   key: 'ThanksGift' },
+      { label: '礼物汇总',   key: 'GiftSummaryThanks' },
+      { label: '礼物 @ 用户', key: 'ThanksGiftUseAt' },
     ],
   },
   {
-    title: '消息开关', Icon: Radio, wide: true,
+    title: '消息通知',
+    Icon: Bell,
     subs: [
       { label: '特效入场', key: 'EntryEffect' },
-      { label: '礼物感谢', key: 'ThanksGift' },
-      { label: '醒目留言', key: 'ThanksSuperChat' },
       { label: 'PK 提醒',  key: 'PkNotice' },
       { label: '禁言提醒', key: 'ShowBlockMsg' },
-      { label: '盲盒统计', key: 'BlindBoxProfitLossStat' },
     ],
   },
   {
-    title: '定时任务', Icon: Clock, mainKey: 'CronDanmu', to: '/auto-reply?tab=timed',
-    subs: [], countKey: 'CronDanmuList',
+    title: '语音播报',
+    Icon: Mic,
+    mainKey: 'TtsEnabled',
+    to: '/voice',
+    subs: [
+      { label: '语音识别', key: 'VadEnabled' },
+    ],
   },
   {
-    title: '黑名单',  Icon: ShieldOff, mainKey: 'DanmuFilterEnable', to: '/auto-reply?tab=filter',
-    subs: [], countKey: 'PermanentBlacklistUsers',
+    title: '数据记录',
+    Icon: BarChart2,
+    subs: [
+      { label: '盲盒统计', key: 'BlindBoxProfitLossStat' },
+      { label: '弹幕计数', key: 'DanmuCntEnable' },
+    ],
   },
+  {
+    title: '定时任务',
+    Icon: Clock,
+    mainKey: 'CronDanmu',
+    to: '/auto-reply?tab=timed',
+    subs: [],
+    countKey: 'CronDanmuList',
+  },
+  {
+    title: '内容过滤',
+    Icon: ShieldOff,
+    mainKey: 'DanmuFilterEnable',
+    to: '/auto-reply?tab=filter',
+    subs: [],
+    countKey: 'PermanentBlacklistUsers',
+  },
+];
+
+// All boolean toggle keys, used for "已启用 X / Y 项" counter
+const ALL_TOGGLE_KEYS: (keyof AppConfig)[] = [
+  'GeneralWelcomeEnabled', 'InteractSelf', 'InteractAnchor',
+  'ThanksFocus', 'ThanksShare', 'ThanksGift', 'GiftSummaryThanks', 'ThanksGiftUseAt',
+  'EntryEffect', 'PkNotice', 'ShowBlockMsg',
+  'TtsEnabled', 'VadEnabled',
+  'BlindBoxProfitLossStat', 'DanmuCntEnable',
+  'CronDanmu', 'DanmuFilterEnable',
 ];
 
 // ── Component ─────────────────────────────────────────────────────────────────
@@ -173,14 +229,63 @@ export function Dashboard() {
     { label: '人气峰值', value: stats?.peak_popularity||0, icon: TrendingUp,     color: '#007aff' },
   ];
 
+  const enabledCount = config
+    ? ALL_TOGGLE_KEYS.filter(k => !!(config as any)[k]).length
+    : 0;
+
   const GroupCard = ({ g }: { g: AutoGroup }) => {
-    const { title, Icon, mainKey, subs, wide, to, countKey } = g;
+    const { title, Icon, mainKey, subs, to, countKey, aiCard } = g;
     const mainChecked = mainKey != null && config ? !!(config as any)[mainKey] : undefined;
     const count = countKey && config ? ((config as any)[countKey] as any[])?.length ?? 0 : null;
 
+    // AI card — info-only, shows active bot name
+    if (aiCard) {
+      const activeBots = config?.AiBots?.filter(b => b.Enabled) ?? [];
+      const botInfo = activeBots.length > 0
+        ? `${activeBots[0].Nickname}${activeBots.length > 1 ? ` 等 ${activeBots.length} 个` : ''}`
+        : '未配置';
+      return (
+        <GlassCard hoverable className="p-4 border-white/60 dark:border-white/10 overflow-hidden">
+          <div className="absolute -top-8 -right-8 w-28 h-28 rounded-full pointer-events-none"
+               style={{ background: 'radial-gradient(circle, rgba(var(--primary-rgb),0.10) 0%, transparent 70%)' }} />
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2.5">
+              <div className="w-8 h-8 rounded-xl flex items-center justify-center shadow-sm"
+                   style={{ background: 'rgba(var(--primary-rgb), 0.12)', color: 'var(--primary-color)' }}>
+                <Icon className="w-4 h-4" />
+              </div>
+              <div>
+                <span className="text-[13px] font-bold tracking-tight">{title}</span>
+                <p className="text-[10px] text-gray-400 mt-0.5">{botInfo}</p>
+              </div>
+            </div>
+            {to && (
+              <button
+                onClick={() => navigate(to)}
+                className="w-7 h-7 rounded-lg flex items-center justify-center border transition-all active:scale-95
+                           border-[var(--primary-color)]/25 text-[var(--primary-color)] bg-[var(--primary-color)]/6
+                           hover:bg-[var(--primary-color)]/18 hover:border-[var(--primary-color)]/50"
+                title="前往设置"
+              >
+                <ChevronRight className="w-4 h-4" />
+              </button>
+            )}
+          </div>
+          {activeBots.length > 0 && (
+            <div className="mt-3 pt-3 border-t border-black/5 dark:border-white/5 flex gap-1.5 flex-wrap">
+              {activeBots.slice(0, 3).map(b => (
+                <span key={b.Id} className="px-2 py-0.5 rounded-full text-[9px] font-black bg-[var(--primary-color)]/10 text-[var(--primary-color)] border border-[var(--primary-color)]/20">
+                  {b.Nickname}
+                </span>
+              ))}
+            </div>
+          )}
+        </GlassCard>
+      );
+    }
+
     return (
-      <GlassCard hoverable className={`p-4 ${wide ? 'col-span-2' : ''} border-white/60 dark:border-white/10 overflow-hidden`}>
-        {/* card accent glow */}
+      <GlassCard hoverable className="p-4 border-white/60 dark:border-white/10 overflow-hidden">
         <div className="absolute -top-8 -right-8 w-28 h-28 rounded-full pointer-events-none"
              style={{ background: 'radial-gradient(circle, rgba(var(--primary-rgb),0.10) 0%, transparent 70%)' }} />
 
@@ -218,10 +323,10 @@ export function Dashboard() {
 
         {/* sub-toggles */}
         {subs.length > 0 && (
-          <div className={`pt-3 border-t border-black/5 dark:border-white/5 ${wide ? 'grid grid-cols-2 gap-x-8 gap-y-2' : 'space-y-2'}`}>
+          <div className="pt-3 border-t border-black/5 dark:border-white/5 space-y-2.5">
             {subs.map(sub => (
               <div key={sub.key} className="flex items-center justify-between">
-                <span className="text-[12px] text-gray-500 font-medium">{sub.label}</span>
+                <span className="text-[12px] text-gray-500 dark:text-gray-400 font-medium">{sub.label}</span>
                 <Toggle
                   checked={config ? !!(config as any)[sub.key] : false}
                   onChange={v => toggleAuto(sub.key, v)}
@@ -254,7 +359,20 @@ export function Dashboard() {
         <div className="flex items-center gap-3">
           <h2 className="text-[12px] font-black text-gray-400 uppercase tracking-widest">自动化功能</h2>
           <div className="flex-1 h-px bg-black/5 dark:bg-white/5" />
+          {config && (
+            <span className="text-[10px] font-bold text-gray-400">
+              已启用 <span className="text-[var(--primary-color)]">{enabledCount}</span> / {ALL_TOGGLE_KEYS.length} 项
+            </span>
+          )}
         </div>
+
+        {!isMonitoring && (
+          <div className="flex items-center gap-2 px-3 py-2 rounded-xl bg-amber-500/8 border border-amber-500/20 text-amber-600 dark:text-amber-400">
+            <AlertCircle className="w-3.5 h-3.5 shrink-0" />
+            <span className="text-[11px] font-bold">监听未启动 — 设置保存后，开启监听时生效</span>
+          </div>
+        )}
+
         <div className="grid grid-cols-2 gap-4">
           {AUTO_GROUPS.map(g => <GroupCard key={g.title} g={g} />)}
         </div>

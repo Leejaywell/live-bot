@@ -260,6 +260,9 @@ export const api = {
   // Blind box stats
   getBlindBoxStats: (days: number) => invoke<[string, number][]>('get_blind_box_stats', { days }),
 
+  // Daily breakdown for trend chart
+  getDailyStats: (days: number) => invoke<{ date: string; danmu_count: number; entry_count: number; gift_count: number; follow_count: number }[]>('get_daily_stats', { days }),
+
   // Voice Changer
   startVoiceChanger: (modelId: string) => invoke<void>('start_voice_changer', { modelId }),
   stopVoiceChanger: () => invoke<void>('stop_voice_changer'),

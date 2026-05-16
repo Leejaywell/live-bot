@@ -71,7 +71,7 @@ impl Tool for GetSessionStatsTool {
         let storage = Arc::clone(&self.storage);
         let session_id = Arc::clone(&self.session_id);
         Box::pin(async move {
-            let id = session_id.lock().unwrap().clone();
+            let id = session_id.lock().unwrap_or_else(|e| e.into_inner()).clone();
             let Some(id) = id else {
                 return Ok("当前没有进行中的直播场次".to_string());
             };

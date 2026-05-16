@@ -438,6 +438,15 @@ async fn get_blind_box_stats(
 
 #[cfg(feature = "tauri")]
 #[tauri::command]
+async fn get_daily_stats(
+    state: tauri::State<'_, SharedState>,
+    days: i64,
+) -> Result<Vec<storage::DailyStats>, String> {
+    state.storage.daily_interaction_counts(days).map_err(|e| e.to_string())
+}
+
+#[cfg(feature = "tauri")]
+#[tauri::command]
 async fn get_pk_summary(
     state: tauri::State<'_, SharedState>,
 ) -> Result<Option<storage::PkSessionSummary>, String> {
@@ -1487,6 +1496,7 @@ fn main() -> Result<()> {
             get_gift_stats,
             get_user_gift_stats,
             get_blind_box_stats,
+            get_daily_stats,
             get_pk_summary,
             get_pk_history,
             send_danmu,
