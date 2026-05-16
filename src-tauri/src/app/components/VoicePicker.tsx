@@ -3,6 +3,7 @@ import { createPortal } from 'react-dom';
 import { Volume2, X, Mic } from 'lucide-react';
 import { TtsProvider, TtsVoice, getLanguages, filterVoices, PROVIDER_META } from '../lib/voices';
 import { cn } from '../lib/utils';
+import { MODAL_W } from './Modal';
 
 interface Props {
   open: boolean;
@@ -52,7 +53,7 @@ export function VoicePicker({ open, onClose, providers, currentVoice, onSelect }
     <div className="fixed inset-0 z-[99999] flex items-center justify-center" onClick={onClose}>
       <div className={cn('absolute inset-0 bg-black/30 backdrop-blur-sm', closing ? 'animate-backdrop-out' : 'animate-backdrop-in')} />
       <div ref={ref} onClick={e => e.stopPropagation()}
-        className={cn('relative w-[420px] max-h-[520px] glass-card rounded-[18px] backdrop-blur-xl shadow-2xl border border-white/60 dark:border-white/10 flex flex-col overflow-hidden', closing ? 'animate-modal-out' : 'animate-modal-in')}>
+        className={cn('relative max-h-[520px] glass-card rounded-[18px] backdrop-blur-xl shadow-2xl border border-white/60 dark:border-white/10 flex flex-col overflow-hidden', MODAL_W, closing ? 'animate-modal-out' : 'animate-modal-in')}>
         {/* Header */}
         <div className="flex items-center justify-between px-4 py-3 border-b border-white/10 shrink-0">
           <div className="flex items-center gap-2">

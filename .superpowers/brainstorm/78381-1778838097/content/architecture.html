@@ -1,0 +1,60 @@
+<h2>混合认知架构 (Hybrid Cognitive Architecture)</h2>
+<p class="subtitle">平衡实时性、隐私与深层智能</p>
+
+<div class="mockup">
+  <div class="mockup-header">系统流程预览</div>
+  <div class="mockup-body" style="padding: 20px;">
+    <div style="display: flex; justify-content: space-around; align-items: flex-start; gap: 20px;">
+      <!-- Local Side -->
+      <div style="flex: 1; border: 1px dashed #ccc; padding: 15px; border-radius: 8px; background: rgba(0,0,0,0.02);">
+        <div class="label" style="color: #2563eb;">本地端 (Local Edge)</div>
+        <ul style="font-size: 0.9em; line-height: 1.6;">
+          <li><b>实时监听</b>: ASR (主播语音) + 弹幕流水</li>
+          <li><b>快速决策</b>: 简单命令、常规感谢、OBS 场景切换</li>
+          <li><b>隐私屏障</b>: 原始音视频流不离位，仅发送特征/快照</li>
+        </ul>
+      </div>
+
+      <div style="display: flex; align-items: center; justify-content: center;">
+        <span style="font-size: 2em;">⇄</span>
+      </div>
+
+      <!-- Cloud Side -->
+      <div style="flex: 1; border: 1px dashed #ccc; padding: 15px; border-radius: 8px; background: rgba(0,0,0,0.02);">
+        <div class="label" style="color: #9333ea;">云端 (Cloud Brain)</div>
+        <ul style="font-size: 0.9em; line-height: 1.6;">
+          <li><b>视觉分析</b>: 处理屏幕快照 (如：识别游戏结算、主播离位)</li>
+          <li><b>长期记忆</b>: 结构化观众画像 (RAG/知识图谱)</li>
+          <li><b>高阶合成</b>: 极具情感的 TTS 音色 (Bert-VITS2/ChatTTS)</li>
+        </ul>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="section">
+  <h3>核心方案抉择</h3>
+  <div class="options" data-multiselect>
+    <div class="option" data-choice="memory_sync" onclick="toggleSelect(this)">
+      <div class="letter">1</div>
+      <div class="content">
+        <h3>多端记忆同步</h3>
+        <p>主播在多台设备直播时，观众的记忆点自动同步，实现“无论在哪播，AI 都认得你”。</p>
+      </div>
+    </div>
+    <div class="option" data-choice="local_first_vision" onclick="toggleSelect(this)">
+      <div class="letter">2</div>
+      <div class="content">
+        <h3>本地预过滤视觉</h3>
+        <p>本地先进行简单的变化检测，只有画面发生重大变化（如场景切到结算页）才上传云端分析，极大地节省云端成本。</p>
+      </div>
+    </div>
+    <div class="option" data-choice="personality_core" onclick="toggleSelect(this)">
+      <div class="letter">3</div>
+      <div class="content">
+        <h3>人格核心托管</h3>
+        <p>将主播定义的人格特征存放在云端，方便你后续作为 SaaS 平台统一管理和分发 AI “皮肤”。</p>
+      </div>
+    </div>
+  </div>
+</div>

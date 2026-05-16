@@ -21,6 +21,9 @@ pub mod asr;
 #[cfg(feature = "vad")]
 pub mod sherpa_vad;
 
+#[cfg(feature = "voice-changer")]
+pub mod voice_changer;
+
 // 顶层重导出，方便调用方
 pub use pipeline::{Frame, FrameProcessor, ProcessorChain};
 pub use session::{SessionCommand, SessionConfig, SessionEvent, VoiceSession, SpeakRequest, TtsEngine};

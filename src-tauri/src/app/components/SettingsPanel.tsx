@@ -253,7 +253,7 @@ export function SettingsPanel({ onClose }: SettingsPanelProps) {
 
   if (!config) {
     return (
-      <Modal open={true} onClose={onClose} className="w-[540px] h-[400px] flex items-center justify-center" zIndex={50}>
+      <Modal open={true} onClose={onClose} className="h-[400px] flex items-center justify-center" zIndex={50}>
         <div className="text-[12px] text-gray-400 animate-pulse">正在加载配置...</div>
       </Modal>
     );
@@ -262,7 +262,7 @@ export function SettingsPanel({ onClose }: SettingsPanelProps) {
   const categories: ModelCategory[] = ['vad', 'asr', 'tts'];
 
   return (
-    <Modal open={true} onClose={onClose} className="w-[540px] max-h-[80vh] overflow-hidden flex flex-col" zIndex={50}>
+    <Modal open={true} onClose={onClose} className="max-h-[80vh] overflow-hidden flex flex-col" zIndex={50}>
       {/* Header */}
       <div className="flex items-center justify-between px-5 py-4 border-b border-white/10 shrink-0">
         <h2 className="text-[15px] font-semibold">设置</h2>
@@ -435,22 +435,8 @@ export function SettingsPanel({ onClose }: SettingsPanelProps) {
                 <div className="text-[11px] text-gray-500">v{systemInfo?.version || '0.0.0'}</div>
               </div>
             </div>
-            <div className="bg-white/40 dark:bg-white/5 rounded-lg p-4 border border-gray-200 dark:border-white/10 space-y-2.5">
-              <div className="flex justify-between text-[11px]">
-                <span className="text-gray-500">开发者</span>
-                <span className="font-medium">Jay</span>
-              </div>
-              <div className="flex justify-between text-[11px]">
-                <span className="text-gray-500">平台</span>
-                <span className="font-medium">Bilibili 直播</span>
-              </div>
-              <div className="flex justify-between text-[11px]">
-                <span className="text-gray-500">技术栈</span>
-                <span className="font-medium">Tauri · Rust · React</span>
-              </div>
-            </div>
             <p className="text-[10px] text-gray-400 leading-relaxed">
-              流光是一款 B站直播间 AI 互动助手，支持欢迎、礼物感谢、关键词回复、AI 问答等自动化功能。
+              流光是一款 B站直播间 AI 互动助手，支持欢迎、礼物感谢、AI 问答等自动化功能。
             </p>
           </div>
         )}

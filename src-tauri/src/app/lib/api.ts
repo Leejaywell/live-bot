@@ -37,8 +37,6 @@ export interface AppConfig {
   PkNotice: boolean;
   ShowBlockMsg: boolean;
   GoodbyeInfo: string;
-  KeywordReply: boolean;
-  KeywordReplyList: Record<string, string>;
   DanmuFilterEnable: boolean;
   DanmuFilterWords: string[];
   DanmuFilterRepeatThreshold: number;
@@ -73,9 +71,6 @@ export interface AppConfig {
   GiftSummaryTemplate: string;
   CronDanmu: boolean;
   CronDanmuList: any[];
-  DrawByLot: boolean;
-  DrawLotsList: string[];
-  SignInEnable: boolean;
   DanmuCntEnable: boolean;
   BlindBoxStat: boolean;
   DBPath: string;
@@ -261,4 +256,13 @@ export const api = {
 
   // Danmaku polling (replaces Tauri event broadcast)
   getRecentDanmaku: () => invoke<string[]>('get_recent_danmaku'),
+
+  // Blind box stats
+  getBlindBoxStats: (days: number) => invoke<[string, number][]>('get_blind_box_stats', { days }),
+
+  // Voice Changer
+  startVoiceChanger: (modelId: string) => invoke<void>('start_voice_changer', { modelId }),
+  stopVoiceChanger: () => invoke<void>('stop_voice_changer'),
+  getVoiceChangerStatus: () => invoke<boolean>('get_voice_changer_status'),
+  searchRvcModels: (query: string) => invoke<any[]>('search_rvc_models', { query }),
 };

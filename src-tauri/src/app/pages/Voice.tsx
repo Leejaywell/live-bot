@@ -5,11 +5,12 @@ import { Input } from '../components/Input';
 import { cn } from '../lib/utils';
 import { api, AppConfig } from '../lib/api';
 import { Link } from 'react-router-dom';
-import { Mic, MicOff, ChevronDown, Cpu, MessageSquareText, Settings as SettingsIcon, AlertCircle } from 'lucide-react';
+import { Mic, MicOff, ChevronDown, Cpu, MessageSquareText, Settings as SettingsIcon, AlertCircle, Volume2 } from 'lucide-react';
 import { toast } from 'sonner';
 import { TtsProvider, TtsVoice, availableProviders, findVoice } from '../lib/voices';
 import { VoicePicker } from '../components/VoicePicker';
 import { Modal, ModalCloseButton } from '../components/Modal';
+import { Button } from '../components/Button';
 
 // ── 动画 ───────────────────────────────────────────────────────────────────────
 
@@ -179,6 +180,7 @@ export function Voice() {
   const [subtitles,   setSubtitles]   = useState<SubLine[]>([]);
   const [latency,     setLatency]     = useState(0);
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const [settingsDraft, setSettingsDraft] = useState({ gender: '女AI', prompt: '' });
 
   // 模型状态
   const [modelStatus, setModelStatus] = useState<{ model_dir: string; models: Record<string, boolean> } | null>(null);
@@ -222,6 +224,16 @@ export function Voice() {
       return next;
     });
   }, []);
+
+  // Sync settings modal draft when it opens
+  useEffect(() => {
+    if (settingsOpen && config) {
+      setSettingsDraft({
+        gender: config.VoiceGender ?? inferGenderFromVoice(ttsVoice),
+        prompt: config.VoiceSystemPrompt ?? '',
+      });
+    }
+  }, [settingsOpen]);
 
   const onLlmChange  = (id: string) => { setLlmId(id);  scheduleSave({ ActiveProviderId: id }); };
   const onAsrChange  = (id: string) => { setAsrId(id); scheduleSave({ ActiveAsrProviderId: id }); };
@@ -372,8 +384,16 @@ export function Voice() {
             {/* ASR */}
             <div className="flex items-center gap-3">
               <span className="text-[11px] font-black text-gray-400 uppercase tracking-widest">ASR</span>
-              <Toggle checked={asrEnabled} onChange={onAsrToggle} />
-              <GlassSelect value={asrId} onChange={onAsrChange} options={asrOpts} disabled={!asrEnabled} emptyHint="去配置" />
+              {asrOpts.length === 0 ? (
+                <Link to="/models" className="flex items-center gap-1 h-[30px] px-2.5 rounded-xl text-[10px] text-amber-600 dark:text-amber-400 bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-700/40 whitespace-nowrap">
+                  <Cpu className="w-3 h-3 shrink-0" />去配置
+                </Link>
+              ) : (
+                <>
+                  <Toggle checked={asrEnabled} onChange={onAsrToggle} />
+                  <GlassSelect value={asrId} onChange={onAsrChange} options={asrOpts} disabled={!asrEnabled} />
+                </>
+              )}
             </div>
 
             <div className="w-px h-4 bg-black/10 dark:bg-white/10" />
@@ -381,23 +401,27 @@ export function Voice() {
             {/* TTS */}
             <div className="flex items-center gap-3">
               <span className="text-[11px] font-black text-gray-400 uppercase tracking-widest">TTS</span>
-              <Toggle checked={ttsEnabled} onChange={onTtsToggle} />
-              <GlassSelect value={ttsId} onChange={onTtsChange} options={ttsOpts} disabled={!ttsEnabled} emptyHint="去配置" />
-
-              {/* 声音选择按钮 */}
-              {ttsEnabled && ttsOpts.length > 0 && (
-                <button
-                  onClick={() => setVoiceOpen(true)}
-                  className="flex items-center gap-1.5 h-[30px] px-3 rounded-xl text-[11px] font-bold
-                             bg-white/60 dark:bg-white/10 border border-gray-200 dark:border-white/20
-                             hover:bg-white/80 transition-all text-gray-600 dark:text-gray-200"
-                >
-                  {(() => {
-                    const v = (['edge_tts','minimax_tts','volcano_engine'] as TtsProvider[]).reduce<TtsVoice | undefined>((found, p) => found ?? findVoice(p, ttsVoice), undefined);
-                    return v ? v.name : (ttsVoice || '声音');
-                  })()}
-                  <ChevronDown className="w-3 h-3 opacity-50" />
-                </button>
+              {ttsOpts.length === 0 ? (
+                <Link to="/models" className="flex items-center gap-1 h-[30px] px-2.5 rounded-xl text-[10px] text-amber-600 dark:text-amber-400 bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-700/40 whitespace-nowrap">
+                  <Cpu className="w-3 h-3 shrink-0" />去配置
+                </Link>
+              ) : (
+                <>
+                  <Toggle checked={ttsEnabled} onChange={onTtsToggle} />
+                  {ttsEnabled && (
+                    <button
+                      onClick={() => setVoiceOpen(true)}
+                      className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-full bg-white/80 dark:bg-white/10 border border-white/40 dark:border-white/20 text-[11px] font-bold text-gray-600 dark:text-gray-200 hover:bg-white dark:hover:bg-white/20 transition-colors"
+                    >
+                      <Volume2 className="w-3.5 h-3.5 text-gray-400 shrink-0" />
+                      {(() => {
+                        const v = (['edge_tts','minimax_tts','volcano_engine'] as TtsProvider[]).reduce<TtsVoice | undefined>((found, p) => found ?? findVoice(p, ttsVoice), undefined);
+                        return v ? v.name : (ttsVoice || '选声音');
+                      })()}
+                      <ChevronDown className="w-3 h-3 opacity-50" />
+                    </button>
+                  )}
+                </>
               )}
             </div>
           </div>
@@ -481,7 +505,7 @@ export function Voice() {
         onSelect={v => { setTtsVoice(v); onVoiceChange(v); }}
       />
 
-      <Modal open={settingsOpen} onClose={() => setSettingsOpen(false)} className="w-[426px] max-h-[80vh] overflow-hidden flex flex-col">
+      <Modal open={settingsOpen} onClose={() => setSettingsOpen(false)} className="max-h-[80vh] overflow-hidden flex flex-col">
         <div className="flex items-center justify-between px-6 py-4 border-b border-white/10 shrink-0">
           <h3 className="text-[14px] font-bold">语音交互提示词</h3>
           <ModalCloseButton onClose={() => setSettingsOpen(false)} className="w-8 h-8" />
@@ -493,9 +517,9 @@ export function Voice() {
               {(['女AI', '男AI'] as const).map(g => (
                 <button
                   key={g}
-                  onClick={() => scheduleSave({ VoiceGender: g })}
+                  onClick={() => setSettingsDraft(d => ({ ...d, gender: g }))}
                   className={`h-[28px] px-4 rounded-lg text-[11px] font-medium transition-all ${
-                    (config?.VoiceGender ?? '女AI') === g
+                    settingsDraft.gender === g
                       ? 'bg-white dark:bg-white/20 text-[var(--primary-color)] shadow-sm'
                       : 'text-gray-400 hover:text-gray-600 dark:hover:text-gray-300'
                   }`}
@@ -508,53 +532,33 @@ export function Voice() {
           <div>
             <label className="text-[12px] text-gray-500 mb-2 block font-medium">系统提示词</label>
             <textarea
-              className="w-full h-32 px-4 py-3 rounded-xl bg-white/60 dark:bg-white/10 border border-gray-200 dark:border-white/20 text-[13px] leading-relaxed focus:outline-none focus:ring-2 focus:ring-[var(--primary-color)]/50 resize-none"
-              value={config?.VoiceSystemPrompt ?? ''}
-              onChange={e => scheduleSave({ VoiceSystemPrompt: e.target.value })}
+              className="w-full h-40 px-4 py-3 rounded-xl bg-white/60 dark:bg-white/10 border border-gray-200 dark:border-white/20 text-[13px] leading-relaxed focus:outline-none focus:ring-2 focus:ring-[var(--primary-color)]/50 resize-none"
+              value={settingsDraft.prompt}
+              onChange={e => setSettingsDraft(d => ({ ...d, prompt: e.target.value }))}
               placeholder="语音交互模式下 AI 的系统提示词..."
             />
             <p className="text-[11px] text-gray-400 mt-1.5">
               可使用 <code className="bg-black/5 px-1 rounded">{'{gender}'}</code> 占位符，自动替换为所选 AI 性别
             </p>
           </div>
-
-          <div className="h-px bg-black/5 dark:bg-white/10" />
-
-          <div className="space-y-3">
-            <div className="flex items-center justify-between">
-              <span className="text-[12px] font-bold">OBS WebSocket 设置</span>
-              <Toggle checked={config?.ObsEnabled ?? false} onChange={v => scheduleSave({ ObsEnabled: v })} />
-            </div>
-            <div className="grid grid-cols-2 gap-3">
-              <div className="space-y-1">
-                <label className="text-[10px] text-gray-400 font-bold uppercase">主机</label>
-                <Input
-                  value={config?.ObsHost ?? 'localhost'}
-                  onChange={e => scheduleSave({ ObsHost: e.target.value })}
-                  className="h-8 text-[11px]"
-                />
-              </div>
-              <div className="space-y-1">
-                <label className="text-[10px] text-gray-400 font-bold uppercase">端口</label>
-                <Input
-                  type="number"
-                  value={String(config?.ObsPort ?? 4455)}
-                  onChange={e => scheduleSave({ ObsPort: parseInt(e.target.value) || 4455 })}
-                  className="h-8 text-[11px]"
-                />
-              </div>
-            </div>
-            <div className="space-y-1">
-              <label className="text-[10px] text-gray-400 font-bold uppercase">密码</label>
-              <Input
-                type="password"
-                value={config?.ObsPassword ?? ''}
-                onChange={e => scheduleSave({ ObsPassword: e.target.value })}
-                className="h-8 text-[11px]"
-                placeholder="留空表示无密码"
-              />
-            </div>
-          </div>
+        </div>
+        <div className="flex gap-2 px-6 pb-6 shrink-0">
+          <Button variant="primary" className="flex-1" onClick={async () => {
+            if (!config) return;
+            const next = {
+              ...config,
+              VoiceGender: settingsDraft.gender,
+              VoiceSystemPrompt: settingsDraft.prompt,
+            };
+            try {
+              await api.saveConfig(next);
+              setConfig(next);
+              toast.success('保存成功');
+              setSettingsOpen(false);
+            } catch (err) {
+              toast.error(`保存失败: ${err}`);
+            }
+          }}>保存</Button>
         </div>
       </Modal>
     </>
@@ -562,6 +566,14 @@ export function Voice() {
 }
 
 // ── 工具：从 config 过滤各类 provider ─────────────────────────────────────────
+
+function inferGenderFromVoice(voice: string): '男AI' | '女AI' {
+  // Edge TTS: YunXi / YunYe / YunJian... = 男; XiaoXiao... = 女
+  if (/yun/i.test(voice)) return '男AI';
+  // MiniMax/Volcano: zh_male_* = 男; zh_female_* = 女
+  if (/_male_/i.test(voice)) return '男AI';
+  return '女AI';
+}
 
 function llmList(config: AppConfig | null) {
   return (config?.AiProviders ?? []).filter(p => (p.ProviderType === 'llm' || !p.ProviderType) && p.Enabled);

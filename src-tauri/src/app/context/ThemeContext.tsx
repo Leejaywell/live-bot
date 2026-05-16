@@ -1,5 +1,17 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
 
+export type BackgroundEffectType = 
+  | 'blobs'           // 1. 动态气泡 (现有)
+  | 'mesh'            // 2. 动态流体色彩 (Mesh Gradient Flow)
+  | 'aurora'          // 3. 极光幻影 (Aurora Borealis)
+  | 'grid'            // 4. 极简工业网格 (Modern Technical Grid)
+  | 'noise'           // 5. 颗粒质感噪点 (Film Grain & Noise)
+  | 'particles'       // 6. 交互式悬浮粒子 (Interactive Particle Field)
+  | 'parallax'        // 7. 3D 浮动几何体 (Parallax Floating Shapes)
+  | 'ripples'         // 8. 动态水波纹 (SVG Turbulence Ripples)
+  | 'data-stream'     // 9. 摩斯电码/数据流 (Data Stream Bits)
+  | 'starfield';      // 10. 全景星空背景 (Minimalist Starfield)
+
 interface ThemeContextType {
   theme: 'light' | 'dark';
   primaryColor: string;
@@ -7,9 +19,11 @@ interface ThemeContextType {
   saturation: number;
   lightness: number;
   blur: number;
+  backgroundEffect: BackgroundEffectType;
   toggleTheme: () => void;
   setPrimaryColor: (color: string) => void;
   setTheme: (theme: 'light' | 'dark') => void;
+  setBackgroundEffect: (effect: BackgroundEffectType) => void;
   updateTheme: (updates: Partial<{ hue: number; saturation: number; lightness: number; blur: number }>) => void;
   resetTheme: () => void;
 }
@@ -127,6 +141,7 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
   const [saturation, setSaturation] = useState(DEFAULT_SATURATION);
   const [lightness, setLightness] = useState(DEFAULT_LIGHTNESS);
   const [blur, setBlur] = useState(DEFAULT_BLUR);
+  const [backgroundEffect, setBackgroundEffect] = useState<BackgroundEffectType>('blobs');
   const [primaryColor, setPrimaryColorState] = useState(themePresets[0].primary);
 
   useEffect(() => {
@@ -184,12 +199,13 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
     setSaturation(DEFAULT_SATURATION);
     setLightness(DEFAULT_LIGHTNESS);
     setBlur(DEFAULT_BLUR);
+    setBackgroundEffect('blobs');
   };
 
   return (
     <ThemeContext.Provider value={{ 
-      theme, primaryColor, hue, saturation, lightness, blur,
-      toggleTheme, setPrimaryColor, setTheme, updateTheme, resetTheme 
+      theme, primaryColor, hue, saturation, lightness, blur, backgroundEffect,
+      toggleTheme, setPrimaryColor, setTheme, setBackgroundEffect, updateTheme, resetTheme 
     }}>
       {children}
     </ThemeContext.Provider>

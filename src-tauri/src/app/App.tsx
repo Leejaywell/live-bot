@@ -1,11 +1,11 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { HashRouter, Routes, Route, useLocation } from 'react-router-dom';
-import { ChevronRight, LogIn, Home } from 'lucide-react';
+import { PanelLeftOpen, LogIn, Home } from 'lucide-react';
 import { Toaster } from 'sonner';
 import { ThemeProvider } from './context/ThemeContext';
 import { ConfigProvider } from './context/ConfigContext';
 import { LoginContext } from './context/LoginContext';
-import { BackgroundBlobs } from './components/BackgroundBlobs';
+import { BackgroundManager } from './components/BackgroundEffects';
 import { TopBar } from './components/TopBar';
 import { Sidebar } from './components/Sidebar';
 import { ThemePanel } from './components/ThemePanel';
@@ -19,6 +19,7 @@ import { Monitor } from './pages/Monitor';
 import { AutoReply } from './pages/AutoReply';
 import { AI } from './pages/AI';
 import { Voice } from './pages/Voice';
+import { VoiceChanger } from './pages/VoiceChanger';
 import { Models } from './pages/Models';
 import { Stats } from './pages/Stats';
 import { api, UserInfo, RoomInfo, AnchorInfo } from './lib/api';
@@ -260,8 +261,6 @@ export default function App() {
     api.setConnectedRoom(null).catch(() => {});
   }, []);
 
-  if (!loginChecked) return null;
-
   return (
     <ThemeProvider>
       <Toaster
@@ -297,8 +296,8 @@ export default function App() {
       }}>
       <ConfigProvider>
       <HashRouter>
-        <BackgroundBlobs />
-        <div
+        <BackgroundManager />
+        {loginChecked && <div
           className="w-full h-screen overflow-hidden flex relative z-[1]"
           onContextMenu={(e) => e.preventDefault()}
         >
@@ -310,14 +309,8 @@ export default function App() {
             onToggleSettings={() => setSettingsPanelOpen(!settingsPanelOpen)}
             onBlockedClick={triggerConnectHint}
           />
+
           <div className="flex-1 flex flex-col overflow-hidden relative">
-            {sidebarCollapsed && (
-              <div className="absolute left-4 top-4 z-10 animate-in fade-in duration-200 delay-200">
-                <IconButton onClick={() => setSidebarCollapsed(false)}>
-                  <ChevronRight className="w-4 h-4" />
-                </IconButton>
-              </div>
-            )}
             <TopBar
               onToggleNotifications={() => setNotificationPanelOpen(!notificationPanelOpen)}
               sidebarCollapsed={sidebarCollapsed}
@@ -335,6 +328,14 @@ export default function App() {
               showConnectHint={showConnectHint}
               unreadCount={unreadCount}
             />
+            {/* Expand button — flush with the left edge of this panel, at the bottom */}
+            {sidebarCollapsed && (
+              <div className="absolute left-3 bottom-5 z-20 animate-in fade-in duration-200">
+                <IconButton onClick={() => setSidebarCollapsed(false)} className="shadow-md">
+                  <PanelLeftOpen className="w-4 h-4" />
+                </IconButton>
+              </div>
+            )}
             <main className="flex-1 overflow-hidden relative">
               {/* 已登录但未连接房间：透明拦截层 */}
               {isLoggedIn && !hasConnectedRoom && (
@@ -373,7 +374,7 @@ export default function App() {
           {settingsPanelOpen && <SettingsPanel onClose={() => setSettingsPanelOpen(false)} />}
 
           {/* 连接直播间弹窗 */}
-          <Modal open={showRoomModal && isLoggedIn} onClose={() => setShowRoomModal(false)} className="w-[400px] p-6" zIndex={9998}>
+          <Modal open={showRoomModal && isLoggedIn} onClose={() => setShowRoomModal(false)} className="p-6" zIndex={9998}>
             <RoomConnectForm
               userRoom={userRoom}
               onSuccess={handleRoomConnected}
@@ -381,7 +382,7 @@ export default function App() {
           </Modal>
 
           {/* 登录二维码弹窗 */}
-          <Modal open={showLoginModal} onClose={() => { setShowLoginModal(false); setLoginUrl(''); }} className="w-[340px] p-6" zIndex={9999}>
+          <Modal open={showLoginModal} onClose={() => { setShowLoginModal(false); setLoginUrl(''); }} className="p-6" zIndex={9999}>
             <div className="flex items-center justify-between mb-6">
               <h2 className="text-[15px] font-semibold">扫码登录</h2>
               <ModalCloseButton onClose={() => { setShowLoginModal(false); setLoginUrl(''); }} className="w-8 h-8" />
@@ -416,7 +417,7 @@ export default function App() {
               </Button>
             </div>
           </Modal>
-        </div>
+        </div>}
       </HashRouter>
       </ConfigProvider>
       </LoginContext.Provider>
@@ -435,6 +436,7 @@ function AnimatedRoutes() {
         <Route path="/auto-reply" element={<AutoReply />} />
         <Route path="/ai" element={<AI />} />
         <Route path="/voice" element={<Voice />} />
+        <Route path="/voice-changer" element={<VoiceChanger />} />
         <Route path="/models" element={<Models />} />
         <Route path="/stats" element={<Stats />} />
       </Routes>

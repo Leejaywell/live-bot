@@ -54,10 +54,6 @@ pub struct AppConfig {
     #[serde(default)]
     pub goodbye_info: String,
     #[serde(default)]
-    pub keyword_reply: bool,
-    #[serde(default)]
-    pub keyword_reply_list: BTreeMap<String, String>,
-    #[serde(default)]
     pub danmu_filter_enable: bool,
     #[serde(default)]
     pub danmu_filter_words: Vec<String>,
@@ -308,11 +304,6 @@ impl Default for AppConfig {
             pk_notice: true,
             show_block_msg: true,
             goodbye_info: "下播啦~ 感谢大家的陪伴~ 下次见哦~".to_string(),
-            keyword_reply: true,
-            keyword_reply_list: BTreeMap::from([
-                ("回复关键词1".to_string(), "回复内容1".to_string()),
-                ("回复关键词2".to_string(), "回复内容2".to_string()),
-            ]),
             danmu_filter_enable: true,
             danmu_filter_words: Vec::new(),
             danmu_filter_repeat_threshold: default_danmu_filter_repeat_threshold(),

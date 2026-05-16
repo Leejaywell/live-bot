@@ -35,7 +35,6 @@ impl BotEngine {
         self.track_danmu(event, storage);
         out.extend(self.welcome(event));
         out.extend(self.help(event));
-        out.extend(self.keyword_reply(event));
         out.extend(self.thanks(event));
         out.extend(self.pk_and_activity_notice(event));
         out
@@ -71,21 +70,6 @@ impl BotEngine {
         }
 
         Vec::new()
-    }
-
-    fn keyword_reply(&self, event: &LiveEvent) -> Vec<String> {
-        if !self.config.keyword_reply {
-            return Vec::new();
-        }
-        let LiveEvent::Danmu { text, .. } = event else {
-            return Vec::new();
-        };
-        self.config
-            .keyword_reply_list
-            .iter()
-            .find(|(k, _)| text.contains(*k))
-            .map(|(_, v)| vec![v.clone()])
-            .unwrap_or_default()
     }
 
     fn is_permanently_blacklisted(&self, event: &LiveEvent) -> bool {
@@ -422,25 +406,6 @@ mod tests {
     }
 
     #[test]
-    fn keyword_reply_matches_substring() {
-        let mut config = test_config();
-        config.keyword_reply = true;
-        config.keyword_reply_list.insert("吃饭".to_string(), "我也想吃".to_string());
-        let engine = BotEngine::new(config);
-
-        let replies = engine.handle_event(
-            &LiveEvent::Danmu {
-                user_id: 1,
-                user: "u".to_string(),
-                text: "你吃饭了吗".to_string(),
-            },
-            None,
-        );
-
-        assert_eq!(replies, vec!["我也想吃"]);
-    }
-
-    #[test]
     fn thanks_share_emits_message() {
         let mut config = test_config();
         config.thanks_share = true;
@@ -546,18 +511,7 @@ mod tests {
     fn comprehensive_switch_coverage() {
         let mut config = test_config();
         
-        // 1. Keyword Reply Switch
-        config.keyword_reply = false;
-        config.keyword_reply_list.insert("测试".to_string(), "回复".to_string());
-        let engine = BotEngine::new(config.clone());
-        let event = LiveEvent::Danmu { user_id: 1, user: "u".to_string(), text: "测试消息".to_string() };
-        assert!(engine.handle_event(&event, None).is_empty(), "Keyword reply should be disabled");
-        
-        config.keyword_reply = true;
-        let engine = BotEngine::new(config.clone());
-        assert!(!engine.handle_event(&event, None).is_empty(), "Keyword reply should be enabled");
-
-        // 2. Thanks Focus Switch
+        // 1. Thanks Focus Switch
         config.thanks_focus = false;
         let engine = BotEngine::new(config.clone());
         let event = LiveEvent::Interact { kind: InteractKind::Follow, user_id: 1, user: "u".to_string() };

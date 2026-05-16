@@ -3,12 +3,12 @@ import { invoke } from '@tauri-apps/api/core';
 import { GlassCard } from '../components/GlassCard';
 import { Input } from '../components/Input';
 import { Toggle } from '../components/Toggle';
-import { RefreshCw, ChevronDown } from 'lucide-react';
+import { RefreshCw, ChevronDown, Radio, Plus } from 'lucide-react';
 import { api, AiProvider } from '../lib/api';
-import { TtsProvider, availableProviders, findVoice } from '../lib/voices';
+import { availableProviders, findVoice, TtsProvider } from '../lib/voices';
 import { VoicePicker } from '../components/VoicePicker';
 import { toast } from 'sonner';
-import { useLoggedIn } from '../context/LoginContext';
+import { useLogin } from '../context/LoginContext';
 import { cn } from '../lib/utils';
 
 type LogType = 'danmu' | 'gift' | 'interact' | 'other' | 'system';
@@ -61,40 +61,23 @@ const typeBadge: Record<LogType, string> = {
   system: '系统',
 };
 
-
-function GSelect({ value, onChange, options }: {
-  value: string; onChange: (v: string) => void;
-  options: { value: string; label: string }[];
-}) {
-  return (
-    <div className="relative">
-      <select value={value} onChange={e => onChange(e.target.value)}
-        className="h-[26px] pl-2.5 pr-7 rounded-lg appearance-none bg-white/60 dark:bg-white/10 border border-gray-200 dark:border-white/20 text-[11px] focus:outline-none focus:ring-1 focus:ring-[var(--primary-color)]/50">
-        {options.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
-      </select>
-      <ChevronDown className="absolute right-2 top-1/2 -translate-y-1/2 w-3 h-3 text-gray-400 pointer-events-none" />
-    </div>
-  );
-}
-
 export function Monitor() {
+  const { isLoggedIn: loggedIn } = useLogin();
   const [filter, setFilter] = useState('all');
   const [message, setMessage] = useState('');
   const [isMonitoring, setIsMonitoring] = useState(false);
   const [logs, setLogs] = useState<LogEntry[]>([]);
   const logEndRef = useRef<HTMLDivElement>(null);
   const bufferRef = useRef<LogEntry[]>([]);
-  const loggedIn = useLoggedIn();
 
   // Pause state: frontend stops polling, backend continues
   const [isPaused, setIsPaused] = useState(false);
   const isPausedRef = useRef(false);
 
-  // TTS announce state — runtime only, synced via sessionStorage with AutoReply
+  // TTS announce state
   const [isTtsEnabled, setIsTtsEnabled] = useState(() => sessionStorage.getItem('danmuAnnounce') === 'true');
   const isTtsEnabledRef = useRef(sessionStorage.getItem('danmuAnnounce') === 'true');
   const [ttsProviders, setTtsProviders] = useState<AiProvider[]>([]);
-  const [selectedTtsId, setSelectedTtsId] = useState('');
   const [ttsVoice, setTtsVoice] = useState('');
   const ttsVoiceRef = useRef('');
   const [voiceOpen, setVoiceOpen] = useState(false);
@@ -109,27 +92,14 @@ export function Monitor() {
     api.loadConfig().then(c => {
       const enabled = (c.AiProviders ?? []).filter(p => p.ProviderType === 'tts' && p.Enabled);
       setTtsProviders(enabled);
-      if (enabled.length > 0) {
-        setSelectedTtsId(enabled[0].Id);
+      if (enabled.length > 0 && !ttsVoice) {
         const voice = enabled[0].Model || 'zh-CN-XiaoxiaoNeural';
         setTtsVoice(voice);
         ttsVoiceRef.current = voice;
       }
     }).catch(console.error);
-  }, []);
+  }, [ttsVoice]);
 
-  // When TTS provider selection changes, update voice to provider's default
-  const handleTtsProviderChange = (id: string) => {
-    setSelectedTtsId(id);
-    const prov = ttsProviders.find(p => p.Id === id);
-    if (prov) {
-      const voice = prov.Model || 'zh-CN-XiaoxiaoNeural';
-      setTtsVoice(voice);
-      ttsVoiceRef.current = voice;
-    }
-  };
-
-  // Fix: use splice(0) to atomically capture + clear buffer before setState
   const flushLogs = useCallback(() => {
     if (bufferRef.current.length === 0) return;
     const pending = bufferRef.current.splice(0);
@@ -137,6 +107,15 @@ export function Monitor() {
       const next = [...prev, ...pending];
       return next.length > 500 ? next.slice(next.length - 500) : next;
     });
+  }, []);
+
+  const checkMonitorStatus = useCallback(async () => {
+    try {
+      const status = await api.getMonitorStatus();
+      setIsMonitoring(status);
+    } catch (err) {
+      console.error('Failed to check monitor status:', err);
+    }
   }, []);
 
   useEffect(() => {
@@ -151,36 +130,87 @@ export function Monitor() {
       flushLogs();
     }).catch(console.error);
 
+    const flushTimer = setInterval(flushLogs, 200);
+
     const pollTimer = setInterval(async () => {
       if (isPausedRef.current) return;
       try {
         const lines = await api.getRecentDanmaku();
-        if (lines && lines.length > 0) {
+        if (lines.length > 0) {
           for (const line of lines) {
             const entry = parseMonitorLog(line);
-            if (entry) {
-              bufferRef.current.push(entry);
-              // TTS announce new danmaku
-              if (isTtsEnabledRef.current && entry.type === 'danmu' && entry.user && ttsVoiceRef.current) {
-                const text = `${entry.user}说${entry.content || entry.text}`;
-                invoke('speak_text_cmd', { text, voice: ttsVoiceRef.current }).catch(console.error);
-              }
-            }
+            if (entry) bufferRef.current.push(entry);
           }
         }
-      } catch {}
+      } catch (err) {
+        console.error('Polling error:', err);
+      }
     }, 150);
 
-    const flushTimer = setInterval(flushLogs, 200);
-
+    let unlistenLiveEvents: (() => void) | undefined;
+    let unlistenLiveEvent: (() => void) | undefined;
     let unlistenLog: (() => void) | undefined;
     let unlistenStatus: (() => void) | undefined;
 
     const setup = async () => {
       try {
-        unlistenLog = await api.onMonitorLog((text) => {
-          const entry = parseMonitorLog(text);
-          if (entry) bufferRef.current.push(entry);
+        const handleBatch = (batch: any[]) => {
+          if (isPausedRef.current) return;
+          for (const parsed of batch) {
+            const ev = parsed.event as Record<string, any>;
+            let line: string | null = null;
+            
+            switch (ev.type) {
+              case 'Danmu': {
+                const { user, text } = ev;
+                line = `弹幕 ${user}: ${text}`;
+                if (isTtsEnabledRef.current && ttsVoiceRef.current) {
+                  invoke('speak_text_cmd', { text: `${user}说${text}`, voice: ttsVoiceRef.current }).catch(console.error);
+                }
+                break;
+              }
+              case 'Gift': {
+                const { user, gift, count } = ev;
+                line = `礼物 ${user}: ${gift} x${count}`;
+                break;
+              }
+              case 'Interact': {
+                const { kind, user } = ev;
+                if (kind === 'Entry') line = `进场 ${user}`;
+                else if (kind === 'Follow' || kind === 'MutualFollow') line = `关注 ${user}`;
+                else if (kind === 'Share') line = `分享 ${user}`;
+                else line = `互动 ${user}`;
+                break;
+              }
+              case 'EntryEffect':
+                line = `进场特效 ${ev.user}`;
+                break;
+              case 'GuardBuy':
+                line = `大航海 ${ev.user}: ${ev.gift}`;
+                break;
+              case 'SuperChat':
+                line = `醒目留言 ${ev.user} (¥${ev.price}): ${ev.text}`;
+                break;
+              case 'Block':
+                line = `禁言 ${ev.user}`;
+                break;
+            }
+
+            if (line) {
+              const entry = parseMonitorLog(line);
+              if (entry) bufferRef.current.push(entry);
+            }
+          }
+        };
+
+        unlistenLiveEvents = await api.onLiveEvents(handleBatch);
+        unlistenLiveEvent = await api.onLiveEvent((parsed) => handleBatch([parsed]));
+        unlistenLog = await api.onMonitorLogs((texts) => {
+          if (isPausedRef.current) return;
+          for (const text of texts) {
+            const entry = parseMonitorLog(text);
+            if (entry) bufferRef.current.push(entry);
+          }
         });
         unlistenStatus = await api.onMonitorStatus((status) => {
           setIsMonitoring(status === '运行中');
@@ -192,25 +222,18 @@ export function Monitor() {
     setup();
 
     return () => {
-      clearInterval(pollTimer);
       clearInterval(flushTimer);
+      clearInterval(pollTimer);
+      if (unlistenLiveEvents) unlistenLiveEvents();
+      if (unlistenLiveEvent) unlistenLiveEvent();
       if (unlistenLog) unlistenLog();
       if (unlistenStatus) unlistenStatus();
     };
-  }, [flushLogs]);
+  }, [flushLogs, checkMonitorStatus]);
 
   useEffect(() => {
     logEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [logs]);
-
-  const checkMonitorStatus = async () => {
-    try {
-      const status = await api.getMonitorStatus();
-      setIsMonitoring(status);
-    } catch (err) {
-      console.error('Failed to check monitor status:', err);
-    }
-  };
 
   const toggleMonitor = async () => {
     if (!loggedIn) { toast.info('请先登录'); return; }
@@ -283,10 +306,8 @@ export function Monitor() {
   return (
     <div className="p-5 h-full flex flex-col gap-4 overflow-hidden">
       <GlassCard className="flex-1 flex flex-col overflow-hidden border-white/60 dark:border-white/10 shadow-xl">
-        {/* Toolbar */}
         <div className="flex items-center justify-between px-5 py-3 border-b border-black/5 dark:border-white/5 bg-white/30 dark:bg-black/10 shrink-0">
           <div className="flex items-center gap-3 flex-wrap">
-            {/* Status indicator */}
             <div className="flex items-center gap-2 px-3 py-1.5 rounded-full bg-white/50 dark:bg-white/5 border border-white/20">
               <div className={`w-2 h-2 rounded-full ${
                 isPaused ? 'bg-orange-400' :
@@ -297,7 +318,6 @@ export function Monitor() {
               </span>
             </div>
 
-            {/* Pause/resume button — red like 停止监听 */}
             <button
               onClick={togglePause}
               className={cn(
@@ -312,13 +332,11 @@ export function Monitor() {
 
             <div className="w-px h-4 bg-black/10 dark:bg-white/10" />
 
-            {/* TTS announce toggle */}
             <div className="flex items-center gap-2">
               <span className="text-[11px] font-black text-gray-600 dark:text-gray-200 uppercase tracking-widest">播报弹幕</span>
               <Toggle checked={isTtsEnabled} onChange={toggleTts} />
             </div>
 
-            {/* TTS voice select — visible when enabled */}
             {isTtsEnabled && ttsProviders.length > 0 && (
               <button
                 onClick={() => setVoiceOpen(true)}
@@ -355,7 +373,6 @@ export function Monitor() {
           </div>
         </div>
 
-        {/* Log Content */}
         <div className="flex-1 overflow-y-auto bg-white/[0.06] dark:bg-transparent scrollbar-none">
           <div className="divide-y divide-black/5 dark:divide-white/5">
             {filteredLogs.map((log) => (
@@ -405,7 +422,6 @@ export function Monitor() {
         </div>
       </GlassCard>
 
-      {/* Input Area */}
       <GlassCard className="p-4 border-white/60 dark:border-white/10 shadow-lg bg-white/60">
         <div className="flex gap-3 items-center">
           <div className="flex-1 relative group">

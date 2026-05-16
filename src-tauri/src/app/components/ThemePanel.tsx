@@ -1,7 +1,7 @@
 import { useState, useRef, useEffect, useCallback } from 'react';
-import { ChevronDown } from 'lucide-react';
+import { ChevronDown, Sparkles, Wind, Zap, Grid, Hash, Layers, MousePointer2, Waves, Binary, Stars } from 'lucide-react';
 import { HexColorPicker } from 'react-colorful';
-import { useTheme, themePresets } from '../context/ThemeContext';
+import { useTheme, themePresets, type BackgroundEffectType } from '../context/ThemeContext';
 import { GlassCard } from './GlassCard';
 import { cn } from '../lib/utils';
 
@@ -9,8 +9,21 @@ interface ThemePanelProps {
   onClose: () => void;
 }
 
+const backgroundEffects: { id: BackgroundEffectType; name: string; icon: any }[] = [
+  { id: 'blobs',       name: '动态气泡', icon: Sparkles },
+  { id: 'mesh',        name: '流体色彩', icon: Wind },
+  { id: 'aurora',      name: '极光幻影', icon: Zap },
+  { id: 'grid',        name: '工业网格', icon: Grid },
+  { id: 'noise',       name: '质感噪点', icon: Hash },
+  { id: 'particles',   name: '悬浮粒子', icon: MousePointer2 },
+  { id: 'parallax',    name: '浮动几何', icon: Layers },
+  { id: 'ripples',     name: '动态水波', icon: Waves },
+  { id: 'data-stream', name: '数据流',   icon: Binary },
+  { id: 'starfield',   name: '全景星空', icon: Stars },
+];
+
 export function ThemePanel({ onClose }: ThemePanelProps) {
-  const { theme, setTheme, primaryColor, setPrimaryColor } = useTheme();
+  const { theme, setTheme, primaryColor, setPrimaryColor, backgroundEffect, setBackgroundEffect } = useTheme();
   const [showCustom, setShowCustom] = useState(false);
   const [customColor, setCustomColor] = useState(primaryColor);
   const [closing, setClosing] = useState(false);
@@ -129,6 +142,32 @@ export function ThemePanel({ onClose }: ThemePanelProps) {
               </div>
             </div>
           )}
+
+          {/* 背景特效选择 */}
+          <div className="space-y-3 pt-2">
+            <div className="text-[10px] uppercase tracking-wider text-gray-400 font-bold px-1">背景特效</div>
+            <div className="grid grid-cols-2 gap-2">
+              {backgroundEffects.map(eff => {
+                const active = backgroundEffect === eff.id;
+                const Icon = eff.icon;
+                return (
+                  <button
+                    key={eff.id}
+                    onClick={() => setBackgroundEffect(eff.id)}
+                    className={cn(
+                      "flex items-center gap-2 px-3 h-9 rounded-xl transition-all border",
+                      active 
+                        ? "bg-[var(--primary-color)]/10 border-[var(--primary-color)] text-[var(--primary-color)] shadow-sm"
+                        : "bg-black/5 dark:bg-white/5 border-transparent text-gray-500 hover:bg-black/10 dark:hover:bg-white/10"
+                    )}
+                  >
+                    <Icon className={cn("w-3.5 h-3.5", active ? "animate-pulse" : "opacity-60")} />
+                    <span className="text-[10px] font-bold">{eff.name}</span>
+                  </button>
+                );
+              })}
+            </div>
+          </div>
         </div>
       </GlassCard>
     </div>

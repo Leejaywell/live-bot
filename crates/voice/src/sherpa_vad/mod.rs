@@ -49,6 +49,39 @@ impl SherpaPipeline {
         language:      &str,
         cancel:        CancellationToken,
     ) -> Result<Self, String> {
+        // Guard: validate file exists and is plausibly intact before calling C++.
+        // A missing OR corrupt ONNX file causes Ort::Session::Session to throw a C++
+        // exception that escapes the FFI boundary → demangling_terminate_handler → abort().
+        // catch_unwind cannot intercept C++ exceptions, so we must gate here.
+        if !vad_model.exists() {
+            return Err(format!("VAD 模型文件不存在: {} — 请先下载 silero_vad.onnx", vad_model.display()));
+        }
+        {
+            let meta = std::fs::metadata(&vad_model)
+                .map_err(|e| format!("无法读取 VAD 模型文件元数据: {e}"))?;
+            // silero_vad.onnx is ~1.7 MB; anything under 64 KB is certainly truncated.
+            if meta.len() < 65_536 {
+                return Err(format!(
+                    "VAD 模型文件过小 ({} bytes)，可能下载不完整，请重新下载 silero_vad.onnx",
+                    meta.len()
+                ));
+            }
+            // ONNX/protobuf files have no fixed magic, but field-1 (ir_version, varint)
+            // always makes the first byte 0x08.  Reject anything that doesn't start with it.
+            let mut f = std::fs::File::open(&vad_model)
+                .map_err(|e| format!("无法打开 VAD 模型文件: {e}"))?;
+            let mut hdr = [0u8; 1];
+            use std::io::Read;
+            f.read_exact(&mut hdr)
+                .map_err(|e| format!("无法读取 VAD 模型文件头: {e}"))?;
+            if hdr[0] != 0x08 {
+                return Err(format!(
+                    "VAD 模型文件格式不正确（首字节 0x{:02x} ≠ 0x08），请重新下载 silero_vad.onnx",
+                    hdr[0]
+                ));
+            }
+        }
+
         // 可选 ASR 初始化
         let asr: Option<SherpaAsrBackend> = match asr_model_dir {
             Some(dir) => {

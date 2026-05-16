@@ -986,6 +986,40 @@ impl Storage {
             |row| row.get(0),
         )?)
     }
+
+    pub fn get_blind_box_stats(&self, days: i64) -> Result<Vec<(String, i64)>> {
+        let start_date = if days == 0 {
+            today_key()
+        } else {
+            let start = Local::now() - chrono::Duration::days(days);
+            format!(
+                "{:04}-{:02}-{:02}",
+                start.year(),
+                start.month(),
+                start.day()
+            )
+        };
+
+        let conn = self.conn.lock().expect("storage mutex poisoned");
+        let mut stmt = conn.prepare(
+            "
+            select substr(created_at, 1, 10) as day, sum(profit_loss) as total
+            from blind_box_stat
+            where created_at >= ?1
+            group by day
+            order by day asc
+            ",
+        )?;
+        let rows = stmt.query_map(params![start_date], |row| {
+            Ok((row.get(0)?, row.get(1)?))
+        })?;
+
+        let mut result = Vec::new();
+        for row in rows {
+            result.push(row?);
+        }
+        Ok(result)
+    }
 }
 
 fn today_key() -> String {

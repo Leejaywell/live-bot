@@ -8,6 +8,7 @@ description = "TTS / ASR / VAD pipeline for Streamix, ported from SquadyAI/Realt
 # asr        — WhisperLive 流式 ASR 客户端（默认启用）
 # vad        — sherpa-onnx SenseVoice VAD + ASR（本地 ONNX，按需启用）
 # denoiser   — GTCRN 频域降噪（ort + ndarray + rustfft，按需启用）
+# voice-changer — RVC AI 变声（ort + ndarray，按需启用）
 # playback   — cpal 音频播放（默认启用）
 # model-hub  — HuggingFace Hub 模型下载（hf-hub，按需启用）
 [features]
@@ -16,6 +17,7 @@ tts = ["dep:minimp3", "dep:async-stream", "dep:uuid", "dep:lingua"]
 asr = []
 vad = ["dep:sherpa-onnx", "dep:cpal"]
 denoiser = ["dep:ort", "dep:ndarray", "dep:rustfft"]
+voice-changer = ["dep:ort", "dep:ndarray", "dep:cpal"]
 playback = ["dep:cpal"]
 model-hub = ["dep:hf-hub"]
 

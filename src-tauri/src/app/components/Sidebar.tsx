@@ -10,7 +10,8 @@ import {
   Settings as SettingsIcon,
   Moon,
   Sun,
-  ChevronLeft,
+  PanelLeftClose,
+  Sparkles,
 } from 'lucide-react';
 import logoUrl from '../../assets/logo.svg?url';
 import { IconButton } from './IconButton';
@@ -33,7 +34,8 @@ const navItems = [
   { path: '/auto-reply', label: '自动回复', icon: MessageSquare },
   { path: '/ai', label: 'AI 机器人', icon: Bot },
   { path: '/voice', label: '语音交互', icon: Mic },
-  { path: '/models', label: '模型服务', icon: Cpu },
+  { path: '/voice-changer', label: '变声器', icon: Sparkles },
+  { path: '/models', label: '模型管理', icon: Cpu },
 ];
 
 // Known dimensions (must match Tailwind classes below)
@@ -60,22 +62,17 @@ export function Sidebar({ collapsed, connected, onToggleThemePanel, onToggleSide
       className={cn(
         'h-full glass-sidebar backdrop-blur-xl overflow-hidden shrink-0',
         'transition-[width,opacity] duration-300 ease-in-out',
-        collapsed ? 'w-0 opacity-0 pointer-events-none' : 'w-[196px] opacity-100',
+        collapsed ? 'w-0 opacity-0 pointer-events-none' : 'w-[172px] opacity-100',
       )}
     >
       {/* Fixed-width inner so content never wraps during collapse */}
-      <div className="w-[196px] h-full flex flex-col pb-3.5 px-3.5">
-        <div className="flex items-center justify-between px-2 h-[56px] flex-shrink-0">
-          <div className="flex items-center gap-2">
-            <img src={logoUrl} alt="流光" className="w-[34px] h-[34px] rounded-xl" />
-            <span className="font-black text-[15px] whitespace-nowrap tracking-tight">流光</span>
-          </div>
-          <IconButton onClick={onToggleSidebar} className="opacity-60 hover:opacity-100">
-            <ChevronLeft className="w-4 h-4" />
-          </IconButton>
+      <div className="w-[172px] h-full flex flex-col pb-3.5 px-3.5">
+        <div className="flex items-center px-2 h-[56px] flex-shrink-0 gap-2">
+          <img src={logoUrl} alt="流光" className="w-[34px] h-[34px] rounded-xl" />
+          <span className="font-black text-[15px] whitespace-nowrap tracking-tight">流光</span>
         </div>
 
-        <nav className="flex-1 space-y-1 mt-5 relative">
+        <nav className="flex-1 flex flex-col gap-[4px] pt-[6px] mt-5 relative">
           {/* Sliding active indicator */}
           {activeIdx >= 0 && (
             <div
@@ -102,7 +99,6 @@ export function Sidebar({ collapsed, connected, onToggleThemePanel, onToggleSide
                 className={cn(
                   'flex items-center gap-3 h-[42px] px-3 rounded-[12px] relative z-10 group',
                   'transition-colors duration-200',
-                  item.mt && 'mt-1.5',
                   isActive
                     ? 'text-white'
                     : 'text-gray-800 dark:text-gray-100 hover:text-gray-900 dark:hover:text-white hover:bg-white/40 dark:hover:bg-white/8'
@@ -115,12 +111,16 @@ export function Sidebar({ collapsed, connected, onToggleThemePanel, onToggleSide
           })}
         </nav>
 
-        <div className="pt-3 border-t border-white/10 flex gap-2 flex-shrink-0">
+        <div className="pt-3 border-t border-white/10 flex items-center gap-2 flex-shrink-0">
           <IconButton onClick={onToggleSettings}>
             <SettingsIcon className="w-4 h-4" />
           </IconButton>
           <IconButton onClick={onToggleThemePanel}>
             {theme === 'dark' ? <Moon className="w-4 h-4" /> : <Sun className="w-4 h-4" />}
+          </IconButton>
+          <div className="flex-1" />
+          <IconButton onClick={onToggleSidebar} className="opacity-60 hover:opacity-100">
+            <PanelLeftClose className="w-4 h-4" />
           </IconButton>
         </div>
       </div>

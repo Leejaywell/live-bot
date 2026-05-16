@@ -3,13 +3,12 @@ use std::time::{SystemTime, UNIX_EPOCH};
 use anyhow::{Result, anyhow};
 use reqwest::header::{COOKIE, HeaderMap, HeaderValue, USER_AGENT};
 use serde::Deserialize;
-
-use crate::config::AppConfig;
 use crate::token;
 
-const UA: &str = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0 Safari/537.36";
+const UA: &str = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36";
 
 #[derive(Clone)]
+
 pub struct BiliApi {
     client: reqwest::Client,
 }
@@ -84,6 +83,7 @@ impl BiliApi {
         headers.insert(USER_AGENT, HeaderValue::from_static(UA));
         let client = reqwest::Client::builder()
             .default_headers(headers)
+            .timeout(std::time::Duration::from_secs(10))
             .build()?;
         Ok(Self { client })
     }
@@ -373,24 +373,6 @@ impl BiliApi {
         Ok(())
     }
 
-    pub async fn robot_assistant_reply(&self, config: &AppConfig, prompt: &str) -> Result<String> {
-        // 优先找 ai_bots 中第一个启用的 bot
-        if let Some(bot) = config.ai_bots.iter().find(|b| b.enabled) {
-            if let Some(provider) = config.ai_providers.iter().find(|p| p.id == bot.provider_id) {
-                let system_prompt = bot.system_prompt.replace("{{name}}", &bot.nickname);
-                return self.openai_reply(provider, &system_prompt, &[], prompt).await;
-            }
-        }
-        // fallback: 旧版 active_provider_id 路径
-        let provider = config
-            .ai_providers
-            .iter()
-            .find(|p| p.id == config.active_provider_id)
-            .ok_or_else(|| anyhow!("未找到活跃的 AI 供应商"))?;
-        let system_prompt = provider.system_prompt.replace("{{name}}", &provider.nickname);
-        self.openai_reply(provider, &system_prompt, &[], prompt).await
-    }
-
     pub async fn check_update(&self, current_version: &str) -> Result<Option<UpdateInfo>> {
         let response: UpdateResponse = self
             .client
@@ -515,48 +497,6 @@ impl BiliApi {
             .json()
             .await?;
         Ok(response)
-    }
-
-    async fn openai_reply(
-        &self,
-        provider: &crate::config::AiProvider,
-        system_prompt: &str,
-        history: &[(String, String)],
-        prompt: &str,
-    ) -> Result<String> {
-        let url = if provider.api_url.ends_with("/chat/completions") {
-            provider.api_url.clone()
-        } else {
-            format!(
-                "{}/chat/completions",
-                provider.api_url.trim_end_matches('/')
-            )
-        };
-
-        let mut messages = vec![ChatMessage {
-            role: "system".to_string(),
-            content: system_prompt.to_string(),
-        }];
-        for (role, content) in history {
-            messages.push(ChatMessage { role: role.clone(), content: content.clone() });
-        }
-        messages.push(ChatMessage { role: "user".to_string(), content: prompt.to_string() });
-
-        let request = ChatCompletionRequest {
-            model: provider.model.clone(),
-            messages,
-        };
-        let response: ChatCompletionResponse = self
-            .client
-            .post(&url)
-            .header("Authorization", format!("Bearer {}", provider.api_key))
-            .json(&request)
-            .send()
-            .await?
-            .error_for_status()?
-            .json()
-            .await?;
-        Ok(response.choices[0].message.content.clone())
     }
 }
 
@@ -687,33 +627,6 @@ struct SendResponse {
     code: i32,
     #[serde(default)]
     msg: Option<String>,
-}
-
-#[derive(Debug, serde::Serialize)]
-struct ChatCompletionRequest {
-    model: String,
-    messages: Vec<ChatMessage>,
-}
-
-#[derive(Debug, serde::Serialize)]
-struct ChatMessage {
-    role: String,
-    content: String,
-}
-
-#[derive(Debug, Deserialize)]
-struct ChatCompletionResponse {
-    choices: Vec<ChatChoice>,
-}
-
-#[derive(Debug, Deserialize)]
-struct ChatChoice {
-    message: ChatChoiceMessage,
-}
-
-#[derive(Debug, Deserialize)]
-struct ChatChoiceMessage {
-    content: String,
 }
 
 #[derive(Debug, Deserialize)]

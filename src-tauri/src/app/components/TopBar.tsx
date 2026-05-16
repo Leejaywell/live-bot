@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
 import { createPortal } from 'react-dom';
-import { Bell, User, LogIn, Link as LinkIcon, X, RefreshCw, Unplug, Play, Square } from 'lucide-react';
+import { Bell, User, LogIn, Link as LinkIcon, X, RefreshCw, LogOut, Play, Square } from 'lucide-react';
 import { IconButton } from './IconButton';
 import { Button } from './Button';
 import { UserInfo, RoomInfo, AnchorInfo, api } from '../lib/api';
@@ -171,8 +171,7 @@ export function TopBar({ onToggleNotifications, sidebarCollapsed, isLoggedIn, us
   return (
     <>
       <div
-        className="h-[56px] glass-topbar flex items-center justify-between pr-4 relative"
-        style={{ paddingLeft: sidebarCollapsed ? '60px' : '16px' }}
+        className="h-[56px] glass-topbar flex items-center justify-between px-4 relative"
       >
         <span
           className="absolute left-1/2 -translate-x-1/2 text-[12px] font-bold text-[var(--primary-color)] pointer-events-none transition-opacity duration-500 select-none bg-[var(--primary-color)]/10 px-3 py-1 rounded-full border border-[var(--primary-color)]/20"
@@ -223,33 +222,32 @@ export function TopBar({ onToggleNotifications, sidebarCollapsed, isLoggedIn, us
               <div className="flex items-center gap-2 ml-1">
                 {/* 停止/获取事件 */}
                 {isMonitoring ? (
-                  <button
+                  <IconButton
                     onClick={handleToggleMonitor}
-                    className="inline-flex items-center justify-center gap-1.5 h-[32px] px-4 rounded-full text-[12px] font-bold transition-all
-                               bg-red-500/10 border border-red-500/20 text-red-500 dark:text-red-400
-                               hover:bg-red-500 hover:text-white hover:border-transparent shadow-sm"
+                    title="停止监听"
+                    className="bg-red-500/10 border-red-500/20 text-red-500 hover:bg-red-500 hover:text-white shadow-sm"
                   >
-                    <Square className="w-3 h-3 fill-current" />停止监听
-                  </button>
+                    <Square className="w-4 h-4 fill-current" />
+                  </IconButton>
                 ) : (
-                  <button
+                  <IconButton
                     onClick={handleToggleMonitor}
-                    className="inline-flex items-center justify-center gap-1.5 h-[32px] px-4 rounded-full text-[12px] font-bold text-white transition-all hover:opacity-90 shadow-md active:scale-95"
-                    style={{ background: 'var(--primary-color)' }}
+                    title="开始监听"
+                    className="text-white hover:opacity-90 shadow-md active:scale-95"
+                    style={{ background: 'var(--primary-color)', borderColor: 'var(--primary-color)' }}
                   >
-                    <Play className="w-3 h-3 fill-current" />开始监听
-                  </button>
+                    <Play className="w-4 h-4 fill-current ml-0.5" />
+                  </IconButton>
                 )}
 
-                {/* 退出房间 — 与停止监听相同样式 */}
-                <button
+                {/* 退出房间 */}
+                <IconButton
                   onClick={handleDisconnect}
-                  className="inline-flex items-center justify-center gap-1.5 h-[32px] px-4 rounded-full text-[12px] font-bold transition-all
-                             bg-red-500/10 border border-red-500/20 text-red-500 dark:text-red-400
-                             hover:bg-red-500 hover:text-white hover:border-transparent shadow-sm"
+                  title="退出房间"
+                  className="bg-red-500/10 border-red-500/20 text-red-500 hover:bg-red-500 hover:text-white shadow-sm"
                 >
-                  <Unplug className="w-3.5 h-3.5" />退出房间
-                </button>
+                  <LogOut className="w-4 h-4" />
+                </IconButton>
               </div>
             </>
           ) : isLoggedIn ? (

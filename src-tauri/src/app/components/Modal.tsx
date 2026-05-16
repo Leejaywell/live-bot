@@ -3,6 +3,8 @@ import { createPortal } from 'react-dom';
 import { X } from 'lucide-react';
 import { cn } from '../lib/utils';
 
+export const MODAL_W = 'w-[480px]';
+
 interface ModalProps {
   open: boolean;
   onClose: () => void;
@@ -60,6 +62,7 @@ export function Modal({ open, onClose, children, className, zIndex = 500 }: Moda
         {/* Card */}
         <div className={cn(
           'glass-card rounded-[18px] backdrop-blur-xl shadow-2xl overflow-hidden relative',
+          MODAL_W,
           closing ? 'animate-modal-out' : 'animate-modal-in',
           className
         )}>

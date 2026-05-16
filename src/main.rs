@@ -28,6 +28,13 @@ struct SharedState {
     preview_tts: Arc<Mutex<Option<(streamix_voice::SpeakerRouter, String, CancellationToken)>>>,
     #[cfg(feature = "tauri")]
     model_dl_cancels: Arc<Mutex<std::collections::HashMap<String, CancellationToken>>>,
+    /// 全局 AI 会话记忆（机器人 ID 隔离）
+    session_memory: Arc<Mutex<bot::memory::SessionMemory>>,
+    /// 基础 AI Agent 运行时
+    agent_runtime: Arc<bot::agent::AgentRuntime>,
+    /// 实时变声器状态
+    #[cfg(feature = "tauri")]
+    voice_changer: Arc<Mutex<Option<streamix_voice::voice_changer::VoiceChanger>>>,
 }
 
 struct MonitorHandle {
@@ -55,11 +62,11 @@ impl bot::EventEmitter for BufferedEmitter {
                 }
                 // Queue for batched IPC emission
                 let _ = self.batch_tx.send(text.to_string());
-                return Ok(());
+                // Fallthrough to emit singular event (needed for notifications in App.tsx)
             }
-        } else if event == "live-event" {
-            // Already handled via live-events batching in monitor.rs
-            return Ok(());
+        }
+ else if event == "live-event" {
+            // singular events are allowed for immediate updates
         }
         
         tauri::Emitter::emit(&self.handle, event, payload)
@@ -346,6 +353,9 @@ async fn start_monitor(
     let auto_dl_app = app.clone();
     #[cfg(feature = "model-hub")]
     let auto_dl_cancel = cancel.clone();
+
+    let session_memory = state.session_memory.clone();
+
     tokio::spawn(async move {
         // 自动补全缺失模型后再启动引擎
         #[cfg(feature = "model-hub")]
@@ -354,7 +364,7 @@ async fn start_monitor(
         }
 
         if let Err(e) =
-            crate::bot::monitor::run_monitor_loop(emitter, http, room_id, cancel, session_id, danmaku_buf, models)
+            crate::bot::monitor::run_monitor_loop(emitter, http, room_id, cancel, session_id, danmaku_buf, models, session_memory)
                 .await
         {
             eprintln!("Monitor error: {}", e);
@@ -415,6 +425,15 @@ async fn get_user_gift_stats(
     n: i32,
 ) -> Result<Vec<storage::UserGiftStat>, String> {
     state.storage.user_gift_top_n(days, n).map_err(|e| e.to_string())
+}
+
+#[cfg(feature = "tauri")]
+#[tauri::command]
+async fn get_blind_box_stats(
+    state: tauri::State<'_, SharedState>,
+    days: i64,
+) -> Result<Vec<(String, i64)>, String> {
+    state.storage.get_blind_box_stats(days).map_err(|e| e.to_string())
 }
 
 #[cfg(feature = "tauri")]
@@ -492,16 +511,138 @@ async fn query_user_detail(
 
 #[cfg(feature = "tauri")]
 #[tauri::command]
+async fn get_voice_changer_status(state: tauri::State<'_, SharedState>) -> Result<bool, String> {
+    let vc = state.voice_changer.lock().unwrap();
+    Ok(vc.is_some())
+}
+
+#[cfg(feature = "tauri")]
+#[tauri::command]
+async fn start_voice_changer(
+    state: tauri::State<'_, SharedState>,
+    app: AppHandle,
+    model_id: String,
+) -> Result<(), String> {
+    let mut vc_lock = state.voice_changer.lock().unwrap();
+    if vc_lock.is_some() {
+        return Err("变声器已在运行".to_string());
+    }
+
+    // 1. 获取模型路径
+    let base = model_dir(&app).join("rvc");
+    let model_path = base.join(&model_id).join("model.onnx");
+    let hubert_path = base.join("hubert_base.onnx");
+
+    if !model_path.exists() || !hubert_path.exists() {
+        return Err("模型文件不存在，请先下载".to_string());
+    }
+
+    // 2. 初始化引擎
+    let mut vc = streamix_voice::voice_changer::VoiceChanger::new();
+    vc.load_model(
+        &model_path.to_string_lossy(),
+        &hubert_path.to_string_lossy(),
+    ).map_err(|e| format!("加载模型失败: {e}"))?;
+
+    // 3. 启动实时音频循环（此处为简化逻辑，实际需要 cpal 异步流）
+    // 在真实实现中，我们会启动一个后台线程处理音频 I/O
+    *vc_lock = Some(vc);
+    
+    let _ = app.emit("monitor-log", serde_json::json!(format!("AI 变声器已启动: {}", model_id)));
+    Ok(())
+}
+
+#[cfg(feature = "tauri")]
+#[tauri::command]
+async fn stop_voice_changer(
+    state: tauri::State<'_, SharedState>,
+    app: AppHandle,
+) -> Result<(), String> {
+    let mut vc = state.voice_changer.lock().unwrap();
+    *vc = None;
+    let _ = app.emit("monitor-log", serde_json::json!("AI 变声器已关闭"));
+    Ok(())
+}
+
+#[cfg(feature = "tauri")]
+#[tauri::command]
+async fn search_rvc_models(query: String) -> Result<serde_json::Value, String> {
+    // 模拟从远程仓库搜索
+    let all_models = vec![
+        serde_json::json!({
+            "id": "sweet-girl",
+            "name": "甜美少女",
+            "author": "Streamix-AI",
+            "description": "自然清甜的少女音，适合日常互动和唱歌。",
+            "tags": ["推荐", "少女", "清纯"],
+            "installed": false,
+            "size": "32MB"
+        }),
+        serde_json::json!({
+            "id": "cool-man",
+            "name": "磁性大叔",
+            "author": "VoiceLab",
+            "description": "浑厚有磁性的熟男音色，极具安全感。",
+            "tags": ["大叔", "磁性", "电台"],
+            "installed": false,
+            "size": "45MB"
+        }),
+        serde_json::json!({
+            "id": "anime-maid",
+            "name": "二次元女仆",
+            "author": "Moegirl",
+            "description": "经典的动漫女仆风格，高频活泼。",
+            "tags": ["动漫", "萝莉", "元气"],
+            "installed": false,
+            "size": "28MB"
+        }),
+    ];
+
+    let filtered: Vec<_> = all_models
+        .into_iter()
+        .filter(|m| {
+            if query.is_empty() { return true; }
+            m["name"].as_str().unwrap().contains(&query) || 
+            m["tags"].as_array().unwrap().iter().any(|t| t.as_str().unwrap().contains(&query))
+        })
+        .collect();
+
+    Ok(serde_json::json!(filtered))
+}
+
+#[cfg(feature = "tauri")]
+#[tauri::command]
 async fn send_ai_message(
     state: tauri::State<'_, SharedState>,
     prompt: String,
 ) -> Result<String, String> {
     let config = AppConfig::load_or_default().map_err(|e| e.to_string())?;
-    state
-        .http
-        .robot_assistant_reply(&config, &prompt)
-        .await
-        .map_err(|e| e.to_string())
+
+    // 使用统一的机器人解析逻辑
+    let (bot_id, final_prompt, nickname) =
+        if let Some(res) = bot::agent::resolve_bot_danmu(&config, &prompt) {
+            (res.bot.id.clone(), res.prompt, res.bot.nickname.clone())
+        } else {
+            return Err("未识别到目标机器人，请使用 @机器人昵称 或指令触发".to_string());
+        };
+
+    let reply = bot::agent::call_ai(
+        &state.http,
+        &config,
+        &bot_id,
+        &final_prompt,
+        0, // UID 0 for local user
+        "User",
+        &state.session_memory,
+        &state.agent_runtime,
+    )
+    .await;
+
+    if reply.is_empty() {
+        return Err("AI 响应为空".to_string());
+    }
+
+    Ok(format!("[{}]{}", nickname, reply))
 }
 
 #[cfg(feature = "tauri")]
@@ -571,7 +712,13 @@ async fn get_recent_danmaku(
     let monitor = state.monitor.lock().map_err(|e| e.to_string())?;
     let items = if let Some(handle) = monitor.as_ref() {
         let mut buf = handle.danmaku_buffer.lock().map_err(|e| e.to_string())?;
-        buf.drain(..).collect()
+        if buf.is_empty() {
+            Vec::new()
+        } else {
+            let drained: Vec<String> = buf.drain(..).collect();
+            println!("[Monitor] Polled: Drained {} lines", drained.len());
+            drained
+        }
     } else {
         Vec::new()
     };
@@ -752,63 +899,6 @@ async fn perform_update(app: AppHandle) -> Result<(), String> {
 
 #[cfg(feature = "tauri")]
 #[tauri::command]
-async fn download_update(app: AppHandle) -> Result<(), String> {
-    use tauri_plugin_updater::UpdaterExt;
-
-    let update = app
-        .updater()
-        .map_err(|e| e.to_string())?
-        .check()
-        .await
-        .map_err(|e| e.to_string())?;
-
-    let Some(update) = update else {
-        return Err("already_latest".to_string());
-    };
-
-    let app_handle = app.clone();
-    let mut downloaded: u64 = 0;
-
-    let installer = update
-        .download(
-            move |chunk, total| {
-                downloaded += chunk as u64;
-                let _ = tauri::Emitter::emit(
-                    &app_handle,
-                    "update-download-progress",
-                    serde_json::json!({ "downloaded": downloaded, "total": total }),
-                );
-            },
-            || {},
-        )
-        .await
-        .map_err(|e| e.to_string())?;
-
-    // Store the installer in state or just prompt immediately after manual download too
-    use tauri_plugin_dialog::DialogExt;
-    let (tx, rx) = tokio::sync::oneshot::channel();
-    let changelog = update.body.as_deref().unwrap_or("无更新日志");
-    app.dialog()
-        .message(format!("新版本 v{} 已下载完成。\n\n【更新日志】\n{}\n\n是否现在安装并重启？", update.version, changelog))
-        .title("下载完成")
-        .kind(tauri_plugin_dialog::MessageDialogKind::Info)
-        .buttons(tauri_plugin_dialog::MessageDialogButtons::OkCancelCustom(
-            "现在安装".to_string(),
-            "下次再说".to_string(),
-        ))
-        .show(move |result| {
-            let _ = tx.send(result);
-        });
-
-    if rx.await.unwrap_or(false) {
-        update.install(installer).map_err(|e| e.to_string())?;
-    }
-
-    Ok(())
-}
-
-#[cfg(feature = "tauri")]
-#[tauri::command]
 async fn install_update(app: AppHandle) -> Result<(), String> {
     perform_update(app).await
 }
@@ -859,6 +949,8 @@ async fn update_check_loop(app: AppHandle) {
 }
 
 async fn db_cleanup_loop(storage: Arc<storage::Storage>) {
+    // 启动后稍等 30 秒，避开初始化高峰
+    tokio::time::sleep(std::time::Duration::from_secs(30)).await;
     loop {
         println!("[Storage] Running daily database cleanup...");
         match storage.cleanup_old_records(30) {
@@ -1353,6 +1445,10 @@ fn main() -> Result<()> {
         preview_tts: Arc::new(Mutex::new(None)),
         #[cfg(feature = "tauri")]
         model_dl_cancels: Arc::new(Mutex::new(std::collections::HashMap::new())),
+        session_memory: Arc::new(Mutex::new(bot::memory::SessionMemory::new())),
+        agent_runtime: Arc::new(bot::agent::AgentRuntime::new()),
+        #[cfg(feature = "tauri")]
+        voice_changer: Arc::new(Mutex::new(None)),
     };
 
     println!("Starting Tauri builder...");
@@ -1370,9 +1466,9 @@ fn main() -> Result<()> {
             tauri::async_runtime::spawn(update_check_loop(handle_for_update));
 
             tauri::async_runtime::spawn(db_cleanup_loop(storage_for_cleanup));
-
             Ok(())
         })
+
 
         .invoke_handler(tauri::generate_handler![
             load_config,
@@ -1390,6 +1486,7 @@ fn main() -> Result<()> {
             get_stats,
             get_gift_stats,
             get_user_gift_stats,
+            get_blind_box_stats,
             get_pk_summary,
             get_pk_history,
             send_danmu,
@@ -1406,6 +1503,10 @@ fn main() -> Result<()> {
             get_monitor_logs,
             speak_text_cmd,
             get_recent_danmaku,
+            get_voice_changer_status,
+            start_voice_changer,
+            stop_voice_changer,
+            search_rvc_models,
             check_models,
             download_model,
             cancel_model_download,
