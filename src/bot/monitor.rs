@@ -41,6 +41,8 @@ pub async fn run_monitor_loop<E: EventEmitter>(
     let sender_danmu_len = config.danmu_len;
     let cron_enabled = config.cron_danmu;
     let cron_entries = config.cron_danmu_list.clone();
+    let my_room_ids = config.my_room_ids.clone();
+    let record_enabled = config.record_enabled;
 
     let (send_tx, send_rx) = mpsc::channel::<String>(1000);
     let (gift_tx, gift_rx) = mpsc::channel::<bilibili_live_protocol::LiveEvent>(1000);
@@ -338,6 +340,7 @@ pub async fn run_monitor_loop<E: EventEmitter>(
         loop {
             let bot_config = bot_config.clone();
             let session_memory = session_memory.clone();
+            let my_room_ids = my_room_ids.clone();
             let result = async {
                 let room = ws_http.room_init(room_id).await?;
                 let session_id = {
@@ -470,12 +473,15 @@ pub async fn run_monitor_loop<E: EventEmitter>(
                     if let bilibili_live_protocol::LiveEvent::Popularity { value } = event {
                         let _ = event_app.emit("room-online", json!({ "count": value }));
                     }
+                    let should_record = record_enabled
+                        && (my_room_ids.is_empty() || my_room_ids.contains(&room_id));
                     let replies = match bot::record_and_handle_event(
                         &event_storage,
                         &session_id_inner,
                         room_id,
                         &parsed,
                         &event_engine,
+                        should_record,
                     ) {
                         Ok(replies) => replies,
                         Err(err) => {
@@ -500,10 +506,12 @@ pub async fn run_monitor_loop<E: EventEmitter>(
                         let danmu_uid = *user_id;
                         let danmu_uname = danmu_uname.clone();
 
-                        if bot_config.ai_reply_to_danmaku {
-                            if let Some(res) = agent::resolve_bot_danmu(&bot_config, text) {
+                        // Reload config from disk to pick up runtime toggle changes
+                        let current_config = AppConfig::load_or_default().ok();
+                        if current_config.as_ref().map(|c| c.ai_reply_to_danmaku).unwrap_or(false) {
+                            if let Some(res) = agent::resolve_bot_danmu(current_config.as_ref().unwrap_or(&bot_config), text) {
                                 let ai_http = ai_http.clone();
-                                let ai_config = Arc::clone(&bot_config);
+                                let ai_config = Arc::new(current_config.clone().unwrap_or((*bot_config).clone()));
                                 let ai_tx = event_tx.clone();
                                 let ai_router = event_tts_router.clone();
                                 let bot_id = res.bot.id.clone();

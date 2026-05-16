@@ -200,6 +200,20 @@ export function AI() {
     }
   };
 
+  const handleDanmakuReplyToggle = async (checked: boolean) => {
+    if (!config) return;
+    const next = { ...config, AiReplyToDanmaku: checked };
+    setSendToDanmaku(checked);
+    setConfig(next);
+    try {
+      await api.saveConfig(next);
+    } catch (err) {
+      toast.error(`保存失败: ${err}`);
+      setSendToDanmaku(config.AiReplyToDanmaku ?? false);
+      setConfig(config);
+    }
+  };
+
   if (!config) return <div className="p-8 text-center text-gray-500 italic">正在唤醒机器人...</div>;
 
   return (
@@ -264,7 +278,7 @@ export function AI() {
         <div className="flex items-center justify-between px-5 py-3 border-b border-black/5 bg-white/40 shrink-0">
           <div className="flex items-center gap-4">
             <div className="flex items-center gap-2 px-3 py-1.5 rounded-full bg-white/80 border border-white/40">
-               <input type="checkbox" checked={sendToDanmaku} onChange={e => setSendToDanmaku(e.target.checked)} className="w-3.5 h-3.5 rounded-md accent-[var(--primary-color)]" id="reply-danmu" />
+               <input type="checkbox" checked={sendToDanmaku} onChange={e => handleDanmakuReplyToggle(e.target.checked)} className="w-3.5 h-3.5 rounded-md accent-[var(--primary-color)]" id="reply-danmu" />
                <label htmlFor="reply-danmu" className="text-[11px] font-bold text-gray-600 cursor-pointer">将回复发送到弹幕</label>
             </div>
             {(() => {

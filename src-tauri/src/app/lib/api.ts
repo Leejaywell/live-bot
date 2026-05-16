@@ -31,6 +31,8 @@ export interface AppConfig {
   MinimizeToTray: boolean;
   LaunchAtStartup: boolean;
   RoomId: number;
+  MyRoomIds: number[];
+  RecordEnabled: boolean;
   WsServerUrl: string;
   DanmuLen: number;
   EntryMsg: string;
@@ -172,6 +174,17 @@ export interface UserGiftStat {
   gift_count: number;
 }
 
+export interface KnownUser {
+  uid: number;
+  nickname: string;
+  alias: string;
+  notes: string;
+  danmu_count: number;
+  gift_value: number;
+  session_count: number;
+  last_seen: string;
+}
+
 export interface SystemInfo {
   version: string;
   config_path: string;
@@ -262,6 +275,14 @@ export const api = {
 
   // Daily breakdown for trend chart
   getDailyStats: (days: number) => invoke<{ date: string; danmu_count: number; entry_count: number; gift_count: number; follow_count: number }[]>('get_daily_stats', { days }),
+
+  // Audience / tracked users
+  getTrackedUsers: (limit: number) => invoke<KnownUser[]>('get_tracked_users', { limit }),
+  checkTrackedUser: (uid: number) => invoke<{ status: string; nickname: string; alias: string; notes: string } | null>('check_tracked_user', { uid }),
+  addTrackedUser: (uid: number, nickname: string, alias: string, notes: string) => invoke<void>('add_tracked_user', { uid, nickname, alias, notes }),
+  restoreTrackedUser: (uid: number, alias: string, notes: string) => invoke<void>('restore_tracked_user', { uid, alias, notes }),
+  updateTrackedUser: (uid: number, alias: string, notes: string) => invoke<void>('update_tracked_user', { uid, alias, notes }),
+  softDeleteTrackedUser: (uid: number) => invoke<void>('soft_delete_tracked_user', { uid }),
 
   // Voice Changer
   startVoiceChanger: (modelId: string) => invoke<void>('start_voice_changer', { modelId }),

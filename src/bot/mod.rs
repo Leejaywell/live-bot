@@ -7,7 +7,7 @@ pub mod thanks;
 pub mod timed;
 
 use anyhow::Result;
-use bilibili_live_protocol::ParsedLiveEvent;
+use bilibili_live_protocol::{LiveEvent, ParsedLiveEvent};
 use chrono::{DateTime, Local};
 
 use crate::bot::engine::BotEngine;
@@ -37,9 +37,36 @@ pub fn record_and_handle_event(
     room_id: i64,
     parsed: &ParsedLiveEvent,
     engine: &BotEngine,
+    should_record: bool,
 ) -> Result<Vec<String>> {
-    storage.record_interaction(session_id, room_id, parsed)?;
+    if should_record {
+        storage.record_interaction(session_id, room_id, parsed)?;
+        try_auto_track(storage, &parsed.event);
+    }
     Ok(engine.handle_event(&parsed.event, Some(storage)))
+}
+
+fn try_auto_track(storage: &Storage, event: &LiveEvent) {
+    let (uid, uname, event_type) = match event {
+        LiveEvent::Danmu { user_id, user, .. } => (*user_id, user.as_str(), "danmu"),
+        LiveEvent::Gift { user_id, user, .. } => (*user_id, user.as_str(), "gift"),
+        LiveEvent::GuardBuy { user_id, user, .. } => (*user_id, user.as_str(), "guard_buy"),
+        LiveEvent::SuperChat { user_id, user, .. } => (*user_id, user.as_str(), "super_chat"),
+        LiveEvent::Interact { user_id, user, kind } => {
+            use bilibili_live_protocol::InteractKind;
+            let event_type = match kind {
+                InteractKind::Follow | InteractKind::MutualFollow => "follow",
+                InteractKind::Share => "share",
+                _ => return,
+            };
+            (*user_id, user.as_str(), event_type)
+        }
+        _ => return,
+    };
+    if uid == 0 { return; }
+    if let Err(e) = storage.auto_track_user(uid, uname, event_type) {
+        eprintln!("[warn] auto_track_user uid={uid}: {e}");
+    }
 }
 
 pub fn update_observed_session_for_room_status(

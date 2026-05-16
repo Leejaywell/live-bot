@@ -41,6 +41,12 @@ pub struct AppConfig {
     pub disable_background_effects: bool,
     #[serde(default = "default_room_id")]
     pub room_id: i64,
+    /// 主播自己的直播间列表，空表示不限制
+    #[serde(default)]
+    pub my_room_ids: Vec<i64>,
+    /// 是否启用互动数据记录（interaction_records / tracked_users）
+    #[serde(default = "default_true")]
+    pub record_enabled: bool,
     #[serde(default = "default_ws_url")]
     pub ws_server_url: String,
     #[serde(default = "default_danmu_len")]
@@ -388,6 +394,8 @@ impl Default for AppConfig {
             general_welcome_enabled: false,
             general_welcome_msgs: default_general_welcome_msgs(),
             special_welcome_list: Vec::new(),
+            my_room_ids: Vec::new(),
+            record_enabled: true,
         }
     }
 }

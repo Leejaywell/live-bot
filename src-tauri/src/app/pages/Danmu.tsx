@@ -4,7 +4,7 @@ import { GlassCard } from '../components/GlassCard';
 import { Input } from '../components/Input';
 import { Toggle } from '../components/Toggle';
 import { RefreshCw, ChevronDown, Radio, Plus, Pause } from 'lucide-react';
-import { api, AiProvider } from '../lib/api';
+import { api, AiProvider, AppConfig } from '../lib/api';
 import { availableProviders, findVoice, TtsProvider } from '../lib/voices';
 import { VoicePicker } from '../components/VoicePicker';
 import { toast } from 'sonner';
@@ -80,8 +80,20 @@ const typeBadge: Record<LogType, string> = {
 // 高能弹幕：同一内容 10 秒内出现 ≥5 次
 const HOT_WINDOW_MS = 10_000;
 const HOT_THRESHOLD = 5;
+const SPEECH_DEDUP_MS = 1800;
 
-export function Monitor() {
+function buildDanmuSpeechText(user?: string, content?: string): string | null {
+  const safeUser = user?.replace(/\s+/g, ' ').trim();
+  const safeContent = content
+    ?.replace(/\s+/g, ' ')
+    .replace(/[~～]+/g, '。')
+    .trim();
+  if (!safeUser || !safeContent) return null;
+  const normalized = /[。！？!?]$/.test(safeContent) ? safeContent : `${safeContent}。`;
+  return `${safeUser}说，${normalized}`;
+}
+
+export function Danmu() {
   const { isLoggedIn: loggedIn } = useLogin();
   const { backgroundEffect } = useTheme();
   const [filter, setFilter] = useState('all');
@@ -102,9 +114,11 @@ export function Monitor() {
   const [isTtsEnabled, setIsTtsEnabled] = useState(() => sessionStorage.getItem('danmuAnnounce') === 'true');
   const isTtsEnabledRef = useRef(sessionStorage.getItem('danmuAnnounce') === 'true');
   const [ttsProviders, setTtsProviders] = useState<AiProvider[]>([]);
+  const [config, setConfig] = useState<AppConfig | null>(null);
   const [ttsVoice, setTtsVoice] = useState('');
   const ttsVoiceRef = useRef('');
   const [voiceOpen, setVoiceOpen] = useState(false);
+  const spokenRef = useRef<Map<string, number>>(new Map());
 
   // Keep refs in sync with state; auto-scroll and clear badge on resume
   useEffect(() => {
@@ -120,15 +134,42 @@ export function Monitor() {
   // Load TTS providers from config
   useEffect(() => {
     api.loadConfig().then(c => {
+      setConfig(c);
       const enabled = (c.AiProviders ?? []).filter(p => p.ProviderType === 'tts' && p.Enabled);
       setTtsProviders(enabled);
-      if (enabled.length > 0 && !ttsVoice) {
-        const voice = enabled[0].Model || 'zh-CN-XiaoxiaoNeural';
+      if (!ttsVoice) {
+        const voice = c.TtsVoice || enabled[0]?.Model || 'zh-CN-XiaoxiaoNeural';
         setTtsVoice(voice);
         ttsVoiceRef.current = voice;
       }
     }).catch(console.error);
   }, [ttsVoice]);
+
+  const speakDanmu = useCallback((entry: LogEntry) => {
+    if (!isTtsEnabledRef.current || !ttsVoiceRef.current || entry.type !== 'danmu') return;
+    const text = buildDanmuSpeechText(entry.user, entry.content);
+    if (!text) return;
+
+    const now = Date.now();
+    for (const [key, ts] of spokenRef.current.entries()) {
+      if (now - ts > SPEECH_DEDUP_MS) spokenRef.current.delete(key);
+    }
+    const dedupKey = `${entry.user ?? ''}::${entry.content ?? ''}`;
+    const lastSpokenAt = spokenRef.current.get(dedupKey);
+    if (lastSpokenAt && now - lastSpokenAt < SPEECH_DEDUP_MS) return;
+    spokenRef.current.set(dedupKey, now);
+
+    invoke('speak_text_cmd', { text, voice: ttsVoiceRef.current }).catch(console.error);
+  }, []);
+
+  const pushEntry = useCallback((entry: LogEntry, announce = false) => {
+    if (announce) speakDanmu(entry);
+    if (isPausedRef.current) {
+      setNewMsgCount(c => c + 1);
+      return;
+    }
+    bufferRef.current.push(entry);
+  }, [speakDanmu]);
 
   const flushLogs = useCallback(() => {
     if (bufferRef.current.length === 0) return;
@@ -178,13 +219,7 @@ export function Monitor() {
         if (lines.length > 0) {
           for (const line of lines) {
             const entry = parseMonitorLog(line);
-            if (entry) {
-              if (isPausedRef.current) {
-                setNewMsgCount(c => c + 1);
-              } else {
-                bufferRef.current.push(entry);
-              }
-            }
+            if (entry) pushEntry(entry, true);
           }
         }
       } catch (err) {
@@ -209,9 +244,6 @@ export function Monitor() {
               case 'Danmu': {
                 const { user, text } = ev;
                 line = `弹幕 ${user}: ${text}`;
-                if (isTtsEnabledRef.current && ttsVoiceRef.current) {
-                  invoke('speak_text_cmd', { text: `${user}说${text}`, voice: ttsVoiceRef.current }).catch(console.error);
-                }
                 break;
               }
               case 'Gift': {
@@ -243,7 +275,7 @@ export function Monitor() {
 
             if (line) {
               const entry = parseMonitorLog(line);
-              if (entry) bufferRef.current.push(entry);
+              if (entry) pushEntry(entry, true);
             }
           }
         };
@@ -251,10 +283,9 @@ export function Monitor() {
         unlistenLiveEvents = await api.onLiveEvents(handleBatch);
         unlistenLiveEvent = await api.onLiveEvent((parsed) => handleBatch([parsed]));
         unlistenLog = await api.onMonitorLogs((texts) => {
-          if (isPausedRef.current) return;
           for (const text of texts) {
             const entry = parseMonitorLog(text);
-            if (entry) bufferRef.current.push(entry);
+            if (entry) pushEntry(entry, true);
           }
         });
         unlistenStatus = await api.onMonitorStatus((status) => {
@@ -274,7 +305,7 @@ export function Monitor() {
       if (unlistenLog) unlistenLog();
       if (unlistenStatus) unlistenStatus();
     };
-  }, [flushLogs, checkMonitorStatus]);
+  }, [flushLogs, checkMonitorStatus, pushEntry]);
 
   useEffect(() => {
     logEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -549,7 +580,18 @@ export function Monitor() {
         onClose={() => setVoiceOpen(false)}
         providers={availableProviders(ttsProviders.map(p => p.Name))}
         currentVoice={ttsVoice}
-        onSelect={v => { setTtsVoice(v); ttsVoiceRef.current = v; }}
+        onSelect={async (v) => {
+          setTtsVoice(v);
+          ttsVoiceRef.current = v;
+          if (!config) return;
+          const next = { ...config, TtsVoice: v };
+          setConfig(next);
+          try {
+            await api.saveConfig(next);
+          } catch (err) {
+            console.error('save tts voice failed:', err);
+          }
+        }}
       />
     </div>
   );

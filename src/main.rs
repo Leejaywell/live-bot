@@ -447,6 +447,67 @@ async fn get_daily_stats(
 
 #[cfg(feature = "tauri")]
 #[tauri::command]
+async fn get_tracked_users(
+    state: tauri::State<'_, SharedState>,
+    limit: i64,
+) -> Result<Vec<storage::KnownUser>, String> {
+    state.storage.get_tracked_users(limit).map_err(|e| e.to_string())
+}
+
+#[cfg(feature = "tauri")]
+#[tauri::command]
+async fn check_tracked_user(
+    state: tauri::State<'_, SharedState>,
+    uid: i64,
+) -> Result<Option<storage::CheckUserResult>, String> {
+    state.storage.check_tracked_user(uid).map_err(|e| e.to_string())
+}
+
+#[cfg(feature = "tauri")]
+#[tauri::command]
+async fn add_tracked_user(
+    state: tauri::State<'_, SharedState>,
+    uid: i64,
+    nickname: String,
+    alias: String,
+    notes: String,
+) -> Result<(), String> {
+    state.storage.add_tracked_user(uid, &nickname, &alias, &notes).map_err(|e| e.to_string())
+}
+
+#[cfg(feature = "tauri")]
+#[tauri::command]
+async fn restore_tracked_user(
+    state: tauri::State<'_, SharedState>,
+    uid: i64,
+    alias: String,
+    notes: String,
+) -> Result<(), String> {
+    state.storage.restore_tracked_user(uid, &alias, &notes).map_err(|e| e.to_string())
+}
+
+#[cfg(feature = "tauri")]
+#[tauri::command]
+async fn update_tracked_user(
+    state: tauri::State<'_, SharedState>,
+    uid: i64,
+    alias: String,
+    notes: String,
+) -> Result<(), String> {
+    state.storage.update_tracked_user(uid, &alias, &notes).map_err(|e| e.to_string())
+}
+
+#[cfg(feature = "tauri")]
+#[tauri::command]
+async fn soft_delete_tracked_user(
+    state: tauri::State<'_, SharedState>,
+    uid: i64,
+) -> Result<(), String> {
+    state.storage.soft_delete_tracked_user(uid).map_err(|e| e.to_string())
+}
+
+#[cfg(feature = "tauri")]
+#[tauri::command]
 async fn get_pk_summary(
     state: tauri::State<'_, SharedState>,
 ) -> Result<Option<storage::PkSessionSummary>, String> {
@@ -1497,6 +1558,12 @@ fn main() -> Result<()> {
             get_user_gift_stats,
             get_blind_box_stats,
             get_daily_stats,
+            get_tracked_users,
+            check_tracked_user,
+            add_tracked_user,
+            restore_tracked_user,
+            update_tracked_user,
+            soft_delete_tracked_user,
             get_pk_summary,
             get_pk_history,
             send_danmu,

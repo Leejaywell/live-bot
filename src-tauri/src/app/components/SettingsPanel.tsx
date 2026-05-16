@@ -12,6 +12,8 @@ import {
   Activity,
   FolderOpen,
   Clock,
+  Database,
+  Home,
 } from 'lucide-react';
 import { useState, useEffect, useCallback } from 'react';
 import { Button } from './Button';
@@ -196,6 +198,35 @@ function ModelCard({ title, desc, size, installed, dl, comingSoon, onDownload, o
   );
 }
 
+function AddRoomIdInput({ onAdd }: { onAdd: (rid: number) => void }) {
+  const [value, setValue] = useState('');
+  return (
+    <div className="flex items-center gap-2">
+      <input
+        value={value}
+        onChange={(e) => setValue(e.target.value)}
+        placeholder="添加房间号"
+        className="flex-1 h-[28px] px-2.5 rounded-lg bg-white/60 dark:bg-white/10 border border-gray-200 dark:border-white/20 text-[11px] focus:outline-none focus:ring-2 focus:ring-[var(--primary-color)]/50"
+        onKeyDown={(e) => {
+          if (e.key === 'Enter') {
+            const rid = parseInt(value);
+            if (rid) { onAdd(rid); setValue(''); }
+          }
+        }}
+      />
+      <button
+        onClick={() => {
+          const rid = parseInt(value);
+          if (rid) { onAdd(rid); setValue(''); }
+        }}
+        className="text-[11px] text-gray-400 hover:text-[var(--primary-color)] transition-colors px-2 py-1 rounded-lg hover:bg-[var(--primary-color)]/10 shrink-0"
+      >
+        添加
+      </button>
+    </div>
+  );
+}
+
 export function SettingsPanel({ onClose }: SettingsPanelProps) {
   const { config, updateConfig, modelDl, downloadModel, cancelModel } = useConfig();
   const [systemInfo, setSystemInfo] = useState<SystemInfo | null>(null);
@@ -291,21 +322,78 @@ export function SettingsPanel({ onClose }: SettingsPanelProps) {
       <div className="flex-1 overflow-y-auto p-5 space-y-6">
 
         {tab === 'basic' && (
-          <div className="space-y-4">
-            <div className="flex items-center gap-2 mb-1">
-              <Sparkles className="w-4 h-4 text-[var(--primary-color)]" />
-              <h3 className="text-[13px] font-semibold">个性化</h3>
-            </div>
-            <div className="bg-white/40 dark:bg-white/5 rounded-lg p-3.5 border border-gray-200 dark:border-white/10 space-y-4">
-              <div className="flex items-center justify-between">
-                <div className="space-y-0.5">
-                  <div className="text-[12px] font-medium text-gray-800 dark:text-gray-200">关闭背景特效</div>
-                  <div className="text-[10px] text-gray-400">关闭主界面的动态背景背景球（降低 CPU 占用）</div>
+          <div className="space-y-6">
+            {/* 数据记录 */}
+            <div className="space-y-3">
+              <div className="flex items-center gap-2">
+                <Database className="w-4 h-4 text-[var(--primary-color)]" />
+                <h3 className="text-[13px] font-semibold">数据记录</h3>
+              </div>
+              <div className="bg-white/40 dark:bg-white/5 rounded-lg p-3.5 border border-gray-200 dark:border-white/10 space-y-4">
+                <div className="flex items-center justify-between">
+                  <div className="space-y-0.5">
+                    <div className="text-[12px] font-medium text-gray-800 dark:text-gray-200">启用互动数据记录</div>
+                    <div className="text-[10px] text-gray-400">记录弹幕、礼物、关注等互动事件及观众档案</div>
+                  </div>
+                  <Toggle
+                    checked={config?.RecordEnabled ?? true}
+                    onChange={(val) => updateConfig({ RecordEnabled: val })}
+                  />
                 </div>
-                <Toggle
-                  checked={config?.DisableBackgroundEffects ?? false}
-                  onChange={(val) => updateConfig({ DisableBackgroundEffects: val })}
-                />
+                <div className="pt-3 border-t border-black/5 dark:border-white/5 space-y-3">
+                  <div className="flex items-center justify-between">
+                    <div className="space-y-0.5">
+                      <div className="flex items-center gap-1.5">
+                        <Home className="w-3.5 h-3.5 text-gray-400" />
+                        <div className="text-[12px] font-medium text-gray-800 dark:text-gray-200">我的直播间</div>
+                      </div>
+                      <div className="text-[10px] text-gray-400">
+                        {config?.MyRoomIds && config.MyRoomIds.length > 0
+                          ? `房间号 ${config.MyRoomIds.join('、')}，仅记录这些房间的数据`
+                          : '未配置，所有房间均会记录数据'}
+                      </div>
+                    </div>
+                    <div className="flex flex-wrap gap-1">
+                      {config?.MyRoomIds?.map((rid) => (
+                        <button
+                          key={rid}
+                          onClick={() => updateConfig({ MyRoomIds: config.MyRoomIds.filter((id: number) => id !== rid) })}
+                          className="text-[11px] text-gray-400 hover:text-red-500 transition-colors px-2 py-0.5 rounded-lg hover:bg-red-500/10"
+                        >
+                          ×{rid}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                  <AddRoomIdInput
+                    onAdd={(rid) => {
+                      const ids = config?.MyRoomIds ?? [];
+                      if (!ids.includes(rid)) {
+                        updateConfig({ MyRoomIds: [...ids, rid] });
+                      }
+                    }}
+                  />
+                </div>
+              </div>
+            </div>
+
+            {/* 个性化 */}
+            <div className="space-y-3">
+              <div className="flex items-center gap-2">
+                <Sparkles className="w-4 h-4 text-[var(--primary-color)]" />
+                <h3 className="text-[13px] font-semibold">个性化</h3>
+              </div>
+              <div className="bg-white/40 dark:bg-white/5 rounded-lg p-3.5 border border-gray-200 dark:border-white/10 space-y-4">
+                <div className="flex items-center justify-between">
+                  <div className="space-y-0.5">
+                    <div className="text-[12px] font-medium text-gray-800 dark:text-gray-200">关闭背景特效</div>
+                    <div className="text-[10px] text-gray-400">关闭主界面的动态背景背景球（降低 CPU 占用）</div>
+                  </div>
+                  <Toggle
+                    checked={config?.DisableBackgroundEffects ?? false}
+                    onChange={(val) => updateConfig({ DisableBackgroundEffects: val })}
+                  />
+                </div>
               </div>
             </div>
           </div>

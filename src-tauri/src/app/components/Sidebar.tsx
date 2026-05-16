@@ -8,6 +8,7 @@ import {
   Mic,
   Cpu,
   BarChart3,
+  Users2,
   Settings as SettingsIcon,
   Moon,
   Sun,
@@ -30,11 +31,12 @@ interface SidebarProps {
 
 const navItems = [
   { path: '/', label: '直播概览', icon: LayoutDashboard },
+  { path: '/audience', label: '观众档案', icon: Users2 },
   { path: '/stats', label: '数据统计', icon: BarChart3 },
   { path: '/monitor', label: '实时弹幕', icon: Radio, requiresRoom: true },
   { path: '/auto-reply', label: '触发回复', icon: MessageSquare },
   { path: '/ai', label: '智能助手', icon: Bot },
-  { path: '/voice', label: '语音助手', icon: Mic },
+  { path: '/voice', label: '语音陪伴', icon: Mic },
   { path: '/voice-changer', label: '语音变声', icon: Sparkles },
   { path: '/models', label: '模型管理', icon: Cpu },
 ];

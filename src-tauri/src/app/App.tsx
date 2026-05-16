@@ -3,7 +3,7 @@ import { HashRouter, Routes, Route, useLocation } from 'react-router-dom';
 import { LogIn, Home, Radio } from 'lucide-react';
 import { Toaster } from 'sonner';
 import { ThemeProvider } from './context/ThemeContext';
-import { ConfigProvider } from './context/ConfigContext';
+import { ConfigProvider, useConfig } from './context/ConfigContext';
 import { LoginContext } from './context/LoginContext';
 import { RoomProvider, useRoom } from './context/RoomContext';
 import { BackgroundManager } from './components/BackgroundEffects';
@@ -16,7 +16,8 @@ import { SettingsPanel } from './components/SettingsPanel';
 import { GlassCard } from './components/GlassCard';
 import { Button } from './components/Button';
 import { Dashboard } from './pages/Dashboard';
-import { Monitor } from './pages/Monitor';
+import { Audience } from './pages/Audience';
+import { Danmu } from './pages/Danmu';
 import { AutoReply } from './pages/AutoReply';
 import { AI } from './pages/AI';
 import { Voice } from './pages/Voice';
@@ -369,10 +370,7 @@ function AppContent() {
 
           {/* 连接直播间弹窗 */}
           <Modal open={showRoomModal && isLoggedIn} onClose={() => setShowRoomModal(false)} className="p-6" zIndex={9998}>
-            <RoomConnectForm
-              userRoom={userRoom}
-              onSuccess={handleRoomConnected}
-            />
+            <RoomConnectForm userRoom={userRoom} onSuccess={handleRoomConnected} />
           </Modal>
 
           {/* 登录二维码弹窗 */}
@@ -426,7 +424,8 @@ function AnimatedRoutes() {
     <div key={location.pathname} className="animate-page-in h-full overflow-y-auto">
       <Routes location={location}>
         <Route path="/" element={<Dashboard />} />
-        <Route path="/monitor" element={<Monitor />} />
+        <Route path="/audience" element={<Audience />} />
+        <Route path="/monitor" element={<Danmu />} />
         <Route path="/auto-reply" element={<AutoReply />} />
         <Route path="/ai" element={<AI />} />
         <Route path="/voice" element={<Voice />} />
@@ -440,14 +439,23 @@ function AnimatedRoutes() {
 
 // 连接直播间表单
 function RoomConnectForm({ userRoom, onSuccess }: { userRoom: RoomInfo | null; onSuccess: (roomId: string, liveStatus: number, liveTime: string, uid?: number) => void }) {
+  const { config, updateConfig } = useConfig();
+  const [mode, setMode] = useState<'mine' | 'other'>('mine');
   const [roomId, setRoomId] = useState('');
   const [loading, setLoading] = useState(false);
 
   const handleConnect = async () => {
-    if (!roomId) return;
+    const targetId = parseInt(roomId);
+    if (!targetId) return;
     setLoading(true);
     try {
-      const info = await api.checkRoom(parseInt(roomId));
+      const info = await api.checkRoom(targetId);
+      if (mode === 'mine') {
+        const ids = config?.MyRoomIds ?? [];
+        if (!ids.includes(targetId)) {
+          await updateConfig({ MyRoomIds: [...ids, targetId] });
+        }
+      }
       onSuccess(String(info.room_id), info.live_status, info.live_time ?? '', info.uid);
     } catch (err: any) {
       toast.error(`连接失败: ${err}`);
@@ -456,16 +464,41 @@ function RoomConnectForm({ userRoom, onSuccess }: { userRoom: RoomInfo | null; o
     }
   };
 
-  const handleMyRoom = () => {
-    if (!userRoom) { toast.error('用户信息未加载'); return; }
-    setRoomId(String(userRoom.room_id));
-    onSuccess(String(userRoom.room_id), userRoom.live_status, userRoom.live_time ?? '', userRoom.uid);
-  };
+  const RadioOption = ({ value, label, desc }: { value: 'mine' | 'other'; label: string; desc: string }) => (
+    <button
+      onClick={() => setMode(value)}
+      className={`flex items-start gap-2.5 w-full p-3 rounded-xl border text-left transition-all ${
+        mode === value
+          ? 'border-[var(--primary-color)]/50 bg-[var(--primary-color)]/6'
+          : 'border-gray-200 dark:border-white/10 hover:border-gray-300 dark:hover:border-white/20'
+      }`}
+    >
+      <div className={`mt-0.5 w-3.5 h-3.5 rounded-full border-2 shrink-0 flex items-center justify-center transition-all ${
+        mode === value ? 'border-[var(--primary-color)]' : 'border-gray-300 dark:border-white/30'
+      }`}>
+        {mode === value && <div className="w-1.5 h-1.5 rounded-full bg-[var(--primary-color)]" />}
+      </div>
+      <div>
+        <div className="text-[12px] font-semibold">{label}</div>
+        <div className="text-[10px] text-gray-400 mt-0.5">{desc}</div>
+      </div>
+    </button>
+  );
 
   return (
     <>
       <h2 className="text-[15px] font-semibold mb-4">连接直播间</h2>
-      <div className="space-y-4">
+      <div className="space-y-3">
+        <RadioOption
+          value="mine"
+          label="我的直播间"
+          desc="数据记录与统计已启用"
+        />
+        <RadioOption
+          value="other"
+          label="其他直播间"
+          desc="仅转发自动化回复，不记录互动数据"
+        />
         <div>
           <label className="text-[11px] text-gray-500 mb-1.5 block">房间号</label>
           <div className="flex gap-2">
@@ -477,20 +510,32 @@ function RoomConnectForm({ userRoom, onSuccess }: { userRoom: RoomInfo | null; o
               onKeyDown={(e) => { if (e.key === 'Enter') handleConnect(); }}
               autoFocus
             />
-            <button
-              onClick={handleMyRoom}
-              disabled={!userRoom}
-              className="h-[34px] px-3 rounded-lg bg-[var(--primary-color)]/10 border border-[var(--primary-color)]/30 text-[var(--primary-color)] text-[11px] font-medium flex items-center gap-1 hover:bg-[var(--primary-color)]/20 transition-colors disabled:opacity-50"
-              title="连接我的直播间"
-            >
-              <Home className="w-3.5 h-3.5" />
-              我的房间
-            </button>
+            {mode === 'mine' && userRoom?.room_id && (
+              <button
+                onClick={async () => {
+                  setRoomId(String(userRoom.room_id));
+                  const ids = config?.MyRoomIds ?? [];
+                  if (!ids.includes(userRoom.room_id)) {
+                    await updateConfig({ MyRoomIds: [...ids, userRoom.room_id] });
+                  }
+                  const info = await api.checkRoom(userRoom.room_id);
+                  onSuccess(String(info.room_id), info.live_status, info.live_time ?? '', info.uid);
+                }}
+                className="h-[34px] px-3 rounded-lg bg-[var(--primary-color)]/10 text-[var(--primary-color)] text-[11px] font-medium hover:bg-[var(--primary-color)]/20 transition-colors shrink-0"
+              >
+                我的直播间
+              </button>
+            )}
           </div>
         </div>
       </div>
       <div className="mt-6">
-        <Button variant="primary" className="w-full" onClick={handleConnect} disabled={loading || !roomId}>
+        <Button
+          variant="primary"
+          className="w-full"
+          onClick={handleConnect}
+          disabled={loading || !roomId}
+        >
           {loading ? '连接中...' : '连接'}
         </Button>
       </div>

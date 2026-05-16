@@ -64,6 +64,26 @@ pub struct UserDetail {
     pub wealth_level: Option<i64>,
 }
 
+#[derive(Debug, Clone, serde::Serialize)]
+pub struct CheckUserResult {
+    pub status: String,
+    pub nickname: String,
+    pub alias: String,
+    pub notes: String,
+}
+
+#[derive(Debug, Clone, serde::Serialize)]
+pub struct KnownUser {
+    pub uid: i64,
+    pub nickname: String,
+    pub alias: String,
+    pub notes: String,
+    pub danmu_count: i64,
+    pub gift_value: i64,
+    pub session_count: i64,
+    pub last_seen: String,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
 pub struct PkHistoryRecord {
     pub event_subtype: Option<String>,
@@ -153,6 +173,31 @@ impl Storage {
             create index if not exists idx_interaction_uid on interaction_records(uid);
             create index if not exists idx_interaction_room on interaction_records(room_id);
             create index if not exists idx_interaction_time on interaction_records(occurred_at);
+            create table if not exists tracked_users (
+                uid integer primary key,
+                nickname text not null default '',
+                alias text not null default '',
+                notes text not null default '',
+                status text not null default 'active',
+                auto_tracked integer not null default 0,
+                created_at text not null,
+                updated_at text not null
+            );
+            create index if not exists idx_tracked_users_status on tracked_users(status);
+            ",
+        )?;
+        // 一次性迁移：将 interaction_records 里满足条件的历史用户播种到 tracked_users
+        conn.execute_batch(
+            "
+            insert or ignore into tracked_users (uid, nickname, alias, notes, status, auto_tracked, created_at, updated_at)
+            select uid, max(uname), '', '', 'active', 1, datetime('now'), datetime('now')
+            from interaction_records
+            where uid is not null and uid != 0
+            group by uid
+            having
+                sum(gift_count * gift_price) > 0
+                or count(case when event_type = 'danmu' then 1 end) >= 3
+                or count(case when event_type in ('guard_buy', 'follow', 'share', 'super_chat') then 1 end) > 0;
             ",
         )?;
         ensure_column(&conn, "interaction_records", "event_subtype", "text")?;
@@ -1008,6 +1053,153 @@ impl Storage {
                 Local::now().to_rfc3339()
             ],
         )?;
+        Ok(())
+    }
+
+    pub fn get_tracked_users(&self, limit: i64) -> Result<Vec<KnownUser>> {
+        let conn = self.conn.lock().expect("storage mutex poisoned");
+        let mut stmt = conn.prepare(
+            "
+            select
+                t.uid,
+                t.nickname,
+                t.alias,
+                t.notes,
+                coalesce(s.danmu_count, 0),
+                coalesce(s.gift_value, 0),
+                coalesce(s.session_count, 0),
+                coalesce(s.last_seen, t.created_at)
+            from tracked_users t
+            left join (
+                select uid,
+                    count(case when event_type = 'danmu' then 1 end) as danmu_count,
+                    coalesce(sum(case when event_type = 'gift' then gift_count * gift_price else 0 end), 0) as gift_value,
+                    count(distinct session_id) as session_count,
+                    max(occurred_at) as last_seen
+                from interaction_records
+                where uid is not null
+                group by uid
+            ) s on s.uid = t.uid
+            where t.status = 'active'
+            order by coalesce(s.last_seen, t.created_at) desc
+            limit ?1
+            ",
+        )?;
+        let rows = stmt.query_map(params![limit], |row| {
+            Ok(KnownUser {
+                uid: row.get(0)?,
+                nickname: row.get(1)?,
+                alias: row.get(2)?,
+                notes: row.get(3)?,
+                danmu_count: row.get(4)?,
+                gift_value: row.get(5)?,
+                session_count: row.get(6)?,
+                last_seen: row.get(7)?,
+            })
+        })?;
+        let mut result = Vec::new();
+        for row in rows {
+            result.push(row?);
+        }
+        Ok(result)
+    }
+
+    pub fn check_tracked_user(&self, uid: i64) -> Result<Option<CheckUserResult>> {
+        let conn = self.conn.lock().expect("storage mutex poisoned");
+        conn.query_row(
+            "select status, nickname, alias, notes from tracked_users where uid = ?1",
+            params![uid],
+            |row| {
+                Ok(CheckUserResult {
+                    status: row.get(0)?,
+                    nickname: row.get(1)?,
+                    alias: row.get(2)?,
+                    notes: row.get(3)?,
+                })
+            },
+        )
+        .optional()
+        .map_err(Into::into)
+    }
+
+    pub fn add_tracked_user(&self, uid: i64, nickname: &str, alias: &str, notes: &str) -> Result<()> {
+        let conn = self.conn.lock().expect("storage mutex poisoned");
+        let now = Local::now().to_rfc3339();
+        conn.execute(
+            "insert into tracked_users (uid, nickname, alias, notes, status, auto_tracked, created_at, updated_at)
+             values (?1, ?2, ?3, ?4, 'active', 0, ?5, ?5)",
+            params![uid, nickname, alias, notes, now],
+        )?;
+        Ok(())
+    }
+
+    pub fn restore_tracked_user(&self, uid: i64, alias: &str, notes: &str) -> Result<()> {
+        let conn = self.conn.lock().expect("storage mutex poisoned");
+        conn.execute(
+            "update tracked_users set status = 'active', alias = ?2, notes = ?3, updated_at = ?4 where uid = ?1",
+            params![uid, alias, notes, Local::now().to_rfc3339()],
+        )?;
+        Ok(())
+    }
+
+    pub fn update_tracked_user(&self, uid: i64, alias: &str, notes: &str) -> Result<()> {
+        let conn = self.conn.lock().expect("storage mutex poisoned");
+        conn.execute(
+            "update tracked_users set alias = ?2, notes = ?3, updated_at = ?4 where uid = ?1",
+            params![uid, alias, notes, Local::now().to_rfc3339()],
+        )?;
+        Ok(())
+    }
+
+    pub fn soft_delete_tracked_user(&self, uid: i64) -> Result<()> {
+        let conn = self.conn.lock().expect("storage mutex poisoned");
+        conn.execute(
+            "update tracked_users set status = 'deleted', updated_at = ?2 where uid = ?1",
+            params![uid, Local::now().to_rfc3339()],
+        )?;
+        Ok(())
+    }
+
+    pub fn auto_track_user(&self, uid: i64, uname: &str, event_type: &str) -> Result<()> {
+        let conn = self.conn.lock().expect("storage mutex poisoned");
+        let existing: Option<String> = conn
+            .query_row(
+                "select status from tracked_users where uid = ?1",
+                params![uid],
+                |r| r.get(0),
+            )
+            .optional()?;
+        let now = Local::now().to_rfc3339();
+        match existing.as_deref() {
+            Some("active") => {
+                conn.execute(
+                    "update tracked_users set nickname = ?2, updated_at = ?3 where uid = ?1",
+                    params![uid, uname, now],
+                )?;
+            }
+            Some("deleted") => {}
+            _ => {
+                let qualifies = match event_type {
+                    "gift" | "guard_buy" | "follow" | "share" | "super_chat" => true,
+                    "danmu" => {
+                        let count: i64 = conn.query_row(
+                            "select count(*) from interaction_records where uid = ?1 and event_type = 'danmu'",
+                            params![uid],
+                            |r| r.get(0),
+                        )?;
+                        count >= 3
+                    }
+                    _ => false,
+                };
+                if qualifies {
+                    conn.execute(
+                        "insert or ignore into tracked_users (uid, nickname, alias, notes, status, auto_tracked, created_at, updated_at)
+                         values (?1, ?2, '', '', 'active', 1, ?3, ?3)",
+                        params![uid, uname, now],
+                    )?;
+                }
+            }
+        }
         Ok(())
     }
 
