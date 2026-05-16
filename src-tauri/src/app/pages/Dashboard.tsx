@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Bot, MessageSquare, Gift, Users, Star, TrendingUp, Radio, ShieldCheck, Clock, ChevronRight, Heart } from 'lucide-react';
+import { Bot, MessageSquare, Gift, Users, Star, TrendingUp, Radio, ShieldOff, Clock, ChevronRight, Heart } from 'lucide-react';
 import { GlassCard } from '../components/GlassCard';
 import { Toggle } from '../components/Toggle';
 import { useNavigate } from 'react-router-dom';
@@ -51,7 +51,7 @@ function parseDanmu(text: string): DanmuEntry | null {
 
 // ── Auto-feature groups ───────────────────────────────────────────────────────
 type SubToggle  = { label: string; key: keyof AppConfig };
-type AutoGroup  = { title: string; Icon: React.ElementType; mainKey?: keyof AppConfig; subs: SubToggle[]; wide?: boolean; to?: string };
+type AutoGroup  = { title: string; Icon: React.ElementType; mainKey?: keyof AppConfig; subs: SubToggle[]; wide?: boolean; to?: string; countKey?: keyof AppConfig };
 
 const AUTO_GROUPS: AutoGroup[] = [
   {
@@ -73,11 +73,11 @@ const AUTO_GROUPS: AutoGroup[] = [
     ],
   },
   {
-    title: '弹幕开关', Icon: Radio, wide: true,
+    title: '消息开关', Icon: Radio, wide: true,
     subs: [
       { label: '特效入场', key: 'EntryEffect' },
       { label: '礼物感谢', key: 'ThanksGift' },
-      { label: 'SC 感谢',   key: 'ThanksSuperChat' },
+      { label: '醒目留言', key: 'ThanksSuperChat' },
       { label: 'PK 提醒',  key: 'PkNotice' },
       { label: '禁言提醒', key: 'ShowBlockMsg' },
       { label: '盲盒统计', key: 'BlindBoxProfitLossStat' },
@@ -85,11 +85,11 @@ const AUTO_GROUPS: AutoGroup[] = [
   },
   {
     title: '定时任务', Icon: Clock, mainKey: 'CronDanmu', to: '/auto-reply?tab=timed',
-    subs: [],
+    subs: [], countKey: 'CronDanmuList',
   },
   {
-    title: '黑名单',  Icon: ShieldCheck, mainKey: 'DanmuFilterEnable', to: '/auto-reply?tab=filter',
-    subs: [],
+    title: '黑名单',  Icon: ShieldOff, mainKey: 'DanmuFilterEnable', to: '/auto-reply?tab=filter',
+    subs: [], countKey: 'PermanentBlacklistUsers',
   },
 ];
 
@@ -174,8 +174,9 @@ export function Dashboard() {
   ];
 
   const GroupCard = ({ g }: { g: AutoGroup }) => {
-    const { title, Icon, mainKey, subs, wide, to } = g;
+    const { title, Icon, mainKey, subs, wide, to, countKey } = g;
     const mainChecked = mainKey != null && config ? !!(config as any)[mainKey] : undefined;
+    const count = countKey && config ? ((config as any)[countKey] as any[])?.length ?? 0 : null;
 
     return (
       <GlassCard hoverable className={`p-4 ${wide ? 'col-span-2' : ''} border-white/60 dark:border-white/10 overflow-hidden`}>
@@ -191,6 +192,11 @@ export function Dashboard() {
               <Icon className="w-4 h-4" />
             </div>
             <span className="text-[13px] font-bold tracking-tight">{title}</span>
+            {count !== null && count > 0 && (
+              <span className="px-1.5 py-0.5 rounded-full text-[9px] font-black bg-[var(--primary-color)]/10 text-[var(--primary-color)] border border-[var(--primary-color)]/20 leading-none">
+                {count}
+              </span>
+            )}
           </div>
           <div className="flex items-center gap-2">
             {to && (

@@ -73,6 +73,7 @@ export function Monitor() {
   // Pause state: frontend stops polling, backend continues
   const [isPaused, setIsPaused] = useState(false);
   const isPausedRef = useRef(false);
+  const [newMsgCount, setNewMsgCount] = useState(0);
 
   // TTS announce state
   const [isTtsEnabled, setIsTtsEnabled] = useState(() => sessionStorage.getItem('danmuAnnounce') === 'true');
@@ -82,8 +83,14 @@ export function Monitor() {
   const ttsVoiceRef = useRef('');
   const [voiceOpen, setVoiceOpen] = useState(false);
 
-  // Keep refs in sync with state
-  useEffect(() => { isPausedRef.current = isPaused; }, [isPaused]);
+  // Keep refs in sync with state; auto-scroll and clear badge on resume
+  useEffect(() => {
+    if (isPausedRef.current && !isPaused) {
+      setNewMsgCount(0);
+      setTimeout(() => logEndRef.current?.scrollIntoView({ behavior: 'smooth' }), 50);
+    }
+    isPausedRef.current = isPaused;
+  }, [isPaused]);
   useEffect(() => { isTtsEnabledRef.current = isTtsEnabled; }, [isTtsEnabled]);
   useEffect(() => { ttsVoiceRef.current = ttsVoice; }, [ttsVoice]);
 
@@ -133,13 +140,18 @@ export function Monitor() {
     const flushTimer = setInterval(flushLogs, 200);
 
     const pollTimer = setInterval(async () => {
-      if (isPausedRef.current) return;
       try {
         const lines = await api.getRecentDanmaku();
         if (lines.length > 0) {
           for (const line of lines) {
             const entry = parseMonitorLog(line);
-            if (entry) bufferRef.current.push(entry);
+            if (entry) {
+              if (isPausedRef.current) {
+                setNewMsgCount(c => c + 1);
+              } else {
+                bufferRef.current.push(entry);
+              }
+            }
           }
         }
       } catch (err) {
@@ -314,21 +326,28 @@ export function Monitor() {
                 isMonitoring ? 'bg-green-500 animate-pulse shadow-[0_0_8px_rgba(34,197,94,0.6)]' : 'bg-gray-400'
               }`} />
               <span className="text-[11px] font-black text-gray-600 dark:text-gray-300">
-                {isPaused ? '已暂停' : '同步'}
+                {isPaused ? '已暂停' : isMonitoring ? '监听中' : '未监听'}
               </span>
             </div>
 
-            <button
-              onClick={togglePause}
-              className={cn(
-                "h-[30px] px-4 rounded-full text-[11px] font-black transition-all active:scale-95",
-                isPaused
-                  ? "bg-gray-100 dark:bg-white/10 border border-gray-300 dark:border-white/20 text-gray-600 dark:text-gray-300 hover:bg-gray-200"
-                  : "bg-red-500/10 border border-red-500/20 text-red-500 hover:bg-red-500 hover:text-white hover:border-transparent"
+            <div className="relative">
+              <button
+                onClick={togglePause}
+                className={cn(
+                  "h-[30px] px-4 rounded-full text-[11px] font-black transition-all active:scale-95",
+                  isPaused
+                    ? "bg-gray-100 dark:bg-white/10 border border-gray-300 dark:border-white/20 text-gray-600 dark:text-gray-300 hover:bg-gray-200"
+                    : "bg-red-500/10 border border-red-500/20 text-red-500 hover:bg-red-500 hover:text-white hover:border-transparent"
+                )}
+              >
+                {isPaused ? '恢复读取' : '暂停读取'}
+              </button>
+              {isPaused && newMsgCount > 0 && (
+                <span className="absolute -top-1.5 -right-1.5 min-w-[18px] h-[18px] bg-red-500 text-white text-[9px] font-black rounded-full flex items-center justify-center px-1 pointer-events-none animate-in zoom-in duration-200">
+                  {newMsgCount > 99 ? '99+' : newMsgCount}
+                </span>
               )}
-            >
-              {isPaused ? '恢复读取' : '暂停读取'}
-            </button>
+            </div>
 
             <div className="w-px h-4 bg-black/10 dark:bg-white/10" />
 
@@ -415,7 +434,7 @@ export function Monitor() {
                 <RefreshCw className={cn("w-7 h-7 text-gray-300", isMonitoring && !isPaused && "animate-spin")} />
               </div>
               <p className="text-[13px] text-gray-400 font-black italic tracking-widest">
-                {isPaused ? '读取已暂停' : isMonitoring ? '正在同步最新动态...' : '同步已暂停'}
+                {isPaused ? '读取已暂停' : isMonitoring ? '正在监听...' : '监听未启动'}
               </p>
             </div>
           )}
@@ -447,7 +466,7 @@ export function Monitor() {
                 : "bg-gray-100 text-gray-400 cursor-not-allowed"
             )}
           >
-            {message.trim() ? '发送' : '未输入'}
+            发送弹幕
           </button>
         </div>
       </GlassCard>

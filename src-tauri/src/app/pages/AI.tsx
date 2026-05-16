@@ -8,7 +8,7 @@ import { Toggle } from '../components/Toggle';
 import { IconButton } from '../components/IconButton';
 import {
   Send, Volume2, Bot, Sparkles, Zap, Brain, MessageCircle,
-  AlertCircle, Cpu, Plus, X, Pencil, ChevronDown, Settings as SettingsIcon
+  AlertCircle, Cpu, Plus, X, Pencil, ChevronDown, Settings as SettingsIcon, Copy, Check
 } from 'lucide-react';
 import { api, AppConfig, AiBot, AiProvider } from '../lib/api';
 import { toast } from 'sonner';
@@ -123,6 +123,7 @@ export function AI() {
   const [voiceOpen,     setVoiceOpen]     = useState(false);
   const [settingsOpen,  setSettingsOpen]  = useState(false);
   const [promptDraft,   setPromptDraft]   = useState('');
+  const [copiedIdx,     setCopiedIdx]     = useState<number | null>(null);
   const loggedIn = useLoggedIn();
   const msgEndRef = useRef<HTMLDivElement>(null);
 
@@ -254,7 +255,7 @@ export function AI() {
           </div>
         </div>
         <div className="flex items-center gap-3">
-          <span className="text-[11px] font-bold text-gray-400">{bots.length === MAX_BOTS ? '已满' : `还可添加 ${MAX_BOTS - bots.length} 个`}</span>
+          <span className="text-[11px] font-bold text-gray-400">{bots.length === MAX_BOTS ? '已达上限' : `还可添加 ${MAX_BOTS - bots.length} 个机器人`}</span>
           <Link to="/models" className="w-8 h-8 rounded-full bg-white/60 border border-gray-200 flex items-center justify-center text-gray-500 hover:text-[var(--primary-color)]"><Cpu className="w-4 h-4" /></Link>
         </div>
       </div>
@@ -264,7 +265,7 @@ export function AI() {
           <div className="flex items-center gap-4">
             <div className="flex items-center gap-2 px-3 py-1.5 rounded-full bg-white/80 border border-white/40">
                <input type="checkbox" checked={sendToDanmaku} onChange={e => setSendToDanmaku(e.target.checked)} className="w-3.5 h-3.5 rounded-md accent-[var(--primary-color)]" id="reply-danmu" />
-               <label htmlFor="reply-danmu" className="text-[11px] font-bold text-gray-600 cursor-pointer">AI 回复到弹幕</label>
+               <label htmlFor="reply-danmu" className="text-[11px] font-bold text-gray-600 cursor-pointer">将回复发送到弹幕</label>
             </div>
             {(() => {
               const ttsProviders = (config?.AiProviders ?? []).filter(p => p.ProviderType === 'tts' && p.Enabled);
@@ -282,7 +283,7 @@ export function AI() {
                 </button>
               );
             })()}
-            {firstEnabled && <span className="text-[11px] font-bold text-gray-400">默认 <span className="text-gray-600">{firstEnabled.Nickname}</span> · @昵称 指定</span>}
+            {firstEnabled && <span className="text-[11px] font-bold text-gray-400">默认使用 <span className="text-gray-600">{firstEnabled.Nickname}</span>，可用 @名字 切换</span>}
           </div>
           <div className="flex items-center gap-2">
             <button onClick={() => { setPromptDraft(config?.AiAssistantPrompt ?? ''); setSettingsOpen(true); }} className="w-8 h-8 rounded-full hover:bg-white/60 flex items-center justify-center transition-colors" title="AI 助手提示词">
@@ -300,7 +301,20 @@ export function AI() {
           ) : (
             testMessages.map((msg, i) => (
               <div key={i} className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
-                <div className={cn("max-w-[85%] px-5 py-3 rounded-2xl text-[13px] shadow-sm", msg.role === 'user' ? "bg-[var(--primary-color)] text-white font-medium" : "bg-white text-gray-700 border border-black/5")}>
+                <div className={cn("relative max-w-[85%] px-5 py-3 rounded-2xl text-[13px] shadow-sm group/msg", msg.role === 'user' ? "bg-[var(--primary-color)] text-white font-medium" : "bg-white text-gray-700 border border-black/5")}>
+                  {msg.role === 'assistant' && (
+                    <button
+                      className="absolute -top-2 -right-2 w-6 h-6 rounded-full bg-white border border-gray-200 shadow-sm flex items-center justify-center opacity-0 group-hover/msg:opacity-100 transition-opacity hover:bg-gray-50"
+                      onClick={() => {
+                        navigator.clipboard.writeText(msg.content);
+                        setCopiedIdx(i);
+                        setTimeout(() => setCopiedIdx(c => c === i ? null : c), 1500);
+                      }}
+                      title="复制回复"
+                    >
+                      {copiedIdx === i ? <Check className="w-3 h-3 text-green-500" /> : <Copy className="w-3 h-3 text-gray-400" />}
+                    </button>
+                  )}
                   {msg.botName && <div className="text-[10px] font-black uppercase mb-1 opacity-60">{msg.botName}</div>}
                   {msg.content}
                 </div>

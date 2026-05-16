@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { Download } from 'lucide-react';
 import { GlassCard } from '../components/GlassCard';
 import { api, UserGiftStat } from '../lib/api';
 import { TrendingUp, TrendingDown, Wallet, Medal } from 'lucide-react';
@@ -9,12 +10,14 @@ export function Stats() {
   const [giftStats, setGiftStats] = useState<any[]>([]);
   const [userGiftStats, setUserGiftStats] = useState<UserGiftStat[]>([]);
   const [blindBoxHistory, setBlindBoxHistory] = useState<[string, number][]>([]);
+  const [loading, setLoading] = useState(false);
 
   useEffect(() => {
     loadStats();
   }, [period]);
 
   const loadStats = async () => {
+    setLoading(true);
     try {
       const days = parseInt(period);
       const [s, g, u, b] = await Promise.all([
@@ -29,7 +32,36 @@ export function Stats() {
       setBlindBoxHistory(b);
     } catch (err) {
       console.error('Failed to load stats:', err);
+    } finally {
+      setLoading(false);
     }
+  };
+
+  const exportCsv = () => {
+    const periodLabel = { '-1': '本场', '0': '今日', '7': '近7天', '30': '近30天' }[period] ?? period;
+    const rows: string[][] = [
+      ['指标', '数值'],
+      ['弹幕总数', String(summary?.danmu_count ?? 0)],
+      ['进场人数', String(summary?.entry_count ?? 0)],
+      ['新增关注', String(summary?.follow_count ?? 0)],
+      ['礼物总值(电池)', String(summary?.gift_value ?? 0)],
+      ['互动数', String(summary?.interact_count ?? 0)],
+      ['最高人气', String(summary?.peak_popularity ?? 0)],
+      [],
+      ['礼物名', '数量', '电池价值'],
+      ...giftStats.map(g => [g.name, String(g.count), String(g.value)]),
+      [],
+      ['排名', '用户名', 'UID', '礼物数', '礼物价值(电池)'],
+      ...userGiftStats.map((u, i) => [String(i + 1), u.uname, String(u.uid), String(u.gift_count), String(u.gift_value)]),
+    ];
+    const csv = rows.map(r => r.map(c => `"${c}"`).join(',')).join('\n');
+    const blob = new Blob(['﻿' + csv], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `直播数据_${periodLabel}_${new Date().toLocaleDateString('zh-CN').replace(/\//g, '-')}.csv`;
+    a.click();
+    URL.revokeObjectURL(url);
   };
 
   const statItems = [
@@ -43,28 +75,39 @@ export function Stats() {
 
   return (
     <div className="p-[18px] space-y-3.5">
-      <div className="flex gap-2">
-        {[
-          { id: '-1', label: '本场' },
-          { id: '0', label: '今日' },
-          { id: '7', label: '近 7 天' },
-          { id: '30', label: '近 30 天' },
-        ].map(p => (
-          <button
-            key={p.id}
-            className={`px-4 py-1.5 rounded-full text-[11px] transition-colors ${
-              period === p.id ? 'bg-[var(--primary-color)] text-white' : 'bg-white/40 dark:bg-white/10 hover:bg-white/60 dark:hover:bg-white/20'
-            }`}
-            onClick={() => setPeriod(p.id)}
-          >
-            {p.label}
-          </button>
-        ))}
+      <div className="flex items-center justify-between">
+        <div className="flex gap-2">
+          {[
+            { id: '-1', label: '本场' },
+            { id: '0', label: '今日' },
+            { id: '7', label: '近 7 天' },
+            { id: '30', label: '近 30 天' },
+          ].map(p => (
+            <button
+              key={p.id}
+              className={`px-4 py-1.5 rounded-full text-[11px] transition-colors ${
+                period === p.id ? 'bg-[var(--primary-color)] text-white' : 'bg-white/40 dark:bg-white/10 hover:bg-white/60 dark:hover:bg-white/20'
+              }`}
+              onClick={() => setPeriod(p.id)}
+            >
+              {p.label}
+            </button>
+          ))}
+        </div>
+        <button
+          onClick={exportCsv}
+          disabled={loading || !summary}
+          className="flex items-center gap-1.5 px-3 py-1.5 rounded-full text-[11px] font-bold bg-white/40 dark:bg-white/10 hover:bg-white/60 dark:hover:bg-white/20 transition-colors disabled:opacity-40"
+        >
+          <Download className="w-3.5 h-3.5" />
+          导出 CSV
+        </button>
       </div>
 
       <div className="grid grid-cols-3 gap-3.5">
         {statItems.map((stat, i) => (
-          <GlassCard key={i} className="p-4 relative">
+          <GlassCard key={i} className="p-4 relative overflow-hidden">
+            {loading && <div className="absolute inset-0 bg-white/60 dark:bg-black/20 animate-pulse rounded-inherit" />
             <div className="text-[11px] text-gray-500 dark:text-gray-400 font-semibold tracking-wide mb-1">
               {stat.label}
             </div>
@@ -110,7 +153,7 @@ export function Stats() {
                   <div className="flex items-center gap-2">
                     <span className="text-[10px] font-black text-gray-400 w-4">#{i + 1}</span>
                     <div className="flex flex-col">
-                      <span className="font-bold truncate max-w-[110px]">{user.uname}</span>
+                      <span className="font-bold truncate max-w-[110px]" title={user.uname}>{user.uname}</span>
                       <div className="flex items-center gap-1.5 mt-0.5">
                         {user.wealth_level && user.wealth_level > 0 && (
                           <span className="px-1 py-0.5 rounded-[4px] bg-amber-100 dark:bg-amber-500/20 text-amber-600 dark:text-amber-400 text-[8px] font-black border border-amber-200 dark:border-amber-500/30 flex items-center gap-0.5">

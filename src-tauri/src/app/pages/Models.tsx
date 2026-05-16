@@ -618,7 +618,7 @@ export function Models() {
             <Cpu className="w-4 h-4 text-[var(--primary-color)]" />
             模型管理
           </h1>
-          <p className="text-[11px] text-gray-400 mt-0.5">管理 LLM · ASR · TTS 服务</p>
+          <p className="text-[11px] text-gray-400 mt-0.5">管理语言模型 · 语音识别 · 语音合成服务，语音类各限 1 个</p>
         </div>
         <Button variant="primary" size="sm" onClick={handleAdd}>
           <Plus className="w-3.5 h-3.5 mr-1.5" />添加服务

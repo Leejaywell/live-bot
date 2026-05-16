@@ -28,12 +28,12 @@ interface SidebarProps {
 }
 
 const navItems = [
-  { path: '/', label: '仪表盘', icon: LayoutDashboard, mt: true },
+  { path: '/', label: '直播概览', icon: LayoutDashboard, mt: true },
   { path: '/stats', label: '数据统计', icon: BarChart3 },
-  { path: '/monitor', label: '弹幕管理', icon: Radio },
-  { path: '/auto-reply', label: '自动回复', icon: MessageSquare },
-  { path: '/ai', label: 'AI 机器人', icon: Bot },
-  { path: '/voice', label: '语音交互', icon: Mic },
+  { path: '/monitor', label: '实时弹幕', icon: Radio },
+  { path: '/auto-reply', label: '触发回复', icon: MessageSquare },
+  { path: '/ai', label: '智能助手', icon: Bot },
+  { path: '/voice', label: '语音助手', icon: Mic },
   { path: '/voice-changer', label: '变声器', icon: Sparkles },
   { path: '/models', label: '模型管理', icon: Cpu },
 ];

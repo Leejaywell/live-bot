@@ -297,31 +297,31 @@ export function Voice() {
 
   // 麦克风不可用的原因
   const micBlockReasons: string[] = [];
-  if (!vadModelOk) micBlockReasons.push('缺少 VAD 模型（silero_vad.onnx）');
-  if (hasAsrConfig && !asrModelOk) micBlockReasons.push('缺少 ASR 模型且未配置外部 ASR 地址');
-  if (!hasAsrConfig) micBlockReasons.push('请先在「模型服务」中添加并启用 ASR 服务');
+  if (!vadModelOk) micBlockReasons.push('缺少语音检测模型，请先下载模型文件');
+  if (hasAsrConfig && !asrModelOk) micBlockReasons.push('缺少语音识别模型且未配置外部服务地址');
+  if (!hasAsrConfig) micBlockReasons.push('请先在「模型服务」中添加并启用语音识别服务');
 
   const handleMicClick = async () => {
     if (!vadModelOk) {
-      toast.error('缺少 VAD 模型文件，请下载后重试', { description: 'assets/models/silero_vad.onnx' });
+      toast.error('缺少语音检测模型', { description: '请先在「模型服务」页下载所需模型文件' });
       return;
     }
     if (!asrModelOk) {
-      toast.error('缺少 ASR 模型文件且未配置外部 ASR 地址', {
-        description: '请在模型服务中添加 ASR 服务（如 FunASR），或下载本地 SenseVoice 模型',
+      toast.error('缺少语音识别模型', {
+        description: '请在「模型服务」中添加语音识别服务，或下载本地 SenseVoice 模型',
       });
       return;
     }
     if (asrList(config).length === 0) {
-      toast.error('请先在「模型服务」中添加 ASR 语音识别服务');
+      toast.error('请先在「模型服务」中添加语音识别服务');
       return;
     }
     if (!asrEnabled) {
-      toast.error('请先开启 ASR 语音识别开关');
+      toast.error('请先开启语音识别开关');
       return;
     }
     if (!asrId) {
-      toast.error('请选择 ASR 服务');
+      toast.error('请选择语音识别服务');
       return;
     }
     if (micState === 'off') {
@@ -375,7 +375,7 @@ export function Voice() {
 
             {/* LLM */}
             <div className="flex items-center gap-3">
-              <span className="text-[11px] font-black text-gray-400 uppercase tracking-widest">LLM</span>
+              <span className="text-[11px] font-black text-gray-400 uppercase tracking-widest" title="语言模型">LLM</span>
               <GlassSelect value={llmId} onChange={onLlmChange} options={llmOpts} emptyHint="去配置" />
             </div>
 
@@ -383,7 +383,7 @@ export function Voice() {
 
             {/* ASR */}
             <div className="flex items-center gap-3">
-              <span className="text-[11px] font-black text-gray-400 uppercase tracking-widest">ASR</span>
+              <span className="text-[11px] font-black text-gray-400 uppercase tracking-widest" title="语音识别">ASR</span>
               {asrOpts.length === 0 ? (
                 <Link to="/models" className="flex items-center gap-1 h-[30px] px-2.5 rounded-xl text-[10px] text-amber-600 dark:text-amber-400 bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-700/40 whitespace-nowrap">
                   <Cpu className="w-3 h-3 shrink-0" />去配置
@@ -400,7 +400,7 @@ export function Voice() {
 
             {/* TTS */}
             <div className="flex items-center gap-3">
-              <span className="text-[11px] font-black text-gray-400 uppercase tracking-widest">TTS</span>
+              <span className="text-[11px] font-black text-gray-400 uppercase tracking-widest" title="语音合成">TTS</span>
               {ttsOpts.length === 0 ? (
                 <Link to="/models" className="flex items-center gap-1 h-[30px] px-2.5 rounded-xl text-[10px] text-amber-600 dark:text-amber-400 bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-700/40 whitespace-nowrap">
                   <Cpu className="w-3 h-3 shrink-0" />去配置

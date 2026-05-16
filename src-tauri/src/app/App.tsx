@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { HashRouter, Routes, Route, useLocation } from 'react-router-dom';
-import { PanelLeftOpen, LogIn, Home } from 'lucide-react';
+import { LogIn, Home, Radio } from 'lucide-react';
 import { Toaster } from 'sonner';
 import { ThemeProvider } from './context/ThemeContext';
 import { ConfigProvider } from './context/ConfigContext';
@@ -11,7 +11,6 @@ import { Sidebar } from './components/Sidebar';
 import { ThemePanel } from './components/ThemePanel';
 import { NotificationPanel } from './components/NotificationPanel';
 import { SettingsPanel } from './components/SettingsPanel';
-import { IconButton } from './components/IconButton';
 import { GlassCard } from './components/GlassCard';
 import { Button } from './components/Button';
 import { Dashboard } from './pages/Dashboard';
@@ -314,6 +313,7 @@ export default function App() {
             <TopBar
               onToggleNotifications={() => setNotificationPanelOpen(!notificationPanelOpen)}
               sidebarCollapsed={sidebarCollapsed}
+              onToggleSidebar={() => setSidebarCollapsed(!sidebarCollapsed)}
               isLoggedIn={isLoggedIn}
               userInfo={userInfo}
               userRoom={userRoom}
@@ -328,18 +328,21 @@ export default function App() {
               showConnectHint={showConnectHint}
               unreadCount={unreadCount}
             />
-            {/* Expand button — flush with the left edge of this panel, at the bottom */}
-            {sidebarCollapsed && (
-              <div className="absolute left-3 bottom-5 z-20 animate-in fade-in duration-200">
-                <IconButton onClick={() => setSidebarCollapsed(false)} className="shadow-md">
-                  <PanelLeftOpen className="w-4 h-4" />
-                </IconButton>
-              </div>
-            )}
             <main className="flex-1 overflow-hidden relative">
-              {/* 已登录但未连接房间：透明拦截层 */}
+              {/* 已登录但未连接房间：引导连接 */}
               {isLoggedIn && !hasConnectedRoom && (
-                <div className="absolute inset-0 z-10" onClick={triggerConnectHint} />
+                <div className="absolute inset-0 z-10 flex items-center justify-center bg-[var(--background)]/40 backdrop-blur-[2px]">
+                  <GlassCard className="p-8 flex flex-col items-center gap-4 shadow-2xl">
+                    <div className="w-16 h-16 rounded-full bg-[var(--primary-color)]/10 flex items-center justify-center">
+                      <Radio className="w-8 h-8 text-[var(--primary-color)]" />
+                    </div>
+                    <div className="text-[15px] font-semibold">请先连接直播间</div>
+                    <div className="text-[12px] text-gray-400">连接后即可使用所有功能</div>
+                    <Button variant="primary" onClick={() => setShowRoomModal(true)}>
+                      连接直播间
+                    </Button>
+                  </GlassCard>
+                </div>
               )}
               {!isLoggedIn && (
                 <div className="absolute inset-0 flex items-center justify-center z-20 bg-[var(--background)]/80 backdrop-blur-sm">
