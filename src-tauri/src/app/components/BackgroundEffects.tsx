@@ -1,343 +1,550 @@
-import React, { useRef, useEffect, useState, useMemo } from 'react';
-import { useTheme, hexToRgb, hexToHsl, hslToHex } from '../context/ThemeContext';
+import { useEffect, useRef } from 'react';
+import { useTheme } from '../context/ThemeContext';
 import { useConfig } from '../context/ConfigContext';
 import { BackgroundBlobs } from './BackgroundBlobs';
 
-// Helper for percentage
-const pct = (v: number, max: number) => `${(v / max * 100).toFixed(1)}%`;
-
-/** 共享的鼠标响应背景层 */
-const MouseFollowerBackground = ({ children }: { children?: React.ReactNode }) => {
-  const { theme, primaryColor } = useTheme();
-  const mousePos = useRef({ x: window.innerWidth / 2, y: window.innerHeight / 2 });
-  const [smoothMouse, setSmoothMouse] = useState({ x: window.innerWidth / 2, y: window.innerHeight / 2 });
-  const smoothRef = useRef({ x: window.innerWidth / 2, y: window.innerHeight / 2 });
-  const isDark = theme === 'dark';
-
+// ─── 共用 Canvas Hook ─────────────────────────────────────────────────────────
+function useCanvas(
+  draw: (ctx: CanvasRenderingContext2D, w: number, h: number, dt: number) => void,
+  setup?: (canvas: HTMLCanvasElement) => () => void,
+) {
+  const ref = useRef<HTMLCanvasElement>(null);
   useEffect(() => {
-    const onMove = (e: MouseEvent) => { mousePos.current = { x: e.clientX, y: e.clientY }; };
-    window.addEventListener('mousemove', onMove);
-    return () => window.removeEventListener('mousemove', onMove);
-  }, []);
-
-  useEffect(() => {
-    let rafId: number;
-    const tick = () => {
-      smoothRef.current = {
-        x: smoothRef.current.x + (mousePos.current.x - smoothRef.current.x) * 0.05,
-        y: smoothRef.current.y + (mousePos.current.y - smoothRef.current.y) * 0.05,
-      };
-      setSmoothMouse({ ...smoothRef.current });
-      rafId = requestAnimationFrame(tick);
-    };
-    rafId = requestAnimationFrame(tick);
-    return () => cancelAnimationFrame(rafId);
-  }, []);
-
-  const rgb = useMemo(() => hexToRgb(primaryColor) || { r: 75, g: 142, b: 255 }, [primaryColor]);
-  const { h, s, l } = useMemo(() => hexToHsl(primaryColor), [primaryColor]);
-  
-  // 辅助色偏移
-  const mx = smoothMouse.x / window.innerWidth;
-  const shiftedColor = useMemo(() => {
-    const hueShift = (mx - 0.5) * 60;
-    return hexToRgb(hslToHex(((h + hueShift) % 360 + 360) % 360, Math.max(35, s), Math.min(72, l + 5))) || rgb;
-  }, [h, s, l, mx, rgb]);
-
-  const ambientBg = isDark
-    ? `linear-gradient(135deg, rgba(${rgb.r},${rgb.g},${rgb.b},0.12) 0%, rgba(${shiftedColor.r},${shiftedColor.g},${shiftedColor.b},0.06) 50%, transparent 100%)`
-    : `linear-gradient(135deg, rgba(${rgb.r},${rgb.g},${rgb.b},0.10) 0%, rgba(${shiftedColor.r},${shiftedColor.g},${shiftedColor.b},0.05) 55%, rgba(${rgb.r},${rgb.g},${rgb.b},0.03) 100%)`;
-
-  return (
-    <div className="fixed inset-0 z-0 overflow-hidden pointer-events-none transition-colors duration-1000" style={{ background: isDark ? '#070710' : '#ecf0fc' }}>
-      {/* 基础氛围渐变 */}
-      <div className="absolute inset-0" style={{ background: ambientBg }} />
-      
-      {/* 鼠标跟随聚光灯 */}
-      <div
-        className="absolute inset-0 transition-opacity duration-1000"
-        style={{
-          background: `
-            radial-gradient(ellipse 60% 50% at ${pct(smoothMouse.x, window.innerWidth)} ${pct(smoothMouse.y, window.innerHeight)},
-              rgba(${rgb.r},${rgb.g},${rgb.b},${isDark ? 0.25 : 0.15}) 0%,
-              transparent 65%),
-            radial-gradient(ellipse 50% 45% at ${pct(window.innerWidth - smoothMouse.x, window.innerWidth)} ${pct(window.innerHeight - smoothMouse.y, window.innerHeight)},
-              rgba(${shiftedColor.r},${shiftedColor.g},${shiftedColor.b},${isDark ? 0.15 : 0.10}) 0%,
-              transparent 60%)
-          `,
-        }}
-      />
-      {children}
-    </div>
-  );
-};
-
-// 1. 动态气泡 (Blobs - 本身自带背景逻辑，这里只取其 Canvas 层)
-const BlobsEffect = () => <BackgroundBlobs />;
-
-// 2. 动态流体色彩 (Mesh Gradient Flow)
-const MeshGradientEffect = () => {
-  const { primaryColor, theme } = useTheme();
-  const rgb = hexToRgb(primaryColor) || { r: 75, g: 142, b: 255 };
-  const isDark = theme === 'dark';
-
-  return (
-    <div className="absolute inset-0">
-      <div 
-        className="absolute w-[800px] h-[800px] rounded-full blur-[120px] animate-pulse transition-all duration-1000"
-        style={{ 
-          background: `rgba(${rgb.r}, ${rgb.g}, ${rgb.b}, ${isDark ? 0.20 : 0.12})`,
-          top: '-10%', left: '-10%',
-          animationDuration: '8s'
-        }}
-      />
-      <div 
-        className="absolute w-[600px] h-[600px] rounded-full blur-[100px] animate-pulse transition-all duration-1000"
-        style={{ 
-          background: `rgba(${rgb.r}, ${rgb.g}, ${rgb.b}, ${isDark ? 0.15 : 0.08})`,
-          bottom: '10%', right: '10%',
-          animationDuration: '12s',
-          animationDelay: '2s'
-        }}
-      />
-    </div>
-  );
-};
-
-// 3. 极光幻影 (Aurora Borealis)
-const AuroraEffect = () => {
-  const { primaryColor } = useTheme();
-  return (
-    <div className="absolute inset-0">
-      <div className="absolute -inset-[10px] opacity-40">
-        <div className="absolute top-0 left-1/4 w-[120%] h-[50%] blur-[100px] animate-aurora" style={{ background: `linear-gradient(to right, transparent, ${primaryColor}, transparent)`, transform: 'rotate(-10deg)' }} />
-        <div className="absolute top-0 right-1/4 w-[100%] h-[40%] blur-[80px] animate-aurora" style={{ background: `linear-gradient(to right, transparent, ${primaryColor}88, transparent)`, transform: 'rotate(5deg)', animationDelay: '2s' }} />
-      </div>
-      <style>{`
-        @keyframes aurora {
-          0%, 100% { transform: translateY(0) scale(1) rotate(-10deg); opacity: 0.3; }
-          50% { transform: translateY(20px) scale(1.1) rotate(-8deg); opacity: 0.6; }
-        }
-        .animate-aurora { animation: aurora 15s infinite ease-in-out; }
-      `}</style>
-    </div>
-  );
-};
-
-// 4. 极简工业网格 (Modern Technical Grid)
-const GridEffect = () => {
-  const { theme } = useTheme();
-  const isDark = theme === 'dark';
-  return (
-    <div className="absolute inset-0 opacity-50" style={{ 
-      backgroundImage: `linear-gradient(${isDark ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.04)'} 1px, transparent 1px), linear-gradient(90deg, ${isDark ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.04)'} 1px, transparent 1px)`,
-      backgroundSize: '40px 40px'
-    }}>
-      <div className="absolute inset-0" style={{ background: `radial-gradient(circle at center, transparent 0%, ${isDark ? 'rgba(7,7,16,0.3)' : 'rgba(236,240,252,0.3)'} 90%)` }} />
-    </div>
-  );
-};
-
-// 5. 颗粒质感噪点 (Film Grain & Noise)
-const NoiseEffect = () => {
-  return (
-    <div className="absolute inset-0 opacity-[0.04] mix-blend-overlay">
-      <svg viewBox="0 0 200 200" xmlns="http://www.w3.org/2000/svg" className="w-full h-full">
-        <filter id="noiseFilter">
-          <feTurbulence type="fractalNoise" baseFrequency="0.65" numOctaves="3" stitchTiles="stitch" />
-        </filter>
-        <rect width="100%" height="100%" filter="url(#noiseFilter)" />
-      </svg>
-    </div>
-  );
-};
-
-// 6. 交互式悬浮粒子 (Interactive Particle Field)
-const ParticlesEffect = () => {
-  const canvasRef = useRef<HTMLCanvasElement>(null);
-  const { theme } = useTheme();
-  const isDark = theme === 'dark';
-
-  useEffect(() => {
-    const canvas = canvasRef.current;
-    if (!canvas) return;
-    const ctx = canvas.getContext('2d');
-    if (!ctx) return;
-
-    let w = canvas.width = window.innerWidth;
-    let h = canvas.height = window.innerHeight;
-    const particles: any[] = [];
-    const count = 120;
-
-    for (let i = 0; i < count; i++) {
-      particles.push({
-        x: Math.random() * w,
-        y: Math.random() * h,
-        vx: (Math.random() - 0.5) * 0.4,
-        vy: (Math.random() - 0.5) * 0.4,
-        r: Math.random() * 1.5 + 0.5
-      });
-    }
-
+    const canvas = ref.current!;
+    const ctx = canvas.getContext('2d')!;
     let raf: number;
-    const draw = () => {
-      ctx.clearRect(0, 0, w, h);
-      ctx.fillStyle = isDark ? 'rgba(255,255,255,0.2)' : 'rgba(0,0,0,0.12)';
-      particles.forEach(p => {
-        p.x += p.vx;
-        p.y += p.vy;
-        if (p.x < 0) p.x = w;
-        if (p.x > w) p.x = 0;
-        if (p.y < 0) p.y = h;
-        if (p.y > h) p.y = 0;
-        ctx.beginPath();
-        ctx.arc(p.x, p.y, p.r, 0, Math.PI * 2);
-        ctx.fill();
-      });
-      raf = requestAnimationFrame(draw);
+    let last = 0;
+
+    const resize = () => { canvas.width = window.innerWidth; canvas.height = window.innerHeight; };
+    resize();
+    window.addEventListener('resize', resize);
+    const cleanupSetup = setup?.(canvas);
+
+    const loop = (ts: number) => {
+      const dt = Math.min((ts - last) / 1000, 0.05);
+      last = ts;
+      draw(ctx, canvas.width, canvas.height, dt);
+      raf = requestAnimationFrame(loop);
     };
-    draw();
-    const onResize = () => { w = canvas.width = window.innerWidth; h = canvas.height = window.innerHeight; };
-    window.addEventListener('resize', onResize);
-    return () => { cancelAnimationFrame(raf); window.removeEventListener('resize', onResize); };
-  }, [isDark]);
+    raf = requestAnimationFrame(loop);
 
-  return <canvas ref={canvasRef} className="absolute inset-0" />;
-};
+    return () => {
+      cancelAnimationFrame(raf);
+      window.removeEventListener('resize', resize);
+      cleanupSetup?.();
+    };
+  });
+  return ref;
+}
 
-// 7. 3D 浮动几何体 (Parallax Floating Shapes)
-const ParallaxEffect = () => {
-  const { primaryColor } = useTheme();
-  return (
-    <div className="absolute inset-0 flex items-center justify-center">
-      <div className="absolute w-64 h-64 border-2 rounded-full animate-float opacity-20" style={{ borderColor: primaryColor, top: '20%', left: '20%' }} />
-      <div className="absolute w-32 h-32 border-2 rotate-45 animate-float-slow opacity-20" style={{ borderColor: primaryColor, bottom: '20%', right: '20%' }} />
-      <style>{`
-        @keyframes float {
-          0%, 100% { transform: translate(0, 0) rotate(0deg); }
-          50% { transform: translate(30px, -30px) rotate(15deg); }
-        }
-        @keyframes float-slow {
-          0%, 100% { transform: translate(0, 0) rotate(45deg); }
-          50% { transform: translate(-40px, 40px) rotate(60deg); }
-        }
-        .animate-float { animation: float 12s infinite ease-in-out; }
-        .animate-float-slow { animation: float-slow 18s infinite ease-in-out; }
-      `}</style>
-    </div>
-  );
-};
-
-// 8. 动态水波纹 (SVG Turbulence Ripples)
-const RipplesEffect = () => {
-  const { primaryColor } = useTheme();
-  return (
-    <div className="absolute inset-0">
-      <svg className="absolute inset-0 w-full h-full opacity-20" style={{ color: primaryColor }}>
-        <filter id="ripple">
-          <feTurbulence type="fractalNoise" baseFrequency="0.015" numOctaves="1" seed="2">
-            <animate attributeName="baseFrequency" dur="12s" values="0.01;0.025;0.01" repeatCount="indefinite" />
-          </feTurbulence>
-          <feDisplacementMap in="SourceGraphic" scale="30" />
-        </filter>
-        <rect width="100%" height="100%" fill="currentColor" filter="url(#ripple)" />
-      </svg>
-    </div>
-  );
-};
-
-// 9. 摩斯电码/数据流 (Data Stream Bits)
-const DataStreamEffect = () => {
-  const { primaryColor } = useTheme();
-  return (
-    <div className="absolute inset-0 font-mono text-[10px] opacity-[0.06]" style={{ color: primaryColor }}>
-      {Array.from({ length: 24 }).map((_, i) => (
-        <div key={i} className="absolute whitespace-nowrap animate-slide-right" style={{ top: `${i * 4.2}%`, animationDuration: `${12 + i % 15}s`, animationDelay: `${-i * 0.5}s` }}>
-          {Array.from({ length: 60 }).map(() => (Math.random() > 0.5 ? '0' : '1')).join(' ')}
-        </div>
-      ))}
-      <style>{`
-        @keyframes slide-right {
-          from { transform: translateX(-80%); }
-          to { transform: translateX(100%); }
-        }
-        .animate-slide-right { animation: slide-right linear infinite; }
-      `}</style>
-    </div>
-  );
-};
-
-// 10. 全景星空背景 (Minimalist Starfield)
-const StarfieldEffect = () => {
+// ─── 底层渐变（慢速色相循环，不受主题色影响）────────────────────────────────
+export function BaseGradientEffect() {
   const { theme } = useTheme();
-  const isDark = theme === 'dark';
-  const stars = useMemo(() => Array.from({ length: 70 }).map((_, i) => ({
-    top: `${Math.random() * 100}%`,
-    left: `${Math.random() * 100}%`,
-    size: Math.random() * 2 + 0.5,
-    delay: Math.random() * 5,
-    dur: 3 + Math.random() * 4
-  })), []);
+  const t = useRef(0);
 
-  return (
-    <div className="absolute inset-0">
-      {stars.map((s, i) => (
-        <div 
-          key={i} 
-          className="absolute rounded-full animate-twinkle" 
-          style={{ 
-            top: s.top, left: s.left,
-            width: `${s.size}px`, height: `${s.size}px`, 
-            background: isDark ? 'white' : '#475569',
-            animationDelay: `${s.delay}s`,
-            animationDuration: `${s.dur}s`
-          }} 
-        />
-      ))}
-      <style>{`
-        @keyframes twinkle {
-          0%, 100% { opacity: 0.2; transform: scale(1); }
-          50% { opacity: 0.9; transform: scale(1.3); }
+  const ref = useCanvas((ctx, w, h, dt) => {
+    const isDark = theme === 'dark';
+    t.current += dt * 0.035;
+
+    // 三个慢速漂移的径向光源，色相各自独立循环
+    const h1 = (t.current * 18)        % 360;
+    const h2 = (t.current * 12 + 120)  % 360;
+    const h3 = (t.current * 9  + 240)  % 360;
+
+    const x1 = w * (0.18 + 0.18 * Math.sin(t.current * 0.55));
+    const y1 = h * (0.22 + 0.18 * Math.cos(t.current * 0.40));
+    const x2 = w * (0.78 + 0.14 * Math.cos(t.current * 0.48));
+    const y2 = h * (0.70 + 0.14 * Math.sin(t.current * 0.62));
+    const x3 = w * (0.50 + 0.10 * Math.sin(t.current * 0.30 + 1));
+    const y3 = h * (0.45 + 0.10 * Math.cos(t.current * 0.35 + 2));
+    const R  = Math.max(w, h);
+
+    // 底色
+    ctx.fillStyle = isDark ? '#06060f' : '#f0f1fc';
+    ctx.fillRect(0, 0, w, h);
+
+    // 光源 1
+    const g1 = ctx.createRadialGradient(x1, y1, 0, x1, y1, R * 0.72);
+    g1.addColorStop(0, isDark ? `hsla(${h1},65%,18%,.92)` : `hsla(${h1},75%,88%,.90)`);
+    g1.addColorStop(1, `hsla(${h1},45%,10%,0)`);
+    ctx.fillStyle = g1; ctx.fillRect(0, 0, w, h);
+
+    // 光源 2
+    const g2 = ctx.createRadialGradient(x2, y2, 0, x2, y2, R * 0.60);
+    g2.addColorStop(0, isDark ? `hsla(${h2},55%,22%,.75)` : `hsla(${h2},70%,86%,.75)`);
+    g2.addColorStop(1, `hsla(${h2},40%,10%,0)`);
+    ctx.fillStyle = g2; ctx.fillRect(0, 0, w, h);
+
+    // 光源 3（补色，居中漂移）
+    const g3 = ctx.createRadialGradient(x3, y3, 0, x3, y3, R * 0.45);
+    g3.addColorStop(0, isDark ? `hsla(${h3},50%,16%,.55)` : `hsla(${h3},65%,90%,.55)`);
+    g3.addColorStop(1, `hsla(${h3},35%,10%,0)`);
+    ctx.fillStyle = g3; ctx.fillRect(0, 0, w, h);
+  });
+
+  return <canvas ref={ref} className="fixed inset-0 w-full h-full" style={{ zIndex: -1 }} />;
+}
+
+// ─── 1. 粒子星河 ── 紫蓝星空 ────────────────────────────────────────────────
+export function ParticleGalaxyEffect() {
+  const { theme } = useTheme();
+  const state = useRef({
+    particles: [] as { x: number; y: number; vx: number; vy: number; size: number; alpha: number; trail: { x: number; y: number }[] }[],
+    mouse: { x: -9999, y: -9999 },
+  });
+
+  const ref = useCanvas(
+    (ctx, w, h) => {
+      const [r, g, b] = [110, 100, 255] as const; // 紫蓝
+      const isDark = theme === 'dark';
+      const s = state.current;
+
+      if (s.particles.length === 0) {
+        for (let i = 0; i < 140; i++) {
+          s.particles.push({ x: Math.random() * w, y: Math.random() * h, vx: (Math.random() - .5) * .5, vy: (Math.random() - .5) * .5, size: Math.random() * 2 + .5, alpha: Math.random() * .5 + .2, trail: [] });
         }
-        .animate-twinkle { animation: twinkle infinite ease-in-out; }
-      `}</style>
-    </div>
-  );
-};
+      }
 
+      ctx.fillStyle = isDark ? 'rgba(6,6,15,.18)' : 'rgba(240,241,252,.18)';
+      ctx.fillRect(0, 0, w, h);
+
+      for (const p of s.particles) {
+        const dx = s.mouse.x - p.x, dy = s.mouse.y - p.y;
+        const dist = Math.hypot(dx, dy);
+        if (dist < 130 && dist > 1) { p.vx += dx / dist * .04; p.vy += dy / dist * .04; }
+        p.vx *= .985; p.vy *= .985;
+        p.x += p.vx; p.y += p.vy;
+        if (p.x < 0) p.x = w; if (p.x > w) p.x = 0;
+        if (p.y < 0) p.y = h; if (p.y > h) p.y = 0;
+        p.trail.push({ x: p.x, y: p.y });
+        if (p.trail.length > 10) p.trail.shift();
+
+        if (p.trail.length > 1) {
+          ctx.beginPath(); ctx.moveTo(p.trail[0].x, p.trail[0].y);
+          p.trail.forEach(t => ctx.lineTo(t.x, t.y));
+          ctx.strokeStyle = `rgba(${r},${g},${b},${p.alpha * .25})`;
+          ctx.lineWidth = p.size * .5; ctx.stroke();
+        }
+        ctx.beginPath(); ctx.arc(p.x, p.y, p.size, 0, Math.PI * 2);
+        ctx.fillStyle = `rgba(${r},${g},${b},${p.alpha})`; ctx.fill();
+      }
+    },
+    (canvas) => {
+      const s = state.current;
+      const onMove = (e: MouseEvent) => { s.mouse.x = e.clientX; s.mouse.y = e.clientY; };
+      const onClick = (e: MouseEvent) => {
+        for (let i = 0; i < 22; i++) {
+          const a = Math.random() * Math.PI * 2, sp = Math.random() * 4 + 1;
+          s.particles.push({ x: e.clientX, y: e.clientY, vx: Math.cos(a) * sp, vy: Math.sin(a) * sp, size: Math.random() * 2.5 + .5, alpha: .9, trail: [] });
+        }
+        if (s.particles.length > 220) s.particles.splice(0, s.particles.length - 220);
+      };
+      window.addEventListener('mousemove', onMove);
+      canvas.addEventListener('click', onClick);
+      return () => { window.removeEventListener('mousemove', onMove); canvas.removeEventListener('click', onClick); };
+    },
+  );
+  return <canvas ref={ref} className="fixed inset-0 w-full h-full z-0" />;
+}
+
+// ─── 2. 流体波纹 ── 青蓝水波 ────────────────────────────────────────────────
+export function FluidRippleEffect() {
+  const { theme } = useTheme();
+  const ripples = useRef<{ x: number; y: number; r: number; alpha: number }[]>([]);
+  const t = useRef(0);
+  const lastMoveRipple = useRef(0);
+
+  const ref = useCanvas(
+    (ctx, w, h, dt) => {
+      const [r, g, b] = [0, 195, 228] as const; // 青蓝
+      const isDark = theme === 'dark';
+      t.current += dt;
+
+      ctx.fillStyle = isDark ? 'rgba(6,6,15,.88)' : 'rgba(240,241,252,.88)';
+      ctx.fillRect(0, 0, w, h);
+
+      for (let i = 0; i < 6; i++) {
+        const y0 = h * (i + 1) / 7;
+        const amp = 18 + i * 6;
+        const freq = .004 + i * .001;
+        const speed = t.current * (.3 + i * .05);
+        ctx.beginPath();
+        for (let x = 0; x <= w; x += 4) {
+          const y = y0 + Math.sin(x * freq + speed) * amp + Math.cos(x * freq * 1.7 + speed * .8) * amp * .5;
+          x === 0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y);
+        }
+        ctx.strokeStyle = `rgba(${r},${g},${b},${isDark ? .07 : .09})`;
+        ctx.lineWidth = 1.5; ctx.stroke();
+      }
+
+      for (let i = ripples.current.length - 1; i >= 0; i--) {
+        const rp = ripples.current[i];
+        rp.r += 120 * dt; rp.alpha -= .6 * dt;
+        if (rp.alpha <= 0) { ripples.current.splice(i, 1); continue; }
+        for (let ring = 0; ring < 3; ring++) {
+          const rr = rp.r - ring * 22;
+          if (rr < 0) continue;
+          ctx.beginPath(); ctx.arc(rp.x, rp.y, rr, 0, Math.PI * 2);
+          ctx.strokeStyle = `rgba(${r},${g},${b},${rp.alpha * (1 - ring * .3)})`;
+          ctx.lineWidth = 2 - ring * .5; ctx.stroke();
+        }
+      }
+    },
+    (canvas) => {
+      const onMove = (e: MouseEvent) => {
+        const now = Date.now();
+        if (now - lastMoveRipple.current > 130) {
+          ripples.current.push({ x: e.clientX, y: e.clientY, r: 0, alpha: .38 });
+          lastMoveRipple.current = now;
+        }
+      };
+      const onClick = (e: MouseEvent) => ripples.current.push({ x: e.clientX, y: e.clientY, r: 0, alpha: .9 });
+      window.addEventListener('mousemove', onMove);
+      canvas.addEventListener('click', onClick);
+      return () => { window.removeEventListener('mousemove', onMove); canvas.removeEventListener('click', onClick); };
+    },
+  );
+  return <canvas ref={ref} className="fixed inset-0 w-full h-full z-0" />;
+}
+
+// ─── 3. 极光光带 ── 绿紫真实极光色 ─────────────────────────────────────────
+export function AuroraBandsEffect() {
+  const { theme } = useTheme();
+  const flashes = useRef<{ x: number; t: number; alpha: number }[]>([]);
+  const mouse = useRef({ x: -9999, y: -9999 });
+  const time = useRef(0);
+
+  // 真实极光色相：绿 → 青 → 蓝紫 → 品红
+  const BANDS = [
+    { hue: 145, yRatio: .22, amp: .12, freq: .80, alpha: .58 },
+    { hue: 175, yRatio: .37, amp: .10, freq: 1.10, alpha: .42 },
+    { hue: 265, yRatio: .52, amp: .08, freq: 1.40, alpha: .36 },
+    { hue: 308, yRatio: .65, amp: .07, freq: .90, alpha: .26 },
+  ];
+
+  const ref = useCanvas(
+    (ctx, w, h, dt) => {
+      const isDark = theme === 'dark';
+      time.current += dt * .4;
+
+      ctx.fillStyle = isDark ? 'rgba(6,6,15,.88)' : 'rgba(240,241,252,.88)';
+      ctx.fillRect(0, 0, w, h);
+
+      for (const band of BANDS) {
+        const hShift = band.hue + Math.sin(time.current * .3) * 12; // 轻微色相呼吸
+        const points: [number, number][] = [];
+        for (let x = 0; x <= w; x += 6) {
+          const nx = x / w;
+          const y = h * (band.yRatio + band.amp * Math.sin(nx * Math.PI * 3 * band.freq + time.current) + band.amp * .5 * Math.cos(nx * Math.PI * 5 * band.freq + time.current * 1.3));
+          points.push([x, y]);
+        }
+        ctx.beginPath();
+        ctx.moveTo(0, h);
+        points.forEach(([px, py]) => ctx.lineTo(px, py));
+        ctx.lineTo(w, h); ctx.closePath();
+        const grad = ctx.createLinearGradient(0, 0, w, 0);
+        grad.addColorStop(0,   `hsla(${hShift},82%,${isDark ? 62 : 50}%,0)`);
+        grad.addColorStop(.35, `hsla(${hShift},82%,${isDark ? 62 : 50}%,${band.alpha})`);
+        grad.addColorStop(.65, `hsla(${(hShift + 18) % 360},82%,${isDark ? 66 : 54}%,${band.alpha})`);
+        grad.addColorStop(1,   `hsla(${hShift},82%,${isDark ? 62 : 50}%,0)`);
+        ctx.fillStyle = grad; ctx.fill();
+      }
+
+      // 鼠标发光晕
+      if (mouse.current.x > 0) {
+        const mg = ctx.createRadialGradient(mouse.current.x, mouse.current.y, 0, mouse.current.x, mouse.current.y, 140);
+        mg.addColorStop(0, `rgba(180,255,210,${isDark ? .20 : .14})`);
+        mg.addColorStop(1, `rgba(180,255,210,0)`);
+        ctx.fillStyle = mg; ctx.fillRect(0, 0, w, h);
+      }
+
+      for (let i = flashes.current.length - 1; i >= 0; i--) {
+        const f = flashes.current[i];
+        f.t += dt * 1.8; f.alpha = Math.max(0, 1 - f.t);
+        if (f.alpha <= 0) { flashes.current.splice(i, 1); continue; }
+        const spread = f.t * w * .5;
+        const grad = ctx.createRadialGradient(f.x, h * .4, 0, f.x, h * .4, spread);
+        grad.addColorStop(0, `rgba(160,255,200,${f.alpha * .75})`);
+        grad.addColorStop(1, `rgba(160,255,200,0)`);
+        ctx.fillStyle = grad; ctx.fillRect(0, 0, w, h);
+      }
+    },
+    (canvas) => {
+      const onMove = (e: MouseEvent) => { mouse.current = { x: e.clientX, y: e.clientY }; };
+      const onClick = (e: MouseEvent) => flashes.current.push({ x: e.clientX, t: 0, alpha: 1 });
+      window.addEventListener('mousemove', onMove);
+      canvas.addEventListener('click', onClick);
+      return () => { window.removeEventListener('mousemove', onMove); canvas.removeEventListener('click', onClick); };
+    },
+  );
+  return <canvas ref={ref} className="fixed inset-0 w-full h-full z-0" />;
+}
+
+// ─── 4. 樱花飘落 ── 粉玫瑰 ─────────────────────────────────────────────────
+export function SakuraFallEffect() {
+  const { theme } = useTheme();
+  const petals = useRef<{ x: number; y: number; vx: number; vy: number; rot: number; vr: number; size: number; alpha: number; burst: boolean }[]>([]);
+  const mouse = useRef({ x: -9999, y: -9999 });
+  const initialized = useRef(false);
+
+  const ref = useCanvas(
+    (ctx, w, h, dt) => {
+      const [r, g, b] = [255, 132, 165] as const; // 樱花粉
+      const isDark = theme === 'dark';
+      const ps = petals.current;
+
+      if (!initialized.current) {
+        initialized.current = true;
+        for (let i = 0; i < 60; i++) {
+          ps.push({ x: Math.random() * w, y: Math.random() * h, vx: (Math.random() - .5) * 30, vy: Math.random() * 40 + 20, rot: Math.random() * Math.PI * 2, vr: (Math.random() - .5) * 2, size: Math.random() * 10 + 6, alpha: Math.random() * .5 + .3, burst: false });
+        }
+      }
+
+      if (Math.random() < .3) {
+        ps.push({ x: Math.random() * w, y: -20, vx: (Math.random() - .5) * 25, vy: Math.random() * 35 + 20, rot: Math.random() * Math.PI * 2, vr: (Math.random() - .5) * 2.5, size: Math.random() * 10 + 6, alpha: Math.random() * .5 + .3, burst: false });
+      }
+
+      ctx.fillStyle = isDark ? 'rgba(6,6,15,.20)' : 'rgba(240,241,252,.20)';
+      ctx.fillRect(0, 0, w, h);
+
+      for (let i = ps.length - 1; i >= 0; i--) {
+        const p = ps[i];
+
+        const pdx = p.x - mouse.current.x, pdy = p.y - mouse.current.y;
+        const pdist = Math.hypot(pdx, pdy);
+        if (pdist < 90 && pdist > 0.5) {
+          p.vx += (pdx / pdist) * 55 * dt;
+          p.vy -= 18 * dt;
+        }
+
+        p.x += p.vx * dt; p.y += p.vy * dt; p.rot += p.vr * dt;
+        if (p.burst) { p.vy += 80 * dt; p.alpha -= 1.5 * dt; }
+        if (p.y > h + 30 || p.alpha < .02) { ps.splice(i, 1); continue; }
+
+        ctx.save(); ctx.translate(p.x, p.y); ctx.rotate(p.rot);
+        ctx.beginPath();
+        ctx.ellipse(0, 0, p.size, p.size * .55, 0, 0, Math.PI * 2);
+        const grd = ctx.createRadialGradient(0, 0, 0, 0, 0, p.size);
+        grd.addColorStop(0, `rgba(${r},${g},${b},${p.alpha})`);
+        grd.addColorStop(1, `rgba(255,210,220,${p.alpha * .3})`);
+        ctx.fillStyle = grd; ctx.fill();
+        ctx.restore();
+      }
+
+      if (ps.length > 200) ps.splice(0, ps.length - 200);
+    },
+    (canvas) => {
+      const onMove = (e: MouseEvent) => { mouse.current = { x: e.clientX, y: e.clientY }; };
+      const onClick = (e: MouseEvent) => {
+        for (let i = 0; i < 18; i++) {
+          const a = Math.random() * Math.PI * 2, sp = Math.random() * 150 + 50;
+          petals.current.push({ x: e.clientX, y: e.clientY, vx: Math.cos(a) * sp, vy: Math.sin(a) * sp - 60, rot: Math.random() * Math.PI * 2, vr: (Math.random() - .5) * 5, size: Math.random() * 8 + 5, alpha: .9, burst: true });
+        }
+      };
+      window.addEventListener('mousemove', onMove);
+      canvas.addEventListener('click', onClick);
+      return () => { window.removeEventListener('mousemove', onMove); canvas.removeEventListener('click', onClick); };
+    },
+  );
+  return <canvas ref={ref} className="fixed inset-0 w-full h-full z-0" />;
+}
+
+
+// ─── 7. 星座连线 ── 星光银蓝 ────────────────────────────────────────────────
+export function ConstellationEffect() {
+  const { theme } = useTheme();
+  const stars = useRef<{ x: number; y: number; size: number; twinkle: number; tp: number }[]>([]);
+  const rings = useRef<{ x: number; y: number; r: number; alpha: number }[]>([]);
+  const mouse = useRef({ x: -9999, y: -9999 });
+  const initialized = useRef(false);
+  const LINK_DIST = 110;
+
+  const ref = useCanvas(
+    (ctx, w, h, dt) => {
+      const [r, g, b] = [185, 205, 255] as const; // 星光银蓝
+      const isDark = theme === 'dark';
+
+      if (!initialized.current) {
+        initialized.current = true;
+        for (let i = 0; i < 80; i++) {
+          stars.current.push({ x: Math.random() * w, y: Math.random() * h, size: Math.random() * 1.8 + .4, twinkle: Math.random() * Math.PI * 2, tp: Math.random() * 2 + 1 });
+        }
+      }
+
+      ctx.fillStyle = isDark ? 'rgba(6,6,15,.22)' : 'rgba(240,241,252,.22)';
+      ctx.fillRect(0, 0, w, h);
+
+      const ss = stars.current;
+      for (let i = 0; i < ss.length; i++) {
+        for (let j = i + 1; j < ss.length; j++) {
+          const d = Math.hypot(ss[i].x - ss[j].x, ss[i].y - ss[j].y);
+          if (d < LINK_DIST) {
+            ctx.beginPath(); ctx.moveTo(ss[i].x, ss[i].y); ctx.lineTo(ss[j].x, ss[j].y);
+            ctx.strokeStyle = `rgba(${r},${g},${b},${(1 - d / LINK_DIST) * (isDark ? .20 : .14)})`;
+            ctx.lineWidth = .8; ctx.stroke();
+          }
+        }
+      }
+
+      for (const s of ss) {
+        s.twinkle += dt * s.tp;
+        const a = .4 + Math.sin(s.twinkle) * .3;
+        const grad = ctx.createRadialGradient(s.x, s.y, 0, s.x, s.y, s.size * 4);
+        grad.addColorStop(0, `rgba(${r},${g},${b},${a * .4})`);
+        grad.addColorStop(1, `rgba(${r},${g},${b},0)`);
+        ctx.beginPath(); ctx.arc(s.x, s.y, s.size * 4, 0, Math.PI * 2);
+        ctx.fillStyle = grad; ctx.fill();
+        ctx.beginPath(); ctx.arc(s.x, s.y, s.size, 0, Math.PI * 2);
+        ctx.fillStyle = `rgba(${r},${g},${b},${a})`; ctx.fill();
+      }
+
+      // 鼠标作为虚拟星点，向附近恒星连线
+      if (mouse.current.x > 0) {
+        for (const s of ss) {
+          const d = Math.hypot(s.x - mouse.current.x, s.y - mouse.current.y);
+          if (d < LINK_DIST * 1.6) {
+            ctx.beginPath(); ctx.moveTo(mouse.current.x, mouse.current.y); ctx.lineTo(s.x, s.y);
+            ctx.strokeStyle = `rgba(${r},${g},${b},${(1 - d / (LINK_DIST * 1.6)) * (isDark ? .48 : .32)})`;
+            ctx.lineWidth = 1; ctx.stroke();
+          }
+        }
+        ctx.beginPath(); ctx.arc(mouse.current.x, mouse.current.y, 2.5, 0, Math.PI * 2);
+        ctx.fillStyle = `rgba(${r},${g},${b},.88)`; ctx.fill();
+        const mg = ctx.createRadialGradient(mouse.current.x, mouse.current.y, 0, mouse.current.x, mouse.current.y, 18);
+        mg.addColorStop(0, `rgba(${r},${g},${b},.32)`);
+        mg.addColorStop(1, `rgba(${r},${g},${b},0)`);
+        ctx.fillStyle = mg; ctx.beginPath(); ctx.arc(mouse.current.x, mouse.current.y, 18, 0, Math.PI * 2); ctx.fill();
+      }
+
+      for (let i = rings.current.length - 1; i >= 0; i--) {
+        const rg = rings.current[i];
+        rg.r += 90 * dt; rg.alpha -= .8 * dt;
+        if (rg.alpha <= 0) { rings.current.splice(i, 1); continue; }
+        ctx.beginPath(); ctx.arc(rg.x, rg.y, rg.r, 0, Math.PI * 2);
+        ctx.strokeStyle = `rgba(${r},${g},${b},${rg.alpha})`;
+        ctx.lineWidth = 1.5; ctx.stroke();
+      }
+    },
+    (canvas) => {
+      const onMove = (e: MouseEvent) => { mouse.current = { x: e.clientX, y: e.clientY }; };
+      const onClick = (e: MouseEvent) => {
+        stars.current.push({ x: e.clientX, y: e.clientY, size: Math.random() * 2 + 1, twinkle: 0, tp: Math.random() * 2 + 1 });
+        if (stars.current.length > 130) stars.current.shift();
+        rings.current.push({ x: e.clientX, y: e.clientY, r: 4, alpha: 1 });
+      };
+      window.addEventListener('mousemove', onMove);
+      canvas.addEventListener('click', onClick);
+      return () => { window.removeEventListener('mousemove', onMove); canvas.removeEventListener('click', onClick); };
+    },
+  );
+  return <canvas ref={ref} className="fixed inset-0 w-full h-full z-0" />;
+}
+
+// ─── 8. 山水层峦 ────────────────────────────────────────────────────────────
+export function MountainParallaxEffect() {
+  const { theme } = useTheme();
+  const t = useRef(0);
+
+  const ref = useCanvas((ctx, w, h, dt) => {
+    const isDark = theme === 'dark';
+    t.current += dt * 0.09;
+
+    ctx.fillStyle = isDark ? 'rgba(6,6,15,.74)' : 'rgba(240,241,252,.72)';
+    ctx.fillRect(0, 0, w, h);
+
+    const layers = [
+      { baseY: 0.78, amp: 18, hue: isDark ? 210 : 215, alpha: isDark ? 0.22 : 0.14, speed: 0.4 },
+      { baseY: 0.70, amp: 28, hue: isDark ? 205 : 210, alpha: isDark ? 0.18 : 0.11, speed: 0.28 },
+      { baseY: 0.62, amp: 34, hue: isDark ? 198 : 204, alpha: isDark ? 0.14 : 0.09, speed: 0.18 },
+    ];
+
+    for (const layer of layers) {
+      ctx.beginPath();
+      ctx.moveTo(0, h);
+      for (let x = 0; x <= w; x += 12) {
+        const nx = x / w;
+        const y = h * layer.baseY
+          + Math.sin(nx * Math.PI * 4 + t.current * layer.speed * 3) * layer.amp
+          + Math.cos(nx * Math.PI * 7 + t.current * layer.speed * 1.8) * layer.amp * 0.45;
+        ctx.lineTo(x, y);
+      }
+      ctx.lineTo(w, h);
+      ctx.closePath();
+      ctx.fillStyle = `hsla(${layer.hue},24%,${isDark ? 48 : 58}%,${layer.alpha})`;
+      ctx.fill();
+    }
+  });
+
+  return <canvas ref={ref} className="fixed inset-0 w-full h-full z-0" />;
+}
+
+// ─── 10. 金箔微光 ───────────────────────────────────────────────────────────
+export function GoldFlakesEffect() {
+  const { theme } = useTheme();
+  const flakes = useRef(
+    Array.from({ length: 80 }, () => ({
+      x: Math.random() * window.innerWidth,
+      y: Math.random() * window.innerHeight,
+      size: 1 + Math.random() * 4,
+      vy: 4 + Math.random() * 10,
+      tw: Math.random() * Math.PI * 2,
+      tp: 0.8 + Math.random() * 1.4,
+    })),
+  );
+
+  const ref = useCanvas((ctx, w, h, dt) => {
+    const isDark = theme === 'dark';
+    ctx.fillStyle = isDark ? 'rgba(12,10,15,.82)' : 'rgba(245,242,236,.80)';
+    ctx.fillRect(0, 0, w, h);
+
+    for (const flake of flakes.current) {
+      flake.y += flake.vy * dt;
+      flake.tw += dt * flake.tp;
+      if (flake.y > h + 8) {
+        flake.y = -8;
+        flake.x = Math.random() * w;
+      }
+      const alpha = 0.18 + (Math.sin(flake.tw) + 1) * 0.14;
+      ctx.beginPath();
+      ctx.arc(flake.x, flake.y, flake.size, 0, Math.PI * 2);
+      ctx.fillStyle = isDark
+        ? `rgba(255,214,120,${alpha})`
+        : `rgba(198,148,40,${alpha * 0.78})`;
+      ctx.fill();
+    }
+  });
+
+  return <canvas ref={ref} className="fixed inset-0 w-full h-full z-0" />;
+}
+
+// ─── Background Manager ───────────────────────────────────────────────────────
 export function BackgroundManager() {
   const { backgroundEffect, theme } = useTheme();
   const { config } = useConfig();
   const isDark = theme === 'dark';
 
   if (config?.DisableBackgroundEffects) {
-    return (
-      <div 
-        className="fixed inset-0 z-0 transition-colors duration-1000" 
-        style={{ background: isDark ? '#070710' : '#ecf0fc' }} 
-      />
-    );
+    return <div className="fixed inset-0 z-0 transition-colors duration-1000" style={{ background: isDark ? '#06060f' : '#f0f1fc' }} />;
   }
 
-  const renderEffect = () => {
+  const effect = (() => {
     switch (backgroundEffect) {
-      case 'blobs': return <BlobsEffect />;
-      case 'mesh': return <MeshGradientEffect />;
-      case 'aurora': return <AuroraEffect />;
-      case 'grid': return <GridEffect />;
-      case 'noise': return <NoiseEffect />;
-      case 'particles': return <ParticlesEffect />;
-      case 'parallax': return <ParallaxEffect />;
-      case 'ripples': return <RipplesEffect />;
-      case 'data-stream': return <DataStreamEffect />;
-      case 'starfield': return <StarfieldEffect />;
-      default: return <BlobsEffect />;
+      case 'blobs':           return <BackgroundBlobs />;
+      case 'particle-galaxy': return <ParticleGalaxyEffect />;
+      case 'fluid-ripple':    return <FluidRippleEffect />;
+      case 'aurora-bands':    return <AuroraBandsEffect />;
+      case 'sakura-fall':     return <SakuraFallEffect />;
+      case 'constellation':   return <ConstellationEffect />;
+      case 'mountain-parallax': return <MountainParallaxEffect />;
+      case 'gold-flakes':     return <GoldFlakesEffect />;
+      default:                return <BackgroundBlobs />;
     }
-  };
+  })();
 
   return (
-    <MouseFollowerBackground>
-      {renderEffect()}
-    </MouseFollowerBackground>
+    <>
+      <BaseGradientEffect />
+      {effect}
+    </>
   );
 }

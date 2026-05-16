@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect, useCallback } from 'react';
-import { ChevronDown, Sparkles, Wind, Zap, Grid, Hash, Layers, MousePointer2, Waves, Binary, Stars } from 'lucide-react';
+import { ChevronDown, Sparkles, Waves, Zap, Cherry, Star, Boxes, Mountain, Coins } from 'lucide-react';
 import { HexColorPicker } from 'react-colorful';
 import { useTheme, themePresets, type BackgroundEffectType } from '../context/ThemeContext';
 import { GlassCard } from './GlassCard';
@@ -10,16 +10,14 @@ interface ThemePanelProps {
 }
 
 const backgroundEffects: { id: BackgroundEffectType; name: string; icon: any }[] = [
-  { id: 'blobs',       name: '动态气泡', icon: Sparkles },
-  { id: 'mesh',        name: '流体色彩', icon: Wind },
-  { id: 'aurora',      name: '极光幻影', icon: Zap },
-  { id: 'grid',        name: '工业网格', icon: Grid },
-  { id: 'noise',       name: '质感噪点', icon: Hash },
-  { id: 'particles',   name: '悬浮粒子', icon: MousePointer2 },
-  { id: 'parallax',    name: '浮动几何', icon: Layers },
-  { id: 'ripples',     name: '动态水波', icon: Waves },
-  { id: 'data-stream', name: '数据流',   icon: Binary },
-  { id: 'starfield',   name: '全景星空', icon: Stars },
+  { id: 'particle-galaxy', name: '粒子星河', icon: Sparkles },
+  { id: 'fluid-ripple',    name: '流体波纹', icon: Waves },
+  { id: 'aurora-bands',    name: '极光光带', icon: Zap },
+  { id: 'sakura-fall',     name: '樱花飘落', icon: Cherry },
+  { id: 'constellation',   name: '星座连线', icon: Star },
+  { id: 'blobs',           name: '动态气泡', icon: Boxes },
+  { id: 'mountain-parallax', name: '山水层峦', icon: Mountain },
+  { id: 'gold-flakes',     name: '金箔微光', icon: Coins },
 ];
 
 export function ThemePanel({ onClose }: ThemePanelProps) {
@@ -146,7 +144,7 @@ export function ThemePanel({ onClose }: ThemePanelProps) {
           {/* 背景特效选择 */}
           <div className="space-y-3 pt-2">
             <div className="text-[10px] uppercase tracking-wider text-gray-400 font-bold px-1">背景特效</div>
-            <div className="grid grid-cols-2 gap-2">
+            <div className="grid grid-cols-2 gap-2 max-h-[360px] overflow-y-auto pr-1">
               {backgroundEffects.map(eff => {
                 const active = backgroundEffect === eff.id;
                 const Icon = eff.icon;
