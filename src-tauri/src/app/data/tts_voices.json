@@ -1,2278 +1,2257 @@
 {
-    "volcano_engine": {
-        "description": "字节跳动火山引擎语音合成 (Volcano Engine / ByteDance)",
-        "voices": [
-            {
-                "id": "**音色名称**",
-                "name": "**场景**",
-                "description": "",
-                "language": "**voice_type**",
-                "gender": "男"
-            },
-            {
-                "id": "语种：中文、日文、印尼、墨西哥西班牙语",
-                "name": "zh_female_vv_uranus_bigtts",
-                "description": "",
-                "language": "\\",
-                "gender": "男"
-            },
-            {
-                "id": "通用场景",
-                "name": "",
-                "description": "",
-                "language": "小何 2.0",
-                "gender": "男"
-            },
-            {
-                "id": "中文",
-                "name": "zh_male_m191_uranus_bigtts",
-                "description": "",
-                "language": "情感变化、指令遵循、ASMR",
-                "gender": "男"
-            },
-            {
-                "id": "小天 2.0",
-                "name": "通用场景",
-                "description": "",
-                "language": "zh_male_taocheng_uranus_bigtts",
-                "gender": "男"
-            },
-            {
-                "id": "情感变化、指令遵循、ASMR",
-                "name": "中文",
-                "description": "",
-                "language": "",
-                "gender": "男"
-            },
-            {
-                "id": "zh_female_sophie_uranus_bigtts",
-                "name": "魅力苏菲 2.0",
-                "description": "",
-                "language": "中文",
-                "gender": "女"
-            },
-            {
-                "id": "通用场景",
-                "name": "",
-                "description": "",
-                "language": "清新女声 2.0",
-                "gender": "男"
-            },
-            {
-                "id": "中文",
-                "name": "zh_female_cancan_uranus_bigtts",
-                "description": "",
-                "language": "情感变化、指令遵循、ASMR",
-                "gender": "男"
-            },
-            {
-                "id": "撒娇学妹 2.0",
-                "name": "角色扮演",
-                "description": "",
-                "language": "zh_female_sajiaoxuemei_uranus_bigtts",
-                "gender": "男"
-            },
-            {
-                "id": "情感变化、指令遵循、ASMR",
-                "name": "中文",
-                "description": "",
-                "language": "",
-                "gender": "男"
-            },
-            {
-                "id": "zh_female_tianmeitaozi_uranus_bigtts",
-                "name": "甜美桃子 2.0",
-                "description": "",
-                "language": "中文",
-                "gender": "女"
-            },
-            {
-                "id": "通用场景",
-                "name": "",
-                "description": "",
-                "language": "爽快思思 2.0",
-                "gender": "男"
-            },
-            {
-                "id": "中文",
-                "name": "zh_female_peiqi_uranus_bigtts",
-                "description": "",
-                "language": "情感变化、指令遵循、ASMR",
-                "gender": "男"
-            },
-            {
-                "id": "邻家女孩 2.0",
-                "name": "通用场景",
-                "description": "",
-                "language": "zh_female_linjianvhai_uranus_bigtts",
-                "gender": "男"
-            },
-            {
-                "id": "情感变化、指令遵循、ASMR",
-                "name": "中文",
-                "description": "",
-                "language": "",
-                "gender": "男"
-            },
-            {
-                "id": "zh_male_sunwukong_uranus_bigtts",
-                "name": "猴哥 2.0",
-                "description": "",
-                "language": "中文",
-                "gender": "男"
-            },
-            {
-                "id": "教育场景",
-                "name": "",
-                "description": "",
-                "language": "Tina老师 2.0",
-                "gender": "男"
-            },
-            {
-                "id": "中文",
-                "name": "zh_female_kefunvsheng_uranus_bigtts",
-                "description": "",
-                "language": "情感变化、指令遵循、ASMR",
-                "gender": "男"
-            },
-            {
-                "id": "儿童绘本 2.0",
-                "name": "有声阅读",
-                "description": "",
-                "language": "zh_female_xiaoxue_uranus_bigtts",
-                "gender": "男"
-            },
-            {
-                "id": "情感变化、指令遵循、ASMR",
-                "name": "中文",
-                "description": "",
-                "language": "",
-                "gender": "男"
-            },
-            {
-                "id": "zh_female_mizai_uranus_bigtts",
-                "name": "黑猫侦探社咪仔 2.0",
-                "description": "",
-                "language": "中文",
-                "gender": "女"
-            },
-            {
-                "id": "视频配音",
-                "name": "",
-                "description": "",
-                "language": "鸡汤女 2.0",
-                "gender": "男"
-            },
-            {
-                "id": "中文",
-                "name": "zh_female_meilinvyou_uranus_bigtts",
-                "description": "",
-                "language": "情感变化、指令遵循、ASMR",
-                "gender": "男"
-            },
-            {
-                "id": "流畅女声 2.0",
-                "name": "视频配音",
-                "description": "",
-                "language": "zh_female_liuchangnv_uranus_bigtts",
-                "gender": "男"
-            },
-            {
-                "id": "情感变化、指令遵循、ASMR",
-                "name": "中文",
-                "description": "",
-                "language": "",
-                "gender": "男"
-            },
-            {
-                "id": "en_male_tim_uranus_bigtts",
-                "name": "Tim",
-                "description": "",
-                "language": "美式英语",
-                "gender": "男"
-            },
-            {
-                "id": "多语种",
-                "name": "",
-                "description": "",
-                "language": "Dacey",
-                "gender": "男"
-            },
-            {
-                "id": "美式英语",
-                "name": "en_female_stokie_uranus_bigtts",
-                "description": "",
-                "language": "情感变化、指令遵循、ASMR",
-                "gender": "男"
-            },
-            {
-                "id": "温柔妈妈 2.0",
-                "name": "通用场景",
-                "description": "",
-                "language": "zh_female_wenroumama_uranus_bigtts",
-                "gender": "男"
-            },
-            {
-                "id": "情感变化、指令遵循、ASMR",
-                "name": "中文",
-                "description": "",
-                "language": "",
-                "gender": "男"
-            },
-            {
-                "id": "zh_female_tvbnv_uranus_bigtts",
-                "name": "TVB女声 2.0",
-                "description": "",
-                "language": "中文",
-                "gender": "女"
-            },
-            {
-                "id": "通用场景",
-                "name": "",
-                "description": "",
-                "language": "译制片男 2.0",
-                "gender": "男"
-            },
-            {
-                "id": "中文",
-                "name": "zh_female_qiaopinv_uranus_bigtts",
-                "description": "",
-                "language": "情感变化、指令遵循、ASMR",
-                "gender": "男"
-            },
-            {
-                "id": "直率英子 2.0",
-                "name": "角色扮演",
-                "description": "",
-                "language": "zh_female_zhishuaiyingzi_uranus_bigtts",
-                "gender": "男"
-            },
-            {
-                "id": "情感变化、指令遵循、ASMR",
-                "name": "中文",
-                "description": "",
-                "language": "",
-                "gender": "男"
-            },
-            {
-                "id": "zh_male_silang_uranus_bigtts",
-                "name": "四郎 2.0",
-                "description": "",
-                "language": "中文",
-                "gender": "男"
-            },
-            {
-                "id": "通用场景",
-                "name": "",
-                "description": "",
-                "language": "儒雅青年 2.0",
-                "gender": "男"
-            },
-            {
-                "id": "中文",
-                "name": "zh_male_qingcang_uranus_bigtts",
-                "description": "",
-                "language": "情感变化、指令遵循、ASMR",
-                "gender": "男"
-            },
-            {
-                "id": "熊二 2.0",
-                "name": "角色扮演",
-                "description": "",
-                "language": "zh_male_xionger_uranus_bigtts",
-                "gender": "男"
-            },
-            {
-                "id": "情感变化、指令遵循、ASMR",
-                "name": "中文",
-                "description": "",
-                "language": "",
-                "gender": "男"
-            },
-            {
-                "id": "zh_male_wennuanahu_uranus_bigtts",
-                "name": "温暖阿虎/Alvin 2.0",
-                "description": "",
-                "language": "中文",
-                "gender": "男"
-            },
-            {
-                "id": "通用场景",
-                "name": "",
-                "description": "",
-                "language": "奶气萌娃 2.0",
-                "gender": "男"
-            },
-            {
-                "id": "中文",
-                "name": "zh_female_popo_uranus_bigtts",
-                "description": "",
-                "language": "情感变化、指令遵循、ASMR",
-                "gender": "男"
-            },
-            {
-                "id": "高冷御姐 2.0",
-                "name": "通用场景",
-                "description": "",
-                "language": "zh_female_gaolengyujie_uranus_bigtts",
-                "gender": "男"
-            },
-            {
-                "id": "情感变化、指令遵循、ASMR",
-                "name": "中文",
-                "description": "",
-                "language": "",
-                "gender": "男"
-            },
-            {
-                "id": "zh_male_lanyinmianbao_uranus_bigtts",
-                "name": "懒音绵宝 2.0",
-                "description": "",
-                "language": "中文",
-                "gender": "男"
-            },
-            {
-                "id": "通用场景",
-                "name": "",
-                "description": "",
-                "language": "反卷青年 2.0",
-                "gender": "男"
-            },
-            {
-                "id": "中文",
-                "name": "zh_female_wenroushunv_uranus_bigtts",
-                "description": "",
-                "language": "情感变化、指令遵循、ASMR",
-                "gender": "男"
-            },
-            {
-                "id": "古风少御 2.0",
-                "name": "角色扮演",
-                "description": "",
-                "language": "zh_female_gufengshaoyu_uranus_bigtts",
-                "gender": "男"
-            },
-            {
-                "id": "情感变化、指令遵循、ASMR",
-                "name": "中文",
-                "description": "",
-                "language": "",
-                "gender": "男"
-            },
-            {
-                "id": "zh_male_baqiqingshu_uranus_bigtts",
-                "name": "霸气青叔 2.0",
-                "description": "",
-                "language": "中文",
-                "gender": "男"
-            },
-            {
-                "id": "有声阅读",
-                "name": "",
-                "description": "",
-                "language": "悬疑解说 2.0",
-                "gender": "男"
-            },
-            {
-                "id": "中文",
-                "name": "zh_female_mengyatou_uranus_bigtts",
-                "description": "",
-                "language": "情感变化、指令遵循、ASMR",
-                "gender": "男"
-            },
-            {
-                "id": "贴心女声/Candy 2.0",
-                "name": "通用场景",
-                "description": "",
-                "language": "zh_female_tiexinnvsheng_uranus_bigtts",
-                "gender": "男"
-            },
-            {
-                "id": "情感变化、指令遵循、ASMR",
-                "name": "中文",
-                "description": "",
-                "language": "",
-                "gender": "男"
-            },
-            {
-                "id": "zh_male_cixingjieshuonan_uranus_bigtts",
-                "name": "磁性解说男声/Morgan 2.0",
-                "description": "",
-                "language": "中文",
-                "gender": "男"
-            },
-            {
-                "id": "通用场景",
-                "name": "",
-                "description": "",
-                "language": "亮嗓萌仔 2.0",
-                "gender": "男"
-            },
-            {
-                "id": "中文",
-                "name": "zh_female_kailangjiejie_uranus_bigtts",
-                "description": "",
-                "language": "情感变化、指令遵循、ASMR",
-                "gender": "男"
-            },
-            {
-                "id": "高冷沉稳 2.0",
-                "name": "通用场景",
-                "description": "",
-                "language": "zh_male_gaolengchenwen_uranus_bigtts",
-                "gender": "男"
-            },
-            {
-                "id": "情感变化、指令遵循、ASMR",
-                "name": "中文",
-                "description": "",
-                "language": "",
-                "gender": "男"
-            },
-            {
-                "id": "zh_male_lubanqihao_uranus_bigtts",
-                "name": "鲁班七号 2.0",
-                "description": "",
-                "language": "中文",
-                "gender": "男"
-            },
-            {
-                "id": "通用场景",
-                "name": "",
-                "description": "",
-                "language": "娇喘女声 2.0",
-                "gender": "男"
-            },
-            {
-                "id": "中文",
-                "name": "zh_female_linxiao_uranus_bigtts",
-                "description": "",
-                "language": "情感变化、指令遵循、ASMR",
-                "gender": "男"
-            },
-            {
-                "id": "玲玲姐姐 2.0",
-                "name": "角色扮演",
-                "description": "",
-                "language": "zh_female_lingling_uranus_bigtts",
-                "gender": "男"
-            },
-            {
-                "id": "情感变化、指令遵循、ASMR",
-                "name": "中文",
-                "description": "",
-                "language": "",
-                "gender": "男"
-            },
-            {
-                "id": "zh_male_tangseng_uranus_bigtts",
-                "name": "唐僧 2.0",
-                "description": "",
-                "language": "中文",
-                "gender": "男"
-            },
-            {
-                "id": "角色扮演",
-                "name": "",
-                "description": "",
-                "language": "庄周 2.0",
-                "gender": "男"
-            },
-            {
-                "id": "中文",
-                "name": "zh_male_kailangdidi_uranus_bigtts",
-                "description": "",
-                "language": "情感变化、指令遵循、ASMR",
-                "gender": "男"
-            },
-            {
-                "id": "猪八戒 2.0",
-                "name": "角色扮演",
-                "description": "",
-                "language": "zh_male_zhubajie_uranus_bigtts",
-                "gender": "男"
-            },
-            {
-                "id": "情感变化、指令遵循、ASMR",
-                "name": "中文",
-                "description": "",
-                "language": "",
-                "gender": "男"
-            },
-            {
-                "id": "zh_female_chanmeinv_uranus_bigtts",
-                "name": "谄媚女声 2.0",
-                "description": "",
-                "language": "中文",
-                "gender": "女"
-            },
-            {
-                "id": "角色扮演",
-                "name": "",
-                "description": "",
-                "language": "女雷神 2.0",
-                "gender": "男"
-            },
-            {
-                "id": "中文",
-                "name": "zh_female_qinqienv_uranus_bigtts",
-                "description": "",
-                "language": "情感变化、指令遵循、ASMR",
-                "gender": "男"
-            },
-            {
-                "id": "快乐小东 2.0",
-                "name": "通用场景",
-                "description": "",
-                "language": "zh_male_kuailexiaodong_uranus_bigtts",
-                "gender": "男"
-            },
-            {
-                "id": "情感变化、指令遵循、ASMR",
-                "name": "中文",
-                "description": "",
-                "language": "",
-                "gender": "男"
-            },
-            {
-                "id": "zh_male_youyoujunzi_uranus_bigtts",
-                "name": "悠悠君子 2.0",
-                "description": "",
-                "language": "中文",
-                "gender": "男"
-            },
-            {
-                "id": "通用场景",
-                "name": "",
-                "description": "",
-                "language": "文静毛毛 2.0",
-                "gender": "男"
-            },
-            {
-                "id": "中文",
-                "name": "zh_female_zhixingnv_uranus_bigtts",
-                "description": "",
-                "language": "情感变化、指令遵循、ASMR",
-                "gender": "男"
-            },
-            {
-                "id": "清爽男大 2.0",
-                "name": "通用场景",
-                "description": "",
-                "language": "zh_male_qingshuangnanda_uranus_bigtts",
-                "gender": "男"
-            },
-            {
-                "id": "情感变化、指令遵循、ASMR",
-                "name": "中文",
-                "description": "",
-                "language": "",
-                "gender": "男"
-            },
-            {
-                "id": "zh_male_yangguangqingnian_uranus_bigtts",
-                "name": "阳光青年 2.0",
-                "description": "",
-                "language": "中文",
-                "gender": "男"
-            },
-            {
-                "id": "通用场景",
-                "name": "",
-                "description": "",
-                "language": "清澈梓梓 2.0",
-                "gender": "男"
-            },
-            {
-                "id": "中文",
-                "name": "zh_female_tianmeiyueyue_uranus_bigtts",
-                "description": "",
-                "language": "情感变化、指令遵循、ASMR",
-                "gender": "男"
-            },
-            {
-                "id": "心灵鸡汤 2.0",
-                "name": "通用场景",
-                "description": "",
-                "language": "zh_female_xinlingjitang_uranus_bigtts",
-                "gender": "男"
-            },
-            {
-                "id": "情感变化、指令遵循、ASMR",
-                "name": "中文",
-                "description": "",
-                "language": "",
-                "gender": "男"
-            },
-            {
-                "id": "zh_female_roumeinvyou_uranus_bigtts",
-                "name": "柔美女友 2.0",
-                "description": "",
-                "language": "中文",
-                "gender": "女"
-            },
-            {
-                "id": "通用场景",
-                "name": "",
-                "description": "",
-                "language": "东方浩然 2.0",
-                "gender": "男"
-            },
-            {
-                "id": "中文",
-                "name": "zh_female_wenrouxiaoya_uranus_bigtts",
-                "description": "",
-                "language": "情感变化、指令遵循、ASMR",
-                "gender": "男"
-            },
-            {
-                "id": "天才童声 2.0",
-                "name": "通用场景",
-                "description": "",
-                "language": "zh_male_tiancaitongsheng_uranus_bigtts",
-                "gender": "男"
-            },
-            {
-                "id": "情感变化、指令遵循、ASMR",
-                "name": "中文",
-                "description": "",
-                "language": "",
-                "gender": "男"
-            },
-            {
-                "id": "zh_female_gujie_uranus_bigtts",
-                "name": "顾姐 2.0",
-                "description": "",
-                "language": "中文",
-                "gender": "女"
-            },
-            {
-                "id": "通用场景",
-                "name": "",
-                "description": "",
-                "language": "广告解说 2.0",
-                "gender": "男"
-            },
-            {
-                "id": "中文",
-                "name": "zh_female_shaoergushi_uranus_bigtts",
-                "description": "",
-                "language": "情感变化、指令遵循、ASMR",
-                "gender": "男"
-            },
-            {
-                "id": "调皮公主",
-                "name": "角色扮演",
-                "description": "",
-                "language": "saturn_zh_female_tiaopigongzhu_tob",
-                "gender": "男"
-            },
-            {
-                "id": "指令遵循、COT/QA功能",
-                "name": "中文",
-                "description": "",
-                "language": "",
-                "gender": "男"
-            },
-            {
-                "id": "saturn_zh_male_shuanglangshaonian_tob",
-                "name": "爽朗少年",
-                "description": "",
-                "language": "中文",
-                "gender": "男"
-            },
-            {
-                "id": "角色扮演",
-                "name": "",
-                "description": "",
-                "language": "天才同桌",
-                "gender": "男"
-            },
-            {
-                "id": "中文",
-                "name": "saturn_zh_female_cancan_tob",
-                "description": "",
-                "language": "指令遵循、COT/QA功能",
-                "gender": "男"
-            },
-            {
-                "id": "轻盈朵朵 2.0",
-                "name": "客服场景",
-                "description": "",
-                "language": "saturn_zh_female_qingyingduoduo_cs_tob",
-                "gender": "男"
-            },
-            {
-                "id": "指令遵循",
-                "name": "中文",
-                "description": "",
-                "language": "",
-                "gender": "男"
-            },
-            {
-                "id": "saturn_zh_female_reqingaina_cs_tob",
-                "name": "热情艾娜 2.0",
-                "description": "",
-                "language": "中文",
-                "gender": "女"
-            },
-            {
-                "id": "客服场景",
-                "name": "",
-                "description": "",
-                "language": "清新沐沐 2.0",
-                "gender": "男"
-            },
-            {
-                "id": "<span id=\"fb89ea33\"></span>\n\n## <span style=\"background-color: rgba(183,237,177, 0.8)\">\"端到端实时语音大模型 S2S-O版本和SC-2.0版本 \"音色列表</span>",
-                "name": "指令遵循",
-                "description": "",
-                "language": "",
-                "gender": "男"
-            },
-            {
-                "id": "\\",
-                "name": "",
-                "description": "",
-                "language": "**场景**",
-                "gender": "男"
-            }
-        ]
-    },
-    "edge_tts": {
-        "description": "微软 Edge 浏览器内置语音 (Microsoft Edge TTS)",
-        "voices": [
-            {
-                "id": "zh-CN-XiaoxiaoNeural",
-                "name": "Xiaoxiao",
-                "description": "最常用、自然",
-                "language": "中文（普通话）",
-                "gender": "女"
-            },
-            {
-                "id": "zh-CN-XiaoyiNeural",
-                "name": "Xiaoyi",
-                "description": "活泼",
-                "language": "中文（普通话）",
-                "gender": "女"
-            },
-            {
-                "id": "zh-CN-YunjianNeural",
-                "name": "Yunjian",
-                "description": "体育/激情",
-                "language": "中文（普通话）",
-                "gender": "男"
-            },
-            {
-                "id": "zh-CN-YunxiNeural",
-                "name": "Yunxi",
-                "description": "青年感",
-                "language": "中文（普通话）",
-                "gender": "男"
-            },
-            {
-                "id": "zh-CN-YunxiaNeural",
-                "name": "Yunxia",
-                "description": "少年感",
-                "language": "中文（普通话）",
-                "gender": "男"
-            },
-            {
-                "id": "zh-CN-YunyangNeural",
-                "name": "Yunyang",
-                "description": "新闻播报",
-                "language": "中文（普通话）",
-                "gender": "男"
-            },
-            {
-                "id": "zh-CN-liaoning-XiaobeiNeural",
-                "name": "Xiaobei",
-                "description": "辽宁方言",
-                "language": "中文（普通话）",
-                "gender": "女"
-            },
-            {
-                "id": "zh-CN-shaanxi-XiaoniNeural",
-                "name": "Xiaoni",
-                "description": "陕西方言",
-                "language": "中文（普通话）",
-                "gender": "女"
-            },
-            {
-                "id": "zh-HK-HiuGaaiNeural",
-                "name": "HiuGaai",
-                "description": "标准粤语",
-                "language": "粤语（香港）",
-                "gender": "女"
-            },
-            {
-                "id": "zh-HK-HiuMaanNeural",
-                "name": "HiuMaan",
-                "description": "温柔",
-                "language": "粤语（香港）",
-                "gender": "女"
-            },
-            {
-                "id": "zh-HK-WanLungNeural",
-                "name": "WanLung",
-                "description": "男声粤语",
-                "language": "粤语（香港）",
-                "gender": "男"
-            },
-            {
-                "id": "zh-TW-HsiaoChenNeural",
-                "name": "HsiaoChen",
-                "description": "",
-                "language": "中文（台湾）",
-                "gender": "女"
-            },
-            {
-                "id": "ja-JP-NanamiNeural",
-                "name": "Nanami",
-                "description": "",
-                "language": "日语",
-                "gender": "女"
-            },
-            {
-                "id": "en-US-AriaNeural",
-                "name": "Aria",
-                "description": "",
-                "language": "英语（美国）",
-                "gender": "女"
-            },
-            {
-                "id": "en-US-AmberNeural",
-                "name": "Amber",
-                "description": "",
-                "language": "英语（美国）",
-                "gender": "女"
-            },
-            {
-                "id": "en-US-BrandonNeural",
-                "name": "Brandon",
-                "description": "",
-                "language": "英语（美国）",
-                "gender": "男"
-            },
-            {
-                "id": "en-US-CoraNeural",
-                "name": "Cora",
-                "description": "",
-                "language": "英语（美国）",
-                "gender": "女"
-            },
-            {
-                "id": "en-US-ElizabethNeural",
-                "name": "Elizabeth",
-                "description": "",
-                "language": "英语（美国）",
-                "gender": "女"
-            },
-            {
-                "id": "en-US-GuyNeural",
-                "name": "Guy",
-                "description": "",
-                "language": "英语（美国）",
-                "gender": "男"
-            },
-            {
-                "id": "en-US-JaneNeural",
-                "name": "Jane",
-                "description": "",
-                "language": "英语（美国）",
-                "gender": "女"
-            },
-            {
-                "id": "en-US-JennyNeural",
-                "name": "Jenny",
-                "description": "",
-                "language": "英语（美国）",
-                "gender": "女"
-            },
-            {
-                "id": "en-US-MonicaNeural",
-                "name": "Monica",
-                "description": "",
-                "language": "英语（美国）",
-                "gender": "女"
-            },
-            {
-                "id": "en-US-RogerNeural",
-                "name": "Roger",
-                "description": "",
-                "language": "英语（美国）",
-                "gender": "男"
-            },
-            {
-                "id": "en-US-SteffanNeural",
-                "name": "Steffan",
-                "description": "",
-                "language": "英语（美国）",
-                "gender": "男"
-            },
-            {
-                "id": "en-GB-LibbyNeural",
-                "name": "Libby",
-                "description": "",
-                "language": "英语（英国）",
-                "gender": "女"
-            },
-            {
-                "id": "en-GB-RyanNeural",
-                "name": "Ryan",
-                "description": "",
-                "language": "英语（英国）",
-                "gender": "男"
-            },
-            {
-                "id": "en-SG-LunaNeural",
-                "name": "Luna",
-                "description": "",
-                "language": "英语（新加坡）",
-                "gender": "女"
-            }
-        ]
-    },
-    "minimax_tts": {
-        "description": "MiniMax 语音大模型 (MiniMax / 海螺 AI)",
-        "voices": [
-            {
-                "id": "male-qn-qingse",
-                "name": "青涩青年音色",
-                "description": "",
-                "language": "中文",
-                "gender": "男"
-            },
-            {
-                "id": "male-qn-jingying",
-                "name": "精英青年音色",
-                "description": "",
-                "language": "中文",
-                "gender": "男"
-            },
-            {
-                "id": "male-qn-badao",
-                "name": "霸道青年音色",
-                "description": "",
-                "language": "中文",
-                "gender": "男"
-            },
-            {
-                "id": "male-qn-daxuesheng",
-                "name": "青年大学生音色",
-                "description": "",
-                "language": "中文",
-                "gender": "男"
-            },
-            {
-                "id": "female-shaonv",
-                "name": "少女音色",
-                "description": "",
-                "language": "中文",
-                "gender": "女"
-            },
-            {
-                "id": "female-yujie",
-                "name": "御姐音色",
-                "description": "",
-                "language": "中文",
-                "gender": "女"
-            },
-            {
-                "id": "female-chengshu",
-                "name": "成熟女性音色",
-                "description": "",
-                "language": "中文",
-                "gender": "女"
-            },
-            {
-                "id": "female-tianmei",
-                "name": "甜美女性音色",
-                "description": "",
-                "language": "中文",
-                "gender": "女"
-            },
-            {
-                "id": "male-qn-qingse-jingpin",
-                "name": "青涩青年音色-beta",
-                "description": "",
-                "language": "中文",
-                "gender": "男"
-            },
-            {
-                "id": "male-qn-jingying-jingpin",
-                "name": "精英青年音色-beta",
-                "description": "",
-                "language": "中文",
-                "gender": "男"
-            },
-            {
-                "id": "male-qn-badao-jingpin",
-                "name": "霸道青年音色-beta",
-                "description": "",
-                "language": "中文",
-                "gender": "男"
-            },
-            {
-                "id": "male-qn-daxuesheng-jingpin",
-                "name": "青年大学生音色-beta",
-                "description": "",
-                "language": "中文",
-                "gender": "男"
-            },
-            {
-                "id": "female-shaonv-jingpin",
-                "name": "少女音色-beta",
-                "description": "",
-                "language": "中文",
-                "gender": "女"
-            },
-            {
-                "id": "female-yujie-jingpin",
-                "name": "御姐音色-beta",
-                "description": "",
-                "language": "中文",
-                "gender": "女"
-            },
-            {
-                "id": "female-chengshu-jingpin",
-                "name": "成熟女性音色-beta",
-                "description": "",
-                "language": "中文",
-                "gender": "女"
-            },
-            {
-                "id": "female-tianmei-jingpin",
-                "name": "甜美女性音色-beta",
-                "description": "",
-                "language": "中文",
-                "gender": "女"
-            },
-            {
-                "id": "clever_boy",
-                "name": "聪明男童",
-                "description": "",
-                "language": "中文",
-                "gender": "男"
-            },
-            {
-                "id": "cute_boy",
-                "name": "可爱男童",
-                "description": "",
-                "language": "中文",
-                "gender": "男"
-            },
-            {
-                "id": "lovely_girl",
-                "name": "萌萌女童",
-                "description": "",
-                "language": "中文",
-                "gender": "男"
-            },
-            {
-                "id": "cartoon_pig",
-                "name": "卡通猪小琪",
-                "description": "",
-                "language": "中文",
-                "gender": "男"
-            },
-            {
-                "id": "bingjiao_didi",
-                "name": "病娇弟弟",
-                "description": "",
-                "language": "中文",
-                "gender": "男"
-            },
-            {
-                "id": "junlang_nanyou",
-                "name": "俊朗男友",
-                "description": "",
-                "language": "中文",
-                "gender": "男"
-            },
-            {
-                "id": "chunzhen_xuedi",
-                "name": "纯真学弟",
-                "description": "",
-                "language": "中文",
-                "gender": "男"
-            },
-            {
-                "id": "lengdan_xiongzhang",
-                "name": "冷淡学长",
-                "description": "",
-                "language": "中文",
-                "gender": "男"
-            },
-            {
-                "id": "badao_shaoye",
-                "name": "霸道少爷",
-                "description": "",
-                "language": "中文",
-                "gender": "男"
-            },
-            {
-                "id": "tianxin_xiaoling",
-                "name": "甜心小玲",
-                "description": "",
-                "language": "中文",
-                "gender": "男"
-            },
-            {
-                "id": "qiaopi_mengmei",
-                "name": "俏皮萌妹",
-                "description": "",
-                "language": "中文",
-                "gender": "男"
-            },
-            {
-                "id": "wumei_yujie",
-                "name": "妩媚御姐",
-                "description": "",
-                "language": "中文",
-                "gender": "男"
-            },
-            {
-                "id": "diadia_xuemei",
-                "name": "嗲嗲学妹",
-                "description": "",
-                "language": "中文",
-                "gender": "男"
-            },
-            {
-                "id": "danya_xuejie",
-                "name": "淡雅学姐",
-                "description": "",
-                "language": "中文",
-                "gender": "男"
-            },
-            {
-                "id": "Santa_Claus ",
-                "name": "Santa Claus",
-                "description": "",
-                "language": "中文",
-                "gender": "男"
-            },
-            {
-                "id": "Grinch",
-                "name": "Grinch",
-                "description": "",
-                "language": "中文",
-                "gender": "男"
-            },
-            {
-                "id": "Rudolph",
-                "name": "Rudolph",
-                "description": "",
-                "language": "中文",
-                "gender": "男"
-            },
-            {
-                "id": "Arnold",
-                "name": "Arnold",
-                "description": "",
-                "language": "中文",
-                "gender": "男"
-            },
-            {
-                "id": "Charming_Santa",
-                "name": "Charming Santa",
-                "description": "",
-                "language": "中文",
-                "gender": "男"
-            },
-            {
-                "id": "Charming_Lady",
-                "name": "Charming Lady",
-                "description": "",
-                "language": "中文",
-                "gender": "男"
-            },
-            {
-                "id": "Sweet_Girl",
-                "name": "Sweet Girl",
-                "description": "",
-                "language": "中文",
-                "gender": "男"
-            },
-            {
-                "id": "Cute_Elf",
-                "name": "Cute Elf",
-                "description": "",
-                "language": "中文",
-                "gender": "男"
-            },
-            {
-                "id": "Attractive_Girl",
-                "name": "Attractive Girl",
-                "description": "",
-                "language": "中文",
-                "gender": "男"
-            },
-            {
-                "id": "Serene_Woman",
-                "name": "Serene Woman",
-                "description": "",
-                "language": "中文",
-                "gender": "女"
-            },
-            {
-                "id": "Chinese (Mandarin)_Reliable_Executive",
-                "name": "沉稳高管",
-                "description": "一位沉稳可靠的中年男性高管声音，标准普通话，传递出值得信赖的感觉。",
-                "language": "中文",
-                "gender": "男"
-            },
-            {
-                "id": "Chinese (Mandarin)_News_Anchor",
-                "name": "新闻女声",
-                "description": "一位专业、播音腔的中年女性新闻主播，标准普通话。",
-                "language": "中文",
-                "gender": "男"
-            },
-            {
-                "id": "Chinese (Mandarin)_Mature_Woman",
-                "name": "傲娇御姐",
-                "description": "一位妩媚成熟的青年御姐声音，标准普通话。",
-                "language": "中文",
-                "gender": "男"
-            },
-            {
-                "id": "Chinese (Mandarin)_Unrestrained_Young_Man",
-                "name": "不羁青年",
-                "description": "一位潇洒不羁的青年男性声音，标准普通话。",
-                "language": "中文",
-                "gender": "男"
-            },
-            {
-                "id": "Arrogant_Miss",
-                "name": "嚣张小姐",
-                "description": "一位嚣张自信的青年女性声音，标准普通话，展现出优越感。",
-                "language": "中文",
-                "gender": "男"
-            },
-            {
-                "id": "Robot_Armor",
-                "name": "机械战甲",
-                "description": "一位电子化、机器人般的青年男性声音，适合科幻或未来主义内容的标准普通话。",
-                "language": "中文",
-                "gender": "男"
-            },
-            {
-                "id": "Chinese (Mandarin)_Kind-hearted_Antie",
-                "name": "热心大婶",
-                "description": "一位温和善良的中年大婶声音，标准普通话，温暖而体贴。",
-                "language": "中文",
-                "gender": "男"
-            },
-            {
-                "id": "Chinese (Mandarin)_HK_Flight_Attendant",
-                "name": "港普空姐",
-                "description": "一位礼貌的中年女性空乘员声音，带有港式普通话口音，清晰而有礼。",
-                "language": "中文",
-                "gender": "男"
-            },
-            {
-                "id": "Chinese (Mandarin)_Humorous_Elder",
-                "name": "搞笑大爷",
-                "description": "一位爽朗幽默的老年男性大爷声音，带有北方口音的中文，充满个性。",
-                "language": "中文",
-                "gender": "男"
-            },
-            {
-                "id": "Chinese (Mandarin)_Gentleman",
-                "name": "温润男声",
-                "description": "一位温润磁性的青年男性声音，标准普通话。",
-                "language": "中文",
-                "gender": "男"
-            },
-            {
-                "id": "Chinese (Mandarin)_Warm_Bestie",
-                "name": "温暖闺蜜",
-                "description": "一位温暖清脆的青年女性闺蜜声音，标准普通话，友好而清晰。",
-                "language": "中文",
-                "gender": "男"
-            },
-            {
-                "id": "Chinese (Mandarin)_Male_Announcer",
-                "name": "播报男声",
-                "description": "一位富有磁性的中年男性播报员声音，标准普通话，清晰而权威。",
-                "language": "中文",
-                "gender": "男"
-            },
-            {
-                "id": "Chinese (Mandarin)_Sweet_Lady",
-                "name": "甜美女声",
-                "description": "一位温柔甜美的青年女性声音，标准普通话。",
-                "language": "中文",
-                "gender": "男"
-            },
-            {
-                "id": "Chinese (Mandarin)_Southern_Young_Man",
-                "name": "南方小哥",
-                "description": "一位质朴的青年男性声音，带有南方口音的中文。",
-                "language": "中文",
-                "gender": "男"
-            },
-            {
-                "id": "Chinese (Mandarin)_Wise_Women",
-                "name": "阅历姐姐",
-                "description": "一位富有阅历、声音抒情的中年姐姐声音，标准普通话。",
-                "language": "中文",
-                "gender": "男"
-            },
-            {
-                "id": "Chinese (Mandarin)_Gentle_Youth",
-                "name": "温润青年",
-                "description": "一位温柔的青年男性声音，标准普通话。",
-                "language": "中文",
-                "gender": "男"
-            },
-            {
-                "id": "Chinese (Mandarin)_Warm_Girl",
-                "name": "温暖少女",
-                "description": "一位温柔温暖的少年女声，标准普通话。",
-                "language": "中文",
-                "gender": "男"
-            },
-            {
-                "id": "Chinese (Mandarin)_Kind-hearted_Elder",
-                "name": "花甲奶奶",
-                "description": "一位慈祥和蔼的老年女性奶奶声音，标准普通话。",
-                "language": "中文",
-                "gender": "男"
-            },
-            {
-                "id": "Chinese (Mandarin)_Cute_Spirit",
-                "name": "憨憨萌兽",
-                "description": "一位呆萌可爱的少年男声，适合憨厚的萌兽角色。",
-                "language": "中文",
-                "gender": "男"
-            },
-            {
-                "id": "Chinese (Mandarin)_Radio_Host",
-                "name": "电台男主播",
-                "description": "一位富有诗意的青年男性电台主播声音，标准普通话，声音流畅引人入胜。",
-                "language": "中文",
-                "gender": "男"
-            },
-            {
-                "id": "Chinese (Mandarin)_Lyrical_Voice",
-                "name": "抒情男声",
-                "description": "一位磁性抒情的青年男性声音，标准普通话，流畅而富有表现力。",
-                "language": "中文",
-                "gender": "男"
-            },
-            {
-                "id": "Chinese (Mandarin)_Straightforward_Boy",
-                "name": "率真弟弟",
-                "description": "一位认真率真的少年弟弟声音，标准普通话。",
-                "language": "中文",
-                "gender": "男"
-            },
-            {
-                "id": "Chinese (Mandarin)_Sincere_Adult",
-                "name": "真诚青年",
-                "description": "一位真诚、富有鼓励性的青年男性声音，标准普通话。",
-                "language": "中文",
-                "gender": "男"
-            },
-            {
-                "id": "Chinese (Mandarin)_Gentle_Senior",
-                "name": "温柔学姐",
-                "description": "一位温暖温柔的青年学姐声音，标准普通话。",
-                "language": "中文",
-                "gender": "男"
-            },
-            {
-                "id": "Chinese (Mandarin)_Stubborn_Friend",
-                "name": "嘴硬竹马",
-                "description": "一位嘴硬心软、不羁的青年竹马声音，标准普通话。",
-                "language": "中文",
-                "gender": "男"
-            },
-            {
-                "id": "Chinese (Mandarin)_Crisp_Girl",
-                "name": "清脆少女",
-                "description": "一位温暖清脆的少女声音，标准普通话。",
-                "language": "中文",
-                "gender": "男"
-            },
-            {
-                "id": "Chinese (Mandarin)_Pure-hearted_Boy",
-                "name": "清澈邻家弟弟",
-                "description": "一位认真清澈的邻家少年弟弟声音，标准普通话。",
-                "language": "中文",
-                "gender": "男"
-            },
-            {
-                "id": "Chinese (Mandarin)_Soft_Girl",
-                "name": "软软女孩",
-                "description": "一位温暖柔软的青年女性声音，带有南方口音的中文。",
-                "language": "中文",
-                "gender": "男"
-            },
-            {
-                "id": "Cantonese_ProfessionalHost（F)",
-                "name": "专业女主持",
-                "description": "一位中性、专业的青年女性粤语主持人声音。",
-                "language": "中文",
-                "gender": "男"
-            },
-            {
-                "id": "Cantonese_GentleLady",
-                "name": "温柔女声",
-                "description": "一位平静温柔的青年女性粤语声音。",
-                "language": "中文",
-                "gender": "男"
-            },
-            {
-                "id": "Cantonese_ProfessionalHost（M)",
-                "name": "专业男主持",
-                "description": "一位中性、专业的青年男性粤语主持人声音。",
-                "language": "中文",
-                "gender": "男"
-            },
-            {
-                "id": "Cantonese_PlayfulMan",
-                "name": "活泼男声",
-                "description": "一位活泼深情的青年男性粤语声音。",
-                "language": "中文",
-                "gender": "男"
-            },
-            {
-                "id": "Cantonese_CuteGirl",
-                "name": "可爱女孩",
-                "description": "一位柔和可爱的青年女性粤语声音。",
-                "language": "中文",
-                "gender": "男"
-            },
-            {
-                "id": "Cantonese_KindWoman",
-                "name": "善良女声",
-                "description": "一位亲切善良的青年女性粤语声音。",
-                "language": "中文",
-                "gender": "男"
-            },
-            {
-                "id": "English_Trustworthy_Man",
-                "name": "Trustworthy Man",
-                "description": "一位值得信赖、富有磁性的青年男性声音，带通用美式口音。",
-                "language": "英语",
-                "gender": "男"
-            },
-            {
-                "id": "English_Graceful_Lady",
-                "name": "Graceful Lady",
-                "description": "一位优雅的中年女士，带有经典的英式口音，散发着成熟的魅力。",
-                "language": "英语",
-                "gender": "男"
-            },
-            {
-                "id": "English_Aussie_Bloke",
-                "name": "Aussie Bloke",
-                "description": "一位阳光开朗的青年男性，带有独特的澳大利亚口音。",
-                "language": "英语",
-                "gender": "男"
-            },
-            {
-                "id": "English_Whispering_girl",
-                "name": "Whispering girl",
-                "description": "一位青年女性的轻柔耳语声，带通用美式口音，非常适合ASMR内容。",
-                "language": "英语",
-                "gender": "男"
-            },
-            {
-                "id": "English_Diligent_Man",
-                "name": "Diligent Man",
-                "description": "一位真诚勤奋的青年男性，带有印度口音。",
-                "language": "英语",
-                "gender": "男"
-            },
-            {
-                "id": "English_Gentle-voiced_man",
-                "name": "Gentle-voiced man",
-                "description": "一位声音温柔、富有磁性的青年男性，带通用美式口音。",
-                "language": "英语",
-                "gender": "男"
-            },
-            {
-                "id": "Japanese_IntellectualSenior",
-                "name": "Intellectual Senior",
-                "description": "一位成熟知性的青年男性日语声音，听起来少年老成。",
-                "language": "日语",
-                "gender": "男"
-            },
-            {
-                "id": "Japanese_DecisivePrincess",
-                "name": "Decisive Princess",
-                "description": "一位坚定果断的青年公主声音，日语。",
-                "language": "日语",
-                "gender": "男"
-            },
-            {
-                "id": "Japanese_LoyalKnight",
-                "name": "Loyal Knight",
-                "description": "一位年轻忠诚的青年男性骑士声音，日语。",
-                "language": "日语",
-                "gender": "男"
-            },
-            {
-                "id": "Japanese_DominantMan",
-                "name": "Dominant Man",
-                "description": "一位成熟强势的中年男性声音，日语。",
-                "language": "日语",
-                "gender": "男"
-            },
-            {
-                "id": "Japanese_SeriousCommander",
-                "name": "Serious Commander",
-                "description": "一位严肃可靠的青年男性指挥官声音，日语。",
-                "language": "日语",
-                "gender": "男"
-            },
-            {
-                "id": "Japanese_ColdQueen",
-                "name": "Cold Queen",
-                "description": "一位冷漠的青年女王声音，日语。",
-                "language": "日语",
-                "gender": "男"
-            },
-            {
-                "id": "Japanese_DependableWoman",
-                "name": "Dependable Woman",
-                "description": "一位稳重可靠的青年女性声音，日语。",
-                "language": "日语",
-                "gender": "女"
-            },
-            {
-                "id": "Japanese_GentleButler",
-                "name": "Gentle Butler",
-                "description": "一位迷人温柔的青年男性管家声音，日语。",
-                "language": "日语",
-                "gender": "男"
-            },
-            {
-                "id": "Japanese_KindLady",
-                "name": "Kind Lady",
-                "description": "一位迷人善良的青年女性声音，日语。",
-                "language": "日语",
-                "gender": "男"
-            },
-            {
-                "id": "Japanese_CalmLady",
-                "name": "Calm Lady",
-                "description": "一位沉静迷人的青年女性声音，日语。",
-                "language": "日语",
-                "gender": "男"
-            },
-            {
-                "id": "Japanese_OptimisticYouth",
-                "name": "Optimistic Youth",
-                "description": "一位开朗乐观的青年男性声音，日语。",
-                "language": "日语",
-                "gender": "男"
-            },
-            {
-                "id": "Japanese_GenerousIzakayaOwner",
-                "name": "Generous Izakaya Owner",
-                "description": "一位俏皮大方的中年男性居酒屋老板声音，日语。",
-                "language": "日语",
-                "gender": "男"
-            },
-            {
-                "id": "Japanese_SportyStudent",
-                "name": "Sporty Student",
-                "description": "一位亲切运动的青年男性学生声音，日语。",
-                "language": "日语",
-                "gender": "男"
-            },
-            {
-                "id": "Japanese_InnocentBoy",
-                "name": "Innocent Boy",
-                "description": "一位亲切天真的青年男性声音，日语。",
-                "language": "日语",
-                "gender": "男"
-            },
-            {
-                "id": "Japanese_GracefulMaiden",
-                "name": "Graceful Maiden",
-                "description": "一位甜美优雅的青年少女声音，日语。",
-                "language": "日语",
-                "gender": "男"
-            },
-            {
-                "id": "Dutch_kindhearted_girl",
-                "name": "Kind-hearted girl",
-                "description": "一位温暖善良的少女荷兰语声音。",
-                "language": "中文",
-                "gender": "男"
-            },
-            {
-                "id": "Dutch_bossy_leader",
-                "name": "Bossy leader",
-                "description": "一位严肃专横的青年男性领导者声音，荷兰语。",
-                "language": "中文",
-                "gender": "男"
-            },
-            {
-                "id": "Vietnamese_kindhearted_girl",
-                "name": "Kind-hearted girl",
-                "description": "一位温暖善良的少女越南语声音。",
-                "language": "中文",
-                "gender": "男"
-            },
-            {
-                "id": "Portuguese_SentimentalLady",
-                "name": "Sentimental Lady",
-                "description": "一位优雅感性的青年女性声音，葡萄牙语。",
-                "language": "中文",
-                "gender": "男"
-            },
-            {
-                "id": "Portuguese_BossyLeader",
-                "name": "Bossy Leader",
-                "description": "一位冷静正式的青年男性专横领导者声音，葡萄牙语。",
-                "language": "中文",
-                "gender": "男"
-            },
-            {
-                "id": "Portuguese_Wiselady",
-                "name": "Wise lady",
-                "description": "一位柔和智慧的中年女士声音，葡萄牙语。",
-                "language": "中文",
-                "gender": "男"
-            },
-            {
-                "id": "Portuguese_Strong-WilledBoy",
-                "name": "Strong-willed Boy",
-                "description": "一位成熟坚定的青年男性声音，葡萄牙语。",
-                "language": "中文",
-                "gender": "男"
-            },
-            {
-                "id": "Portuguese_Deep-VoicedGentleman",
-                "name": "Deep-voiced Gentleman",
-                "description": "一位声音低沉的青年绅士声音，葡萄牙语。",
-                "language": "中文",
-                "gender": "男"
-            },
-            {
-                "id": "Portuguese_UpsetGirl",
-                "name": "Upset Girl",
-                "description": "一位悲伤的青年女性声音，传达不安情绪，葡萄牙语。",
-                "language": "中文",
-                "gender": "男"
-            },
-            {
-                "id": "Portuguese_PassionateWarrior",
-                "name": "Passionate Warrior",
-                "description": "一位热情充满激情的青年男性战士声音，葡萄牙语。",
-                "language": "中文",
-                "gender": "男"
-            },
-            {
-                "id": "Portuguese_AnimeCharacter",
-                "name": "Anime Character",
-                "description": "一位灵动的中年女性声音，适合动漫角色，葡萄牙语。",
-                "language": "中文",
-                "gender": "男"
-            },
-            {
-                "id": "Portuguese_ConfidentWoman",
-                "name": "Confident Woman",
-                "description": "一位清晰坚定的自信青年女性声音，葡萄牙语。",
-                "language": "中文",
-                "gender": "女"
-            },
-            {
-                "id": "Portuguese_AngryMan",
-                "name": "Angry Man",
-                "description": "一位严肃愤怒的青年男性声音，葡萄牙语。",
-                "language": "中文",
-                "gender": "男"
-            },
-            {
-                "id": "Portuguese_CaptivatingStoryteller",
-                "name": "Captivating Storyteller",
-                "description": "一位迷人的中年男性叙述者声音，非常适合讲故事，葡萄牙语。",
-                "language": "中文",
-                "gender": "男"
-            },
-            {
-                "id": "Portuguese_Godfather",
-                "name": "Godfather",
-                "description": "一位严肃的中年男性教父声音，充满权威感，葡萄牙语。",
-                "language": "中文",
-                "gender": "男"
-            },
-            {
-                "id": "Portuguese_ReservedYoungMan",
-                "name": "Reserved Young Man",
-                "description": "一位冷静内敛的青年男性声音，葡萄牙语。",
-                "language": "中文",
-                "gender": "男"
-            },
-            {
-                "id": "Portuguese_SmartYoungGirl",
-                "name": "Smart Young Girl",
-                "description": "一位聪慧的青年女孩声音，敏锐而清晰，葡萄牙语。",
-                "language": "中文",
-                "gender": "男"
-            },
-            {
-                "id": "Portuguese_Kind-heartedGirl",
-                "name": "Kind-hearted Girl",
-                "description": "一位平和善良的青年女性声音，葡萄牙语。",
-                "language": "中文",
-                "gender": "男"
-            },
-            {
-                "id": "Portuguese_Pompouslady",
-                "name": "Pompous lady",
-                "description": "一位夸张自负的青年女性声音，充满个性，葡萄牙语。",
-                "language": "中文",
-                "gender": "男"
-            },
-            {
-                "id": "Portuguese_Grinch",
-                "name": "Grinch",
-                "description": "一位狡黠的青年男性格林奇式声音，淘气而狡猾，葡萄牙语。",
-                "language": "中文",
-                "gender": "男"
-            },
-            {
-                "id": "Portuguese_Debator",
-                "name": "Debator",
-                "description": "一位强硬的中年男性辩手声音，强壮而果断，葡萄牙语。",
-                "language": "中文",
-                "gender": "男"
-            },
-            {
-                "id": "Portuguese_SweetGirl",
-                "name": "Sweet Girl",
-                "description": "一位甜美可爱的青年女性声音，葡萄牙语。",
-                "language": "中文",
-                "gender": "男"
-            },
-            {
-                "id": "Portuguese_AttractiveGirl",
-                "name": "Attractive Girl",
-                "description": "一位迷人有魅力的青年女性声音，葡萄牙语。",
-                "language": "中文",
-                "gender": "男"
-            },
-            {
-                "id": "Portuguese_ThoughtfulMan",
-                "name": "Thoughtful Man",
-                "description": "一位温柔体贴的青年男性声音，葡萄牙语。",
-                "language": "中文",
-                "gender": "男"
-            },
-            {
-                "id": "Portuguese_PlayfulGirl",
-                "name": "Playful Girl",
-                "description": "一位俏皮可爱的青年女孩声音，葡萄牙语。",
-                "language": "中文",
-                "gender": "男"
-            },
-            {
-                "id": "Portuguese_GorgeousLady",
-                "name": "Gorgeous Lady",
-                "description": "一位俏皮华丽的青年女性声音，散发自信，葡萄牙语。",
-                "language": "中文",
-                "gender": "男"
-            },
-            {
-                "id": "Portuguese_LovelyLady",
-                "name": "Lovely Lady",
-                "description": "一位迷人可爱的青年女性声音，葡萄牙语。",
-                "language": "中文",
-                "gender": "男"
-            },
-            {
-                "id": "Portuguese_SereneWoman",
-                "name": "Serene Woman",
-                "description": "一位宁静平和的青年女性声音，平静而沉着，葡萄牙语。",
-                "language": "中文",
-                "gender": "女"
-            },
-            {
-                "id": "Portuguese_SadTeen",
-                "name": "Sad Teen",
-                "description": "一位沮丧悲伤的青年男性声音，葡萄牙语。",
-                "language": "中文",
-                "gender": "男"
-            },
-            {
-                "id": "Portuguese_MaturePartner",
-                "name": "Mature Partner",
-                "description": "一位成熟的中年男性伴侣声音，可靠而温暖，葡萄牙语。",
-                "language": "中文",
-                "gender": "男"
-            },
-            {
-                "id": "Portuguese_Comedian",
-                "name": "Comedian",
-                "description": "一位幽默的青年男性喜剧演员声音，葡萄牙语。",
-                "language": "中文",
-                "gender": "男"
-            },
-            {
-                "id": "Portuguese_NaughtySchoolgirl",
-                "name": "Naughty Schoolgirl",
-                "description": "一位诱人顽皮的青年女学生声音，葡萄牙语。",
-                "language": "中文",
-                "gender": "男"
-            },
-            {
-                "id": "Portuguese_Narrator",
-                "name": "Narrator",
-                "description": "一位适合叙事的中年女性叙述者声音，葡萄牙语。",
-                "language": "中文",
-                "gender": "男"
-            },
-            {
-                "id": "Portuguese_ToughBoss",
-                "name": "Tough Boss",
-                "description": "一位成熟强硬的中年女性老板声音，葡萄牙语。",
-                "language": "中文",
-                "gender": "男"
-            },
-            {
-                "id": "Portuguese_Fussyhostess",
-                "name": "Fussy hostess",
-                "description": "一位语气强烈、挑剔的中年女主人声音，葡萄牙语。",
-                "language": "中文",
-                "gender": "男"
-            },
-            {
-                "id": "Portuguese_Dramatist",
-                "name": "Dramatist",
-                "description": "一位古怪的中年男性戏剧家声音，葡萄牙语。",
-                "language": "中文",
-                "gender": "男"
-            },
-            {
-                "id": "Portuguese_Steadymentor",
-                "name": "Steady Mentor",
-                "description": "一位傲慢但稳重的青年男性导师声音，葡萄牙语。",
-                "language": "中文",
-                "gender": "男"
-            },
-            {
-                "id": "Portuguese_Jovialman",
-                "name": "Jovial Man",
-                "description": "一位开朗快活的中年男性声音，葡萄牙语。",
-                "language": "中文",
-                "gender": "男"
-            },
-            {
-                "id": "Portuguese_CharmingQueen",
-                "name": "Charming Queen",
-                "description": "一位迷人有魅力的青年女王声音，葡萄牙语。",
-                "language": "中文",
-                "gender": "男"
-            },
-            {
-                "id": "Portuguese_SantaClaus",
-                "name": "Santa Claus",
-                "description": "一位欢乐的中年男性圣诞老人声音，充满节日气氛，葡萄牙语。",
-                "language": "中文",
-                "gender": "男"
-            },
-            {
-                "id": "Portuguese_Rudolph",
-                "name": "Rudolph",
-                "description": "一位天真的青年男性声音，鲁道夫风格，葡萄牙语。",
-                "language": "中文",
-                "gender": "男"
-            },
-            {
-                "id": "Portuguese_Arnold",
-                "name": "Arnold",
-                "description": "一位稳重的青年男性声音，阿诺德风格，强壮而坚定，葡萄牙语。",
-                "language": "中文",
-                "gender": "男"
-            },
-            {
-                "id": "Portuguese_CharmingSanta",
-                "name": "Charming Santa",
-                "description": "一位迷人有魅力的中年男性圣诞老人声音，葡萄牙语。",
-                "language": "中文",
-                "gender": "男"
-            },
-            {
-                "id": "Portuguese_CharmingLady",
-                "name": "Charming Lady",
-                "description": "一位迷人的青年女性声音，葡萄牙语。",
-                "language": "中文",
-                "gender": "男"
-            },
-            {
-                "id": "Portuguese_Ghost",
-                "name": "Ghost",
-                "description": "一位性感的青年男性鬼魂声音，神秘而诱人，葡萄牙语。",
-                "language": "中文",
-                "gender": "男"
-            },
-            {
-                "id": "Portuguese_HumorousElder",
-                "name": "Humorous Elder",
-                "description": "一位滑稽幽默的中年男性长者声音，葡萄牙语。",
-                "language": "中文",
-                "gender": "男"
-            },
-            {
-                "id": "Portuguese_CalmLeader",
-                "name": "Calm Leader",
-                "description": "一位沉稳冷静的中年男性领导者声音，葡萄牙语。",
-                "language": "中文",
-                "gender": "男"
-            },
-            {
-                "id": "Portuguese_GentleTeacher",
-                "name": "Gentle Teacher",
-                "description": "一位温和温柔的青年男性教师声音，葡萄牙语。",
-                "language": "中文",
-                "gender": "男"
-            },
-            {
-                "id": "Portuguese_EnergeticBoy",
-                "name": "Energetic Boy",
-                "description": "一位活泼充满活力的青年男性声音，葡萄牙语。",
-                "language": "中文",
-                "gender": "男"
-            },
-            {
-                "id": "Portuguese_ReliableMan",
-                "name": "Reliable Man",
-                "description": "一位稳重可靠的青年男性声音，葡萄牙语。",
-                "language": "中文",
-                "gender": "男"
-            },
-            {
-                "id": "Portuguese_SereneElder",
-                "name": "Serene Elder",
-                "description": "一位沉静深思的中年男性长者声音，葡萄牙语。",
-                "language": "中文",
-                "gender": "男"
-            },
-            {
-                "id": "Portuguese_GrimReaper",
-                "name": "Grim Reaper",
-                "description": "一位阴森的青年男性死神声音，黑暗而不祥，葡萄牙语。",
-                "language": "中文",
-                "gender": "男"
-            },
-            {
-                "id": "Portuguese_AssertiveQueen",
-                "name": "Assertive Queen",
-                "description": "一位坚定果断的青年女王声音，葡萄牙语。",
-                "language": "中文",
-                "gender": "男"
-            },
-            {
-                "id": "Portuguese_WhimsicalGirl",
-                "name": "Whimsical Girl",
-                "description": "一位可爱奇特的青年女性声音，葡萄牙语。",
-                "language": "中文",
-                "gender": "男"
-            },
-            {
-                "id": "Portuguese_StressedLady",
-                "name": "Stressed Lady",
-                "description": "一位不安、紧张的中年女士声音，葡萄牙语。",
-                "language": "中文",
-                "gender": "男"
-            },
-            {
-                "id": "Portuguese_FriendlyNeighbor",
-                "name": "Friendly Neighbor",
-                "description": "一位充满活力的友好青年女性邻居声音，葡萄牙语。",
-                "language": "中文",
-                "gender": "男"
-            },
-            {
-                "id": "Portuguese_CaringGirlfriend",
-                "name": "Caring Girlfriend",
-                "description": "一位梦幻般的中年女性关怀女友声音，葡萄牙语。",
-                "language": "中文",
-                "gender": "男"
-            },
-            {
-                "id": "Portuguese_PowerfulSoldier",
-                "name": "Powerful Soldier",
-                "description": "一位年轻有力的青年男性强大士兵声音，葡萄牙语。",
-                "language": "中文",
-                "gender": "男"
-            },
-            {
-                "id": "Portuguese_FascinatingBoy",
-                "name": "Fascinating Boy",
-                "description": "一位亲切迷人的青年男性声音，葡萄牙语。",
-                "language": "中文",
-                "gender": "男"
-            },
-            {
-                "id": "Portuguese_RomanticHusband",
-                "name": "Romantic Husband",
-                "description": "一位深情的中年男性浪漫丈夫声音，葡萄牙语。",
-                "language": "中文",
-                "gender": "男"
-            },
-            {
-                "id": "Portuguese_StrictBoss",
-                "name": "Strict Boss",
-                "description": "一位机械般严格的青年女性老板声音，葡萄牙语。",
-                "language": "中文",
-                "gender": "男"
-            },
-            {
-                "id": "Portuguese_InspiringLady",
-                "name": "Inspiring Lady",
-                "description": "一位威严、鼓舞人心的青年女性声音，葡萄牙语。",
-                "language": "中文",
-                "gender": "男"
-            },
-            {
-                "id": "Portuguese_PlayfulSpirit",
-                "name": "Playful Spirit",
-                "description": "一位灵动俏皮的青年女性精灵声音，葡萄牙语。",
-                "language": "中文",
-                "gender": "男"
-            },
-            {
-                "id": "Portuguese_ElegantGirl",
-                "name": "Elegant Girl",
-                "description": "一位富有戏剧性、优雅的青年女性声音，葡萄牙语。",
-                "language": "中文",
-                "gender": "男"
-            },
-            {
-                "id": "Portuguese_CompellingGirl",
-                "name": "Compelling Girl",
-                "description": "一位富有说服力、引人注目的青年女性声音，葡萄牙语。",
-                "language": "中文",
-                "gender": "男"
-            },
-            {
-                "id": "Portuguese_PowerfulVeteran",
-                "name": "Powerful Veteran",
-                "description": "一位强劲有力的中年男性退伍军人声音，葡萄牙语。",
-                "language": "中文",
-                "gender": "男"
-            },
-            {
-                "id": "Portuguese_SensibleManager",
-                "name": "Sensible Manager",
-                "description": "一位富有魅力、理智的中年男性经理声音，葡萄牙语。",
-                "language": "中文",
-                "gender": "男"
-            },
-            {
-                "id": "Portuguese_ThoughtfulLady",
-                "name": "Thoughtful Lady",
-                "description": "一位忧虑体贴的中年女士声音，葡萄牙语。",
-                "language": "中文",
-                "gender": "男"
-            },
-            {
-                "id": "Portuguese_TheatricalActor",
-                "name": "Theatrical Actor",
-                "description": "一位生动的中年男性戏剧演员声音，葡萄牙语。",
-                "language": "中文",
-                "gender": "男"
-            },
-            {
-                "id": "Portuguese_FragileBoy",
-                "name": "Fragile Boy",
-                "description": "一位温柔脆弱的青年男性声音，葡萄牙语。",
-                "language": "中文",
-                "gender": "男"
-            },
-            {
-                "id": "Portuguese_ChattyGirl",
-                "name": "Chatty Girl",
-                "description": "一位健谈的青年女性声音，葡萄牙语。",
-                "language": "中文",
-                "gender": "男"
-            },
-            {
-                "id": "Portuguese_Conscientiousinstructor",
-                "name": "Conscientious Instructor",
-                "description": "一位年轻尽责的青年女性导师声音，葡萄牙语。",
-                "language": "中文",
-                "gender": "男"
-            },
-            {
-                "id": "Portuguese_RationalMan",
-                "name": "Rational Man",
-                "description": "一位深思熟虑、理性的青年男性声音，葡萄牙语。",
-                "language": "中文",
-                "gender": "男"
-            },
-            {
-                "id": "Portuguese_WiseScholar",
-                "name": "Wise Scholar",
-                "description": "一位亲切健谈的青年男性智慧学者声音，葡萄牙语。",
-                "language": "中文",
-                "gender": "男"
-            },
-            {
-                "id": "Portuguese_FrankLady",
-                "name": "Frank Lady",
-                "description": "一位激动坦率的中年女士声音，葡萄牙语。",
-                "language": "中文",
-                "gender": "男"
-            },
-            {
-                "id": "Portuguese_DeterminedManager",
-                "name": "Determined Manager",
-                "description": "一位自信果决的中年女性经理声音，葡萄牙语。",
-                "language": "中文",
-                "gender": "男"
-            },
-            {
-                "id": "French_Male_Speech_New",
-                "name": "Level-Headed Man",
-                "description": "一位理智的青年男性法语声音。",
-                "language": "法语",
-                "gender": "男"
-            },
-            {
-                "id": "Indonesian_SweetGirl",
-                "name": "Sweet Girl",
-                "description": "一位甜美可爱的青年女性印尼语声音。",
-                "language": "中文",
-                "gender": "男"
-            },
-            {
-                "id": "Indonesian_ReservedYoungMan",
-                "name": "Reserved Young Man",
-                "description": "一位冷峻的青年男性印尼语声音。",
-                "language": "中文",
-                "gender": "男"
-            },
-            {
-                "id": "Indonesian_CharmingGirl",
-                "name": "Charming Girl",
-                "description": "一位迷人的青年女性印尼语声音。",
-                "language": "中文",
-                "gender": "男"
-            },
-            {
-                "id": "Indonesian_CalmWoman",
-                "name": "Calm Woman",
-                "description": "一位宁静的青年女性印尼语声音。",
-                "language": "中文",
-                "gender": "女"
-            },
-            {
-                "id": "Indonesian_ConfidentWoman",
-                "name": "Confident Woman",
-                "description": "一位自信的青年女性印尼语声音。",
-                "language": "中文",
-                "gender": "女"
-            },
-            {
-                "id": "Indonesian_CaringMan",
-                "name": "Caring Man",
-                "description": "一位充满关怀的青年男性印尼语声音。",
-                "language": "中文",
-                "gender": "男"
-            },
-            {
-                "id": "Indonesian_BossyLeader",
-                "name": "Bossy Leader",
-                "description": "一位权威的青年男性领导者声音，印尼语。",
-                "language": "中文",
-                "gender": "男"
-            },
-            {
-                "id": "Indonesian_DeterminedBoy",
-                "name": "Determined Boy",
-                "description": "一位坚定的青年男性印尼语声音。",
-                "language": "中文",
-                "gender": "男"
-            },
-            {
-                "id": "Indonesian_GentleGirl",
-                "name": "Gentle Girl",
-                "description": "一位柔和的青年女性印尼语声音。",
-                "language": "中文",
-                "gender": "男"
-            },
-            {
-                "id": "Russian_HandsomeChildhoodFriend",
-                "name": "Handsome Childhood Friend",
-                "description": "一位为英俊青梅竹马角色设计的迷人少女声音，俄语。",
-                "language": "中文",
-                "gender": "男"
-            },
-            {
-                "id": "Russian_BrightHeroine",
-                "name": "Bright Queen",
-                "description": "一位傲慢明艳的青年女王声音，俄语。",
-                "language": "中文",
-                "gender": "男"
-            },
-            {
-                "id": "Russian_AmbitiousWoman",
-                "name": "Ambitious Woman",
-                "description": "一位强势、雄心勃勃的青年女性声音，俄语。",
-                "language": "中文",
-                "gender": "女"
-            },
-            {
-                "id": "Russian_ReliableMan",
-                "name": "Reliable Man",
-                "description": "一位稳重可靠的中年男性声音，俄语。",
-                "language": "中文",
-                "gender": "男"
-            },
-            {
-                "id": "Russian_CrazyQueen",
-                "name": "Crazy Girl",
-                "description": "一位充满活力的青年“疯狂女孩”声音，狂野而不可预测，俄语。",
-                "language": "中文",
-                "gender": "男"
-            },
-            {
-                "id": "Russian_PessimisticGirl",
-                "name": "Pessimistic Girl",
-                "description": "一位富有同情心的青年“悲观女孩”声音，俄语。",
-                "language": "中文",
-                "gender": "男"
-            },
-            {
-                "id": "Russian_AttractiveGuy",
-                "name": "Attractive Guy",
-                "description": "一位富有磁性、迷人的青年男性声音，俄语。",
-                "language": "中文",
-                "gender": "男"
-            },
-            {
-                "id": "Russian_Bad-temperedBoy",
-                "name": "Bad-tempered Boy",
-                "description": "一位脾气暴躁的青年男性声音，俄语。",
-                "language": "中文",
-                "gender": "男"
-            },
-            {
-                "id": "Ukrainian_CalmWoman",
-                "name": "Calm Woman",
-                "description": "一位宁静的青年女性乌克兰语声音，非常适合有声读物。",
-                "language": "中文",
-                "gender": "女"
-            },
-            {
-                "id": "Ukrainian_WiseScholar",
-                "name": "Wise Scholar",
-                "description": "一位亲切健谈的青年男性智慧学者声音，乌克兰语。",
-                "language": "中文",
-                "gender": "男"
-            }
-        ]
-    }
+  "volcano_engine": {
+    "description": "字节跳动火山引擎语音合成 (Volcano Engine / ByteDance)",
+    "voices": [
+      {
+        "id": "zh_female_vv_uranus_bigtts",
+        "name": "Vivi 2.0",
+        "description": "通用场景",
+        "language": "中文 / 日文 / 印尼 / 墨西哥西班牙语",
+        "gender": "女"
+      },
+      {
+        "id": "zh_female_xiaohe_uranus_bigtts",
+        "name": "小何 2.0",
+        "description": "通用场景",
+        "language": "中文",
+        "gender": "女"
+      },
+      {
+        "id": "zh_male_m191_uranus_bigtts",
+        "name": "云舟 2.0",
+        "description": "通用场景",
+        "language": "中文",
+        "gender": "男"
+      },
+      {
+        "id": "zh_male_taocheng_uranus_bigtts",
+        "name": "小天 2.0",
+        "description": "通用场景",
+        "language": "中文",
+        "gender": "男"
+      },
+      {
+        "id": "zh_male_liufei_uranus_bigtts",
+        "name": "刘飞 2.0",
+        "description": "通用场景",
+        "language": "中文",
+        "gender": "男"
+      },
+      {
+        "id": "zh_female_sophie_uranus_bigtts",
+        "name": "魅力苏菲 2.0",
+        "description": "通用场景",
+        "language": "中文",
+        "gender": "女"
+      },
+      {
+        "id": "zh_female_qingxinnvsheng_uranus_bigtts",
+        "name": "清新女声 2.0",
+        "description": "通用场景",
+        "language": "中文",
+        "gender": "女"
+      },
+      {
+        "id": "zh_female_cancan_uranus_bigtts",
+        "name": "知性灿灿 2.0",
+        "description": "角色扮演",
+        "language": "中文",
+        "gender": "女"
+      },
+      {
+        "id": "zh_female_sajiaoxuemei_uranus_bigtts",
+        "name": "撒娇学妹 2.0",
+        "description": "角色扮演",
+        "language": "中文",
+        "gender": "女"
+      },
+      {
+        "id": "zh_female_tianmeixiaoyuan_uranus_bigtts",
+        "name": "甜美小源 2.0",
+        "description": "通用场景",
+        "language": "中文",
+        "gender": "女"
+      },
+      {
+        "id": "zh_female_tianmeitaozi_uranus_bigtts",
+        "name": "甜美桃子 2.0",
+        "description": "通用场景",
+        "language": "中文",
+        "gender": "女"
+      },
+      {
+        "id": "zh_female_shuangkuaisisi_uranus_bigtts",
+        "name": "爽快思思 2.0",
+        "description": "通用场景",
+        "language": "中文",
+        "gender": "女"
+      },
+      {
+        "id": "zh_female_peiqi_uranus_bigtts",
+        "name": "佩奇猪 2.0",
+        "description": "视频配音",
+        "language": "中文",
+        "gender": "女"
+      },
+      {
+        "id": "zh_female_linjianvhai_uranus_bigtts",
+        "name": "邻家女孩 2.0",
+        "description": "通用场景",
+        "language": "中文",
+        "gender": "女"
+      },
+      {
+        "id": "zh_male_shaonianzixin_uranus_bigtts",
+        "name": "少年梓辛/Brayan 2.0",
+        "description": "通用场景",
+        "language": "中文",
+        "gender": "男"
+      },
+      {
+        "id": "zh_male_sunwukong_uranus_bigtts",
+        "name": "猴哥 2.0",
+        "description": "视频配音",
+        "language": "中文",
+        "gender": "男"
+      },
+      {
+        "id": "zh_female_yingyujiaoxue_uranus_bigtts",
+        "name": "Tina老师 2.0",
+        "description": "教育场景",
+        "language": "中文 / 英式英语",
+        "gender": "女"
+      },
+      {
+        "id": "zh_female_kefunvsheng_uranus_bigtts",
+        "name": "暖阳女声 2.0",
+        "description": "客服场景",
+        "language": "中文",
+        "gender": "女"
+      },
+      {
+        "id": "zh_female_xiaoxue_uranus_bigtts",
+        "name": "儿童绘本 2.0",
+        "description": "有声阅读",
+        "language": "中文",
+        "gender": "女"
+      },
+      {
+        "id": "zh_male_dayi_uranus_bigtts",
+        "name": "大壹 2.0",
+        "description": "视频配音",
+        "language": "中文",
+        "gender": "男"
+      },
+      {
+        "id": "zh_female_mizai_uranus_bigtts",
+        "name": "黑猫侦探社咪仔 2.0",
+        "description": "视频配音",
+        "language": "中文",
+        "gender": "女"
+      },
+      {
+        "id": "zh_female_jitangnv_uranus_bigtts",
+        "name": "鸡汤女 2.0",
+        "description": "视频配音",
+        "language": "中文",
+        "gender": "女"
+      },
+      {
+        "id": "zh_female_meilinvyou_uranus_bigtts",
+        "name": "魅力女友 2.0",
+        "description": "通用场景",
+        "language": "中文",
+        "gender": "女"
+      },
+      {
+        "id": "zh_female_liuchangnv_uranus_bigtts",
+        "name": "流畅女声 2.0",
+        "description": "视频配音",
+        "language": "中文",
+        "gender": "女"
+      },
+      {
+        "id": "zh_male_ruyayichen_uranus_bigtts",
+        "name": "儒雅逸辰 2.0",
+        "description": "视频配音",
+        "language": "中文",
+        "gender": "男"
+      },
+      {
+        "id": "en_male_tim_uranus_bigtts",
+        "name": "Tim",
+        "description": "多语种",
+        "language": "美式英语",
+        "gender": "男"
+      },
+      {
+        "id": "en_female_dacey_uranus_bigtts",
+        "name": "Dacey",
+        "description": "多语种",
+        "language": "美式英语",
+        "gender": "女"
+      },
+      {
+        "id": "en_female_stokie_uranus_bigtts",
+        "name": "Stokie",
+        "description": "多语种",
+        "language": "美式英语",
+        "gender": "女"
+      },
+      {
+        "id": "zh_female_wenroumama_uranus_bigtts",
+        "name": "温柔妈妈 2.0",
+        "description": "通用场景",
+        "language": "中文",
+        "gender": "女"
+      },
+      {
+        "id": "zh_male_jieshuoxiaoming_uranus_bigtts",
+        "name": "解说小明 2.0",
+        "description": "通用场景",
+        "language": "中文",
+        "gender": "男"
+      },
+      {
+        "id": "zh_female_tvbnv_uranus_bigtts",
+        "name": "TVB女声 2.0",
+        "description": "通用场景",
+        "language": "中文",
+        "gender": "女"
+      },
+      {
+        "id": "zh_male_yizhipiannan_uranus_bigtts",
+        "name": "译制片男 2.0",
+        "description": "通用场景",
+        "language": "中文",
+        "gender": "男"
+      },
+      {
+        "id": "zh_female_qiaopinv_uranus_bigtts",
+        "name": "俏皮女声 2.0",
+        "description": "通用场景",
+        "language": "中文",
+        "gender": "女"
+      },
+      {
+        "id": "zh_female_zhishuaiyingzi_uranus_bigtts",
+        "name": "直率英子 2.0",
+        "description": "角色扮演",
+        "language": "中文",
+        "gender": "女"
+      },
+      {
+        "id": "zh_male_linjiananhai_uranus_bigtts",
+        "name": "邻家男孩 2.0",
+        "description": "通用场景",
+        "language": "中文",
+        "gender": "男"
+      },
+      {
+        "id": "zh_male_silang_uranus_bigtts",
+        "name": "四郎 2.0",
+        "description": "角色扮演",
+        "language": "中文",
+        "gender": "男"
+      },
+      {
+        "id": "zh_male_ruyaqingnian_uranus_bigtts",
+        "name": "儒雅青年 2.0",
+        "description": "通用场景",
+        "language": "中文",
+        "gender": "男"
+      },
+      {
+        "id": "zh_male_qingcang_uranus_bigtts",
+        "name": "擎苍 2.0",
+        "description": "角色扮演",
+        "language": "中文",
+        "gender": "男"
+      },
+      {
+        "id": "zh_male_xionger_uranus_bigtts",
+        "name": "熊二 2.0",
+        "description": "角色扮演",
+        "language": "中文",
+        "gender": "男"
+      },
+      {
+        "id": "zh_female_yingtaowanzi_uranus_bigtts",
+        "name": "樱桃丸子 2.0",
+        "description": "角色扮演",
+        "language": "中文",
+        "gender": "女"
+      },
+      {
+        "id": "zh_male_wennuanahu_uranus_bigtts",
+        "name": "温暖阿虎/Alvin 2.0",
+        "description": "通用场景",
+        "language": "中文",
+        "gender": "男"
+      },
+      {
+        "id": "zh_male_naiqimengwa_uranus_bigtts",
+        "name": "奶气萌娃 2.0",
+        "description": "通用场景",
+        "language": "中文",
+        "gender": "男"
+      },
+      {
+        "id": "zh_female_popo_uranus_bigtts",
+        "name": "婆婆 2.0",
+        "description": "通用场景",
+        "language": "中文",
+        "gender": "女"
+      },
+      {
+        "id": "zh_female_gaolengyujie_uranus_bigtts",
+        "name": "高冷御姐 2.0",
+        "description": "通用场景",
+        "language": "中文",
+        "gender": "女"
+      },
+      {
+        "id": "zh_male_aojiaobazong_uranus_bigtts",
+        "name": "傲娇霸总 2.0",
+        "description": "通用场景",
+        "language": "中文",
+        "gender": "男"
+      },
+      {
+        "id": "zh_male_lanyinmianbao_uranus_bigtts",
+        "name": "懒音绵宝 2.0",
+        "description": "角色扮演",
+        "language": "中文",
+        "gender": "男"
+      },
+      {
+        "id": "zh_male_fanjuanqingnian_uranus_bigtts",
+        "name": "反卷青年 2.0",
+        "description": "通用场景",
+        "language": "中文",
+        "gender": "男"
+      },
+      {
+        "id": "zh_female_wenroushunv_uranus_bigtts",
+        "name": "温柔淑女 2.0",
+        "description": "通用场景",
+        "language": "中文",
+        "gender": "女"
+      },
+      {
+        "id": "zh_female_gufengshaoyu_uranus_bigtts",
+        "name": "古风少御 2.0",
+        "description": "角色扮演",
+        "language": "中文",
+        "gender": "女"
+      },
+      {
+        "id": "zh_male_huolixiaoge_uranus_bigtts",
+        "name": "活力小哥 2.0",
+        "description": "通用场景",
+        "language": "中文",
+        "gender": "男"
+      },
+      {
+        "id": "zh_male_baqiqingshu_uranus_bigtts",
+        "name": "霸气青叔 2.0",
+        "description": "有声阅读",
+        "language": "中文",
+        "gender": "男"
+      },
+      {
+        "id": "zh_male_xuanyijieshuo_uranus_bigtts",
+        "name": "悬疑解说 2.0",
+        "description": "有声阅读",
+        "language": "中文",
+        "gender": "男"
+      },
+      {
+        "id": "zh_female_mengyatou_uranus_bigtts",
+        "name": "萌丫头/Cutey 2.0",
+        "description": "通用场景",
+        "language": "中文",
+        "gender": "女"
+      },
+      {
+        "id": "zh_female_tiexinnvsheng_uranus_bigtts",
+        "name": "贴心女声/Candy 2.0",
+        "description": "通用场景",
+        "language": "中文",
+        "gender": "女"
+      },
+      {
+        "id": "zh_female_jitangmei_uranus_bigtts",
+        "name": "鸡汤妹妹/Hope 2.0",
+        "description": "通用场景",
+        "language": "中文",
+        "gender": "女"
+      },
+      {
+        "id": "zh_male_cixingjieshuonan_uranus_bigtts",
+        "name": "磁性解说男声/Morgan 2.0",
+        "description": "通用场景",
+        "language": "中文",
+        "gender": "男"
+      },
+      {
+        "id": "zh_male_liangsangmengzai_uranus_bigtts",
+        "name": "亮嗓萌仔 2.0",
+        "description": "通用场景",
+        "language": "中文",
+        "gender": "男"
+      },
+      {
+        "id": "zh_female_kailangjiejie_uranus_bigtts",
+        "name": "开朗姐姐 2.0",
+        "description": "通用场景",
+        "language": "中文",
+        "gender": "女"
+      },
+      {
+        "id": "zh_male_gaolengchenwen_uranus_bigtts",
+        "name": "高冷沉稳 2.0",
+        "description": "通用场景",
+        "language": "中文",
+        "gender": "男"
+      },
+      {
+        "id": "zh_male_shenyeboke_uranus_bigtts",
+        "name": "深夜播客 2.0",
+        "description": "通用场景",
+        "language": "中文",
+        "gender": "男"
+      },
+      {
+        "id": "zh_male_lubanqihao_uranus_bigtts",
+        "name": "鲁班七号 2.0",
+        "description": "角色扮演",
+        "language": "中文",
+        "gender": "男"
+      },
+      {
+        "id": "zh_female_jiaochuannv_uranus_bigtts",
+        "name": "娇喘女声 2.0",
+        "description": "通用场景",
+        "language": "中文",
+        "gender": "女"
+      },
+      {
+        "id": "zh_female_linxiao_uranus_bigtts",
+        "name": "林潇 2.0",
+        "description": "角色扮演",
+        "language": "中文",
+        "gender": "女"
+      },
+      {
+        "id": "zh_female_lingling_uranus_bigtts",
+        "name": "玲玲姐姐 2.0",
+        "description": "角色扮演",
+        "language": "中文",
+        "gender": "女"
+      },
+      {
+        "id": "zh_female_chunribu_uranus_bigtts",
+        "name": "春日部姐姐 2.0",
+        "description": "角色扮演",
+        "language": "中文",
+        "gender": "女"
+      },
+      {
+        "id": "zh_male_tangseng_uranus_bigtts",
+        "name": "唐僧 2.0",
+        "description": "角色扮演",
+        "language": "中文",
+        "gender": "男"
+      },
+      {
+        "id": "zh_male_zhuangzhou_uranus_bigtts",
+        "name": "庄周 2.0",
+        "description": "角色扮演",
+        "language": "中文",
+        "gender": "男"
+      },
+      {
+        "id": "zh_male_kailangdidi_uranus_bigtts",
+        "name": "开朗弟弟 2.0",
+        "description": "通用场景",
+        "language": "中文",
+        "gender": "男"
+      },
+      {
+        "id": "zh_male_zhubajie_uranus_bigtts",
+        "name": "猪八戒 2.0",
+        "description": "角色扮演",
+        "language": "中文",
+        "gender": "男"
+      },
+      {
+        "id": "zh_female_ganmaodianyin_uranus_bigtts",
+        "name": "感冒电音姐姐 2.0",
+        "description": "角色扮演",
+        "language": "中文",
+        "gender": "女"
+      },
+      {
+        "id": "zh_female_chanmeinv_uranus_bigtts",
+        "name": "谄媚女声 2.0",
+        "description": "通用场景",
+        "language": "中文",
+        "gender": "女"
+      },
+      {
+        "id": "zh_female_nvleishen_uranus_bigtts",
+        "name": "女雷神 2.0",
+        "description": "角色扮演",
+        "language": "中文",
+        "gender": "女"
+      },
+      {
+        "id": "zh_female_qinqienv_uranus_bigtts",
+        "name": "亲切女声 2.0",
+        "description": "通用场景",
+        "language": "中文",
+        "gender": "女"
+      },
+      {
+        "id": "zh_male_kuailexiaodong_uranus_bigtts",
+        "name": "快乐小东 2.0",
+        "description": "通用场景",
+        "language": "中文",
+        "gender": "男"
+      },
+      {
+        "id": "zh_male_kailangxuezhang_uranus_bigtts",
+        "name": "开朗学长 2.0",
+        "description": "通用场景",
+        "language": "中文",
+        "gender": "男"
+      },
+      {
+        "id": "zh_male_youyoujunzi_uranus_bigtts",
+        "name": "悠悠君子 2.0",
+        "description": "通用场景",
+        "language": "中文",
+        "gender": "男"
+      },
+      {
+        "id": "zh_female_wenjingmaomao_uranus_bigtts",
+        "name": "文静毛毛 2.0",
+        "description": "通用场景",
+        "language": "中文",
+        "gender": "女"
+      },
+      {
+        "id": "zh_female_zhixingnv_uranus_bigtts",
+        "name": "知性女声 2.0",
+        "description": "通用场景",
+        "language": "中文",
+        "gender": "女"
+      },
+      {
+        "id": "zh_male_qingshuangnanda_uranus_bigtts",
+        "name": "清爽男大 2.0",
+        "description": "通用场景",
+        "language": "中文",
+        "gender": "男"
+      },
+      {
+        "id": "zh_male_yuanboxiaoshu_uranus_bigtts",
+        "name": "渊博小叔 2.0",
+        "description": "通用场景",
+        "language": "中文",
+        "gender": "男"
+      },
+      {
+        "id": "zh_male_yangguangqingnian_uranus_bigtts",
+        "name": "阳光青年 2.0",
+        "description": "通用场景",
+        "language": "中文",
+        "gender": "男"
+      },
+      {
+        "id": "zh_female_qingchezizi_uranus_bigtts",
+        "name": "清澈梓梓 2.0",
+        "description": "通用场景",
+        "language": "中文",
+        "gender": "女"
+      },
+      {
+        "id": "zh_female_tianmeiyueyue_uranus_bigtts",
+        "name": "甜美悦悦 2.0",
+        "description": "通用场景",
+        "language": "中文",
+        "gender": "女"
+      },
+      {
+        "id": "zh_female_xinlingjitang_uranus_bigtts",
+        "name": "心灵鸡汤 2.0",
+        "description": "通用场景",
+        "language": "中文",
+        "gender": "女"
+      },
+      {
+        "id": "zh_male_wenrouxiaoge_uranus_bigtts",
+        "name": "温柔小哥 2.0",
+        "description": "通用场景",
+        "language": "中文",
+        "gender": "男"
+      },
+      {
+        "id": "zh_female_roumeinvyou_uranus_bigtts",
+        "name": "柔美女友 2.0",
+        "description": "通用场景",
+        "language": "中文",
+        "gender": "女"
+      },
+      {
+        "id": "zh_male_dongfanghaoran_uranus_bigtts",
+        "name": "东方浩然 2.0",
+        "description": "通用场景",
+        "language": "中文",
+        "gender": "男"
+      },
+      {
+        "id": "zh_female_wenrouxiaoya_uranus_bigtts",
+        "name": "温柔小雅 2.0",
+        "description": "通用场景",
+        "language": "中文",
+        "gender": "女"
+      },
+      {
+        "id": "zh_male_tiancaitongsheng_uranus_bigtts",
+        "name": "天才童声 2.0",
+        "description": "通用场景",
+        "language": "中文",
+        "gender": "男"
+      },
+      {
+        "id": "zh_female_wuzetian_uranus_bigtts",
+        "name": "武则天 2.0",
+        "description": "角色扮演",
+        "language": "中文",
+        "gender": "女"
+      },
+      {
+        "id": "zh_female_gujie_uranus_bigtts",
+        "name": "顾姐 2.0",
+        "description": "角色扮演",
+        "language": "中文",
+        "gender": "女"
+      },
+      {
+        "id": "zh_male_guanggaojieshuo_uranus_bigtts",
+        "name": "广告解说 2.0",
+        "description": "通用场景",
+        "language": "中文",
+        "gender": "男"
+      },
+      {
+        "id": "zh_female_shaoergushi_uranus_bigtts",
+        "name": "少儿故事 2.0",
+        "description": "有声阅读",
+        "language": "中文",
+        "gender": "女"
+      },
+      {
+        "id": "saturn_zh_female_tiaopigongzhu_tob",
+        "name": "调皮公主",
+        "description": "角色扮演",
+        "language": "中文",
+        "gender": "女"
+      },
+      {
+        "id": "saturn_zh_female_keainvsheng_tob",
+        "name": "可爱女生",
+        "description": "角色扮演",
+        "language": "中文",
+        "gender": "女"
+      },
+      {
+        "id": "saturn_zh_male_shuanglangshaonian_tob",
+        "name": "爽朗少年",
+        "description": "角色扮演",
+        "language": "中文",
+        "gender": "男"
+      },
+      {
+        "id": "saturn_zh_male_tiancaitongzhuo_tob",
+        "name": "天才同桌",
+        "description": "角色扮演",
+        "language": "中文",
+        "gender": "男"
+      },
+      {
+        "id": "saturn_zh_female_cancan_tob",
+        "name": "知性灿灿",
+        "description": "角色扮演",
+        "language": "中文",
+        "gender": "女"
+      },
+      {
+        "id": "saturn_zh_female_qingyingduoduo_cs_tob",
+        "name": "轻盈朵朵 2.0",
+        "description": "客服场景",
+        "language": "中文",
+        "gender": "女"
+      },
+      {
+        "id": "saturn_zh_female_wenwanshanshan_cs_tob",
+        "name": "温婉珊珊 2.0",
+        "description": "客服场景",
+        "language": "中文",
+        "gender": "女"
+      },
+      {
+        "id": "saturn_zh_female_reqingaina_cs_tob",
+        "name": "热情艾娜 2.0",
+        "description": "客服场景",
+        "language": "中文",
+        "gender": "女"
+      },
+      {
+        "id": "saturn_zh_male_qingxinmumu_cs_tob",
+        "name": "清新沐沐 2.0",
+        "description": "客服场景",
+        "language": "中文",
+        "gender": "男"
+      }
+    ]
+  },
+  "edge_tts": {
+    "description": "微软 Edge 浏览器内置语音 (Microsoft Edge TTS)",
+    "voices": [
+      {
+        "id": "zh-CN-XiaoxiaoNeural",
+        "name": "晓晓",
+        "description": "最常用、自然",
+        "language": "中文（普通话）",
+        "gender": "女"
+      },
+      {
+        "id": "zh-CN-XiaoyiNeural",
+        "name": "晓伊",
+        "description": "活泼",
+        "language": "中文（普通话）",
+        "gender": "女"
+      },
+      {
+        "id": "zh-CN-YunjianNeural",
+        "name": "云健",
+        "description": "体育/激情",
+        "language": "中文（普通话）",
+        "gender": "男"
+      },
+      {
+        "id": "zh-CN-YunxiNeural",
+        "name": "云希",
+        "description": "青年感",
+        "language": "中文（普通话）",
+        "gender": "男"
+      },
+      {
+        "id": "zh-CN-YunxiaNeural",
+        "name": "云夏",
+        "description": "少年感",
+        "language": "中文（普通话）",
+        "gender": "男"
+      },
+      {
+        "id": "zh-CN-YunyangNeural",
+        "name": "云扬",
+        "description": "新闻播报",
+        "language": "中文（普通话）",
+        "gender": "男"
+      },
+      {
+        "id": "zh-CN-liaoning-XiaobeiNeural",
+        "name": "晓北",
+        "description": "辽宁方言",
+        "language": "中文（普通话）",
+        "gender": "女"
+      },
+      {
+        "id": "zh-CN-shaanxi-XiaoniNeural",
+        "name": "晓妮",
+        "description": "陕西方言",
+        "language": "中文（普通话）",
+        "gender": "女"
+      },
+      {
+        "id": "zh-HK-HiuGaaiNeural",
+        "name": "晓佳",
+        "description": "标准粤语",
+        "language": "粤语（香港）",
+        "gender": "女"
+      },
+      {
+        "id": "zh-HK-HiuMaanNeural",
+        "name": "晓雯",
+        "description": "温柔",
+        "language": "粤语（香港）",
+        "gender": "女"
+      },
+      {
+        "id": "zh-HK-WanLungNeural",
+        "name": "云龙",
+        "description": "男声粤语",
+        "language": "粤语（香港）",
+        "gender": "男"
+      },
+      {
+        "id": "zh-TW-HsiaoChenNeural",
+        "name": "晓臻",
+        "description": "",
+        "language": "中文（台湾）",
+        "gender": "女"
+      },
+      {
+        "id": "ja-JP-NanamiNeural",
+        "name": "七海",
+        "description": "",
+        "language": "日语",
+        "gender": "女"
+      },
+      {
+        "id": "en-US-AriaNeural",
+        "name": "艾莉亚",
+        "description": "",
+        "language": "英语（美国）",
+        "gender": "女"
+      },
+      {
+        "id": "en-US-AmberNeural",
+        "name": "安珀",
+        "description": "",
+        "language": "英语（美国）",
+        "gender": "女"
+      },
+      {
+        "id": "en-US-BrandonNeural",
+        "name": "布兰登",
+        "description": "",
+        "language": "英语（美国）",
+        "gender": "男"
+      },
+      {
+        "id": "en-US-CoraNeural",
+        "name": "科拉",
+        "description": "",
+        "language": "英语（美国）",
+        "gender": "女"
+      },
+      {
+        "id": "en-US-ElizabethNeural",
+        "name": "伊丽莎白",
+        "description": "",
+        "language": "英语（美国）",
+        "gender": "女"
+      },
+      {
+        "id": "en-US-GuyNeural",
+        "name": "盖伊",
+        "description": "",
+        "language": "英语（美国）",
+        "gender": "男"
+      },
+      {
+        "id": "en-US-JaneNeural",
+        "name": "简",
+        "description": "",
+        "language": "英语（美国）",
+        "gender": "女"
+      },
+      {
+        "id": "en-US-JennyNeural",
+        "name": "珍妮",
+        "description": "",
+        "language": "英语（美国）",
+        "gender": "女"
+      },
+      {
+        "id": "en-US-MonicaNeural",
+        "name": "莫妮卡",
+        "description": "",
+        "language": "英语（美国）",
+        "gender": "女"
+      },
+      {
+        "id": "en-US-RogerNeural",
+        "name": "罗杰",
+        "description": "",
+        "language": "英语（美国）",
+        "gender": "男"
+      },
+      {
+        "id": "en-US-SteffanNeural",
+        "name": "斯蒂芬",
+        "description": "",
+        "language": "英语（美国）",
+        "gender": "男"
+      },
+      {
+        "id": "en-GB-LibbyNeural",
+        "name": "莉比",
+        "description": "",
+        "language": "英语（英国）",
+        "gender": "女"
+      },
+      {
+        "id": "en-GB-RyanNeural",
+        "name": "瑞安",
+        "description": "",
+        "language": "英语（英国）",
+        "gender": "男"
+      },
+      {
+        "id": "en-SG-LunaNeural",
+        "name": "露娜",
+        "description": "",
+        "language": "英语（新加坡）",
+        "gender": "女"
+      }
+    ]
+  },
+  "minimax_tts": {
+    "description": "MiniMax 语音大模型 (MiniMax / 海螺 AI)",
+    "voices": [
+      {
+        "id": "male-qn-qingse",
+        "name": "青涩青年音色",
+        "description": "",
+        "language": "中文",
+        "gender": "男"
+      },
+      {
+        "id": "male-qn-jingying",
+        "name": "精英青年音色",
+        "description": "",
+        "language": "中文",
+        "gender": "男"
+      },
+      {
+        "id": "male-qn-badao",
+        "name": "霸道青年音色",
+        "description": "",
+        "language": "中文",
+        "gender": "男"
+      },
+      {
+        "id": "male-qn-daxuesheng",
+        "name": "青年大学生音色",
+        "description": "",
+        "language": "中文",
+        "gender": "男"
+      },
+      {
+        "id": "female-shaonv",
+        "name": "少女音色",
+        "description": "",
+        "language": "中文",
+        "gender": "女"
+      },
+      {
+        "id": "female-yujie",
+        "name": "御姐音色",
+        "description": "",
+        "language": "中文",
+        "gender": "女"
+      },
+      {
+        "id": "female-chengshu",
+        "name": "成熟女性音色",
+        "description": "",
+        "language": "中文",
+        "gender": "女"
+      },
+      {
+        "id": "female-tianmei",
+        "name": "甜美女性音色",
+        "description": "",
+        "language": "中文",
+        "gender": "女"
+      },
+      {
+        "id": "male-qn-qingse-jingpin",
+        "name": "青涩青年音色-beta",
+        "description": "",
+        "language": "中文",
+        "gender": "男"
+      },
+      {
+        "id": "male-qn-jingying-jingpin",
+        "name": "精英青年音色-beta",
+        "description": "",
+        "language": "中文",
+        "gender": "男"
+      },
+      {
+        "id": "male-qn-badao-jingpin",
+        "name": "霸道青年音色-beta",
+        "description": "",
+        "language": "中文",
+        "gender": "男"
+      },
+      {
+        "id": "male-qn-daxuesheng-jingpin",
+        "name": "青年大学生音色-beta",
+        "description": "",
+        "language": "中文",
+        "gender": "男"
+      },
+      {
+        "id": "female-shaonv-jingpin",
+        "name": "少女音色-beta",
+        "description": "",
+        "language": "中文",
+        "gender": "女"
+      },
+      {
+        "id": "female-yujie-jingpin",
+        "name": "御姐音色-beta",
+        "description": "",
+        "language": "中文",
+        "gender": "女"
+      },
+      {
+        "id": "female-chengshu-jingpin",
+        "name": "成熟女性音色-beta",
+        "description": "",
+        "language": "中文",
+        "gender": "女"
+      },
+      {
+        "id": "female-tianmei-jingpin",
+        "name": "甜美女性音色-beta",
+        "description": "",
+        "language": "中文",
+        "gender": "女"
+      },
+      {
+        "id": "clever_boy",
+        "name": "聪明男童",
+        "description": "",
+        "language": "中文",
+        "gender": "男"
+      },
+      {
+        "id": "cute_boy",
+        "name": "可爱男童",
+        "description": "",
+        "language": "中文",
+        "gender": "男"
+      },
+      {
+        "id": "lovely_girl",
+        "name": "萌萌女童",
+        "description": "",
+        "language": "中文",
+        "gender": "男"
+      },
+      {
+        "id": "cartoon_pig",
+        "name": "卡通猪小琪",
+        "description": "",
+        "language": "中文",
+        "gender": "男"
+      },
+      {
+        "id": "bingjiao_didi",
+        "name": "病娇弟弟",
+        "description": "",
+        "language": "中文",
+        "gender": "男"
+      },
+      {
+        "id": "junlang_nanyou",
+        "name": "俊朗男友",
+        "description": "",
+        "language": "中文",
+        "gender": "男"
+      },
+      {
+        "id": "chunzhen_xuedi",
+        "name": "纯真学弟",
+        "description": "",
+        "language": "中文",
+        "gender": "男"
+      },
+      {
+        "id": "lengdan_xiongzhang",
+        "name": "冷淡学长",
+        "description": "",
+        "language": "中文",
+        "gender": "男"
+      },
+      {
+        "id": "badao_shaoye",
+        "name": "霸道少爷",
+        "description": "",
+        "language": "中文",
+        "gender": "男"
+      },
+      {
+        "id": "tianxin_xiaoling",
+        "name": "甜心小玲",
+        "description": "",
+        "language": "中文",
+        "gender": "男"
+      },
+      {
+        "id": "qiaopi_mengmei",
+        "name": "俏皮萌妹",
+        "description": "",
+        "language": "中文",
+        "gender": "男"
+      },
+      {
+        "id": "wumei_yujie",
+        "name": "妩媚御姐",
+        "description": "",
+        "language": "中文",
+        "gender": "男"
+      },
+      {
+        "id": "diadia_xuemei",
+        "name": "嗲嗲学妹",
+        "description": "",
+        "language": "中文",
+        "gender": "男"
+      },
+      {
+        "id": "danya_xuejie",
+        "name": "淡雅学姐",
+        "description": "",
+        "language": "中文",
+        "gender": "男"
+      },
+      {
+        "id": "Santa_Claus ",
+        "name": "Santa Claus",
+        "description": "",
+        "language": "中文",
+        "gender": "男"
+      },
+      {
+        "id": "Grinch",
+        "name": "Grinch",
+        "description": "",
+        "language": "中文",
+        "gender": "男"
+      },
+      {
+        "id": "Rudolph",
+        "name": "Rudolph",
+        "description": "",
+        "language": "中文",
+        "gender": "男"
+      },
+      {
+        "id": "Arnold",
+        "name": "Arnold",
+        "description": "",
+        "language": "中文",
+        "gender": "男"
+      },
+      {
+        "id": "Charming_Santa",
+        "name": "Charming Santa",
+        "description": "",
+        "language": "中文",
+        "gender": "男"
+      },
+      {
+        "id": "Charming_Lady",
+        "name": "Charming Lady",
+        "description": "",
+        "language": "中文",
+        "gender": "男"
+      },
+      {
+        "id": "Sweet_Girl",
+        "name": "Sweet Girl",
+        "description": "",
+        "language": "中文",
+        "gender": "男"
+      },
+      {
+        "id": "Cute_Elf",
+        "name": "Cute Elf",
+        "description": "",
+        "language": "中文",
+        "gender": "男"
+      },
+      {
+        "id": "Attractive_Girl",
+        "name": "Attractive Girl",
+        "description": "",
+        "language": "中文",
+        "gender": "男"
+      },
+      {
+        "id": "Serene_Woman",
+        "name": "Serene Woman",
+        "description": "",
+        "language": "中文",
+        "gender": "女"
+      },
+      {
+        "id": "Chinese (Mandarin)_Reliable_Executive",
+        "name": "沉稳高管",
+        "description": "一位沉稳可靠的中年男性高管声音，标准普通话，传递出值得信赖的感觉。",
+        "language": "中文",
+        "gender": "男"
+      },
+      {
+        "id": "Chinese (Mandarin)_News_Anchor",
+        "name": "新闻女声",
+        "description": "一位专业、播音腔的中年女性新闻主播，标准普通话。",
+        "language": "中文",
+        "gender": "男"
+      },
+      {
+        "id": "Chinese (Mandarin)_Mature_Woman",
+        "name": "傲娇御姐",
+        "description": "一位妩媚成熟的青年御姐声音，标准普通话。",
+        "language": "中文",
+        "gender": "男"
+      },
+      {
+        "id": "Chinese (Mandarin)_Unrestrained_Young_Man",
+        "name": "不羁青年",
+        "description": "一位潇洒不羁的青年男性声音，标准普通话。",
+        "language": "中文",
+        "gender": "男"
+      },
+      {
+        "id": "Arrogant_Miss",
+        "name": "嚣张小姐",
+        "description": "一位嚣张自信的青年女性声音，标准普通话，展现出优越感。",
+        "language": "中文",
+        "gender": "男"
+      },
+      {
+        "id": "Robot_Armor",
+        "name": "机械战甲",
+        "description": "一位电子化、机器人般的青年男性声音，适合科幻或未来主义内容的标准普通话。",
+        "language": "中文",
+        "gender": "男"
+      },
+      {
+        "id": "Chinese (Mandarin)_Kind-hearted_Antie",
+        "name": "热心大婶",
+        "description": "一位温和善良的中年大婶声音，标准普通话，温暖而体贴。",
+        "language": "中文",
+        "gender": "男"
+      },
+      {
+        "id": "Chinese (Mandarin)_HK_Flight_Attendant",
+        "name": "港普空姐",
+        "description": "一位礼貌的中年女性空乘员声音，带有港式普通话口音，清晰而有礼。",
+        "language": "中文",
+        "gender": "男"
+      },
+      {
+        "id": "Chinese (Mandarin)_Humorous_Elder",
+        "name": "搞笑大爷",
+        "description": "一位爽朗幽默的老年男性大爷声音，带有北方口音的中文，充满个性。",
+        "language": "中文",
+        "gender": "男"
+      },
+      {
+        "id": "Chinese (Mandarin)_Gentleman",
+        "name": "温润男声",
+        "description": "一位温润磁性的青年男性声音，标准普通话。",
+        "language": "中文",
+        "gender": "男"
+      },
+      {
+        "id": "Chinese (Mandarin)_Warm_Bestie",
+        "name": "温暖闺蜜",
+        "description": "一位温暖清脆的青年女性闺蜜声音，标准普通话，友好而清晰。",
+        "language": "中文",
+        "gender": "男"
+      },
+      {
+        "id": "Chinese (Mandarin)_Male_Announcer",
+        "name": "播报男声",
+        "description": "一位富有磁性的中年男性播报员声音，标准普通话，清晰而权威。",
+        "language": "中文",
+        "gender": "男"
+      },
+      {
+        "id": "Chinese (Mandarin)_Sweet_Lady",
+        "name": "甜美女声",
+        "description": "一位温柔甜美的青年女性声音，标准普通话。",
+        "language": "中文",
+        "gender": "男"
+      },
+      {
+        "id": "Chinese (Mandarin)_Southern_Young_Man",
+        "name": "南方小哥",
+        "description": "一位质朴的青年男性声音，带有南方口音的中文。",
+        "language": "中文",
+        "gender": "男"
+      },
+      {
+        "id": "Chinese (Mandarin)_Wise_Women",
+        "name": "阅历姐姐",
+        "description": "一位富有阅历、声音抒情的中年姐姐声音，标准普通话。",
+        "language": "中文",
+        "gender": "男"
+      },
+      {
+        "id": "Chinese (Mandarin)_Gentle_Youth",
+        "name": "温润青年",
+        "description": "一位温柔的青年男性声音，标准普通话。",
+        "language": "中文",
+        "gender": "男"
+      },
+      {
+        "id": "Chinese (Mandarin)_Warm_Girl",
+        "name": "温暖少女",
+        "description": "一位温柔温暖的少年女声，标准普通话。",
+        "language": "中文",
+        "gender": "男"
+      },
+      {
+        "id": "Chinese (Mandarin)_Kind-hearted_Elder",
+        "name": "花甲奶奶",
+        "description": "一位慈祥和蔼的老年女性奶奶声音，标准普通话。",
+        "language": "中文",
+        "gender": "男"
+      },
+      {
+        "id": "Chinese (Mandarin)_Cute_Spirit",
+        "name": "憨憨萌兽",
+        "description": "一位呆萌可爱的少年男声，适合憨厚的萌兽角色。",
+        "language": "中文",
+        "gender": "男"
+      },
+      {
+        "id": "Chinese (Mandarin)_Radio_Host",
+        "name": "电台男主播",
+        "description": "一位富有诗意的青年男性电台主播声音，标准普通话，声音流畅引人入胜。",
+        "language": "中文",
+        "gender": "男"
+      },
+      {
+        "id": "Chinese (Mandarin)_Lyrical_Voice",
+        "name": "抒情男声",
+        "description": "一位磁性抒情的青年男性声音，标准普通话，流畅而富有表现力。",
+        "language": "中文",
+        "gender": "男"
+      },
+      {
+        "id": "Chinese (Mandarin)_Straightforward_Boy",
+        "name": "率真弟弟",
+        "description": "一位认真率真的少年弟弟声音，标准普通话。",
+        "language": "中文",
+        "gender": "男"
+      },
+      {
+        "id": "Chinese (Mandarin)_Sincere_Adult",
+        "name": "真诚青年",
+        "description": "一位真诚、富有鼓励性的青年男性声音，标准普通话。",
+        "language": "中文",
+        "gender": "男"
+      },
+      {
+        "id": "Chinese (Mandarin)_Gentle_Senior",
+        "name": "温柔学姐",
+        "description": "一位温暖温柔的青年学姐声音，标准普通话。",
+        "language": "中文",
+        "gender": "男"
+      },
+      {
+        "id": "Chinese (Mandarin)_Stubborn_Friend",
+        "name": "嘴硬竹马",
+        "description": "一位嘴硬心软、不羁的青年竹马声音，标准普通话。",
+        "language": "中文",
+        "gender": "男"
+      },
+      {
+        "id": "Chinese (Mandarin)_Crisp_Girl",
+        "name": "清脆少女",
+        "description": "一位温暖清脆的少女声音，标准普通话。",
+        "language": "中文",
+        "gender": "男"
+      },
+      {
+        "id": "Chinese (Mandarin)_Pure-hearted_Boy",
+        "name": "清澈邻家弟弟",
+        "description": "一位认真清澈的邻家少年弟弟声音，标准普通话。",
+        "language": "中文",
+        "gender": "男"
+      },
+      {
+        "id": "Chinese (Mandarin)_Soft_Girl",
+        "name": "软软女孩",
+        "description": "一位温暖柔软的青年女性声音，带有南方口音的中文。",
+        "language": "中文",
+        "gender": "男"
+      },
+      {
+        "id": "Cantonese_ProfessionalHost（F)",
+        "name": "专业女主持",
+        "description": "一位中性、专业的青年女性粤语主持人声音。",
+        "language": "中文",
+        "gender": "男"
+      },
+      {
+        "id": "Cantonese_GentleLady",
+        "name": "温柔女声",
+        "description": "一位平静温柔的青年女性粤语声音。",
+        "language": "中文",
+        "gender": "男"
+      },
+      {
+        "id": "Cantonese_ProfessionalHost（M)",
+        "name": "专业男主持",
+        "description": "一位中性、专业的青年男性粤语主持人声音。",
+        "language": "中文",
+        "gender": "男"
+      },
+      {
+        "id": "Cantonese_PlayfulMan",
+        "name": "活泼男声",
+        "description": "一位活泼深情的青年男性粤语声音。",
+        "language": "中文",
+        "gender": "男"
+      },
+      {
+        "id": "Cantonese_CuteGirl",
+        "name": "可爱女孩",
+        "description": "一位柔和可爱的青年女性粤语声音。",
+        "language": "中文",
+        "gender": "男"
+      },
+      {
+        "id": "Cantonese_KindWoman",
+        "name": "善良女声",
+        "description": "一位亲切善良的青年女性粤语声音。",
+        "language": "中文",
+        "gender": "男"
+      },
+      {
+        "id": "English_Trustworthy_Man",
+        "name": "Trustworthy Man",
+        "description": "一位值得信赖、富有磁性的青年男性声音，带通用美式口音。",
+        "language": "英语",
+        "gender": "男"
+      },
+      {
+        "id": "English_Graceful_Lady",
+        "name": "Graceful Lady",
+        "description": "一位优雅的中年女士，带有经典的英式口音，散发着成熟的魅力。",
+        "language": "英语",
+        "gender": "男"
+      },
+      {
+        "id": "English_Aussie_Bloke",
+        "name": "Aussie Bloke",
+        "description": "一位阳光开朗的青年男性，带有独特的澳大利亚口音。",
+        "language": "英语",
+        "gender": "男"
+      },
+      {
+        "id": "English_Whispering_girl",
+        "name": "Whispering girl",
+        "description": "一位青年女性的轻柔耳语声，带通用美式口音，非常适合ASMR内容。",
+        "language": "英语",
+        "gender": "男"
+      },
+      {
+        "id": "English_Diligent_Man",
+        "name": "Diligent Man",
+        "description": "一位真诚勤奋的青年男性，带有印度口音。",
+        "language": "英语",
+        "gender": "男"
+      },
+      {
+        "id": "English_Gentle-voiced_man",
+        "name": "Gentle-voiced man",
+        "description": "一位声音温柔、富有磁性的青年男性，带通用美式口音。",
+        "language": "英语",
+        "gender": "男"
+      },
+      {
+        "id": "Japanese_IntellectualSenior",
+        "name": "Intellectual Senior",
+        "description": "一位成熟知性的青年男性日语声音，听起来少年老成。",
+        "language": "日语",
+        "gender": "男"
+      },
+      {
+        "id": "Japanese_DecisivePrincess",
+        "name": "Decisive Princess",
+        "description": "一位坚定果断的青年公主声音，日语。",
+        "language": "日语",
+        "gender": "男"
+      },
+      {
+        "id": "Japanese_LoyalKnight",
+        "name": "Loyal Knight",
+        "description": "一位年轻忠诚的青年男性骑士声音，日语。",
+        "language": "日语",
+        "gender": "男"
+      },
+      {
+        "id": "Japanese_DominantMan",
+        "name": "Dominant Man",
+        "description": "一位成熟强势的中年男性声音，日语。",
+        "language": "日语",
+        "gender": "男"
+      },
+      {
+        "id": "Japanese_SeriousCommander",
+        "name": "Serious Commander",
+        "description": "一位严肃可靠的青年男性指挥官声音，日语。",
+        "language": "日语",
+        "gender": "男"
+      },
+      {
+        "id": "Japanese_ColdQueen",
+        "name": "Cold Queen",
+        "description": "一位冷漠的青年女王声音，日语。",
+        "language": "日语",
+        "gender": "男"
+      },
+      {
+        "id": "Japanese_DependableWoman",
+        "name": "Dependable Woman",
+        "description": "一位稳重可靠的青年女性声音，日语。",
+        "language": "日语",
+        "gender": "女"
+      },
+      {
+        "id": "Japanese_GentleButler",
+        "name": "Gentle Butler",
+        "description": "一位迷人温柔的青年男性管家声音，日语。",
+        "language": "日语",
+        "gender": "男"
+      },
+      {
+        "id": "Japanese_KindLady",
+        "name": "Kind Lady",
+        "description": "一位迷人善良的青年女性声音，日语。",
+        "language": "日语",
+        "gender": "男"
+      },
+      {
+        "id": "Japanese_CalmLady",
+        "name": "Calm Lady",
+        "description": "一位沉静迷人的青年女性声音，日语。",
+        "language": "日语",
+        "gender": "男"
+      },
+      {
+        "id": "Japanese_OptimisticYouth",
+        "name": "Optimistic Youth",
+        "description": "一位开朗乐观的青年男性声音，日语。",
+        "language": "日语",
+        "gender": "男"
+      },
+      {
+        "id": "Japanese_GenerousIzakayaOwner",
+        "name": "Generous Izakaya Owner",
+        "description": "一位俏皮大方的中年男性居酒屋老板声音，日语。",
+        "language": "日语",
+        "gender": "男"
+      },
+      {
+        "id": "Japanese_SportyStudent",
+        "name": "Sporty Student",
+        "description": "一位亲切运动的青年男性学生声音，日语。",
+        "language": "日语",
+        "gender": "男"
+      },
+      {
+        "id": "Japanese_InnocentBoy",
+        "name": "Innocent Boy",
+        "description": "一位亲切天真的青年男性声音，日语。",
+        "language": "日语",
+        "gender": "男"
+      },
+      {
+        "id": "Japanese_GracefulMaiden",
+        "name": "Graceful Maiden",
+        "description": "一位甜美优雅的青年少女声音，日语。",
+        "language": "日语",
+        "gender": "男"
+      },
+      {
+        "id": "Dutch_kindhearted_girl",
+        "name": "Kind-hearted girl",
+        "description": "一位温暖善良的少女荷兰语声音。",
+        "language": "中文",
+        "gender": "男"
+      },
+      {
+        "id": "Dutch_bossy_leader",
+        "name": "Bossy leader",
+        "description": "一位严肃专横的青年男性领导者声音，荷兰语。",
+        "language": "中文",
+        "gender": "男"
+      },
+      {
+        "id": "Vietnamese_kindhearted_girl",
+        "name": "Kind-hearted girl",
+        "description": "一位温暖善良的少女越南语声音。",
+        "language": "中文",
+        "gender": "男"
+      },
+      {
+        "id": "Portuguese_SentimentalLady",
+        "name": "Sentimental Lady",
+        "description": "一位优雅感性的青年女性声音，葡萄牙语。",
+        "language": "中文",
+        "gender": "男"
+      },
+      {
+        "id": "Portuguese_BossyLeader",
+        "name": "Bossy Leader",
+        "description": "一位冷静正式的青年男性专横领导者声音，葡萄牙语。",
+        "language": "中文",
+        "gender": "男"
+      },
+      {
+        "id": "Portuguese_Wiselady",
+        "name": "Wise lady",
+        "description": "一位柔和智慧的中年女士声音，葡萄牙语。",
+        "language": "中文",
+        "gender": "男"
+      },
+      {
+        "id": "Portuguese_Strong-WilledBoy",
+        "name": "Strong-willed Boy",
+        "description": "一位成熟坚定的青年男性声音，葡萄牙语。",
+        "language": "中文",
+        "gender": "男"
+      },
+      {
+        "id": "Portuguese_Deep-VoicedGentleman",
+        "name": "Deep-voiced Gentleman",
+        "description": "一位声音低沉的青年绅士声音，葡萄牙语。",
+        "language": "中文",
+        "gender": "男"
+      },
+      {
+        "id": "Portuguese_UpsetGirl",
+        "name": "Upset Girl",
+        "description": "一位悲伤的青年女性声音，传达不安情绪，葡萄牙语。",
+        "language": "中文",
+        "gender": "男"
+      },
+      {
+        "id": "Portuguese_PassionateWarrior",
+        "name": "Passionate Warrior",
+        "description": "一位热情充满激情的青年男性战士声音，葡萄牙语。",
+        "language": "中文",
+        "gender": "男"
+      },
+      {
+        "id": "Portuguese_AnimeCharacter",
+        "name": "Anime Character",
+        "description": "一位灵动的中年女性声音，适合动漫角色，葡萄牙语。",
+        "language": "中文",
+        "gender": "男"
+      },
+      {
+        "id": "Portuguese_ConfidentWoman",
+        "name": "Confident Woman",
+        "description": "一位清晰坚定的自信青年女性声音，葡萄牙语。",
+        "language": "中文",
+        "gender": "女"
+      },
+      {
+        "id": "Portuguese_AngryMan",
+        "name": "Angry Man",
+        "description": "一位严肃愤怒的青年男性声音，葡萄牙语。",
+        "language": "中文",
+        "gender": "男"
+      },
+      {
+        "id": "Portuguese_CaptivatingStoryteller",
+        "name": "Captivating Storyteller",
+        "description": "一位迷人的中年男性叙述者声音，非常适合讲故事，葡萄牙语。",
+        "language": "中文",
+        "gender": "男"
+      },
+      {
+        "id": "Portuguese_Godfather",
+        "name": "Godfather",
+        "description": "一位严肃的中年男性教父声音，充满权威感，葡萄牙语。",
+        "language": "中文",
+        "gender": "男"
+      },
+      {
+        "id": "Portuguese_ReservedYoungMan",
+        "name": "Reserved Young Man",
+        "description": "一位冷静内敛的青年男性声音，葡萄牙语。",
+        "language": "中文",
+        "gender": "男"
+      },
+      {
+        "id": "Portuguese_SmartYoungGirl",
+        "name": "Smart Young Girl",
+        "description": "一位聪慧的青年女孩声音，敏锐而清晰，葡萄牙语。",
+        "language": "中文",
+        "gender": "男"
+      },
+      {
+        "id": "Portuguese_Kind-heartedGirl",
+        "name": "Kind-hearted Girl",
+        "description": "一位平和善良的青年女性声音，葡萄牙语。",
+        "language": "中文",
+        "gender": "男"
+      },
+      {
+        "id": "Portuguese_Pompouslady",
+        "name": "Pompous lady",
+        "description": "一位夸张自负的青年女性声音，充满个性，葡萄牙语。",
+        "language": "中文",
+        "gender": "男"
+      },
+      {
+        "id": "Portuguese_Grinch",
+        "name": "Grinch",
+        "description": "一位狡黠的青年男性格林奇式声音，淘气而狡猾，葡萄牙语。",
+        "language": "中文",
+        "gender": "男"
+      },
+      {
+        "id": "Portuguese_Debator",
+        "name": "Debator",
+        "description": "一位强硬的中年男性辩手声音，强壮而果断，葡萄牙语。",
+        "language": "中文",
+        "gender": "男"
+      },
+      {
+        "id": "Portuguese_SweetGirl",
+        "name": "Sweet Girl",
+        "description": "一位甜美可爱的青年女性声音，葡萄牙语。",
+        "language": "中文",
+        "gender": "男"
+      },
+      {
+        "id": "Portuguese_AttractiveGirl",
+        "name": "Attractive Girl",
+        "description": "一位迷人有魅力的青年女性声音，葡萄牙语。",
+        "language": "中文",
+        "gender": "男"
+      },
+      {
+        "id": "Portuguese_ThoughtfulMan",
+        "name": "Thoughtful Man",
+        "description": "一位温柔体贴的青年男性声音，葡萄牙语。",
+        "language": "中文",
+        "gender": "男"
+      },
+      {
+        "id": "Portuguese_PlayfulGirl",
+        "name": "Playful Girl",
+        "description": "一位俏皮可爱的青年女孩声音，葡萄牙语。",
+        "language": "中文",
+        "gender": "男"
+      },
+      {
+        "id": "Portuguese_GorgeousLady",
+        "name": "Gorgeous Lady",
+        "description": "一位俏皮华丽的青年女性声音，散发自信，葡萄牙语。",
+        "language": "中文",
+        "gender": "男"
+      },
+      {
+        "id": "Portuguese_LovelyLady",
+        "name": "Lovely Lady",
+        "description": "一位迷人可爱的青年女性声音，葡萄牙语。",
+        "language": "中文",
+        "gender": "男"
+      },
+      {
+        "id": "Portuguese_SereneWoman",
+        "name": "Serene Woman",
+        "description": "一位宁静平和的青年女性声音，平静而沉着，葡萄牙语。",
+        "language": "中文",
+        "gender": "女"
+      },
+      {
+        "id": "Portuguese_SadTeen",
+        "name": "Sad Teen",
+        "description": "一位沮丧悲伤的青年男性声音，葡萄牙语。",
+        "language": "中文",
+        "gender": "男"
+      },
+      {
+        "id": "Portuguese_MaturePartner",
+        "name": "Mature Partner",
+        "description": "一位成熟的中年男性伴侣声音，可靠而温暖，葡萄牙语。",
+        "language": "中文",
+        "gender": "男"
+      },
+      {
+        "id": "Portuguese_Comedian",
+        "name": "Comedian",
+        "description": "一位幽默的青年男性喜剧演员声音，葡萄牙语。",
+        "language": "中文",
+        "gender": "男"
+      },
+      {
+        "id": "Portuguese_NaughtySchoolgirl",
+        "name": "Naughty Schoolgirl",
+        "description": "一位诱人顽皮的青年女学生声音，葡萄牙语。",
+        "language": "中文",
+        "gender": "男"
+      },
+      {
+        "id": "Portuguese_Narrator",
+        "name": "Narrator",
+        "description": "一位适合叙事的中年女性叙述者声音，葡萄牙语。",
+        "language": "中文",
+        "gender": "男"
+      },
+      {
+        "id": "Portuguese_ToughBoss",
+        "name": "Tough Boss",
+        "description": "一位成熟强硬的中年女性老板声音，葡萄牙语。",
+        "language": "中文",
+        "gender": "男"
+      },
+      {
+        "id": "Portuguese_Fussyhostess",
+        "name": "Fussy hostess",
+        "description": "一位语气强烈、挑剔的中年女主人声音，葡萄牙语。",
+        "language": "中文",
+        "gender": "男"
+      },
+      {
+        "id": "Portuguese_Dramatist",
+        "name": "Dramatist",
+        "description": "一位古怪的中年男性戏剧家声音，葡萄牙语。",
+        "language": "中文",
+        "gender": "男"
+      },
+      {
+        "id": "Portuguese_Steadymentor",
+        "name": "Steady Mentor",
+        "description": "一位傲慢但稳重的青年男性导师声音，葡萄牙语。",
+        "language": "中文",
+        "gender": "男"
+      },
+      {
+        "id": "Portuguese_Jovialman",
+        "name": "Jovial Man",
+        "description": "一位开朗快活的中年男性声音，葡萄牙语。",
+        "language": "中文",
+        "gender": "男"
+      },
+      {
+        "id": "Portuguese_CharmingQueen",
+        "name": "Charming Queen",
+        "description": "一位迷人有魅力的青年女王声音，葡萄牙语。",
+        "language": "中文",
+        "gender": "男"
+      },
+      {
+        "id": "Portuguese_SantaClaus",
+        "name": "Santa Claus",
+        "description": "一位欢乐的中年男性圣诞老人声音，充满节日气氛，葡萄牙语。",
+        "language": "中文",
+        "gender": "男"
+      },
+      {
+        "id": "Portuguese_Rudolph",
+        "name": "Rudolph",
+        "description": "一位天真的青年男性声音，鲁道夫风格，葡萄牙语。",
+        "language": "中文",
+        "gender": "男"
+      },
+      {
+        "id": "Portuguese_Arnold",
+        "name": "Arnold",
+        "description": "一位稳重的青年男性声音，阿诺德风格，强壮而坚定，葡萄牙语。",
+        "language": "中文",
+        "gender": "男"
+      },
+      {
+        "id": "Portuguese_CharmingSanta",
+        "name": "Charming Santa",
+        "description": "一位迷人有魅力的中年男性圣诞老人声音，葡萄牙语。",
+        "language": "中文",
+        "gender": "男"
+      },
+      {
+        "id": "Portuguese_CharmingLady",
+        "name": "Charming Lady",
+        "description": "一位迷人的青年女性声音，葡萄牙语。",
+        "language": "中文",
+        "gender": "男"
+      },
+      {
+        "id": "Portuguese_Ghost",
+        "name": "Ghost",
+        "description": "一位性感的青年男性鬼魂声音，神秘而诱人，葡萄牙语。",
+        "language": "中文",
+        "gender": "男"
+      },
+      {
+        "id": "Portuguese_HumorousElder",
+        "name": "Humorous Elder",
+        "description": "一位滑稽幽默的中年男性长者声音，葡萄牙语。",
+        "language": "中文",
+        "gender": "男"
+      },
+      {
+        "id": "Portuguese_CalmLeader",
+        "name": "Calm Leader",
+        "description": "一位沉稳冷静的中年男性领导者声音，葡萄牙语。",
+        "language": "中文",
+        "gender": "男"
+      },
+      {
+        "id": "Portuguese_GentleTeacher",
+        "name": "Gentle Teacher",
+        "description": "一位温和温柔的青年男性教师声音，葡萄牙语。",
+        "language": "中文",
+        "gender": "男"
+      },
+      {
+        "id": "Portuguese_EnergeticBoy",
+        "name": "Energetic Boy",
+        "description": "一位活泼充满活力的青年男性声音，葡萄牙语。",
+        "language": "中文",
+        "gender": "男"
+      },
+      {
+        "id": "Portuguese_ReliableMan",
+        "name": "Reliable Man",
+        "description": "一位稳重可靠的青年男性声音，葡萄牙语。",
+        "language": "中文",
+        "gender": "男"
+      },
+      {
+        "id": "Portuguese_SereneElder",
+        "name": "Serene Elder",
+        "description": "一位沉静深思的中年男性长者声音，葡萄牙语。",
+        "language": "中文",
+        "gender": "男"
+      },
+      {
+        "id": "Portuguese_GrimReaper",
+        "name": "Grim Reaper",
+        "description": "一位阴森的青年男性死神声音，黑暗而不祥，葡萄牙语。",
+        "language": "中文",
+        "gender": "男"
+      },
+      {
+        "id": "Portuguese_AssertiveQueen",
+        "name": "Assertive Queen",
+        "description": "一位坚定果断的青年女王声音，葡萄牙语。",
+        "language": "中文",
+        "gender": "男"
+      },
+      {
+        "id": "Portuguese_WhimsicalGirl",
+        "name": "Whimsical Girl",
+        "description": "一位可爱奇特的青年女性声音，葡萄牙语。",
+        "language": "中文",
+        "gender": "男"
+      },
+      {
+        "id": "Portuguese_StressedLady",
+        "name": "Stressed Lady",
+        "description": "一位不安、紧张的中年女士声音，葡萄牙语。",
+        "language": "中文",
+        "gender": "男"
+      },
+      {
+        "id": "Portuguese_FriendlyNeighbor",
+        "name": "Friendly Neighbor",
+        "description": "一位充满活力的友好青年女性邻居声音，葡萄牙语。",
+        "language": "中文",
+        "gender": "男"
+      },
+      {
+        "id": "Portuguese_CaringGirlfriend",
+        "name": "Caring Girlfriend",
+        "description": "一位梦幻般的中年女性关怀女友声音，葡萄牙语。",
+        "language": "中文",
+        "gender": "男"
+      },
+      {
+        "id": "Portuguese_PowerfulSoldier",
+        "name": "Powerful Soldier",
+        "description": "一位年轻有力的青年男性强大士兵声音，葡萄牙语。",
+        "language": "中文",
+        "gender": "男"
+      },
+      {
+        "id": "Portuguese_FascinatingBoy",
+        "name": "Fascinating Boy",
+        "description": "一位亲切迷人的青年男性声音，葡萄牙语。",
+        "language": "中文",
+        "gender": "男"
+      },
+      {
+        "id": "Portuguese_RomanticHusband",
+        "name": "Romantic Husband",
+        "description": "一位深情的中年男性浪漫丈夫声音，葡萄牙语。",
+        "language": "中文",
+        "gender": "男"
+      },
+      {
+        "id": "Portuguese_StrictBoss",
+        "name": "Strict Boss",
+        "description": "一位机械般严格的青年女性老板声音，葡萄牙语。",
+        "language": "中文",
+        "gender": "男"
+      },
+      {
+        "id": "Portuguese_InspiringLady",
+        "name": "Inspiring Lady",
+        "description": "一位威严、鼓舞人心的青年女性声音，葡萄牙语。",
+        "language": "中文",
+        "gender": "男"
+      },
+      {
+        "id": "Portuguese_PlayfulSpirit",
+        "name": "Playful Spirit",
+        "description": "一位灵动俏皮的青年女性精灵声音，葡萄牙语。",
+        "language": "中文",
+        "gender": "男"
+      },
+      {
+        "id": "Portuguese_ElegantGirl",
+        "name": "Elegant Girl",
+        "description": "一位富有戏剧性、优雅的青年女性声音，葡萄牙语。",
+        "language": "中文",
+        "gender": "男"
+      },
+      {
+        "id": "Portuguese_CompellingGirl",
+        "name": "Compelling Girl",
+        "description": "一位富有说服力、引人注目的青年女性声音，葡萄牙语。",
+        "language": "中文",
+        "gender": "男"
+      },
+      {
+        "id": "Portuguese_PowerfulVeteran",
+        "name": "Powerful Veteran",
+        "description": "一位强劲有力的中年男性退伍军人声音，葡萄牙语。",
+        "language": "中文",
+        "gender": "男"
+      },
+      {
+        "id": "Portuguese_SensibleManager",
+        "name": "Sensible Manager",
+        "description": "一位富有魅力、理智的中年男性经理声音，葡萄牙语。",
+        "language": "中文",
+        "gender": "男"
+      },
+      {
+        "id": "Portuguese_ThoughtfulLady",
+        "name": "Thoughtful Lady",
+        "description": "一位忧虑体贴的中年女士声音，葡萄牙语。",
+        "language": "中文",
+        "gender": "男"
+      },
+      {
+        "id": "Portuguese_TheatricalActor",
+        "name": "Theatrical Actor",
+        "description": "一位生动的中年男性戏剧演员声音，葡萄牙语。",
+        "language": "中文",
+        "gender": "男"
+      },
+      {
+        "id": "Portuguese_FragileBoy",
+        "name": "Fragile Boy",
+        "description": "一位温柔脆弱的青年男性声音，葡萄牙语。",
+        "language": "中文",
+        "gender": "男"
+      },
+      {
+        "id": "Portuguese_ChattyGirl",
+        "name": "Chatty Girl",
+        "description": "一位健谈的青年女性声音，葡萄牙语。",
+        "language": "中文",
+        "gender": "男"
+      },
+      {
+        "id": "Portuguese_Conscientiousinstructor",
+        "name": "Conscientious Instructor",
+        "description": "一位年轻尽责的青年女性导师声音，葡萄牙语。",
+        "language": "中文",
+        "gender": "男"
+      },
+      {
+        "id": "Portuguese_RationalMan",
+        "name": "Rational Man",
+        "description": "一位深思熟虑、理性的青年男性声音，葡萄牙语。",
+        "language": "中文",
+        "gender": "男"
+      },
+      {
+        "id": "Portuguese_WiseScholar",
+        "name": "Wise Scholar",
+        "description": "一位亲切健谈的青年男性智慧学者声音，葡萄牙语。",
+        "language": "中文",
+        "gender": "男"
+      },
+      {
+        "id": "Portuguese_FrankLady",
+        "name": "Frank Lady",
+        "description": "一位激动坦率的中年女士声音，葡萄牙语。",
+        "language": "中文",
+        "gender": "男"
+      },
+      {
+        "id": "Portuguese_DeterminedManager",
+        "name": "Determined Manager",
+        "description": "一位自信果决的中年女性经理声音，葡萄牙语。",
+        "language": "中文",
+        "gender": "男"
+      },
+      {
+        "id": "French_Male_Speech_New",
+        "name": "Level-Headed Man",
+        "description": "一位理智的青年男性法语声音。",
+        "language": "法语",
+        "gender": "男"
+      },
+      {
+        "id": "Indonesian_SweetGirl",
+        "name": "Sweet Girl",
+        "description": "一位甜美可爱的青年女性印尼语声音。",
+        "language": "中文",
+        "gender": "男"
+      },
+      {
+        "id": "Indonesian_ReservedYoungMan",
+        "name": "Reserved Young Man",
+        "description": "一位冷峻的青年男性印尼语声音。",
+        "language": "中文",
+        "gender": "男"
+      },
+      {
+        "id": "Indonesian_CharmingGirl",
+        "name": "Charming Girl",
+        "description": "一位迷人的青年女性印尼语声音。",
+        "language": "中文",
+        "gender": "男"
+      },
+      {
+        "id": "Indonesian_CalmWoman",
+        "name": "Calm Woman",
+        "description": "一位宁静的青年女性印尼语声音。",
+        "language": "中文",
+        "gender": "女"
+      },
+      {
+        "id": "Indonesian_ConfidentWoman",
+        "name": "Confident Woman",
+        "description": "一位自信的青年女性印尼语声音。",
+        "language": "中文",
+        "gender": "女"
+      },
+      {
+        "id": "Indonesian_CaringMan",
+        "name": "Caring Man",
+        "description": "一位充满关怀的青年男性印尼语声音。",
+        "language": "中文",
+        "gender": "男"
+      },
+      {
+        "id": "Indonesian_BossyLeader",
+        "name": "Bossy Leader",
+        "description": "一位权威的青年男性领导者声音，印尼语。",
+        "language": "中文",
+        "gender": "男"
+      },
+      {
+        "id": "Indonesian_DeterminedBoy",
+        "name": "Determined Boy",
+        "description": "一位坚定的青年男性印尼语声音。",
+        "language": "中文",
+        "gender": "男"
+      },
+      {
+        "id": "Indonesian_GentleGirl",
+        "name": "Gentle Girl",
+        "description": "一位柔和的青年女性印尼语声音。",
+        "language": "中文",
+        "gender": "男"
+      },
+      {
+        "id": "Russian_HandsomeChildhoodFriend",
+        "name": "Handsome Childhood Friend",
+        "description": "一位为英俊青梅竹马角色设计的迷人少女声音，俄语。",
+        "language": "中文",
+        "gender": "男"
+      },
+      {
+        "id": "Russian_BrightHeroine",
+        "name": "Bright Queen",
+        "description": "一位傲慢明艳的青年女王声音，俄语。",
+        "language": "中文",
+        "gender": "男"
+      },
+      {
+        "id": "Russian_AmbitiousWoman",
+        "name": "Ambitious Woman",
+        "description": "一位强势、雄心勃勃的青年女性声音，俄语。",
+        "language": "中文",
+        "gender": "女"
+      },
+      {
+        "id": "Russian_ReliableMan",
+        "name": "Reliable Man",
+        "description": "一位稳重可靠的中年男性声音，俄语。",
+        "language": "中文",
+        "gender": "男"
+      },
+      {
+        "id": "Russian_CrazyQueen",
+        "name": "Crazy Girl",
+        "description": "一位充满活力的青年“疯狂女孩”声音，狂野而不可预测，俄语。",
+        "language": "中文",
+        "gender": "男"
+      },
+      {
+        "id": "Russian_PessimisticGirl",
+        "name": "Pessimistic Girl",
+        "description": "一位富有同情心的青年“悲观女孩”声音，俄语。",
+        "language": "中文",
+        "gender": "男"
+      },
+      {
+        "id": "Russian_AttractiveGuy",
+        "name": "Attractive Guy",
+        "description": "一位富有磁性、迷人的青年男性声音，俄语。",
+        "language": "中文",
+        "gender": "男"
+      },
+      {
+        "id": "Russian_Bad-temperedBoy",
+        "name": "Bad-tempered Boy",
+        "description": "一位脾气暴躁的青年男性声音，俄语。",
+        "language": "中文",
+        "gender": "男"
+      },
+      {
+        "id": "Ukrainian_CalmWoman",
+        "name": "Calm Woman",
+        "description": "一位宁静的青年女性乌克兰语声音，非常适合有声读物。",
+        "language": "中文",
+        "gender": "女"
+      },
+      {
+        "id": "Ukrainian_WiseScholar",
+        "name": "Wise Scholar",
+        "description": "一位亲切健谈的青年男性智慧学者声音，乌克兰语。",
+        "language": "中文",
+        "gender": "男"
+      }
+    ]
+  }
 }

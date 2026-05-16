@@ -118,8 +118,7 @@ export function VoicePicker({ open, onClose, providers, currentVoice, onSelect }
                     )}
                   </div>
                   <div className="flex items-center gap-1.5 text-[9px] text-gray-400 mt-0.5">
-                    <span className="font-mono truncate">{v.id}</span>
-                    {v.description && <span>· {v.description}</span>}
+                    {v.description && <span className="truncate">{v.description}</span>}
                   </div>
                 </div>
                 <div className="flex items-center gap-1 shrink-0">
