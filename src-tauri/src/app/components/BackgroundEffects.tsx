@@ -1,5 +1,5 @@
 import { useEffect, useRef } from 'react';
-import { useTheme } from '../context/ThemeContext';
+import { hexToHsl, hexToRgb, hslToHex, useTheme } from '../context/ThemeContext';
 import { useConfig } from '../context/ConfigContext';
 import { BackgroundBlobs } from './BackgroundBlobs';
 
@@ -39,17 +39,19 @@ function useCanvas(
 
 // ─── 底层渐变（慢速色相循环，不受主题色影响）────────────────────────────────
 export function BaseGradientEffect() {
-  const { theme } = useTheme();
+  const { theme, primaryColor, accentColor } = useTheme();
   const t = useRef(0);
 
   const ref = useCanvas((ctx, w, h, dt) => {
     const isDark = theme === 'dark';
     t.current += dt * 0.035;
+    const primaryHsl = hexToHsl(primaryColor);
+    const accentHsl = hexToHsl(accentColor);
 
     // 三个慢速漂移的径向光源，色相各自独立循环
-    const h1 = (t.current * 18)        % 360;
-    const h2 = (t.current * 12 + 120)  % 360;
-    const h3 = (t.current * 9  + 240)  % 360;
+    const h1 = (primaryHsl.h + t.current * 18) % 360;
+    const h2 = (accentHsl.h + t.current * 12) % 360;
+    const h3 = (primaryHsl.h + 150 + t.current * 9) % 360;
 
     const x1 = w * (0.18 + 0.18 * Math.sin(t.current * 0.55));
     const y1 = h * (0.22 + 0.18 * Math.cos(t.current * 0.40));
@@ -85,9 +87,54 @@ export function BaseGradientEffect() {
   return <canvas ref={ref} className="fixed inset-0 w-full h-full" style={{ zIndex: -1 }} />;
 }
 
+function drawMountainRange(
+  ctx: CanvasRenderingContext2D,
+  w: number,
+  h: number,
+  t: number,
+  options: { baseY: number; amp: number; hue: number; lightness: number; alpha: number; speed: number; detail?: number },
+) {
+  const { baseY, amp, hue, lightness, alpha, speed, detail = 4 } = options;
+  ctx.beginPath();
+  ctx.moveTo(0, h);
+  for (let x = 0; x <= w; x += 10) {
+    const nx = x / w;
+    const y = h * baseY
+      + Math.sin(nx * Math.PI * detail + t * speed * 2.8) * amp
+      + Math.cos(nx * Math.PI * (detail + 2.5) + t * speed * 1.6) * amp * 0.42
+      + Math.sin(nx * Math.PI * (detail * 1.9) - t * speed * 1.2) * amp * 0.18;
+    ctx.lineTo(x, y);
+  }
+  ctx.lineTo(w, h);
+  ctx.closePath();
+  ctx.fillStyle = `hsla(${hue},24%,${lightness}%,${alpha})`;
+  ctx.fill();
+}
+
+function drawBambooLeaf(
+  ctx: CanvasRenderingContext2D,
+  x: number,
+  y: number,
+  length: number,
+  angle: number,
+  color: string,
+) {
+  ctx.save();
+  ctx.translate(x, y);
+  ctx.rotate(angle);
+  ctx.beginPath();
+  ctx.moveTo(0, 0);
+  ctx.quadraticCurveTo(length * 0.18, -length * 0.18, length, 0);
+  ctx.quadraticCurveTo(length * 0.18, length * 0.18, 0, 0);
+  ctx.closePath();
+  ctx.fillStyle = color;
+  ctx.fill();
+  ctx.restore();
+}
+
 // ─── 1. 粒子星河 ── 紫蓝星空 ────────────────────────────────────────────────
 export function ParticleGalaxyEffect() {
-  const { theme } = useTheme();
+  const { theme, primaryColor } = useTheme();
   const state = useRef({
     particles: [] as { x: number; y: number; vx: number; vy: number; size: number; alpha: number; trail: { x: number; y: number }[] }[],
     mouse: { x: -9999, y: -9999 },
@@ -95,7 +142,8 @@ export function ParticleGalaxyEffect() {
 
   const ref = useCanvas(
     (ctx, w, h) => {
-      const [r, g, b] = [110, 100, 255] as const; // 紫蓝
+      const color = hexToRgb(primaryColor) || { r: 110, g: 100, b: 255 };
+      const { r, g, b } = color;
       const isDark = theme === 'dark';
       const s = state.current;
 
@@ -149,14 +197,15 @@ export function ParticleGalaxyEffect() {
 
 // ─── 2. 流体波纹 ── 青蓝水波 ────────────────────────────────────────────────
 export function FluidRippleEffect() {
-  const { theme } = useTheme();
+  const { theme, primaryColor } = useTheme();
   const ripples = useRef<{ x: number; y: number; r: number; alpha: number }[]>([]);
   const t = useRef(0);
   const lastMoveRipple = useRef(0);
 
   const ref = useCanvas(
     (ctx, w, h, dt) => {
-      const [r, g, b] = [0, 195, 228] as const; // 青蓝
+      const color = hexToRgb(primaryColor) || { r: 0, g: 195, b: 228 };
+      const { r, g, b } = color;
       const isDark = theme === 'dark';
       t.current += dt;
 
@@ -209,28 +258,28 @@ export function FluidRippleEffect() {
 
 // ─── 3. 极光光带 ── 绿紫真实极光色 ─────────────────────────────────────────
 export function AuroraBandsEffect() {
-  const { theme } = useTheme();
+  const { theme, primaryColor, accentColor } = useTheme();
   const flashes = useRef<{ x: number; t: number; alpha: number }[]>([]);
   const mouse = useRef({ x: -9999, y: -9999 });
   const time = useRef(0);
-
-  // 真实极光色相：绿 → 青 → 蓝紫 → 品红
-  const BANDS = [
-    { hue: 145, yRatio: .22, amp: .12, freq: .80, alpha: .58 },
-    { hue: 175, yRatio: .37, amp: .10, freq: 1.10, alpha: .42 },
-    { hue: 265, yRatio: .52, amp: .08, freq: 1.40, alpha: .36 },
-    { hue: 308, yRatio: .65, amp: .07, freq: .90, alpha: .26 },
-  ];
 
   const ref = useCanvas(
     (ctx, w, h, dt) => {
       const isDark = theme === 'dark';
       time.current += dt * .4;
+      const primaryHsl = hexToHsl(primaryColor);
+      const accentHsl = hexToHsl(accentColor);
+      const bands = [
+        { hue: primaryHsl.h, yRatio: .22, amp: .12, freq: .80, alpha: .58 },
+        { hue: (primaryHsl.h + 28) % 360, yRatio: .37, amp: .10, freq: 1.10, alpha: .42 },
+        { hue: accentHsl.h, yRatio: .52, amp: .08, freq: 1.40, alpha: .36 },
+        { hue: (accentHsl.h + 32) % 360, yRatio: .65, amp: .07, freq: .90, alpha: .26 },
+      ];
 
       ctx.fillStyle = isDark ? 'rgba(6,6,15,.88)' : 'rgba(240,241,252,.88)';
       ctx.fillRect(0, 0, w, h);
 
-      for (const band of BANDS) {
+      for (const band of bands) {
         const hShift = band.hue + Math.sin(time.current * .3) * 12; // 轻微色相呼吸
         const points: [number, number][] = [];
         for (let x = 0; x <= w; x += 6) {
@@ -282,14 +331,15 @@ export function AuroraBandsEffect() {
 
 // ─── 4. 樱花飘落 ── 粉玫瑰 ─────────────────────────────────────────────────
 export function SakuraFallEffect() {
-  const { theme } = useTheme();
+  const { theme, primaryColor } = useTheme();
   const petals = useRef<{ x: number; y: number; vx: number; vy: number; rot: number; vr: number; size: number; alpha: number; burst: boolean }[]>([]);
   const mouse = useRef({ x: -9999, y: -9999 });
   const initialized = useRef(false);
 
   const ref = useCanvas(
     (ctx, w, h, dt) => {
-      const [r, g, b] = [255, 132, 165] as const; // 樱花粉
+      const rgb = hexToRgb(hslToHex(hexToHsl(primaryColor).h, 82, 72)) || { r: 255, g: 132, b: 165 };
+      const { r, g, b } = rgb;
       const isDark = theme === 'dark';
       const ps = petals.current;
 
@@ -322,12 +372,39 @@ export function SakuraFallEffect() {
         if (p.y > h + 30 || p.alpha < .02) { ps.splice(i, 1); continue; }
 
         ctx.save(); ctx.translate(p.x, p.y); ctx.rotate(p.rot);
+        const width = p.size;
+        const height = p.size * 1.25;
+        const edgeR = Math.min(255, Math.round(r + 22));
+        const edgeG = Math.min(255, Math.round(g + 10));
+        const edgeB = Math.min(255, Math.round(b + 18));
+
         ctx.beginPath();
-        ctx.ellipse(0, 0, p.size, p.size * .55, 0, 0, Math.PI * 2);
-        const grd = ctx.createRadialGradient(0, 0, 0, 0, 0, p.size);
-        grd.addColorStop(0, `rgba(${r},${g},${b},${p.alpha})`);
-        grd.addColorStop(1, `rgba(255,210,220,${p.alpha * .3})`);
-        ctx.fillStyle = grd; ctx.fill();
+        ctx.moveTo(0, -height * 0.55);
+        ctx.bezierCurveTo(width * 0.6, -height * 0.3, width * 0.62, height * 0.18, 0, height * 0.52);
+        ctx.bezierCurveTo(-width * 0.62, height * 0.18, -width * 0.6, -height * 0.3, 0, -height * 0.55);
+        ctx.closePath();
+
+        const grd = ctx.createLinearGradient(0, -height * 0.55, 0, height * 0.52);
+        grd.addColorStop(0, `rgba(255,248,250,${p.alpha * 0.96})`);
+        grd.addColorStop(0.35, `rgba(${edgeR},${edgeG},${edgeB},${p.alpha * 0.92})`);
+        grd.addColorStop(1, `rgba(${r},${g},${b},${p.alpha * 0.72})`);
+        ctx.fillStyle = grd;
+        ctx.fill();
+
+        ctx.beginPath();
+        ctx.moveTo(0, -height * 0.38);
+        ctx.quadraticCurveTo(width * 0.08, -height * 0.02, 0, height * 0.3);
+        ctx.quadraticCurveTo(-width * 0.08, -height * 0.02, 0, -height * 0.38);
+        ctx.closePath();
+        ctx.fillStyle = `rgba(255,255,255,${p.alpha * 0.24})`;
+        ctx.fill();
+
+        ctx.beginPath();
+        ctx.moveTo(-width * 0.1, height * 0.48);
+        ctx.quadraticCurveTo(0, height * 0.34, width * 0.1, height * 0.48);
+        ctx.lineWidth = Math.max(0.8, width * 0.06);
+        ctx.strokeStyle = `rgba(${Math.max(120, r - 55)},${Math.max(90, g - 45)},${Math.max(100, b - 40)},${p.alpha * 0.45})`;
+        ctx.stroke();
         ctx.restore();
       }
 
@@ -352,7 +429,7 @@ export function SakuraFallEffect() {
 
 // ─── 7. 星座连线 ── 星光银蓝 ────────────────────────────────────────────────
 export function ConstellationEffect() {
-  const { theme } = useTheme();
+  const { theme, accentColor } = useTheme();
   const stars = useRef<{ x: number; y: number; size: number; twinkle: number; tp: number }[]>([]);
   const rings = useRef<{ x: number; y: number; r: number; alpha: number }[]>([]);
   const mouse = useRef({ x: -9999, y: -9999 });
@@ -361,7 +438,8 @@ export function ConstellationEffect() {
 
   const ref = useCanvas(
     (ctx, w, h, dt) => {
-      const [r, g, b] = [185, 205, 255] as const; // 星光银蓝
+      const color = hexToRgb(accentColor) || { r: 185, g: 205, b: 255 };
+      const { r, g, b } = color;
       const isDark = theme === 'dark';
 
       if (!initialized.current) {
@@ -442,20 +520,21 @@ export function ConstellationEffect() {
 
 // ─── 8. 山水层峦 ────────────────────────────────────────────────────────────
 export function MountainParallaxEffect() {
-  const { theme } = useTheme();
+  const { theme, primaryColor } = useTheme();
   const t = useRef(0);
 
   const ref = useCanvas((ctx, w, h, dt) => {
     const isDark = theme === 'dark';
     t.current += dt * 0.09;
+    const primaryHsl = hexToHsl(primaryColor);
 
     ctx.fillStyle = isDark ? 'rgba(6,6,15,.74)' : 'rgba(240,241,252,.72)';
     ctx.fillRect(0, 0, w, h);
 
     const layers = [
-      { baseY: 0.78, amp: 18, hue: isDark ? 210 : 215, alpha: isDark ? 0.22 : 0.14, speed: 0.4 },
-      { baseY: 0.70, amp: 28, hue: isDark ? 205 : 210, alpha: isDark ? 0.18 : 0.11, speed: 0.28 },
-      { baseY: 0.62, amp: 34, hue: isDark ? 198 : 204, alpha: isDark ? 0.14 : 0.09, speed: 0.18 },
+      { baseY: 0.78, amp: 18, hue: primaryHsl.h, alpha: isDark ? 0.22 : 0.14, speed: 0.4 },
+      { baseY: 0.70, amp: 28, hue: (primaryHsl.h + 12) % 360, alpha: isDark ? 0.18 : 0.11, speed: 0.28 },
+      { baseY: 0.62, amp: 34, hue: (primaryHsl.h + 24) % 360, alpha: isDark ? 0.14 : 0.09, speed: 0.18 },
     ];
 
     for (const layer of layers) {
@@ -480,7 +559,7 @@ export function MountainParallaxEffect() {
 
 // ─── 10. 金箔微光 ───────────────────────────────────────────────────────────
 export function GoldFlakesEffect() {
-  const { theme } = useTheme();
+  const { theme, primaryColor } = useTheme();
   const flakes = useRef(
     Array.from({ length: 80 }, () => ({
       x: Math.random() * window.innerWidth,
@@ -494,6 +573,7 @@ export function GoldFlakesEffect() {
 
   const ref = useCanvas((ctx, w, h, dt) => {
     const isDark = theme === 'dark';
+    const flakeColor = hexToRgb(hslToHex(hexToHsl(primaryColor).h, 72, 62)) || { r: 255, g: 214, b: 120 };
     ctx.fillStyle = isDark ? 'rgba(12,10,15,.82)' : 'rgba(245,242,236,.80)';
     ctx.fillRect(0, 0, w, h);
 
@@ -508,12 +588,1215 @@ export function GoldFlakesEffect() {
       ctx.beginPath();
       ctx.arc(flake.x, flake.y, flake.size, 0, Math.PI * 2);
       ctx.fillStyle = isDark
-        ? `rgba(255,214,120,${alpha})`
-        : `rgba(198,148,40,${alpha * 0.78})`;
+        ? `rgba(${flakeColor.r},${flakeColor.g},${flakeColor.b},${alpha})`
+        : `rgba(${flakeColor.r},${flakeColor.g},${flakeColor.b},${alpha * 0.78})`;
       ctx.fill();
     }
   });
 
+  return <canvas ref={ref} className="fixed inset-0 w-full h-full z-0" />;
+}
+
+// ─── 11. 墨韵晕染 ──────────────────────────────────────────────────────────
+export function InkWashBloomEffect() {
+  const { theme, primaryColor, accentColor } = useTheme();
+  const pools = useRef<{ x: number; y: number; r: number; dx: number; dy: number; alpha: number; pulse: number }[]>([]);
+  const blooms = useRef<{ x: number; y: number; r: number; alpha: number }[]>([]);
+  const mouse = useRef({ x: -9999, y: -9999 });
+  const t = useRef(0);
+
+  const ref = useCanvas(
+    (ctx, w, h, dt) => {
+      const isDark = theme === 'dark';
+      const ink = hexToRgb(primaryColor) || { r: 92, g: 110, b: 130 };
+      const accent = hexToRgb(accentColor) || { r: 194, g: 204, b: 215 };
+      t.current += dt;
+
+      if (pools.current.length === 0) {
+        for (let i = 0; i < 9; i++) {
+          pools.current.push({
+            x: Math.random() * w,
+            y: Math.random() * h,
+            r: 90 + Math.random() * 150,
+            dx: (Math.random() - 0.5) * 10,
+            dy: (Math.random() - 0.5) * 6,
+            alpha: 0.08 + Math.random() * 0.08,
+            pulse: Math.random() * Math.PI * 2,
+          });
+        }
+      }
+
+      ctx.fillStyle = isDark ? 'rgba(10,12,16,.82)' : 'rgba(244,241,234,.82)';
+      ctx.fillRect(0, 0, w, h);
+
+      for (let i = 0; i < 3; i++) {
+        const bandY = h * (0.22 + i * 0.2) + Math.sin(t.current * (0.22 + i * 0.08)) * 18;
+        const band = ctx.createLinearGradient(0, bandY - 80, 0, bandY + 80);
+        band.addColorStop(0, `rgba(${accent.r},${accent.g},${accent.b},0)`);
+        band.addColorStop(0.45, `rgba(${accent.r},${accent.g},${accent.b},${isDark ? 0.03 : 0.045})`);
+        band.addColorStop(1, `rgba(${accent.r},${accent.g},${accent.b},0)`);
+        ctx.fillStyle = band;
+        ctx.fillRect(0, bandY - 80, w, 160);
+      }
+
+      for (const pool of pools.current) {
+        pool.x += pool.dx * dt;
+        pool.y += pool.dy * dt;
+        pool.pulse += dt * 0.4;
+        if (pool.x < -pool.r) pool.x = w + pool.r;
+        if (pool.x > w + pool.r) pool.x = -pool.r;
+        if (pool.y < -pool.r) pool.y = h + pool.r;
+        if (pool.y > h + pool.r) pool.y = -pool.r;
+
+        const radius = pool.r * (0.9 + Math.sin(pool.pulse) * 0.08);
+        const grad = ctx.createRadialGradient(pool.x, pool.y, radius * 0.08, pool.x, pool.y, radius);
+        grad.addColorStop(0, `rgba(${ink.r},${ink.g},${ink.b},${pool.alpha * 1.6})`);
+        grad.addColorStop(0.55, `rgba(${ink.r},${ink.g},${ink.b},${pool.alpha})`);
+        grad.addColorStop(0.82, `rgba(${accent.r},${accent.g},${accent.b},${pool.alpha * 0.45})`);
+        grad.addColorStop(1, 'rgba(0,0,0,0)');
+        ctx.fillStyle = grad;
+        ctx.beginPath();
+        ctx.ellipse(pool.x, pool.y, radius, radius * (0.78 + Math.sin(pool.pulse * 1.5) * 0.06), Math.sin(pool.pulse) * 0.6, 0, Math.PI * 2);
+        ctx.fill();
+      }
+
+      if (mouse.current.x > 0) {
+        const cursorWash = ctx.createRadialGradient(mouse.current.x, mouse.current.y, 0, mouse.current.x, mouse.current.y, 120);
+        cursorWash.addColorStop(0, `rgba(${accent.r},${accent.g},${accent.b},${isDark ? 0.10 : 0.08})`);
+        cursorWash.addColorStop(1, 'rgba(0,0,0,0)');
+        ctx.fillStyle = cursorWash;
+        ctx.fillRect(0, 0, w, h);
+      }
+
+      for (let i = blooms.current.length - 1; i >= 0; i--) {
+        const bloom = blooms.current[i];
+        bloom.r += 90 * dt;
+        bloom.alpha -= 0.35 * dt;
+        if (bloom.alpha <= 0) {
+          blooms.current.splice(i, 1);
+          continue;
+        }
+        const bloomGrad = ctx.createRadialGradient(bloom.x, bloom.y, bloom.r * 0.12, bloom.x, bloom.y, bloom.r);
+        bloomGrad.addColorStop(0, `rgba(${ink.r},${ink.g},${ink.b},${bloom.alpha * 0.75})`);
+        bloomGrad.addColorStop(0.72, `rgba(${accent.r},${accent.g},${accent.b},${bloom.alpha * 0.18})`);
+        bloomGrad.addColorStop(1, 'rgba(0,0,0,0)');
+        ctx.fillStyle = bloomGrad;
+        ctx.beginPath();
+        ctx.arc(bloom.x, bloom.y, bloom.r, 0, Math.PI * 2);
+        ctx.fill();
+      }
+    },
+    (canvas) => {
+      const onMove = (e: MouseEvent) => {
+        mouse.current = { x: e.clientX, y: e.clientY };
+      };
+      const onClick = (e: MouseEvent) => {
+        blooms.current.push({ x: e.clientX, y: e.clientY, r: 18, alpha: 0.8 });
+      };
+      window.addEventListener('mousemove', onMove);
+      canvas.addEventListener('click', onClick);
+      return () => {
+        window.removeEventListener('mousemove', onMove);
+        canvas.removeEventListener('click', onClick);
+      };
+    },
+  );
+
+  return <canvas ref={ref} className="fixed inset-0 w-full h-full z-0" />;
+}
+
+// ─── 12. 飞白墨痕 ──────────────────────────────────────────────────────────
+export function InkBrushTraceEffect() {
+  const { theme, primaryColor, accentColor } = useTheme();
+  const strokes = useRef<{ x: number; y: number; vx: number; vy: number; len: number; width: number; alpha: number; wobble: number; tilt: number }[]>([]);
+  const splats = useRef<{ x: number; y: number; r: number; alpha: number; grow: number }[]>([]);
+  const lastTrace = useRef(0);
+
+  const ref = useCanvas(
+    (ctx, w, h, dt) => {
+      const isDark = theme === 'dark';
+      const ink = hexToRgb(primaryColor) || { r: 74, g: 86, b: 99 };
+      const accent = hexToRgb(accentColor) || { r: 180, g: 102, b: 88 };
+
+      if (strokes.current.length === 0) {
+        for (let i = 0; i < 14; i++) {
+          strokes.current.push({
+            x: Math.random() * w,
+            y: Math.random() * h,
+            vx: 18 + Math.random() * 32,
+            vy: (Math.random() - 0.5) * 10,
+            len: 90 + Math.random() * 120,
+            width: 10 + Math.random() * 18,
+            alpha: 0.08 + Math.random() * 0.08,
+            wobble: Math.random() * Math.PI * 2,
+            tilt: (Math.random() - 0.5) * 0.35,
+          });
+        }
+      }
+
+      ctx.fillStyle = isDark ? 'rgba(12,10,14,.84)' : 'rgba(243,239,232,.84)';
+      ctx.fillRect(0, 0, w, h);
+
+      for (const stroke of strokes.current) {
+        stroke.x += stroke.vx * dt;
+        stroke.y += stroke.vy * dt;
+        stroke.wobble += dt * 0.8;
+        if (stroke.x - stroke.len > w + 60) {
+          stroke.x = -stroke.len;
+          stroke.y = Math.random() * h;
+        }
+
+        const yDrift = Math.sin(stroke.wobble) * 18;
+        const endX = stroke.x + stroke.len;
+        const endY = stroke.y + yDrift;
+        const ctrlX = stroke.x + stroke.len * 0.52;
+        const ctrlY = stroke.y - 28 + Math.cos(stroke.wobble * 1.3) * 22;
+
+        ctx.save();
+        ctx.lineCap = 'round';
+        ctx.lineJoin = 'round';
+        ctx.strokeStyle = `rgba(${ink.r},${ink.g},${ink.b},${stroke.alpha})`;
+        ctx.lineWidth = stroke.width;
+        ctx.beginPath();
+        ctx.moveTo(stroke.x, stroke.y);
+        ctx.quadraticCurveTo(ctrlX, ctrlY, endX, endY);
+        ctx.stroke();
+
+        for (let i = -1; i <= 1; i++) {
+          ctx.strokeStyle = `rgba(${accent.r},${accent.g},${accent.b},${stroke.alpha * 0.18})`;
+          ctx.lineWidth = Math.max(1.2, stroke.width * 0.12);
+          ctx.beginPath();
+          ctx.moveTo(stroke.x + i * 2.5, stroke.y - i * 1.6);
+          ctx.quadraticCurveTo(ctrlX, ctrlY + i * 6, endX - i * 5, endY + i * 3);
+          ctx.stroke();
+        }
+        ctx.restore();
+      }
+
+      for (let i = splats.current.length - 1; i >= 0; i--) {
+        const splat = splats.current[i];
+        splat.r += splat.grow * dt;
+        splat.alpha -= 0.42 * dt;
+        if (splat.alpha <= 0) {
+          splats.current.splice(i, 1);
+          continue;
+        }
+        ctx.beginPath();
+        ctx.arc(splat.x, splat.y, splat.r, 0, Math.PI * 2);
+        ctx.fillStyle = `rgba(${ink.r},${ink.g},${ink.b},${splat.alpha * 0.7})`;
+        ctx.fill();
+        ctx.beginPath();
+        ctx.arc(splat.x + splat.r * 0.65, splat.y - splat.r * 0.3, splat.r * 0.22, 0, Math.PI * 2);
+        ctx.fillStyle = `rgba(${accent.r},${accent.g},${accent.b},${splat.alpha * 0.28})`;
+        ctx.fill();
+      }
+    },
+    (canvas) => {
+      const onMove = (e: MouseEvent) => {
+        const now = Date.now();
+        if (now - lastTrace.current < 120) return;
+        lastTrace.current = now;
+        splats.current.push({ x: e.clientX, y: e.clientY, r: 3, alpha: 0.55, grow: 10 + Math.random() * 14 });
+      };
+      const onClick = (e: MouseEvent) => {
+        for (let i = 0; i < 12; i++) {
+          splats.current.push({
+            x: e.clientX + (Math.random() - 0.5) * 36,
+            y: e.clientY + (Math.random() - 0.5) * 24,
+            r: 2 + Math.random() * 5,
+            alpha: 0.75,
+            grow: 18 + Math.random() * 24,
+          });
+        }
+      };
+      window.addEventListener('mousemove', onMove);
+      canvas.addEventListener('click', onClick);
+      return () => {
+        window.removeEventListener('mousemove', onMove);
+        canvas.removeEventListener('click', onClick);
+      };
+    },
+  );
+
+  return <canvas ref={ref} className="fixed inset-0 w-full h-full z-0" />;
+}
+
+// ─── 13. 云岭叠嶂 ──────────────────────────────────────────────────────────
+export function MistyPeaksEffect() {
+  const { theme, primaryColor, accentColor } = useTheme();
+  const t = useRef(0);
+
+  const ref = useCanvas((ctx, w, h, dt) => {
+    const isDark = theme === 'dark';
+    const primary = hexToHsl(primaryColor);
+    const accent = hexToRgb(accentColor) || { r: 209, g: 181, b: 124 };
+    t.current += dt * 0.12;
+
+    ctx.fillStyle = isDark ? 'rgba(7,11,12,.82)' : 'rgba(241,244,239,.82)';
+    ctx.fillRect(0, 0, w, h);
+
+    const sun = ctx.createRadialGradient(w * 0.76, h * 0.22, 0, w * 0.76, h * 0.22, w * 0.24);
+    sun.addColorStop(0, `rgba(${accent.r},${accent.g},${accent.b},${isDark ? 0.24 : 0.18})`);
+    sun.addColorStop(1, 'rgba(0,0,0,0)');
+    ctx.fillStyle = sun;
+    ctx.fillRect(0, 0, w, h);
+
+    drawMountainRange(ctx, w, h, t.current, { baseY: 0.83, amp: 22, hue: primary.h, lightness: isDark ? 42 : 66, alpha: isDark ? 0.24 : 0.16, speed: 0.42, detail: 4 });
+    drawMountainRange(ctx, w, h, t.current + 0.6, { baseY: 0.72, amp: 34, hue: (primary.h + 10) % 360, lightness: isDark ? 36 : 60, alpha: isDark ? 0.18 : 0.13, speed: 0.28, detail: 5 });
+    drawMountainRange(ctx, w, h, t.current + 1.1, { baseY: 0.60, amp: 40, hue: (primary.h + 18) % 360, lightness: isDark ? 31 : 54, alpha: isDark ? 0.14 : 0.10, speed: 0.18, detail: 6 });
+    drawMountainRange(ctx, w, h, t.current + 1.8, { baseY: 0.48, amp: 28, hue: (primary.h + 26) % 360, lightness: isDark ? 27 : 48, alpha: isDark ? 0.09 : 0.07, speed: 0.10, detail: 7 });
+
+    for (let i = 0; i < 5; i++) {
+      const y = h * (0.30 + i * 0.12) + Math.sin(t.current * (0.6 + i * 0.08) + i) * 16;
+      const grad = ctx.createLinearGradient(0, y, 0, y + 46);
+      grad.addColorStop(0, 'rgba(255,255,255,0)');
+      grad.addColorStop(0.5, `rgba(255,255,255,${isDark ? 0.045 : 0.08})`);
+      grad.addColorStop(1, 'rgba(255,255,255,0)');
+      ctx.fillStyle = grad;
+      ctx.fillRect(0, y - 10, w, 70);
+    }
+
+    ctx.strokeStyle = isDark ? 'rgba(230,232,240,0.18)' : 'rgba(102,116,130,0.16)';
+    ctx.lineWidth = 1.2;
+    for (let i = 0; i < 4; i++) {
+      const bx = w * (0.2 + i * 0.16) + Math.sin(t.current * 0.7 + i) * 24;
+      const by = h * (0.28 + (i % 2) * 0.05);
+      ctx.beginPath();
+      ctx.moveTo(bx - 7, by);
+      ctx.lineTo(bx, by - 4);
+      ctx.lineTo(bx + 7, by);
+      ctx.stroke();
+    }
+  });
+
+  return <canvas ref={ref} className="fixed inset-0 w-full h-full z-0" />;
+}
+
+// ─── 14. 江山渔火 ──────────────────────────────────────────────────────────
+export function RiverLanternEffect() {
+  const { theme, primaryColor, accentColor } = useTheme();
+  const lanterns = useRef<{ x: number; y: number; size: number; vy: number; phase: number; alpha: number }[]>([]);
+  const t = useRef(0);
+
+  const ref = useCanvas(
+    (ctx, w, h, dt) => {
+      const isDark = theme === 'dark';
+      const primary = hexToHsl(primaryColor);
+      const accent = hexToRgb(accentColor) || { r: 242, g: 194, b: 107 };
+      t.current += dt * 0.16;
+
+      if (lanterns.current.length === 0) {
+        for (let i = 0; i < 14; i++) {
+          lanterns.current.push({
+            x: Math.random() * w,
+            y: h * (0.62 + Math.random() * 0.24),
+            size: 4 + Math.random() * 6,
+            vy: 1 + Math.random() * 4,
+            phase: Math.random() * Math.PI * 2,
+            alpha: 0.35 + Math.random() * 0.35,
+          });
+        }
+      }
+
+      ctx.fillStyle = isDark ? 'rgba(7,11,12,.84)' : 'rgba(237,244,243,.84)';
+      ctx.fillRect(0, 0, w, h);
+
+      const skyGlow = ctx.createRadialGradient(w * 0.72, h * 0.20, 0, w * 0.72, h * 0.20, w * 0.22);
+      skyGlow.addColorStop(0, `rgba(${accent.r},${accent.g},${accent.b},${isDark ? 0.22 : 0.16})`);
+      skyGlow.addColorStop(1, 'rgba(0,0,0,0)');
+      ctx.fillStyle = skyGlow;
+      ctx.fillRect(0, 0, w, h);
+
+      drawMountainRange(ctx, w, h, t.current, { baseY: 0.62, amp: 34, hue: primary.h, lightness: isDark ? 32 : 54, alpha: isDark ? 0.18 : 0.12, speed: 0.22, detail: 5 });
+      drawMountainRange(ctx, w, h, t.current + 0.8, { baseY: 0.52, amp: 26, hue: (primary.h + 12) % 360, lightness: isDark ? 26 : 48, alpha: isDark ? 0.12 : 0.08, speed: 0.12, detail: 6 });
+
+      const river = ctx.createLinearGradient(0, h * 0.58, 0, h);
+      river.addColorStop(0, isDark ? 'rgba(11,22,25,0.30)' : 'rgba(186,208,210,0.20)');
+      river.addColorStop(1, isDark ? 'rgba(8,16,18,0.60)' : 'rgba(207,225,226,0.34)');
+      ctx.fillStyle = river;
+      ctx.fillRect(0, h * 0.58, w, h * 0.42);
+
+      for (let i = 0; i < 8; i++) {
+        const y = h * (0.62 + i * 0.045);
+        ctx.beginPath();
+        for (let x = 0; x <= w; x += 10) {
+          const waveY = y + Math.sin(x * 0.012 + t.current * (1.2 + i * 0.08)) * (2 + i * 0.35);
+          x === 0 ? ctx.moveTo(x, waveY) : ctx.lineTo(x, waveY);
+        }
+        ctx.strokeStyle = `rgba(${accent.r},${accent.g},${accent.b},${isDark ? 0.05 : 0.04})`;
+        ctx.lineWidth = 1;
+        ctx.stroke();
+      }
+
+      for (const lantern of lanterns.current) {
+        lantern.phase += dt * 0.8;
+        lantern.y += Math.sin(lantern.phase) * 2 * dt + lantern.vy * dt * 0.16;
+        if (lantern.y > h * 0.9) lantern.y = h * 0.62;
+
+        const glow = ctx.createRadialGradient(lantern.x, lantern.y, 0, lantern.x, lantern.y, lantern.size * 5);
+        glow.addColorStop(0, `rgba(${accent.r},${accent.g},${accent.b},${lantern.alpha})`);
+        glow.addColorStop(1, 'rgba(0,0,0,0)');
+        ctx.fillStyle = glow;
+        ctx.beginPath();
+        ctx.arc(lantern.x, lantern.y, lantern.size * 5, 0, Math.PI * 2);
+        ctx.fill();
+
+        ctx.fillStyle = `rgba(${accent.r},${accent.g},${accent.b},${Math.min(0.95, lantern.alpha + 0.15)})`;
+        ctx.fillRect(lantern.x - lantern.size * 0.5, lantern.y - lantern.size * 0.7, lantern.size, lantern.size * 1.4);
+
+        ctx.beginPath();
+        ctx.moveTo(lantern.x - lantern.size * 0.45, lantern.y + lantern.size * 1.6);
+        ctx.lineTo(lantern.x - lantern.size * 0.15, lantern.y + lantern.size * 8);
+        ctx.lineTo(lantern.x + lantern.size * 0.15, lantern.y + lantern.size * 8);
+        ctx.lineTo(lantern.x + lantern.size * 0.45, lantern.y + lantern.size * 1.6);
+        ctx.closePath();
+        ctx.fillStyle = `rgba(${accent.r},${accent.g},${accent.b},${lantern.alpha * 0.32})`;
+        ctx.fill();
+      }
+    },
+    (canvas) => {
+      const onClick = (e: MouseEvent) => {
+        lanterns.current.push({ x: e.clientX, y: e.clientY, size: 5 + Math.random() * 6, vy: 2 + Math.random() * 3, phase: Math.random() * Math.PI * 2, alpha: 0.75 });
+        if (lanterns.current.length > 22) lanterns.current.shift();
+      };
+      canvas.addEventListener('click', onClick);
+      return () => canvas.removeEventListener('click', onClick);
+    },
+  );
+
+  return <canvas ref={ref} className="fixed inset-0 w-full h-full z-0" />;
+}
+
+// ─── 15. 竹影摇风 ──────────────────────────────────────────────────────────
+export function BambooBreezeEffect() {
+  const { theme, primaryColor, accentColor } = useTheme();
+  const stalks = useRef<{ x: number; width: number; sway: number; height: number; alpha: number }[]>([]);
+  const t = useRef(0);
+  const mouse = useRef({ x: 0, y: 0 });
+
+  const ref = useCanvas(
+    (ctx, w, h, dt) => {
+      const isDark = theme === 'dark';
+      const primary = hexToRgb(primaryColor) || { r: 85, g: 122, b: 99 };
+      const accent = hexToRgb(accentColor) || { r: 199, g: 223, b: 180 };
+      t.current += dt * 0.7;
+
+      if (stalks.current.length === 0) {
+        for (let i = 0; i < 16; i++) {
+          stalks.current.push({
+            x: w * (i / 15) + (Math.random() - 0.5) * 24,
+            width: 8 + Math.random() * 10,
+            sway: Math.random() * Math.PI * 2,
+            height: h * (0.55 + Math.random() * 0.32),
+            alpha: 0.10 + Math.random() * 0.12,
+          });
+        }
+      }
+
+      ctx.fillStyle = isDark ? 'rgba(8,12,10,.84)' : 'rgba(239,246,239,.84)';
+      ctx.fillRect(0, 0, w, h);
+
+      const lightBeam = ctx.createRadialGradient(w * 0.78, h * 0.16, 0, w * 0.78, h * 0.16, w * 0.30);
+      lightBeam.addColorStop(0, `rgba(${accent.r},${accent.g},${accent.b},${isDark ? 0.16 : 0.12})`);
+      lightBeam.addColorStop(1, 'rgba(0,0,0,0)');
+      ctx.fillStyle = lightBeam;
+      ctx.fillRect(0, 0, w, h);
+
+      for (const stalk of stalks.current) {
+        const sway = Math.sin(t.current + stalk.sway + mouse.current.x / Math.max(1, w) * 1.4) * 12;
+        const x = stalk.x + sway;
+        const grad = ctx.createLinearGradient(x, h - stalk.height, x, h);
+        grad.addColorStop(0, `rgba(${primary.r},${primary.g},${primary.b},${stalk.alpha * 0.8})`);
+        grad.addColorStop(0.5, `rgba(${accent.r},${accent.g},${accent.b},${stalk.alpha})`);
+        grad.addColorStop(1, `rgba(${primary.r},${primary.g},${primary.b},${stalk.alpha * 1.2})`);
+        ctx.fillStyle = grad;
+        ctx.fillRect(x, h - stalk.height, stalk.width, stalk.height);
+
+        for (let joint = 1; joint < 7; joint++) {
+          const jy = h - stalk.height + (stalk.height / 7) * joint;
+          ctx.fillStyle = `rgba(${accent.r},${accent.g},${accent.b},${stalk.alpha * 0.55})`;
+          ctx.fillRect(x - 1, jy, stalk.width + 2, 2);
+        }
+
+        for (let i = 0; i < 5; i++) {
+          const leafY = h - stalk.height + stalk.height * (0.18 + i * 0.14);
+          const leafAngle = Math.sin(t.current * 1.6 + stalk.sway + i) * 0.18;
+          drawBambooLeaf(ctx, x + stalk.width * 0.5, leafY, 26 + i * 3, -0.7 + leafAngle, `rgba(${accent.r},${accent.g},${accent.b},${stalk.alpha * 1.1})`);
+          drawBambooLeaf(ctx, x + stalk.width * 0.5, leafY + 5, 24 + i * 2, 0.45 + leafAngle, `rgba(${primary.r},${primary.g},${primary.b},${stalk.alpha * 1.15})`);
+        }
+      }
+    },
+    (canvas) => {
+      const onMove = (e: MouseEvent) => {
+        mouse.current = { x: e.clientX, y: e.clientY };
+      };
+      window.addEventListener('mousemove', onMove);
+      return () => window.removeEventListener('mousemove', onMove);
+    },
+  );
+
+  return <canvas ref={ref} className="fixed inset-0 w-full h-full z-0" />;
+}
+
+// ─── 16. 雨竹清响 ──────────────────────────────────────────────────────────
+export function BambooRainEffect() {
+  const { theme, primaryColor, accentColor } = useTheme();
+  const drops = useRef(
+    Array.from({ length: 120 }, () => ({
+      x: Math.random() * window.innerWidth,
+      y: Math.random() * window.innerHeight,
+      len: 12 + Math.random() * 18,
+      speed: 160 + Math.random() * 160,
+    })),
+  );
+  const ripples = useRef<{ x: number; y: number; r: number; alpha: number }[]>([]);
+  const t = useRef(0);
+
+  const ref = useCanvas(
+    (ctx, w, h, dt) => {
+      const isDark = theme === 'dark';
+      const primary = hexToRgb(primaryColor) || { r: 63, g: 103, b: 86 };
+      const accent = hexToRgb(accentColor) || { r: 169, g: 209, b: 191 };
+      t.current += dt;
+
+      ctx.fillStyle = isDark ? 'rgba(8,12,10,.88)' : 'rgba(238,245,241,.86)';
+      ctx.fillRect(0, 0, w, h);
+
+      for (let i = 0; i < 8; i++) {
+        const x = w * (0.08 + i * 0.12) + Math.sin(t.current * (0.6 + i * 0.04)) * 8;
+        const stalkHeight = h * (0.58 + (i % 3) * 0.08);
+        ctx.fillStyle = `rgba(${primary.r},${primary.g},${primary.b},${isDark ? 0.18 : 0.14})`;
+        ctx.fillRect(x, h - stalkHeight, 10, stalkHeight);
+        for (let j = 0; j < 4; j++) {
+          const ly = h - stalkHeight + stalkHeight * (0.2 + j * 0.18);
+          drawBambooLeaf(ctx, x + 5, ly, 26, -0.85 + Math.sin(t.current * 1.3 + i + j) * 0.06, `rgba(${accent.r},${accent.g},${accent.b},${isDark ? 0.16 : 0.12})`);
+          drawBambooLeaf(ctx, x + 5, ly + 4, 22, 0.55 + Math.cos(t.current * 1.2 + i + j) * 0.05, `rgba(${primary.r},${primary.g},${primary.b},${isDark ? 0.18 : 0.14})`);
+        }
+      }
+
+      ctx.strokeStyle = `rgba(${accent.r},${accent.g},${accent.b},${isDark ? 0.24 : 0.18})`;
+      ctx.lineWidth = 1.2;
+      for (const drop of drops.current) {
+        drop.x += -40 * dt;
+        drop.y += drop.speed * dt;
+        if (drop.y > h + 20 || drop.x < -20) {
+          drop.x = Math.random() * w + 30;
+          drop.y = -20;
+        }
+        ctx.beginPath();
+        ctx.moveTo(drop.x, drop.y);
+        ctx.lineTo(drop.x - 6, drop.y + drop.len);
+        ctx.stroke();
+
+        if (drop.y > h * 0.84 && Math.random() < 0.03) {
+          ripples.current.push({ x: drop.x, y: h * 0.88 + Math.random() * 10, r: 2, alpha: 0.35 });
+        }
+      }
+
+      const groundMist = ctx.createLinearGradient(0, h * 0.72, 0, h);
+      groundMist.addColorStop(0, 'rgba(0,0,0,0)');
+      groundMist.addColorStop(1, isDark ? 'rgba(12,22,18,0.24)' : 'rgba(205,223,215,0.18)');
+      ctx.fillStyle = groundMist;
+      ctx.fillRect(0, h * 0.72, w, h * 0.28);
+
+      for (let i = ripples.current.length - 1; i >= 0; i--) {
+        const ripple = ripples.current[i];
+        ripple.r += 36 * dt;
+        ripple.alpha -= 0.4 * dt;
+        if (ripple.alpha <= 0) {
+          ripples.current.splice(i, 1);
+          continue;
+        }
+        ctx.beginPath();
+        ctx.ellipse(ripple.x, ripple.y, ripple.r * 1.8, ripple.r * 0.72, 0, 0, Math.PI * 2);
+        ctx.strokeStyle = `rgba(${accent.r},${accent.g},${accent.b},${ripple.alpha})`;
+        ctx.lineWidth = 1;
+        ctx.stroke();
+      }
+    },
+    (canvas) => {
+      const onClick = (e: MouseEvent) => {
+        ripples.current.push({ x: e.clientX, y: e.clientY, r: 4, alpha: 0.6 });
+      };
+      canvas.addEventListener('click', onClick);
+      return () => canvas.removeEventListener('click', onClick);
+    },
+  );
+
+  return <canvas ref={ref} className="fixed inset-0 w-full h-full z-0" />;
+}
+
+// ─── 古风 1. 荷塘月色 ──────────────────────────────────────────────────────────
+export function LotusPondEffect() {
+  const { theme, primaryColor, accentColor } = useTheme();
+  const t = useRef(0);
+  const petals = useRef<{ x: number; y: number; r: number; angle: number; phase: number; alpha: number }[]>([]);
+  const ripples = useRef<{ x: number; y: number; rr: number; alpha: number }[]>([]);
+  const mouse = useRef({ x: -9999, y: -9999 });
+
+  const ref = useCanvas(
+    (ctx, w, h, dt) => {
+      const isDark = theme === 'dark';
+      const pond = hexToRgb(primaryColor) || { r: 122, g: 158, b: 142 };
+      const petal = hexToRgb(accentColor) || { r: 232, g: 196, b: 196 };
+      t.current += dt * 0.5;
+
+      if (petals.current.length === 0) {
+        for (let i = 0; i < 12; i++) {
+          petals.current.push({
+            x: Math.random() * w,
+            y: h * (0.38 + Math.random() * 0.50),
+            r: 18 + Math.random() * 22,
+            angle: Math.random() * Math.PI * 2,
+            phase: Math.random() * Math.PI * 2,
+            alpha: 0.18 + Math.random() * 0.20,
+          });
+        }
+      }
+
+      ctx.fillStyle = isDark ? 'rgba(9,17,16,.88)' : 'rgba(240,245,242,.88)';
+      ctx.fillRect(0, 0, w, h);
+
+      // 月光光晕
+      const moonX = w * 0.72, moonY = h * 0.18;
+      const moon = ctx.createRadialGradient(moonX, moonY, 0, moonX, moonY, w * 0.26);
+      moon.addColorStop(0, `rgba(230,240,220,${isDark ? 0.28 : 0.18})`);
+      moon.addColorStop(1, 'rgba(0,0,0,0)');
+      ctx.fillStyle = moon;
+      ctx.fillRect(0, 0, w, h);
+
+      // 水面渐变
+      const water = ctx.createLinearGradient(0, h * 0.38, 0, h);
+      water.addColorStop(0, `rgba(${pond.r},${pond.g},${pond.b},${isDark ? 0.14 : 0.10})`);
+      water.addColorStop(1, `rgba(${pond.r},${pond.g},${pond.b},${isDark ? 0.28 : 0.20})`);
+      ctx.fillStyle = water;
+      ctx.fillRect(0, h * 0.38, w, h * 0.62);
+
+      // 水波纹
+      for (let i = 0; i < 6; i++) {
+        const wy = h * (0.45 + i * 0.08);
+        ctx.beginPath();
+        for (let x = 0; x <= w; x += 8) {
+          const wv = wy + Math.sin(x * 0.008 + t.current * (0.7 + i * 0.05)) * (3 + i * 0.5);
+          x === 0 ? ctx.moveTo(x, wv) : ctx.lineTo(x, wv);
+        }
+        ctx.strokeStyle = `rgba(${pond.r},${pond.g},${pond.b},${isDark ? 0.12 : 0.09})`;
+        ctx.lineWidth = 1;
+        ctx.stroke();
+      }
+
+      // 荷叶
+      for (let i = 0; i < 8; i++) {
+        const lx = w * (0.08 + i * 0.12) + Math.sin(t.current * 0.4 + i) * 10;
+        const ly = h * (0.52 + (i % 3) * 0.08);
+        const lr = 28 + (i % 3) * 12;
+        ctx.beginPath();
+        ctx.arc(lx, ly, lr, 0, Math.PI * 2);
+        ctx.fillStyle = `rgba(${pond.r - 10},${pond.g + 10},${pond.b - 20},${isDark ? 0.16 : 0.12})`;
+        ctx.fill();
+        ctx.strokeStyle = `rgba(${pond.r},${pond.g + 20},${pond.b},${isDark ? 0.10 : 0.07})`;
+        ctx.lineWidth = 1;
+        ctx.stroke();
+      }
+
+      // 莲花花瓣
+      for (const p of petals.current) {
+        p.phase += dt * 0.3;
+        p.x += Math.sin(p.phase) * 0.3;
+        const grad = ctx.createRadialGradient(p.x, p.y, 0, p.x, p.y, p.r);
+        grad.addColorStop(0, `rgba(255,240,240,${p.alpha * 1.2})`);
+        grad.addColorStop(0.5, `rgba(${petal.r},${petal.g},${petal.b},${p.alpha})`);
+        grad.addColorStop(1, `rgba(${petal.r},${petal.g},${petal.b},0)`);
+        ctx.beginPath();
+        ctx.ellipse(p.x, p.y, p.r * 0.55, p.r, p.angle, 0, Math.PI * 2);
+        ctx.fillStyle = grad;
+        ctx.fill();
+      }
+
+      // 月亮倒影
+      const refGrad = ctx.createRadialGradient(moonX, h * 0.72, 0, moonX, h * 0.72, 44);
+      refGrad.addColorStop(0, `rgba(230,240,220,${isDark ? 0.14 : 0.08})`);
+      refGrad.addColorStop(1, 'rgba(0,0,0,0)');
+      ctx.fillStyle = refGrad;
+      ctx.beginPath();
+      ctx.ellipse(moonX, h * 0.72, 44, 14, 0, 0, Math.PI * 2);
+      ctx.fill();
+
+      // 点击涟漪
+      for (let i = ripples.current.length - 1; i >= 0; i--) {
+        const rp = ripples.current[i];
+        rp.rr += 80 * dt; rp.alpha -= 0.5 * dt;
+        if (rp.alpha <= 0) { ripples.current.splice(i, 1); continue; }
+        ctx.beginPath();
+        ctx.ellipse(rp.x, rp.y, rp.rr * 1.8, rp.rr * 0.6, 0, 0, Math.PI * 2);
+        ctx.strokeStyle = `rgba(${pond.r},${pond.g},${pond.b},${rp.alpha})`;
+        ctx.lineWidth = 1;
+        ctx.stroke();
+      }
+    },
+    (canvas) => {
+      const onMove = (e: MouseEvent) => { mouse.current = { x: e.clientX, y: e.clientY }; };
+      const onClick = (e: MouseEvent) => ripples.current.push({ x: e.clientX, y: e.clientY, rr: 4, alpha: 0.65 });
+      window.addEventListener('mousemove', onMove);
+      canvas.addEventListener('click', onClick);
+      return () => { window.removeEventListener('mousemove', onMove); canvas.removeEventListener('click', onClick); };
+    },
+  );
+  return <canvas ref={ref} className="fixed inset-0 w-full h-full z-0" />;
+}
+
+// ─── 古风 2. 宫灯霞光 ──────────────────────────────────────────────────────────
+export function PalaceLanternEffect() {
+  const { theme, primaryColor, accentColor } = useTheme();
+  const t = useRef(0);
+  const sparks = useRef<{ x: number; y: number; vx: number; vy: number; alpha: number; size: number }[]>([]);
+
+  const ref = useCanvas(
+    (ctx, w, h, dt) => {
+      const isDark = theme === 'dark';
+      const red = hexToRgb(primaryColor) || { r: 192, g: 57, b: 43 };
+      const gold = hexToRgb(accentColor) || { r: 240, g: 192, b: 96 };
+      t.current += dt * 0.6;
+
+      ctx.fillStyle = isDark ? 'rgba(24,12,8,.90)' : 'rgba(253,240,236,.88)';
+      ctx.fillRect(0, 0, w, h);
+
+      // 暗夜天空渐变
+      if (isDark) {
+        const sky = ctx.createLinearGradient(0, 0, 0, h * 0.55);
+        sky.addColorStop(0, 'rgba(14,6,4,0.0)');
+        sky.addColorStop(1, `rgba(${red.r * 0.3},${red.g * 0.1},${red.b * 0.1},0.18)`);
+        ctx.fillStyle = sky;
+        ctx.fillRect(0, 0, w, h * 0.55);
+      }
+
+      // 三盏宫灯
+      const lanternDefs = [
+        { cx: w * 0.22, cy: h * 0.22, ry: 46, rx: 28 },
+        { cx: w * 0.50, cy: h * 0.15, ry: 58, rx: 35 },
+        { cx: w * 0.78, cy: h * 0.25, ry: 44, rx: 27 },
+      ];
+      for (const [idx, ld] of lanternDefs.entries()) {
+        const sway = Math.sin(t.current * 0.7 + idx * 1.2) * 8;
+        const lx = ld.cx + sway;
+        const ly = ld.cy;
+
+        // 灯笼光晕
+        const glowR = ld.ry * 4.5;
+        const glow = ctx.createRadialGradient(lx, ly, 0, lx, ly, glowR);
+        glow.addColorStop(0, `rgba(${gold.r},${gold.g},${gold.b},${isDark ? 0.28 : 0.16})`);
+        glow.addColorStop(0.4, `rgba(${red.r},${red.g},${red.b},${isDark ? 0.10 : 0.06})`);
+        glow.addColorStop(1, 'rgba(0,0,0,0)');
+        ctx.fillStyle = glow;
+        ctx.fillRect(0, 0, w, h);
+
+        // 灯笼主体
+        const body = ctx.createRadialGradient(lx - ld.rx * 0.3, ly - ld.ry * 0.2, 0, lx, ly, ld.rx * 1.2);
+        body.addColorStop(0, `rgba(${gold.r},${gold.g},${gold.b * 0.6},${isDark ? 0.85 : 0.70})`);
+        body.addColorStop(0.55, `rgba(${red.r},${red.g},${red.b},${isDark ? 0.80 : 0.65})`);
+        body.addColorStop(1, `rgba(${red.r * 0.6},${red.g * 0.3},${red.b * 0.3},${isDark ? 0.50 : 0.38})`);
+        ctx.beginPath();
+        ctx.ellipse(lx, ly, ld.rx, ld.ry, 0, 0, Math.PI * 2);
+        ctx.fillStyle = body;
+        ctx.fill();
+
+        // 灯笼横条
+        for (let ri = -2; ri <= 2; ri++) {
+          const ry2 = ly + (ri / 2.5) * ld.ry;
+          const rw = Math.sqrt(Math.max(0, 1 - (ri / 2.5) ** 2)) * ld.rx;
+          ctx.beginPath();
+          ctx.moveTo(lx - rw, ry2);
+          ctx.lineTo(lx + rw, ry2);
+          ctx.strokeStyle = `rgba(${gold.r},${gold.g},${gold.b},${isDark ? 0.22 : 0.16})`;
+          ctx.lineWidth = 1.2;
+          ctx.stroke();
+        }
+
+        // 吊绳
+        ctx.beginPath();
+        ctx.moveTo(lx, ly - ld.ry);
+        ctx.lineTo(lx + sway * 0.3, ly - ld.ry - 36);
+        ctx.strokeStyle = `rgba(${gold.r},${gold.g},${gold.b},${isDark ? 0.45 : 0.32})`;
+        ctx.lineWidth = 1.2;
+        ctx.stroke();
+
+        // 流苏
+        for (let fi = -2; fi <= 2; fi++) {
+          const fx = lx + fi * 5;
+          const fLen = 22 + Math.abs(fi) * 6 + Math.sin(t.current * 2 + fi) * 5;
+          ctx.beginPath();
+          ctx.moveTo(fx, ly + ld.ry);
+          ctx.lineTo(fx + Math.sin(t.current * 1.5 + fi) * 4, ly + ld.ry + fLen);
+          ctx.strokeStyle = `rgba(${gold.r},${gold.g},${gold.b},${isDark ? 0.55 : 0.38})`;
+          ctx.lineWidth = 1;
+          ctx.stroke();
+        }
+
+        // 火花粒子
+        if (Math.random() < 0.12) {
+          sparks.current.push({ x: lx, y: ly - ld.ry, vx: (Math.random() - 0.5) * 22, vy: -18 - Math.random() * 20, alpha: 0.9, size: 1.5 + Math.random() * 1.5 });
+        }
+      }
+
+      for (let i = sparks.current.length - 1; i >= 0; i--) {
+        const sp = sparks.current[i];
+        sp.x += sp.vx * dt; sp.y += sp.vy * dt; sp.vy += 22 * dt;
+        sp.alpha -= 1.4 * dt;
+        if (sp.alpha <= 0) { sparks.current.splice(i, 1); continue; }
+        ctx.beginPath();
+        ctx.arc(sp.x, sp.y, sp.size, 0, Math.PI * 2);
+        ctx.fillStyle = `rgba(${gold.r},${gold.g},${gold.b},${sp.alpha})`;
+        ctx.fill();
+      }
+      if (sparks.current.length > 120) sparks.current.splice(0, sparks.current.length - 120);
+    },
+    (canvas) => {
+      const onClick = (e: MouseEvent) => {
+        for (let i = 0; i < 16; i++) {
+          sparks.current.push({ x: e.clientX, y: e.clientY, vx: (Math.random() - 0.5) * 60, vy: -30 - Math.random() * 40, alpha: 1, size: 2 + Math.random() * 2 });
+        }
+      };
+      canvas.addEventListener('click', onClick);
+      return () => canvas.removeEventListener('click', onClick);
+    },
+  );
+  return <canvas ref={ref} className="fixed inset-0 w-full h-full z-0" />;
+}
+
+// ─── 海洋 1. 深海漂流 ──────────────────────────────────────────────────────────
+export function DeepSeaDriftEffect() {
+  const { theme, primaryColor, accentColor } = useTheme();
+  const t = useRef(0);
+  const jellies = useRef<{ x: number; y: number; vy: number; phase: number; r: number; alpha: number; hue: number }[]>([]);
+  const bubbles = useRef<{ x: number; y: number; vy: number; r: number; phase: number }[]>([]);
+  const initialized = useRef(false);
+
+  const ref = useCanvas(
+    (ctx, w, h, dt) => {
+      const isDark = theme === 'dark';
+      const sea = hexToRgb(primaryColor) || { r: 10, g: 107, b: 140 };
+      const glow = hexToRgb(accentColor) || { r: 106, g: 228, b: 216 };
+      t.current += dt * 0.5;
+
+      if (!initialized.current) {
+        initialized.current = true;
+        for (let i = 0; i < 8; i++) {
+          jellies.current.push({ x: Math.random() * w, y: Math.random() * h, vy: -12 - Math.random() * 16, phase: Math.random() * Math.PI * 2, r: 22 + Math.random() * 28, alpha: 0.22 + Math.random() * 0.22, hue: 170 + Math.random() * 60 });
+        }
+        for (let i = 0; i < 40; i++) {
+          bubbles.current.push({ x: Math.random() * w, y: Math.random() * h, vy: -18 - Math.random() * 30, r: 2 + Math.random() * 5, phase: Math.random() * Math.PI * 2 });
+        }
+      }
+
+      ctx.fillStyle = isDark ? 'rgba(3,13,18,.90)' : 'rgba(232,245,248,.90)';
+      ctx.fillRect(0, 0, w, h);
+
+      // 深海光柱
+      for (let i = 0; i < 4; i++) {
+        const bx = w * (0.15 + i * 0.22) + Math.sin(t.current * 0.3 + i) * 20;
+        const beam = ctx.createLinearGradient(bx - 24, 0, bx + 24, 0);
+        beam.addColorStop(0, 'rgba(0,0,0,0)');
+        beam.addColorStop(0.5, `rgba(${glow.r},${glow.g},${glow.b},${isDark ? 0.06 : 0.04})`);
+        beam.addColorStop(1, 'rgba(0,0,0,0)');
+        ctx.fillStyle = beam;
+        ctx.fillRect(bx - 60, 0, 120, h);
+      }
+
+      // 焦散光斑
+      for (let i = 0; i < 12; i++) {
+        const cx = w * ((Math.sin(t.current * 0.4 + i * 1.7) + 1) / 2);
+        const cy = h * 0.18 + (Math.cos(t.current * 0.3 + i) + 1) * 30;
+        const caustic = ctx.createRadialGradient(cx, cy, 0, cx, cy, 28 + i * 4);
+        caustic.addColorStop(0, `rgba(${glow.r},${glow.g},${glow.b},${isDark ? 0.09 : 0.06})`);
+        caustic.addColorStop(1, 'rgba(0,0,0,0)');
+        ctx.fillStyle = caustic;
+        ctx.beginPath(); ctx.ellipse(cx, cy, 28 + i * 4, 10 + i * 2, 0.3, 0, Math.PI * 2);
+        ctx.fill();
+      }
+
+      // 水母
+      for (const jelly of jellies.current) {
+        jelly.phase += dt * 0.8;
+        jelly.y += jelly.vy * dt + Math.sin(jelly.phase) * 6 * dt;
+        jelly.x += Math.sin(jelly.phase * 0.7) * 8 * dt;
+        if (jelly.y < -jelly.r * 2) { jelly.y = h + jelly.r; jelly.x = Math.random() * w; }
+        if (jelly.x < -jelly.r) jelly.x = w + jelly.r;
+        if (jelly.x > w + jelly.r) jelly.x = -jelly.r;
+
+        const bell = ctx.createRadialGradient(jelly.x, jelly.y - jelly.r * 0.3, 0, jelly.x, jelly.y, jelly.r);
+        bell.addColorStop(0, `hsla(${jelly.hue},70%,80%,${jelly.alpha * 0.7})`);
+        bell.addColorStop(0.6, `hsla(${jelly.hue},60%,65%,${jelly.alpha * 0.5})`);
+        bell.addColorStop(1, `hsla(${jelly.hue},50%,55%,0)`);
+        ctx.beginPath();
+        ctx.ellipse(jelly.x, jelly.y, jelly.r, jelly.r * 0.6, 0, Math.PI, 0);
+        ctx.fillStyle = bell;
+        ctx.fill();
+
+        // 触手
+        for (let ti = -3; ti <= 3; ti++) {
+          const tx = jelly.x + ti * (jelly.r / 4);
+          ctx.beginPath();
+          ctx.moveTo(tx, jelly.y);
+          const tentLen = jelly.r * (1.5 + Math.abs(ti) * 0.3);
+          ctx.quadraticCurveTo(tx + Math.sin(jelly.phase + ti) * 14, jelly.y + tentLen * 0.5, tx + Math.sin(jelly.phase * 1.4 + ti) * 18, jelly.y + tentLen);
+          ctx.strokeStyle = `hsla(${jelly.hue},60%,75%,${jelly.alpha * 0.35})`;
+          ctx.lineWidth = 1.2;
+          ctx.stroke();
+        }
+      }
+
+      // 气泡
+      for (const bub of bubbles.current) {
+        bub.phase += dt * 0.9;
+        bub.y += bub.vy * dt;
+        bub.x += Math.sin(bub.phase) * 8 * dt;
+        if (bub.y < -10) { bub.y = h + 10; bub.x = Math.random() * w; }
+        ctx.beginPath(); ctx.arc(bub.x, bub.y, bub.r, 0, Math.PI * 2);
+        ctx.strokeStyle = `rgba(${glow.r},${glow.g},${glow.b},${isDark ? 0.25 : 0.18})`;
+        ctx.lineWidth = 0.8; ctx.stroke();
+        const hilite = ctx.createRadialGradient(bub.x - bub.r * 0.3, bub.y - bub.r * 0.3, 0, bub.x, bub.y, bub.r);
+        hilite.addColorStop(0, `rgba(255,255,255,${isDark ? 0.28 : 0.20})`);
+        hilite.addColorStop(1, 'rgba(255,255,255,0)');
+        ctx.fillStyle = hilite; ctx.fill();
+      }
+    },
+    (canvas) => {
+      const onClick = (e: MouseEvent) => {
+        for (let i = 0; i < 8; i++) {
+          bubbles.current.push({ x: e.clientX, y: e.clientY, vy: -28 - Math.random() * 28, r: 3 + Math.random() * 6, phase: Math.random() * Math.PI * 2 });
+        }
+        if (bubbles.current.length > 80) bubbles.current.splice(0, bubbles.current.length - 80);
+      };
+      canvas.addEventListener('click', onClick);
+      return () => canvas.removeEventListener('click', onClick);
+    },
+  );
+  return <canvas ref={ref} className="fixed inset-0 w-full h-full z-0" />;
+}
+
+// ─── 海洋 2. 珊瑚礁光 ──────────────────────────────────────────────────────────
+export function CoralReefEffect() {
+  const { theme, primaryColor, accentColor } = useTheme();
+  const t = useRef(0);
+  const fish = useRef<{ x: number; y: number; vx: number; size: number; phase: number; hue: number }[]>([]);
+  const initialized = useRef(false);
+
+  const ref = useCanvas(
+    (ctx, w, h, dt) => {
+      const isDark = theme === 'dark';
+      const sea = hexToRgb(primaryColor) || { r: 46, g: 157, b: 170 };
+      const coral = hexToRgb(accentColor) || { r: 255, g: 127, b: 110 };
+      t.current += dt * 0.55;
+
+      if (!initialized.current) {
+        initialized.current = true;
+        for (let i = 0; i < 10; i++) {
+          fish.current.push({ x: Math.random() * w, y: h * (0.25 + Math.random() * 0.5), vx: 18 + Math.random() * 28, size: 8 + Math.random() * 12, phase: Math.random() * Math.PI * 2, hue: Math.random() * 60 + 10 });
+        }
+      }
+
+      ctx.fillStyle = isDark ? 'rgba(4,18,20,.90)' : 'rgba(234,247,248,.90)';
+      ctx.fillRect(0, 0, w, h);
+
+      // 水面光
+      const sunBeam = ctx.createLinearGradient(0, 0, 0, h * 0.35);
+      sunBeam.addColorStop(0, `rgba(${sea.r + 30},${sea.g + 20},${sea.b},${isDark ? 0.08 : 0.06})`);
+      sunBeam.addColorStop(1, 'rgba(0,0,0,0)');
+      ctx.fillStyle = sunBeam;
+      ctx.fillRect(0, 0, w, h * 0.35);
+
+      // 焦散
+      for (let i = 0; i < 10; i++) {
+        const cx = w * ((Math.sin(t.current * 0.35 + i * 2.1) + 1) / 2);
+        const cy = h * 0.08 + Math.cos(t.current * 0.28 + i) * 18;
+        const cs = ctx.createRadialGradient(cx, cy, 0, cx, cy, 32);
+        cs.addColorStop(0, `rgba(${sea.r + 40},${sea.g + 30},${sea.b + 10},${isDark ? 0.10 : 0.07})`);
+        cs.addColorStop(1, 'rgba(0,0,0,0)');
+        ctx.fillStyle = cs;
+        ctx.beginPath(); ctx.ellipse(cx, cy, 32, 11, 0.4, 0, Math.PI * 2); ctx.fill();
+      }
+
+      // 底部珊瑚礁剪影
+      const coralDefs = [
+        { x: w * 0.06, type: 'branch', h: h * 0.26 },
+        { x: w * 0.18, type: 'fan', h: h * 0.20 },
+        { x: w * 0.31, type: 'round', h: h * 0.16 },
+        { x: w * 0.46, type: 'branch', h: h * 0.28 },
+        { x: w * 0.60, type: 'fan', h: h * 0.22 },
+        { x: w * 0.74, type: 'round', h: h * 0.18 },
+        { x: w * 0.88, type: 'branch', h: h * 0.24 },
+      ];
+
+      for (const cd of coralDefs) {
+        const baseY = h;
+        const topY = baseY - cd.h;
+        const alpha = isDark ? 0.20 : 0.14;
+        if (cd.type === 'branch') {
+          ctx.strokeStyle = `rgba(${coral.r},${coral.g},${coral.b},${alpha})`;
+          ctx.lineWidth = 4;
+          ctx.lineCap = 'round';
+          const drawBranch = (x: number, y: number, angle: number, length: number, depth: number) => {
+            if (depth === 0 || length < 6) return;
+            ctx.beginPath();
+            ctx.moveTo(x, y);
+            const ex = x + Math.sin(angle) * length;
+            const ey = y - Math.cos(angle) * length;
+            ctx.lineTo(ex, ey);
+            ctx.lineWidth = Math.max(1, depth * 1.2);
+            ctx.stroke();
+            const sway = Math.sin(t.current * 0.6 + x * 0.01) * 0.12;
+            drawBranch(ex, ey, angle + 0.42 + sway, length * 0.65, depth - 1);
+            drawBranch(ex, ey, angle - 0.38 + sway, length * 0.60, depth - 1);
+          };
+          drawBranch(cd.x, baseY, 0, cd.h * 0.55, 4);
+        } else if (cd.type === 'fan') {
+          for (let fi = -5; fi <= 5; fi++) {
+            const fa = (fi / 5) * 0.7 + Math.sin(t.current * 0.5 + cd.x) * 0.06;
+            ctx.beginPath();
+            ctx.moveTo(cd.x, baseY);
+            ctx.lineTo(cd.x + Math.sin(fa) * cd.h, baseY - Math.cos(fa) * cd.h);
+            ctx.strokeStyle = `rgba(${coral.r - 10},${coral.g + 20},${coral.b + 30},${alpha * (1 - Math.abs(fi) / 7)})`;
+            ctx.lineWidth = 1.5; ctx.stroke();
+          }
+        } else {
+          ctx.beginPath();
+          ctx.arc(cd.x, baseY, cd.h * 0.5, Math.PI, 0);
+          ctx.fillStyle = `rgba(${coral.r + 20},${coral.g - 10},${coral.b - 20},${alpha * 0.7})`;
+          ctx.fill();
+          ctx.beginPath();
+          ctx.arc(cd.x - cd.h * 0.18, baseY, cd.h * 0.35, Math.PI, 0);
+          ctx.fillStyle = `rgba(${coral.r},${coral.g + 10},${coral.b},${alpha * 0.5})`;
+          ctx.fill();
+        }
+      }
+
+      // 小鱼
+      for (const f of fish.current) {
+        f.phase += dt * 2.5;
+        f.x += f.vx * dt;
+        f.y += Math.sin(f.phase) * 14 * dt;
+        if (f.x > w + f.size * 3) { f.x = -f.size * 3; f.y = h * (0.25 + Math.random() * 0.5); }
+
+        ctx.save();
+        ctx.translate(f.x, f.y);
+        const tailWag = Math.sin(f.phase) * 0.3;
+        // 鱼身
+        ctx.beginPath();
+        ctx.ellipse(0, 0, f.size, f.size * 0.45, 0, 0, Math.PI * 2);
+        ctx.fillStyle = `hsla(${f.hue + 10},80%,${isDark ? 62 : 56}%,${isDark ? 0.42 : 0.30})`;
+        ctx.fill();
+        // 鱼尾
+        ctx.beginPath();
+        ctx.moveTo(-f.size * 0.8, 0);
+        ctx.lineTo(-f.size * 1.6 + Math.sin(tailWag) * 6, -f.size * 0.5);
+        ctx.lineTo(-f.size * 1.6 + Math.sin(tailWag) * 6, f.size * 0.5);
+        ctx.closePath();
+        ctx.fillStyle = `hsla(${f.hue},70%,${isDark ? 55 : 48}%,${isDark ? 0.35 : 0.25})`;
+        ctx.fill();
+        ctx.restore();
+      }
+    },
+    (canvas) => {
+      const onClick = (e: MouseEvent) => {
+        fish.current.push({ x: e.clientX, y: e.clientY, vx: 22 + Math.random() * 20, size: 8 + Math.random() * 10, phase: Math.random() * Math.PI * 2, hue: Math.random() * 60 + 10 });
+        if (fish.current.length > 20) fish.current.shift();
+      };
+      canvas.addEventListener('click', onClick);
+      return () => canvas.removeEventListener('click', onClick);
+    },
+  );
+  return <canvas ref={ref} className="fixed inset-0 w-full h-full z-0" />;
+}
+
+// ─── 星空 1. 流星雨夜 ──────────────────────────────────────────────────────────
+export function MeteorShowerEffect() {
+  const { theme, primaryColor, accentColor } = useTheme();
+  const t = useRef(0);
+  const stars = useRef<{ x: number; y: number; size: number; twinkle: number; tp: number }[]>([]);
+  const meteors = useRef<{ x: number; y: number; vx: number; vy: number; len: number; alpha: number; size: number }[]>([]);
+  const initialized = useRef(false);
+
+  const ref = useCanvas(
+    (ctx, w, h, dt) => {
+      const isDark = theme === 'dark';
+      const primary = hexToRgb(primaryColor) || { r: 155, g: 142, b: 255 };
+      const gold = hexToRgb(accentColor) || { r: 255, g: 228, b: 160 };
+      t.current += dt;
+
+      if (!initialized.current) {
+        initialized.current = true;
+        for (let i = 0; i < 180; i++) {
+          stars.current.push({ x: Math.random() * w, y: Math.random() * h, size: 0.4 + Math.random() * 1.8, twinkle: Math.random() * Math.PI * 2, tp: 0.5 + Math.random() * 2.5 });
+        }
+      }
+
+      // 随机生成流星
+      if (Math.random() < 0.04) {
+        const angle = Math.PI * (0.18 + Math.random() * 0.12);
+        const speed = 320 + Math.random() * 280;
+        meteors.current.push({ x: Math.random() * w * 1.2, y: -20 + Math.random() * h * 0.3, vx: Math.cos(angle) * speed, vy: Math.sin(angle) * speed, len: 80 + Math.random() * 140, alpha: 0.9, size: 1.2 + Math.random() * 1.2 });
+      }
+
+      ctx.fillStyle = isDark ? 'rgba(8,6,15,.92)' : 'rgba(243,241,255,.92)';
+      ctx.fillRect(0, 0, w, h);
+
+      // 星云背景晕
+      const nebula = ctx.createRadialGradient(w * 0.35, h * 0.3, 0, w * 0.35, h * 0.3, w * 0.5);
+      nebula.addColorStop(0, `rgba(${primary.r},${primary.g},${primary.b},${isDark ? 0.06 : 0.03})`);
+      nebula.addColorStop(1, 'rgba(0,0,0,0)');
+      ctx.fillStyle = nebula;
+      ctx.fillRect(0, 0, w, h);
+
+      // 繁星
+      for (const s of stars.current) {
+        s.twinkle += dt * s.tp;
+        const a = (0.3 + Math.sin(s.twinkle) * 0.25) * (isDark ? 1 : 0.55);
+        ctx.beginPath(); ctx.arc(s.x, s.y, s.size, 0, Math.PI * 2);
+        ctx.fillStyle = `rgba(${primary.r + 40},${primary.g + 40},${primary.b + 40},${a})`;
+        ctx.fill();
+        if (s.size > 1.4) {
+          const grd = ctx.createRadialGradient(s.x, s.y, 0, s.x, s.y, s.size * 3.5);
+          grd.addColorStop(0, `rgba(${primary.r + 60},${primary.g + 60},${primary.b + 60},${a * 0.3})`);
+          grd.addColorStop(1, 'rgba(0,0,0,0)');
+          ctx.fillStyle = grd;
+          ctx.beginPath(); ctx.arc(s.x, s.y, s.size * 3.5, 0, Math.PI * 2);
+          ctx.fill();
+        }
+      }
+
+      // 流星
+      for (let i = meteors.current.length - 1; i >= 0; i--) {
+        const m = meteors.current[i];
+        m.x += m.vx * dt; m.y += m.vy * dt;
+        m.alpha -= 1.0 * dt;
+        if (m.alpha <= 0 || m.x > w + 100 || m.y > h + 100) { meteors.current.splice(i, 1); continue; }
+
+        const tailX = m.x - (m.vx / Math.hypot(m.vx, m.vy)) * m.len;
+        const tailY = m.y - (m.vy / Math.hypot(m.vx, m.vy)) * m.len;
+        const trail = ctx.createLinearGradient(tailX, tailY, m.x, m.y);
+        trail.addColorStop(0, `rgba(255,255,255,0)`);
+        trail.addColorStop(0.7, `rgba(${gold.r},${gold.g},${gold.b},${m.alpha * 0.4})`);
+        trail.addColorStop(1, `rgba(255,255,255,${m.alpha})`);
+        ctx.beginPath();
+        ctx.moveTo(tailX, tailY);
+        ctx.lineTo(m.x, m.y);
+        ctx.strokeStyle = trail;
+        ctx.lineWidth = m.size;
+        ctx.stroke();
+
+        // 流星头部光晕
+        const head = ctx.createRadialGradient(m.x, m.y, 0, m.x, m.y, m.size * 4);
+        head.addColorStop(0, `rgba(255,255,255,${m.alpha * 0.9})`);
+        head.addColorStop(1, 'rgba(255,255,255,0)');
+        ctx.fillStyle = head;
+        ctx.beginPath(); ctx.arc(m.x, m.y, m.size * 4, 0, Math.PI * 2); ctx.fill();
+      }
+    },
+    (canvas) => {
+      const onClick = (e: MouseEvent) => {
+        for (let i = 0; i < 5; i++) {
+          const angle = Math.PI * (0.15 + Math.random() * 0.18);
+          meteors.current.push({ x: e.clientX, y: e.clientY, vx: Math.cos(angle) * (280 + Math.random() * 200), vy: Math.sin(angle) * (280 + Math.random() * 200), len: 60 + Math.random() * 100, alpha: 1, size: 1.5 + Math.random() * 1.5 });
+        }
+      };
+      canvas.addEventListener('click', onClick);
+      return () => canvas.removeEventListener('click', onClick);
+    },
+  );
+  return <canvas ref={ref} className="fixed inset-0 w-full h-full z-0" />;
+}
+
+// ─── 星空 2. 星云漂移 ──────────────────────────────────────────────────────────
+export function NebulaDriftEffect() {
+  const { theme, primaryColor, accentColor } = useTheme();
+  const t = useRef(0);
+  const stars = useRef<{ x: number; y: number; size: number; twinkle: number; tp: number; hue: number }[]>([]);
+  const dust = useRef<{ x: number; y: number; vx: number; vy: number; r: number; hue: number; alpha: number }[]>([]);
+  const mouse = useRef({ x: -9999, y: -9999 });
+  const initialized = useRef(false);
+
+  const ref = useCanvas(
+    (ctx, w, h, dt) => {
+      const isDark = theme === 'dark';
+      const primaryHsl = hexToHsl(primaryColor);
+      const accentHsl = hexToHsl(accentColor);
+      t.current += dt * 0.35;
+
+      if (!initialized.current) {
+        initialized.current = true;
+        for (let i = 0; i < 160; i++) {
+          stars.current.push({ x: Math.random() * w, y: Math.random() * h, size: 0.3 + Math.random() * 2.2, twinkle: Math.random() * Math.PI * 2, tp: 0.4 + Math.random() * 2, hue: primaryHsl.h + (Math.random() - 0.5) * 80 });
+        }
+        for (let i = 0; i < 28; i++) {
+          dust.current.push({ x: Math.random() * w, y: Math.random() * h, vx: (Math.random() - 0.5) * 6, vy: (Math.random() - 0.5) * 4, r: 40 + Math.random() * 90, hue: primaryHsl.h + (Math.random() - 0.5) * 120, alpha: 0.03 + Math.random() * 0.04 });
+        }
+      }
+
+      ctx.fillStyle = isDark ? 'rgba(10,6,15,.90)' : 'rgba(246,240,255,.90)';
+      ctx.fillRect(0, 0, w, h);
+
+      // 星云云团
+      for (const d of dust.current) {
+        d.x += d.vx * dt; d.y += d.vy * dt;
+        if (d.x < -d.r * 2) d.x = w + d.r;
+        if (d.x > w + d.r * 2) d.x = -d.r;
+        if (d.y < -d.r * 2) d.y = h + d.r;
+        if (d.y > h + d.r * 2) d.y = -d.r;
+
+        const pulseFactor = 0.85 + Math.sin(t.current * 0.5 + d.hue * 0.05) * 0.10;
+        const gr = ctx.createRadialGradient(d.x, d.y, 0, d.x, d.y, d.r * pulseFactor);
+        gr.addColorStop(0, `hsla(${d.hue},70%,${isDark ? 60 : 50}%,${d.alpha * 2.2})`);
+        gr.addColorStop(0.5, `hsla(${d.hue + 30},65%,${isDark ? 55 : 45}%,${d.alpha})`);
+        gr.addColorStop(1, `hsla(${d.hue},60%,50%,0)`);
+        ctx.fillStyle = gr;
+        ctx.beginPath(); ctx.ellipse(d.x, d.y, d.r * pulseFactor, d.r * pulseFactor * (0.7 + Math.sin(t.current * 0.3 + d.hue) * 0.15), t.current * 0.1 + d.hue * 0.05, 0, Math.PI * 2);
+        ctx.fill();
+      }
+
+      // 中央高亮星云核
+      const core1 = ctx.createRadialGradient(w * 0.42, h * 0.38, 0, w * 0.42, h * 0.38, w * 0.32);
+      core1.addColorStop(0, `hsla(${primaryHsl.h},75%,${isDark ? 65 : 55}%,${isDark ? 0.07 : 0.04})`);
+      core1.addColorStop(0.5, `hsla(${accentHsl.h},65%,${isDark ? 60 : 50}%,${isDark ? 0.04 : 0.025})`);
+      core1.addColorStop(1, 'rgba(0,0,0,0)');
+      ctx.fillStyle = core1; ctx.fillRect(0, 0, w, h);
+
+      // 繁星
+      for (const s of stars.current) {
+        s.twinkle += dt * s.tp;
+        const a = (0.25 + Math.sin(s.twinkle) * 0.22) * (isDark ? 1 : 0.55);
+        if (s.size > 1.5) {
+          const grd = ctx.createRadialGradient(s.x, s.y, 0, s.x, s.y, s.size * 3);
+          grd.addColorStop(0, `hsla(${s.hue},80%,90%,${a * 0.35})`);
+          grd.addColorStop(1, 'rgba(0,0,0,0)');
+          ctx.fillStyle = grd;
+          ctx.beginPath(); ctx.arc(s.x, s.y, s.size * 3, 0, Math.PI * 2); ctx.fill();
+        }
+        ctx.beginPath(); ctx.arc(s.x, s.y, s.size, 0, Math.PI * 2);
+        ctx.fillStyle = `hsla(${s.hue},70%,92%,${a})`;
+        ctx.fill();
+      }
+
+      // 鼠标光晕
+      if (mouse.current.x > 0) {
+        const mg = ctx.createRadialGradient(mouse.current.x, mouse.current.y, 0, mouse.current.x, mouse.current.y, 120);
+        mg.addColorStop(0, `hsla(${primaryHsl.h},80%,${isDark ? 75 : 60}%,${isDark ? 0.12 : 0.07})`);
+        mg.addColorStop(1, 'rgba(0,0,0,0)');
+        ctx.fillStyle = mg; ctx.fillRect(0, 0, w, h);
+      }
+    },
+    (canvas) => {
+      const onMove = (e: MouseEvent) => { mouse.current = { x: e.clientX, y: e.clientY }; };
+      const onClick = (e: MouseEvent) => {
+        for (let i = 0; i < 6; i++) {
+          dust.current.push({ x: e.clientX, y: e.clientY, vx: (Math.random() - 0.5) * 20, vy: (Math.random() - 0.5) * 14, r: 30 + Math.random() * 60, hue: hexToHsl(primaryColor).h + (Math.random() - 0.5) * 100, alpha: 0.05 + Math.random() * 0.06 });
+        }
+        if (dust.current.length > 50) dust.current.splice(0, dust.current.length - 50);
+      };
+      window.addEventListener('mousemove', onMove);
+      canvas.addEventListener('click', onClick);
+      return () => { window.removeEventListener('mousemove', onMove); canvas.removeEventListener('click', onClick); };
+    },
+  );
   return <canvas ref={ref} className="fixed inset-0 w-full h-full z-0" />;
 }
 
@@ -537,6 +1820,18 @@ export function BackgroundManager() {
       case 'constellation':   return <ConstellationEffect />;
       case 'mountain-parallax': return <MountainParallaxEffect />;
       case 'gold-flakes':     return <GoldFlakesEffect />;
+      case 'ink-wash-bloom':  return <InkWashBloomEffect />;
+      case 'ink-brush-trace': return <InkBrushTraceEffect />;
+      case 'misty-peaks':     return <MistyPeaksEffect />;
+      case 'river-lantern':   return <RiverLanternEffect />;
+      case 'bamboo-breeze':   return <BambooBreezeEffect />;
+      case 'bamboo-rain':     return <BambooRainEffect />;
+      case 'lotus-pond':      return <LotusPondEffect />;
+      case 'palace-lantern':  return <PalaceLanternEffect />;
+      case 'deep-sea-drift':  return <DeepSeaDriftEffect />;
+      case 'coral-reef':      return <CoralReefEffect />;
+      case 'meteor-shower':   return <MeteorShowerEffect />;
+      case 'nebula-drift':    return <NebulaDriftEffect />;
       default:                return <BackgroundBlobs />;
     }
   })();

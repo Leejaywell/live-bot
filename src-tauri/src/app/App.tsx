@@ -5,7 +5,9 @@ import { Toaster } from 'sonner';
 import { ThemeProvider } from './context/ThemeContext';
 import { ConfigProvider } from './context/ConfigContext';
 import { LoginContext } from './context/LoginContext';
+import { RoomProvider, useRoom } from './context/RoomContext';
 import { BackgroundManager } from './components/BackgroundEffects';
+import { DanmuOverlay } from './components/DanmuOverlay';
 import { TopBar } from './components/TopBar';
 import { Sidebar } from './components/Sidebar';
 import { ThemePanel } from './components/ThemePanel';
@@ -59,7 +61,18 @@ function parseNotification(log: string): AppNotif | null {
 }
 
 export default function App() {
-  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+  return (
+    <ThemeProvider>
+      <RoomProvider>
+        <AppContent />
+      </RoomProvider>
+    </ThemeProvider>
+  );
+}
+
+function AppContent() {
+  const { connected, setConnected, requireRoom, registerOpenRoomModal } = useRoom();
+  const [sidebarMode, setSidebarMode] = useState<'expanded' | 'icon' | 'hidden'>('expanded');
   const [themePanelOpen, setThemePanelOpen] = useState(false);
   const [notificationPanelOpen, setNotificationPanelOpen] = useState(false);
   const [settingsPanelOpen, setSettingsPanelOpen] = useState(false);
@@ -69,17 +82,19 @@ export default function App() {
   const [autoRoom, setAutoRoom] = useState<{ roomId: string; liveStatus: number; liveTime: string } | null>(null);
   const [showRoomModal, setShowRoomModal] = useState(false);
   const [showLoginModal, setShowLoginModal] = useState(false);
+
+  // 注册到 RoomContext，让 requireRoom 弹窗可以直接打开连接对话框
+  useEffect(() => {
+    registerOpenRoomModal(() => setShowRoomModal(true));
+  }, [registerOpenRoomModal]);
   const [loginUrl, setLoginUrl] = useState('');
   const [loginKey, setLoginKey] = useState('');
   const [loginStatus, setLoginStatus] = useState<'pending' | 'expired' | 'success' | 'idle'>('pending');
   const [loadingQr, setLoadingQr] = useState(false);
-  const [hasConnectedRoom, setHasConnectedRoom] = useState(false);
   const [userRoom, setUserRoom] = useState<RoomInfo | null>(null);
   const [anchorInfo, setAnchorInfo] = useState<AnchorInfo | null>(null);
-  const [showConnectHint, setShowConnectHint] = useState(false);
   const [notifications, setNotifications] = useState<AppNotif[]>([]);
   const [unreadCount, setUnreadCount] = useState(0);
-  const connectHintTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // 刷新用户信息（返回最新 info）
   const refreshUserInfo = useCallback(async () => {
@@ -133,7 +148,7 @@ export default function App() {
         try {
           const room = await api.checkRoom(savedRoomId);
           setAutoRoom({ roomId: String(room.room_id), liveStatus: room.live_status, liveTime: room.live_time ?? '' });
-          setHasConnectedRoom(true);
+          setConnected(true);
           if (room.uid) {
             api.getAnchorInfo(room.uid).then(setAnchorInfo).catch(() => {});
           }
@@ -154,7 +169,7 @@ export default function App() {
         if (!info.is_login) {
           setIsLoggedIn(false);
           setUserInfo(null);
-          setHasConnectedRoom(false);
+          setConnected(false);
           setShowLoginModal(true);
           fetchLoginQr();
         }
@@ -201,7 +216,7 @@ export default function App() {
               });
             }
             setIsLoggedIn(true);
-            setHasConnectedRoom(false);
+            setConnected(false);
           } else if (res.status === 'Expired') {
             setLoginStatus('expired');
           }
@@ -227,13 +242,8 @@ export default function App() {
     setIsLoggedIn(false);
     setUserInfo(null);
     setAutoRoom(null);
-    setHasConnectedRoom(false);
+    setConnected(false);
     window.location.reload();
-  }, []);
-
-  // 未连接时点击交互元素，弹出提示
-  const triggerConnectHint = useCallback(() => {
-    toast.success('请连接房间');
   }, []);
 
   // 连接房间成功
@@ -241,7 +251,7 @@ export default function App() {
     const id = parseInt(roomId);
     setAutoRoom({ roomId, liveStatus, liveTime });
     setShowRoomModal(false);
-    setHasConnectedRoom(true);
+    setConnected(true);
     // 持久化已连接的房间
     api.setConnectedRoom(id).catch(() => {});
     // 拉取主播信息
@@ -254,14 +264,14 @@ export default function App() {
 
   // 断开房间
   const handleDisconnect = useCallback(() => {
-    setHasConnectedRoom(false);
+    setConnected(false);
     setAnchorInfo(null);
     api.stopMonitor().catch(() => {});
     api.setConnectedRoom(null).catch(() => {});
   }, []);
 
   return (
-    <ThemeProvider>
+    <>
       <Toaster
         position="top-right"
         richColors
@@ -277,9 +287,10 @@ export default function App() {
           style: {
             fontSize: '11px',
             fontWeight: 600,
-            background: 'rgba(255, 255, 255, 0.94)',
-            backdropFilter: 'blur(20px)',
-            border: '1px solid rgba(255, 255, 255, 0.45)',
+            background: 'var(--surface-bg)',
+            color: 'var(--foreground)',
+            backdropFilter: 'blur(var(--glass-blur))',
+            border: '1px solid var(--surface-border)',
             borderRight: 'none',
             boxShadow: '-4px 6px 20px rgba(0, 0, 0, 0.07)',
             borderRadius: '14px 0 0 14px',
@@ -296,24 +307,21 @@ export default function App() {
       <ConfigProvider>
       <HashRouter>
         <BackgroundManager />
+        <DanmuOverlay />
         {loginChecked && <div
           className="w-full h-screen overflow-hidden flex relative z-[1]"
           onContextMenu={(e) => e.preventDefault()}
         >
           <Sidebar
-            collapsed={sidebarCollapsed}
-            connected={hasConnectedRoom}
+            mode={sidebarMode}
             onToggleThemePanel={() => setThemePanelOpen(!themePanelOpen)}
-            onToggleSidebar={() => setSidebarCollapsed(!sidebarCollapsed)}
+            onToggleSidebar={() => setSidebarMode(m => m === 'expanded' ? 'icon' : 'expanded')}
             onToggleSettings={() => setSettingsPanelOpen(!settingsPanelOpen)}
-            onBlockedClick={triggerConnectHint}
           />
 
           <div className="flex-1 flex flex-col overflow-hidden relative">
             <TopBar
               onToggleNotifications={() => setNotificationPanelOpen(!notificationPanelOpen)}
-              sidebarCollapsed={sidebarCollapsed}
-              onToggleSidebar={() => setSidebarCollapsed(!sidebarCollapsed)}
               isLoggedIn={isLoggedIn}
               userInfo={userInfo}
               userRoom={userRoom}
@@ -323,27 +331,10 @@ export default function App() {
               autoRoom={autoRoom}
               onAutoRoomConsumed={() => setAutoRoom(null)}
               onDisconnect={handleDisconnect}
-              onOpenRoomModal={() => setShowRoomModal(true)}
               onRefreshUserInfo={refreshUserInfo}
-              showConnectHint={showConnectHint}
               unreadCount={unreadCount}
             />
             <main className="flex-1 overflow-hidden relative">
-              {/* 已登录但未连接房间：引导连接 */}
-              {isLoggedIn && !hasConnectedRoom && (
-                <div className="absolute inset-0 z-10 flex items-center justify-center bg-[var(--background)]/40 backdrop-blur-[2px]">
-                  <GlassCard className="p-8 flex flex-col items-center gap-4 shadow-2xl">
-                    <div className="w-16 h-16 rounded-full bg-[var(--primary-color)]/10 flex items-center justify-center">
-                      <Radio className="w-8 h-8 text-[var(--primary-color)]" />
-                    </div>
-                    <div className="text-[15px] font-semibold">请先连接直播间</div>
-                    <div className="text-[12px] text-gray-400">连接后即可使用所有功能</div>
-                    <Button variant="primary" onClick={() => setShowRoomModal(true)}>
-                      连接直播间
-                    </Button>
-                  </GlassCard>
-                </div>
-              )}
               {!isLoggedIn && (
                 <div className="absolute inset-0 flex items-center justify-center z-20 bg-[var(--background)]/80 backdrop-blur-sm">
                   <GlassCard className="p-8 flex flex-col items-center gap-4">
@@ -424,7 +415,7 @@ export default function App() {
       </HashRouter>
       </ConfigProvider>
       </LoginContext.Provider>
-    </ThemeProvider>
+    </>
   );
 }
 

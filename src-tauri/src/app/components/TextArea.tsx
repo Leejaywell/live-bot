@@ -10,7 +10,7 @@ export const TextArea = forwardRef<HTMLTextAreaElement, TextAreaProps>(
         ref={ref}
         className={cn(
           'px-3 py-2 rounded-lg resize-none',
-          'bg-white/60 dark:bg-white/10 border border-gray-200 dark:border-white/20',
+          'bg-[var(--control-bg)] border border-[var(--control-border)] text-[var(--control-text)]',
           'focus:outline-none focus:ring-2 focus:ring-[var(--primary-color)]/50',
           'placeholder:text-gray-400 dark:placeholder:text-gray-500',
           className

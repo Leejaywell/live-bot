@@ -3,8 +3,40 @@
 :root {
   --font-size: 12px;
   --primary-color: #4b8eff;
+  --accent-color: #86b6ff;
   --background: #f0f4ff;
   --foreground: #1a1a1a;
+  --surface-bg: rgba(245, 248, 255, 0.82);
+  --surface-border: rgba(255, 255, 255, 0.55);
+  --surface-shadow: 0 8px 32px rgba(0, 0, 0, 0.04);
+  --surface-subtle: rgba(75, 142, 255, 0.07);
+  --surface-subtle-strong: rgba(75, 142, 255, 0.12);
+  --topbar-bg: rgba(255, 255, 255, 0.4);
+  --topbar-border: rgba(255, 255, 255, 0.2);
+  --sidebar-bg: rgba(255, 255, 255, 0.45);
+  --sidebar-border: rgba(255, 255, 255, 0.2);
+  --control-bg: rgba(255, 255, 255, 0.7);
+  --control-bg-hover: rgba(255, 255, 255, 0.86);
+  --control-border: rgba(150, 170, 210, 0.22);
+  --control-text: #35405e;
+  --muted-text: #71809e;
+  --button-primary-bg: #4b8eff;
+  --button-primary-hover: #437ee2;
+  --button-primary-text: #ffffff;
+  --button-default-bg: rgba(255, 255, 255, 0.72);
+  --button-default-hover: rgba(255, 255, 255, 0.88);
+  --button-default-border: rgba(150, 170, 210, 0.24);
+  --button-default-text: #33405d;
+  --button-ghost-text: #586884;
+  --button-ghost-hover: rgba(75, 142, 255, 0.08);
+  --button-active-soft-bg: rgba(75, 142, 255, 0.12);
+  --button-active-soft-border: rgba(75, 142, 255, 0.24);
+  --button-active-soft-text: #4b8eff;
+  --modal-backdrop: rgba(0, 0, 0, 0.28);
+  --page-tint: rgba(134, 182, 255, 0.05);
+  --theme-glow: rgba(134, 182, 255, 0.12);
+  --outline-soft: rgba(75, 142, 255, 0.24);
+  --toggle-off-bg: #d4d4d9;
   --card: #ffffff;
   --card-foreground: oklch(0.145 0 0);
   --popover: oklch(1 0 0);
@@ -128,6 +160,7 @@
   body {
     font-family: 'PingFang SC', 'SF Pro', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
     color: var(--foreground);
+    background: linear-gradient(180deg, var(--background) 0%, color-mix(in srgb, var(--background) 92%, var(--page-tint)) 100%);
   }
 
   html {
@@ -178,17 +211,10 @@
 
   .glass-card {
     position: relative;
-    background: rgba(245, 248, 255, 0.82);
-    border: 1px solid rgba(255, 255, 255, 0.55);
-    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.04);
-    backdrop-filter: blur(20px);
-  }
-
-  .dark .glass-card {
-    background: rgba(25, 25, 35, 0.65);
-    border: 1px solid rgba(255, 255, 255, 0.08);
-    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.2);
-    backdrop-filter: blur(24px);
+    background: var(--surface-bg);
+    border: 1px solid var(--surface-border);
+    box-shadow: var(--surface-shadow);
+    backdrop-filter: blur(var(--glass-blur));
   }
 
   .glass-card::before {
@@ -196,27 +222,15 @@
   }
 
   .glass-topbar {
-    background: rgba(255, 255, 255, 0.4);
-    backdrop-filter: blur(20px);
-    border-bottom: 1px solid rgba(255, 255, 255, 0.2);
-  }
-
-  .dark .glass-topbar {
-    background: rgba(20, 20, 28, 0.4);
-    backdrop-filter: blur(24px);
-    border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+    background: var(--topbar-bg);
+    backdrop-filter: blur(var(--glass-blur));
+    border-bottom: 1px solid var(--topbar-border);
   }
 
   .glass-sidebar {
-    background: rgba(255, 255, 255, 0.45);
-    backdrop-filter: blur(20px);
-    border-right: 1px solid rgba(255, 255, 255, 0.2);
-  }
-
-  .dark .glass-sidebar {
-    background: rgba(20, 20, 28, 0.45);
-    backdrop-filter: blur(24px);
-    border-right: 1px solid rgba(255, 255, 255, 0.05);
+    background: var(--sidebar-bg);
+    backdrop-filter: blur(var(--glass-blur));
+    border-right: 1px solid var(--sidebar-border);
   }
 
   /* Custom Range Slider Styles */
@@ -399,6 +413,61 @@
     to   { opacity: 1; transform: translateY(0);   }
   }
   .animate-log-in { animation: log-in 0.15s ease both; }
+
+  /* 水墨入场 — 古风主题行动画 */
+  @keyframes log-ink {
+    from { opacity: 0; transform: translateX(-18px); clip-path: inset(0 100% 0 0); }
+    60%  { clip-path: inset(0 0 0 0); }
+    to   { opacity: 1; transform: translateX(0); clip-path: inset(0 0 0 0); }
+  }
+  .animate-log-ink { animation: log-ink 0.28s cubic-bezier(0.16,1,0.3,1) both; }
+
+  /* 气泡浮现 — 海洋主题行动画 */
+  @keyframes log-wave {
+    from { opacity: 0; transform: translateY(14px) scale(0.96); }
+    60%  { transform: translateY(-3px) scale(1.01); }
+    to   { opacity: 1; transform: translateY(0) scale(1); }
+  }
+  .animate-log-wave { animation: log-wave 0.30s cubic-bezier(0.34,1.56,0.64,1) both; }
+
+  /* 星光渐显 — 星空主题行动画 */
+  @keyframes log-star {
+    from { opacity: 0; filter: brightness(1.8) blur(2px); }
+    60%  { filter: brightness(1.15) blur(0px); }
+    to   { opacity: 1; filter: brightness(1) blur(0px); }
+  }
+  .animate-log-star { animation: log-star 0.24s ease both; }
+
+  /* 高能弹幕脉冲 */
+  @keyframes hot-pulse {
+    0%, 100% { box-shadow: 0 0 0 0 rgba(239,68,68,0); }
+    50%      { box-shadow: 0 0 0 4px rgba(239,68,68,0.18); }
+  }
+  .animate-hot-pulse { animation: hot-pulse 1.8s ease-in-out infinite; }
+
+  /* SC 浮层滑入 */
+  @keyframes sc-slide-up {
+    from { opacity: 0; transform: translateY(100%) scale(0.96); }
+    to   { opacity: 1; transform: translateY(0) scale(1); }
+  }
+  @keyframes sc-slide-down {
+    from { opacity: 1; transform: translateY(0) scale(1); }
+    to   { opacity: 0; transform: translateY(60%) scale(0.96); }
+  }
+  .animate-sc-in  { animation: sc-slide-up   0.38s cubic-bezier(0.34,1.56,0.64,1) both; }
+  .animate-sc-out { animation: sc-slide-down  0.26s ease-in both; }
+
+  /* 大航海横幅滑入 */
+  @keyframes guard-slide-down {
+    from { opacity: 0; transform: translateY(-100%) scale(0.96); }
+    to   { opacity: 1; transform: translateY(0) scale(1); }
+  }
+  @keyframes guard-slide-up {
+    from { opacity: 1; transform: translateY(0) scale(1); }
+    to   { opacity: 0; transform: translateY(-60%) scale(0.96); }
+  }
+  .animate-guard-in  { animation: guard-slide-down 0.36s cubic-bezier(0.34,1.56,0.64,1) both; }
+  .animate-guard-out { animation: guard-slide-up   0.24s ease-in both; }
 
   /* Bell shake on new notification */
   @keyframes bell-shake {

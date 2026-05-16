@@ -18,7 +18,7 @@ export function Toggle({ checked, onChange, disabled }: ToggleProps) {
         'relative inline-block h-[20px] w-[36px] rounded-full transition-colors duration-200 disabled:opacity-50',
         checked
           ? 'bg-[var(--primary-color)] shadow-[0_2px_8px_rgba(var(--primary-rgb),0.4)]'
-          : 'bg-[#d4d4d9] dark:bg-[#4a4a52]'
+          : 'bg-[var(--toggle-off-bg)]'
       )}
     >
       <span

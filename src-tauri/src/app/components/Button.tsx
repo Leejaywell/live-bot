@@ -23,9 +23,9 @@ export function Button({
   };
 
   const variantClasses = {
-    primary: 'bg-[var(--primary-color)] text-white hover:opacity-90',
-    default: 'bg-white/60 dark:bg-white/10 border border-gray-200 dark:border-white/20 text-gray-700 dark:text-white hover:bg-white/80 dark:hover:bg-white/15',
-    ghost: 'text-gray-600 dark:text-gray-300 hover:bg-white/10',
+    primary: 'bg-[var(--button-primary-bg)] text-[var(--button-primary-text)] hover:bg-[var(--button-primary-hover)] shadow-[0_8px_20px_-8px_rgba(var(--primary-rgb),0.5)]',
+    default: 'bg-[var(--button-default-bg)] border text-[var(--button-default-text)] hover:bg-[var(--button-default-hover)]',
+    ghost: 'text-[var(--button-ghost-text)] hover:bg-[var(--button-ghost-hover)]',
     destructive: 'bg-red-500 text-white hover:bg-red-600',
   };
 
@@ -35,6 +35,7 @@ export function Button({
         baseClasses,
         sizeClasses[size],
         variantClasses[variant],
+        variant === 'default' && 'border-[var(--button-default-border)]',
         className
       )}
       disabled={disabled}

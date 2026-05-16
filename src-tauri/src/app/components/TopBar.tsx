@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
 import { createPortal } from 'react-dom';
-import { Bell, User, LogIn, Link as LinkIcon, X, RefreshCw, Unplug, Play, Square, Copy, PanelLeftOpen, PanelLeftClose } from 'lucide-react';
+import { Bell, User, LogIn, X, RefreshCw, Unplug, Play, Square, Copy } from 'lucide-react';
 import { IconButton } from './IconButton';
 import { Button } from './Button';
 import { UserInfo, RoomInfo, AnchorInfo, api } from '../lib/api';
@@ -17,8 +17,6 @@ function useProxiedImage(url: string | undefined) {
 
 interface TopBarProps {
   onToggleNotifications?: () => void;
-  sidebarCollapsed?: boolean;
-  onToggleSidebar?: () => void;
   isLoggedIn: boolean;
   userInfo: UserInfo | null;
   userRoom: RoomInfo | null;
@@ -28,9 +26,7 @@ interface TopBarProps {
   autoRoom?: { roomId: string; liveStatus: number; liveTime: string } | null;
   onAutoRoomConsumed?: () => void;
   onDisconnect: () => void;
-  onOpenRoomModal: () => void;
   onRefreshUserInfo: () => Promise<UserInfo | null>;
-  showConnectHint?: boolean;
   unreadCount?: number;
 }
 
@@ -39,7 +35,7 @@ function formatNum(n: number) {
   return String(n);
 }
 
-export function TopBar({ onToggleNotifications, sidebarCollapsed, onToggleSidebar, isLoggedIn, userInfo, userRoom, anchorInfo, onRequireLogin, onLogout, autoRoom, onAutoRoomConsumed, onDisconnect, onOpenRoomModal, onRefreshUserInfo, showConnectHint, unreadCount = 0 }: TopBarProps) {
+export function TopBar({ onToggleNotifications, isLoggedIn, userInfo, userRoom, anchorInfo, onRequireLogin, onLogout, autoRoom, onAutoRoomConsumed, onDisconnect, onOpenRoomModal, onRefreshUserInfo, unreadCount = 0 }: TopBarProps) {
   const [showUserMenu, setShowUserMenu] = useState(false);
   const [isConnected, setIsConnected] = useState(false);
   const [isMonitoring, setIsMonitoring] = useState(false);
@@ -174,29 +170,10 @@ export function TopBar({ onToggleNotifications, sidebarCollapsed, onToggleSideba
       <div
         className="h-[56px] glass-topbar flex items-center justify-between pl-3 pr-4 relative"
       >
-        <span
-          className="absolute left-1/2 -translate-x-1/2 text-[12px] font-bold text-[var(--primary-color)] pointer-events-none transition-opacity duration-500 select-none bg-[var(--primary-color)]/10 px-3 py-1 rounded-full border border-[var(--primary-color)]/20"
-          style={{ opacity: showConnectHint ? 1 : 0 }}
-        >
-          请先连接房间
-        </span>
-        <div className="flex items-center gap-2">
-          <IconButton
-            onClick={onToggleSidebar}
-            title={sidebarCollapsed ? '展开侧栏' : '收起侧栏'}
-            className="opacity-50 hover:opacity-100 flex-shrink-0"
-          >
-            {sidebarCollapsed
-              ? <PanelLeftOpen className="w-[18px] h-[18px]" />
-              : <PanelLeftClose className="w-[18px] h-[18px]" />
-            }
-          </IconButton>
-          <div className="w-px h-5 bg-black/10 dark:bg-white/10" />
-        </div>
-        <div className="flex items-center gap-4 flex-1 ml-2">
+        <div className="flex items-center gap-4 flex-1 ml-4">
           {isConnected ? (
             <>
-              <div className="flex items-center gap-2.5 px-3.5 py-2 rounded-2xl bg-white/40 dark:bg-white/5 border border-white/20">
+              <div className="flex items-center gap-2.5 px-3.5 py-2 rounded-2xl bg-[var(--surface-subtle)] border border-[var(--surface-border)]">
                 {/* 主播头像 */}
                 {anchorFace ? (
                   <img src={anchorFace} className="w-12 h-12 rounded-full border-2 border-white/50 flex-shrink-0 object-cover shadow-sm" />
@@ -261,17 +238,12 @@ export function TopBar({ onToggleNotifications, sidebarCollapsed, onToggleSideba
                 </button>
               </div>
             </>
-          ) : isLoggedIn ? (
-            <Button size="sm" variant="primary" onClick={onOpenRoomModal} className="shadow-md font-bold">
-              <LinkIcon className="w-3.5 h-3.5 mr-1.5" />
-              连接直播间
-            </Button>
           ) : null}
         </div>
 
         <div className="flex items-center gap-3">
           <div className="relative">
-            <IconButton onClick={onToggleNotifications} title="通知" className="bg-white/40 dark:bg-white/5 border border-white/20 hover:border-white/40">
+            <IconButton onClick={onToggleNotifications} title="通知">
               <Bell className={`w-[18px] h-[18px] transition-transform duration-300 ${unreadCount > 0 ? 'animate-[bell-shake_0.6s_ease_both]' : ''}`} />
             </IconButton>
             {unreadCount > 0 && (
@@ -303,8 +275,8 @@ export function TopBar({ onToggleNotifications, sidebarCollapsed, onToggleSideba
               </div>
 
               {showUserMenu && createPortal(
-                <div ref={menuPanelRef} className="fixed w-72 glass-card backdrop-blur-xl rounded-2xl overflow-hidden shadow-2xl border border-white/30 z-[9999]" style={{ top: menuPos.top, right: menuPos.right }}>
-                  <div className="p-5 border-b border-white/10 bg-white/30 dark:bg-black/10">
+                <div ref={menuPanelRef} className="fixed w-72 glass-card backdrop-blur-xl rounded-2xl overflow-hidden shadow-2xl border z-[9999]" style={{ top: menuPos.top, right: menuPos.right, borderColor: 'var(--surface-border)' }}>
+                  <div className="p-5 border-b bg-[var(--surface-subtle)]" style={{ borderColor: 'var(--surface-border)' }}>
                     {/* 头像 + 昵称 */}
                     <div className="flex items-center gap-4 mb-4">
                       <div className="w-14 h-14 rounded-full overflow-hidden border-2 border-white shadow-md flex-shrink-0">
@@ -337,9 +309,9 @@ export function TopBar({ onToggleNotifications, sidebarCollapsed, onToggleSideba
                         </div>
                       </div>
                     </div>
-                    <div className="space-y-2 text-[11px] text-gray-500">
+                    <div className="space-y-2 text-[11px] text-[var(--muted-text)]">
                       <button
-                        className="w-full flex justify-between items-center px-2 py-1 rounded-lg bg-black/5 dark:bg-white/5 hover:bg-black/10 dark:hover:bg-white/10 transition-colors group cursor-copy"
+                        className="w-full flex justify-between items-center px-2 py-1 rounded-lg bg-[var(--surface-subtle)] hover:bg-[var(--surface-subtle-strong)] transition-colors group cursor-copy"
                         onClick={() => { navigator.clipboard.writeText(String(userInfo?.uid ?? '')); toast.success('UID 已复制'); }}
                         title="点击复制 UID"
                       >
@@ -352,7 +324,7 @@ export function TopBar({ onToggleNotifications, sidebarCollapsed, onToggleSideba
                       {userRoom && (
                         <>
                           <button
-                            className="w-full flex justify-between items-center px-2 py-1 rounded-lg bg-black/5 dark:bg-white/5 hover:bg-black/10 dark:hover:bg-white/10 transition-colors group cursor-copy"
+                            className="w-full flex justify-between items-center px-2 py-1 rounded-lg bg-[var(--surface-subtle)] hover:bg-[var(--surface-subtle-strong)] transition-colors group cursor-copy"
                             onClick={() => { navigator.clipboard.writeText(String(userRoom.room_id)); toast.success('房间号已复制'); }}
                             title="点击复制房间号"
                           >
@@ -362,7 +334,7 @@ export function TopBar({ onToggleNotifications, sidebarCollapsed, onToggleSideba
                               <Copy className="w-3 h-3 opacity-0 group-hover:opacity-50" />
                             </span>
                           </button>
-                          <div className="flex justify-between items-center px-2 py-1 rounded-lg bg-black/5 dark:bg-white/5">
+                          <div className="flex justify-between items-center px-2 py-1 rounded-lg bg-[var(--surface-subtle)]">
                             <span className="font-bold">状态</span>
                             <span className={`flex items-center gap-1.5 font-bold ${userRoom.live_status === 1 ? 'text-green-500' : 'text-gray-400'}`}>
                               <span className={`w-1.5 h-1.5 rounded-full inline-block ${userRoom.live_status === 1 ? 'bg-green-500 animate-pulse' : 'bg-gray-400'}`} />

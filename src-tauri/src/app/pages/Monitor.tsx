@@ -3,13 +3,28 @@ import { invoke } from '@tauri-apps/api/core';
 import { GlassCard } from '../components/GlassCard';
 import { Input } from '../components/Input';
 import { Toggle } from '../components/Toggle';
-import { RefreshCw, ChevronDown, Radio, Plus } from 'lucide-react';
+import { RefreshCw, ChevronDown, Radio, Plus, Pause } from 'lucide-react';
 import { api, AiProvider } from '../lib/api';
 import { availableProviders, findVoice, TtsProvider } from '../lib/voices';
 import { VoicePicker } from '../components/VoicePicker';
 import { toast } from 'sonner';
 import { useLogin } from '../context/LoginContext';
+import { useTheme } from '../context/ThemeContext';
 import { cn } from '../lib/utils';
+
+// 主题分组 → 行入场动画
+const INK_THEMES = new Set([
+  'ink-wash-bloom', 'ink-brush-trace', 'misty-peaks', 'river-lantern',
+  'bamboo-breeze', 'bamboo-rain', 'mountain-parallax', 'gold-flakes',
+  'lotus-pond', 'palace-lantern',
+]);
+const OCEAN_THEMES = new Set(['fluid-ripple', 'deep-sea-drift', 'coral-reef']);
+
+function logAnimClass(backgroundEffect: string): string {
+  if (INK_THEMES.has(backgroundEffect))   return 'animate-log-ink';
+  if (OCEAN_THEMES.has(backgroundEffect)) return 'animate-log-wave';
+  return 'animate-log-star';
+}
 
 type LogType = 'danmu' | 'gift' | 'interact' | 'other' | 'system';
 
@@ -20,6 +35,7 @@ interface LogEntry {
   user?: string;
   content?: string;
   time: string;
+  hot?: boolean;
 }
 
 let _logId = 0;
@@ -61,14 +77,21 @@ const typeBadge: Record<LogType, string> = {
   system: '系统',
 };
 
+// 高能弹幕：同一内容 10 秒内出现 ≥5 次
+const HOT_WINDOW_MS = 10_000;
+const HOT_THRESHOLD = 5;
+
 export function Monitor() {
   const { isLoggedIn: loggedIn } = useLogin();
+  const { backgroundEffect } = useTheme();
   const [filter, setFilter] = useState('all');
   const [message, setMessage] = useState('');
   const [isMonitoring, setIsMonitoring] = useState(false);
   const [logs, setLogs] = useState<LogEntry[]>([]);
   const logEndRef = useRef<HTMLDivElement>(null);
   const bufferRef = useRef<LogEntry[]>([]);
+  // content → 最近出现时间戳列表
+  const freqMap = useRef<Map<string, number[]>>(new Map());
 
   // Pause state: frontend stops polling, backend continues
   const [isPaused, setIsPaused] = useState(false);
@@ -109,7 +132,17 @@ export function Monitor() {
 
   const flushLogs = useCallback(() => {
     if (bufferRef.current.length === 0) return;
-    const pending = bufferRef.current.splice(0);
+    const now = Date.now();
+    const pending = bufferRef.current.splice(0).map(entry => {
+      if (entry.type === 'danmu' && entry.content) {
+        const key = entry.content.trim();
+        const times = (freqMap.current.get(key) ?? []).filter(t => now - t < HOT_WINDOW_MS);
+        times.push(now);
+        freqMap.current.set(key, times);
+        if (times.length >= HOT_THRESHOLD) return { ...entry, hot: true };
+      }
+      return entry;
+    });
     setLogs(prev => {
       const next = [...prev, ...pending];
       return next.length > 500 ? next.slice(next.length - 500) : next;
@@ -317,7 +350,12 @@ export function Monitor() {
 
   return (
     <div className="p-5 h-full flex flex-col gap-4 overflow-hidden">
-      <GlassCard className="flex-1 flex flex-col overflow-hidden border-white/60 dark:border-white/10 shadow-xl">
+      <GlassCard className={cn(
+        "flex-1 flex flex-col overflow-hidden shadow-xl transition-all duration-300",
+        isMonitoring
+          ? "border-white/60 dark:border-white/10"
+          : "border-gray-200/40 dark:border-white/5 opacity-80"
+      )}>
         <div className="flex items-center justify-between px-5 py-3 border-b border-black/5 dark:border-white/5 bg-white/30 dark:bg-black/10 shrink-0">
           <div className="flex items-center gap-3 flex-wrap">
             <div className="flex items-center gap-2 px-3 py-1.5 rounded-full bg-white/50 dark:bg-white/5 border border-white/20">
@@ -397,23 +435,39 @@ export function Monitor() {
             {filteredLogs.map((log) => (
               <div
                 key={log.id}
-                className="flex items-center gap-4 px-6 py-3 hover:bg-black/[0.02] dark:hover:bg-white/[0.02] transition-colors group animate-log-in"
+                className={cn(
+                  'flex items-center gap-4 px-6 py-3 transition-colors group',
+                  logAnimClass(backgroundEffect),
+                  log.hot
+                    ? 'bg-red-500/[0.06] dark:bg-red-500/[0.08] animate-hot-pulse'
+                    : 'hover:bg-black/[0.02] dark:hover:bg-white/[0.02]',
+                )}
               >
                 <span className="text-[11px] text-gray-400 font-mono w-14 shrink-0 font-bold">{log.time}</span>
                 <div className={cn(
                   "px-2 py-0.5 rounded-md text-[9px] font-black uppercase tracking-wider shrink-0 text-center min-w-[40px] shadow-sm",
-                  log.type === 'danmu' ? 'bg-blue-500/10 text-blue-500' :
-                  log.type === 'gift' ? 'bg-amber-500/10 text-amber-500' :
+                  log.hot            ? 'bg-red-500/15 text-red-500' :
+                  log.type === 'danmu'    ? 'bg-blue-500/10 text-blue-500' :
+                  log.type === 'gift'     ? 'bg-amber-500/10 text-amber-500' :
                   log.type === 'interact' ? 'bg-green-500/10 text-green-500' :
                   'bg-gray-500/10 text-gray-500'
                 )}>
-                  {typeBadge[log.type]}
+                  {log.hot ? '高能' : typeBadge[log.type]}
                 </div>
                 <div className="flex-1 min-w-0 text-[12px] leading-relaxed">
                   {log.type === 'danmu' ? (
                     <div className="flex items-center gap-2">
-                      <span className="font-black text-gray-700 dark:text-gray-200 shrink-0">{log.user}</span>
-                      <span className="text-gray-500 dark:text-gray-400 break-all font-medium">{log.content}</span>
+                      <span className={cn(
+                        "font-black shrink-0",
+                        log.hot ? 'text-red-500 dark:text-red-400' : 'text-gray-700 dark:text-gray-200'
+                      )}>{log.user}</span>
+                      <span className={cn(
+                        "break-all font-medium",
+                        log.hot ? 'text-red-600/80 dark:text-red-300/80 font-bold' : 'text-gray-500 dark:text-gray-400'
+                      )}>{log.content}</span>
+                      {log.hot && (
+                        <span className="shrink-0 text-[9px] font-black text-red-400 animate-pulse">🔥</span>
+                      )}
                     </div>
                   ) : (
                     <span className={cn(
@@ -429,13 +483,32 @@ export function Monitor() {
           </div>
           <div ref={logEndRef} />
           {filteredLogs.length === 0 && (
-            <div className="h-full flex flex-col items-center justify-center gap-5 py-20 opacity-40">
-              <div className="w-14 h-14 rounded-full bg-black/5 dark:bg-white/5 flex items-center justify-center border border-black/5">
-                <RefreshCw className={cn("w-7 h-7 text-gray-300", isMonitoring && !isPaused && "animate-spin")} />
-              </div>
-              <p className="text-[13px] text-gray-400 font-black italic tracking-widest">
-                {isPaused ? '读取已暂停' : isMonitoring ? '正在监听...' : '监听未启动'}
-              </p>
+            <div className="h-full flex flex-col items-center justify-center gap-4 py-20">
+              {!isMonitoring ? (
+                <>
+                  <div className="w-16 h-16 rounded-2xl bg-gray-100/60 dark:bg-white/5 flex items-center justify-center border border-gray-200/60 dark:border-white/10">
+                    <Radio className="w-7 h-7 text-gray-300 dark:text-gray-600" />
+                  </div>
+                  <div className="text-center">
+                    <p className="text-[13px] font-black text-gray-400 dark:text-gray-500 tracking-widest">监听未启动</p>
+                    <p className="text-[11px] text-gray-300 dark:text-gray-600 mt-1.5">请先在仪表盘开启监听</p>
+                  </div>
+                </>
+              ) : isPaused ? (
+                <>
+                  <div className="w-14 h-14 rounded-full bg-orange-500/10 flex items-center justify-center border border-orange-500/20 opacity-70">
+                    <Pause className="w-6 h-6 text-orange-400" />
+                  </div>
+                  <p className="text-[13px] font-black text-gray-400 italic tracking-widest opacity-60">读取已暂停</p>
+                </>
+              ) : (
+                <>
+                  <div className="w-14 h-14 rounded-full bg-green-500/10 flex items-center justify-center border border-green-500/20 opacity-70">
+                    <RefreshCw className="w-6 h-6 text-green-400 animate-spin" />
+                  </div>
+                  <p className="text-[13px] font-black text-gray-400 italic tracking-widest opacity-60">正在监听...</p>
+                </>
+              )}
             </div>
           )}
         </div>

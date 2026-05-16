@@ -48,9 +48,10 @@ export function Modal({ open, onClose, children, className, zIndex = 500 }: Moda
       {/* Backdrop */}
       <div
         className={cn(
-          'absolute inset-0 bg-black/30 backdrop-blur-sm',
+          'absolute inset-0 backdrop-blur-sm',
           closing ? 'animate-backdrop-out' : 'animate-backdrop-in'
         )}
+        style={{ background: 'var(--modal-backdrop)' }}
         onClick={handleBackdropClick}
       />
       {/* Nudge wrapper */}
@@ -85,11 +86,12 @@ export function ModalCloseButton({ onClose, className }: { onClose: () => void; 
       className={cn(
         'w-7 h-7 rounded-lg flex items-center justify-center',
         'hover:bg-black/5 dark:hover:bg-white/10',
+        'hover:bg-[var(--button-ghost-hover)] text-[var(--button-ghost-text)]',
         'transition-[transform,background] duration-200 hover:rotate-90',
         className
       )}
     >
-      <X className="w-4 h-4 text-gray-500" />
+      <X className="w-4 h-4" />
     </button>
   );
 }

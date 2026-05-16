@@ -205,7 +205,7 @@ function LlmFields({ p, set, errors }: {
   );
 }
 
-function AsrFields({ p, set, usedEngines }: { p: AiProvider; set: (patch: Partial<AiProvider>) => void; usedEngines: string[] }) {
+function AsrFields({ p, set, usedEngines, errors }: { p: AiProvider; set: (patch: Partial<AiProvider>) => void; usedEngines: string[]; errors: Record<string, boolean> }) {
   const currentEngine = ASR_PROVIDERS.find(ap => ap.value === p.Model) ?? ASR_PROVIDERS[0];
   const isSenseVoice = currentEngine.value === 'sensevoice';
   const isLocal = currentEngine.value !== 'volcengine-asr';
@@ -287,9 +287,13 @@ function AsrFields({ p, set, usedEngines }: { p: AiProvider; set: (patch: Partia
 
       {!isLocal && (
         <div>
-          <label className="text-[11px] text-gray-500 mb-1.5 block">WebSocket 地址</label>
-          <Input mono value={p.APIUrl} onChange={e => set({ APIUrl: e.target.value })} className="w-full h-9" placeholder="wss://your-service-url" />
-          <p className="text-[10px] text-gray-400 mt-0.5">云端服务的 WebSocket 接入地址</p>
+          <label className="text-[11px] text-gray-500 mb-1.5 block">WebSocket 地址 <span className="text-red-400">*</span></label>
+          <Input mono value={p.APIUrl} onChange={e => set({ APIUrl: e.target.value })}
+            className={`w-full h-9${errors['APIUrl'] ? ' ring-2 ring-red-400/60 border-red-400' : ''}`}
+            placeholder="wss://your-service-url" />
+          {errors['APIUrl']
+            ? <p className="text-[10px] text-red-400 mt-0.5">必填</p>
+            : <p className="text-[10px] text-gray-400 mt-0.5">云端服务的 WebSocket 接入地址</p>}
         </div>
       )}
       <div>
@@ -308,13 +312,15 @@ function AsrFields({ p, set, usedEngines }: { p: AiProvider; set: (patch: Partia
   );
 }
 
-function TtsFields({ p, set, usedProviders }: { p: AiProvider; set: (patch: Partial<AiProvider>) => void; usedProviders: string[] }) {
+function TtsFields({ p, set, usedProviders, errors }: { p: AiProvider; set: (patch: Partial<AiProvider>) => void; usedProviders: string[]; errors: Record<string, boolean> }) {
   const isEdge = p.Name.includes('Edge');
   const isMiniMax = p.Name.includes('MiniMax');
+  const isLocal = p.Name.includes('本地') || p.Name.includes('CosyVoice') || p.Name.includes('Fish Speech');
+  const isCloud = !isEdge && !isLocal;
   const ttsSpeed = isNaN(Number(p.TriggerCommand)) ? 1.0 : Number(p.TriggerCommand || '1.0');
   const updateTtsProvider = (val: string) => {
     const info = TTS_PROVIDERS.find(tp => tp.value === val);
-    if (info) set({ Name: info.label });
+    if (info) set({ Name: info.label, APIUrl: '' });
   };
   const availableTtsProviders = TTS_PROVIDERS.filter(tp => {
     // Match by label prefix against usedProviders (provider names already configured)
@@ -329,6 +335,15 @@ function TtsFields({ p, set, usedProviders }: { p: AiProvider; set: (patch: Part
         <GSelect value={TTS_PROVIDERS.find(tp => p.Name.includes(tp.label.split('（')[0]))?.value ?? 'edge'}
           onChange={updateTtsProvider} options={availableTtsProviders} />
       </div>
+      {isCloud && (
+        <div>
+          <label className="text-[11px] text-gray-500 mb-1.5 block">API URL <span className="text-red-400">*</span></label>
+          <Input mono value={p.APIUrl} onChange={e => set({ APIUrl: e.target.value })}
+            className={`w-full h-9${errors['APIUrl'] ? ' ring-2 ring-red-400/60 border-red-400' : ''}`}
+            placeholder="https://api.example.com/v1" />
+          {errors['APIUrl'] && <p className="text-[10px] text-red-400 mt-0.5">必填</p>}
+        </div>
+      )}
       <div>
         <label className="text-[11px] text-gray-500 mb-1.5 block">默认音色 / Voice ID</label>
         <input
@@ -353,7 +368,7 @@ function TtsFields({ p, set, usedProviders }: { p: AiProvider; set: (patch: Part
           </datalist>
         )}
       </div>
-      {!p.Name.includes('本地') && (
+      {!isLocal && (
         <div>
           <label className="text-[11px] text-gray-500 mb-1.5 block">API Key</label>
           <Input type="password" mono value={p.APIKey} onChange={e => set({ APIKey: e.target.value })} className="w-full h-9" placeholder="留空则免费（Edge TTS）" />
@@ -382,7 +397,8 @@ function TtsFields({ p, set, usedProviders }: { p: AiProvider; set: (patch: Part
 // ── 校验 ───────────────────────────────────────────────────────────────────────
 
 function validateProvider(p: AiProvider): Record<string, boolean> {
-  if ((p.ProviderType || 'llm') === 'llm') {
+  const type = (p.ProviderType || 'llm') as ProviderType;
+  if (type === 'llm') {
     const isCustom = !LLM_PROVIDERS.filter(lp => lp.value !== 'custom').some(lp => lp.label === p.Name);
     return {
       Name:   isCustom && !p.Name.trim(),
@@ -390,6 +406,16 @@ function validateProvider(p: AiProvider): Record<string, boolean> {
       APIUrl: !p.APIUrl.trim(),
       APIKey: !p.APIKey.trim(),
     };
+  }
+  if (type === 'asr') {
+    const isCloud = ASR_PROVIDERS.find(ap => ap.label === p.Name || ap.value === p.Model)?.value === 'volcengine-asr';
+    return { APIUrl: isCloud && !p.APIUrl.trim() };
+  }
+  if (type === 'tts') {
+    const isLocal = p.Name.includes('本地') || p.Name.includes('CosyVoice') || p.Name.includes('Fish Speech');
+    const isEdge  = p.Name.includes('Edge');
+    const isCloud = !isLocal && !isEdge;
+    return { APIUrl: isCloud && !p.APIUrl.trim() };
   }
   return {};
 }
@@ -618,7 +644,7 @@ export function Models() {
             <Cpu className="w-4 h-4 text-[var(--primary-color)]" />
             模型管理
           </h1>
-          <p className="text-[11px] text-gray-400 mt-0.5">管理语言模型 · 语音识别 · 语音合成服务，语音类各限 1 个</p>
+          <p className="text-[11px] text-gray-400 mt-0.5">管理语言模型 · 语音识别 · 语音合成服务</p>
         </div>
         <Button variant="primary" size="sm" onClick={handleAdd}>
           <Plus className="w-3.5 h-3.5 mr-1.5" />添加服务
@@ -676,8 +702,8 @@ export function Models() {
             <ModalCloseButton onClose={() => { setPending(null); setErrors({}); }} className="w-8 h-8" />
           </div>
           <div className="flex-1 overflow-y-auto p-5">
-            {pending.ProviderType === 'asr' ? <AsrFields p={pending} set={setPendingField} usedEngines={usedAsrEngines} />
-              : pending.ProviderType === 'tts' ? <TtsFields p={pending} set={setPendingField} usedProviders={usedTtsNames} />
+            {pending.ProviderType === 'asr' ? <AsrFields p={pending} set={setPendingField} usedEngines={usedAsrEngines} errors={errors} />
+              : pending.ProviderType === 'tts' ? <TtsFields p={pending} set={setPendingField} usedProviders={usedTtsNames} errors={errors} />
               : <LlmFields p={pending} set={setPendingField} errors={errors} />}
           </div>
           <div className="p-5 border-t border-white/10 flex gap-2 shrink-0">

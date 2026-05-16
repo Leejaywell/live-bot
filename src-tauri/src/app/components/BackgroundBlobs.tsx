@@ -250,8 +250,8 @@ export function BackgroundBlobs() {
 
   return (
     <div
-      className="fixed inset-0 overflow-hidden pointer-events-none z-0 transition-colors duration-1000"
-      style={{ background: isDark ? '#070710' : '#ecf0fc' }}
+      className="fixed inset-0 overflow-hidden pointer-events-none z-0"
+      style={{ background: 'transparent' }}
     >
       {!disabled && (
         <>
