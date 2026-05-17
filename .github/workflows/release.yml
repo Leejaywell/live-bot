@@ -32,7 +32,7 @@ jobs:
             });
             return data.id;
 
-  # ── Step 2: 三平台并行构建 ──────────────────────────────────────────────────
+  # ── Step 2: macOS ARM 与 Windows 并行构建 ─────────────────────────────────
   build:
     needs: create-release
     permissions:
@@ -42,16 +42,21 @@ jobs:
       matrix:
         include:
           # macOS Apple Silicon
-          - platform: macos-latest
+          - name: macos-arm64
+            platform: macos-latest
             rust_targets: aarch64-apple-darwin
             args: --target aarch64-apple-darwin
 
           # Windows x86_64
-          - platform: windows-latest
-            rust_targets: ''
-            args: ''
+          - name: windows-x64
+            platform: windows-latest
+            rust_targets: x86_64-pc-windows-msvc
+            args: --target x86_64-pc-windows-msvc
 
+    name: Build ${{ matrix.name }}
     runs-on: ${{ matrix.platform }}
+    env:
+      NODE_OPTIONS: --no-deprecation
 
     steps:
       - uses: actions/checkout@v4
@@ -60,6 +65,8 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: '20'
+          cache: npm
+          cache-dependency-path: src-tauri/package-lock.json
 
       - name: Install Rust stable
         uses: dtolnay/rust-toolchain@stable
@@ -75,6 +82,11 @@ jobs:
         working-directory: src-tauri
         run: npm ci
 
+      - name: Normalize frontend build script on Windows
+        if: runner.os == 'Windows'
+        working-directory: src-tauri
+        run: npm pkg set scripts.build="vite build"
+
       - name: Build and upload
         uses: tauri-apps/tauri-action@v0
         env:
@@ -83,9 +95,12 @@ jobs:
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
         with:
           releaseId: ${{ needs.create-release.outputs.release_id }}
+          tagName: ${{ github.ref_name }}
+          releaseDraft: true
+          uploadUpdaterJson: true
           args: ${{ matrix.args }}
           updaterJsonPreferNsis: true
-          updaterJsonKeepUniversal: true
+          retryAttempts: 2
 
   # ── Step 3: 所有平台构建完成后发布 Release ──────────────────────────────────
   publish:
