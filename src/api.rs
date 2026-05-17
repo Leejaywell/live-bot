@@ -499,6 +499,7 @@ impl BiliApi {
     }
 
     /// 低级 chat completions 接口（供 AgentRuntime 使用，支持 tool_calls）
+    #[allow(dead_code)]
     pub async fn chat_completions_raw(
         &self,
         provider: &crate::config::AiProvider,
@@ -545,6 +546,83 @@ impl BiliApi {
             .json()
             .await?;
         Ok(response)
+    }
+
+    pub async fn chat_completions_stream_with_opts(
+        &self,
+        provider: &crate::config::AiProvider,
+        messages: &[serde_json::Value],
+        temperature: Option<f32>,
+    ) -> anyhow::Result<tokio::sync::mpsc::UnboundedReceiver<Result<String, String>>> {
+        use futures_util::StreamExt as _;
+
+        let url = if provider.api_url.ends_with("/chat/completions") {
+            provider.api_url.clone()
+        } else {
+            format!(
+                "{}/chat/completions",
+                provider.api_url.trim_end_matches('/')
+            )
+        };
+        let mut body = serde_json::json!({
+            "model": provider.model,
+            "messages": messages,
+            "stream": true,
+        });
+        if let Some(t) = temperature {
+            body["temperature"] = serde_json::json!(t);
+        }
+
+        let response = self
+            .client
+            .post(&url)
+            .header("Authorization", format!("Bearer {}", provider.api_key))
+            .json(&body)
+            .send()
+            .await?
+            .error_for_status()?;
+
+        let (tx, rx) = tokio::sync::mpsc::unbounded_channel();
+        tokio::spawn(async move {
+            let mut stream = response.bytes_stream();
+            let mut pending = String::new();
+
+            while let Some(item) = stream.next().await {
+                let bytes = match item {
+                    Ok(bytes) => bytes,
+                    Err(err) => {
+                        let _ = tx.send(Err(err.to_string()));
+                        return;
+                    }
+                };
+                pending.push_str(&String::from_utf8_lossy(&bytes));
+
+                while let Some(newline) = pending.find('\n') {
+                    let line = pending[..newline].trim().to_string();
+                    pending.drain(..=newline);
+                    if line.is_empty() || !line.starts_with("data:") {
+                        continue;
+                    }
+                    let data = line.trim_start_matches("data:").trim();
+                    if data == "[DONE]" {
+                        return;
+                    }
+                    let parsed: serde_json::Value = match serde_json::from_str(data) {
+                        Ok(value) => value,
+                        Err(_) => continue,
+                    };
+                    let delta = parsed["choices"][0]["delta"]["content"]
+                        .as_str()
+                        .or_else(|| parsed["choices"][0]["message"]["content"].as_str())
+                        .unwrap_or("");
+                    if !delta.is_empty() {
+                        let _ = tx.send(Ok(delta.to_string()));
+                    }
+                }
+            }
+        });
+
+        Ok(rx)
     }
 }
 

@@ -1,7 +1,6 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { GlassCard } from '../components/GlassCard';
 import { Toggle } from '../components/Toggle';
-import { Input } from '../components/Input';
 import { cn } from '../lib/utils';
 import { api, AppConfig } from '../lib/api';
 import { Link } from 'react-router-dom';
@@ -38,6 +37,36 @@ const STYLES = `
 @keyframes ripple-bg {
   0%, 100% { opacity: 0.04; }
   50%       { opacity: 0.10; }
+}
+@keyframes aurora-flow {
+  0%   { transform: translate3d(-6%, -4%, 0) scale(1); opacity: 0.28; }
+  50%  { transform: translate3d(5%, 3%, 0) scale(1.08); opacity: 0.48; }
+  100% { transform: translate3d(-4%, 6%, 0) scale(0.98); opacity: 0.24; }
+}
+@keyframes stage-spotlight {
+  0%, 100% { transform: translateY(0) scale(1); opacity: 0.58; }
+  50%      { transform: translateY(-10px) scale(1.06); opacity: 0.78; }
+}
+@keyframes caption-pop {
+  0%   { opacity: 0; transform: translateY(16px) scale(0.992); filter: blur(8px); }
+  100% { opacity: 1; transform: translateY(0) scale(1); filter: blur(0); }
+}
+@keyframes caption-glow {
+  0%, 100% { box-shadow: 0 0 0 rgba(59, 130, 246, 0); }
+  50%      { box-shadow: 0 0 32px rgba(59, 130, 246, 0.16); }
+}
+@keyframes caption-sweep {
+  0%   { transform: translateX(-120%); opacity: 0; }
+  22%  { opacity: 0.38; }
+  100% { transform: translateX(120%); opacity: 0; }
+}
+@keyframes mic-pulse-strong {
+  0%   { transform: scale(1); opacity: 0.56; }
+  100% { transform: scale(2.25); opacity: 0; }
+}
+@keyframes curtain-breathe {
+  0%, 100% { opacity: 0.35; }
+  50%      { opacity: 0.52; }
 }
 `;
 
@@ -82,8 +111,7 @@ function parseLog(text: string): SubLine | null {
     if (tag === 'ASR→AI') {
       return { id: `${Date.now()}-${Math.random()}`, role: 'ai', text: content, fresh: true };
     }
-    // 其他带中括号的消息尝试作为 AI 回复（如直连 logs）
-    return { id: `${Date.now()}-${Math.random()}`, role: 'ai', text: content, fresh: true };
+    return null;
   }
   return null;
 }
@@ -125,6 +153,14 @@ function describeVoiceLog(text: string): string | null {
   if (text.includes('麦克风启动失败')) return text;
   if (text.includes('VAD 初始化失败')) return text;
   return null;
+}
+
+function parseMicPeak(text: string): number | null {
+  const m = text.match(/peak=([0-9.]+)/i);
+  if (!m) return null;
+  const peak = Number(m[1]);
+  if (!Number.isFinite(peak)) return null;
+  return Math.max(0, Math.min(1, peak));
 }
 
 // ── 字幕波浪 ───────────────────────────────────────────────────────────────────
@@ -243,6 +279,7 @@ export function Voice() {
   const [voiceStatus, setVoiceStatus] = useState('麦克风未开启');
   const [voiceDetail, setVoiceDetail] = useState('等待语音链路事件');
   const [subtitles,   setSubtitles]   = useState<SubLine[]>([]);
+  const [voiceLevel,  setVoiceLevel]  = useState(0);
   const [latency,     setLatency]     = useState(0);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [settingsDraft, setSettingsDraft] = useState({ gender: '女AI', prompt: '' });
@@ -252,7 +289,6 @@ export function Voice() {
   const [modelStatus, setModelStatus] = useState<{ model_dir: string; models: Record<string, boolean> } | null>(null);
 
   const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const subRef    = useRef<HTMLDivElement>(null);
   const micVisualTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const monitorRestarting = useRef(false);
 
@@ -279,7 +315,7 @@ export function Voice() {
       if (tts) setTtsId(tts.Id);
       if (cfg.TtsVoice) setTtsVoice(cfg.TtsVoice);
       if (cfg.TtsSpeed) setTtsSpeed(cfg.TtsSpeed);
-      setTtsEnabled(false); // always start off; runtime-only
+      setTtsEnabled(Boolean(cfg.TtsEnabled));
       setMicState(cfg.VadEnabled ? 'listening' : 'off');
       setVoiceStatus(cfg.VadEnabled ? '麦克风已开启，等待说话' : '麦克风未开启');
       setVoiceDetail(cfg.VadEnabled ? '等待语音链路事件' : '麦克风关闭中');
@@ -308,9 +344,55 @@ export function Voice() {
 
   const onLlmChange    = (id: string) => { setLlmId(id);  scheduleSave({ ActiveProviderId: id }); };
   const onAsrChange    = (id: string) => { setAsrId(id); scheduleSave({ ActiveAsrProviderId: id }); };
-  const onTtsChange    = (id: string) => { setTtsId(id); scheduleSave({ ActiveTtsProviderId: id }); };
-  const onTtsToggle    = (v: boolean) => { setTtsEnabled(v); };
-  const onVoiceChange  = (v: string)  => { setTtsVoice(v); scheduleSave({ TtsVoice: v }); };
+  const restartMonitorIfRunning = useCallback(async () => {
+    const running = await api.getMonitorStatus().catch(() => false);
+    if (!running) return;
+    monitorRestarting.current = true;
+    await api.stopMonitor().catch(() => {});
+    await new Promise(resolve => setTimeout(resolve, 250));
+    await api.startMonitor();
+    monitorRestarting.current = false;
+  }, []);
+
+  const onTtsChange    = async (id: string) => {
+    if (!config) return;
+    setTtsId(id);
+    const updated = { ...config, ActiveTtsProviderId: id };
+    setConfig(updated);
+    try {
+      await api.saveConfig(updated);
+      if (ttsEnabled) await restartMonitorIfRunning();
+    } catch (e) {
+      toast.error(`语音播报服务切换失败: ${e}`);
+    }
+  };
+  const onTtsToggle    = async (v: boolean) => {
+    if (!config) return;
+    setTtsEnabled(v);
+    const updated = { ...config, TtsEnabled: v };
+    setConfig(updated);
+    try {
+      await api.saveConfig(updated);
+      await restartMonitorIfRunning();
+      toast.success(v ? '语音播报已开启' : '语音播报已关闭');
+    } catch (e) {
+      setTtsEnabled(config.TtsEnabled);
+      setConfig(config);
+      toast.error(`语音播报切换失败: ${e}`);
+    }
+  };
+  const onVoiceChange  = async (v: string)  => {
+    if (!config) return;
+    setTtsVoice(v);
+    const updated = { ...config, TtsVoice: v };
+    setConfig(updated);
+    try {
+      await api.saveConfig(updated);
+      if (ttsEnabled) await restartMonitorIfRunning();
+    } catch (e) {
+      toast.error(`音色切换失败: ${e}`);
+    }
+  };
   const onSpeedChange  = (v: number)  => { setTtsSpeed(v); scheduleSave({ TtsSpeed: v }); };
 
   // ── 监控同步 ────────────────────────────────────────────────────────────────
@@ -338,6 +420,7 @@ export function Voice() {
         setMicState('off');
         setVoiceStatus('麦克风未开启');
         setVoiceDetail('监听线程已停止');
+        setVoiceLevel(0);
         setLatency(0);
       }
     }).then(f => { unl = f; });
@@ -356,6 +439,7 @@ export function Voice() {
       if (statusText) setVoiceStatus(statusText);
       if (micLogState === 'speaking') {
         setMicState('speaking');
+        setVoiceLevel(prev => Math.max(prev, 0.8));
         if (micVisualTimer.current) clearTimeout(micVisualTimer.current);
         micVisualTimer.current = setTimeout(() => {
           setMicState(prev => (prev === 'off' ? prev : 'listening'));
@@ -365,9 +449,12 @@ export function Voice() {
         setMicState(prev => (prev === 'off' ? prev : 'listening'));
       }
 
+      const peak = parseMicPeak(text);
+      if (peak !== null) setVoiceLevel(prev => Math.max(prev, peak));
+
       const sub = parseLog(text);
       if (!sub) return;
-      setSubtitles(prev => [...prev, sub].slice(-60));
+      setSubtitles(prev => [...prev, sub].slice(-20));
       setTimeout(() => {
         setSubtitles(prev => prev.map(s => s.id === sub.id ? { ...s, fresh: false } : s));
       }, 2200);
@@ -405,8 +492,14 @@ export function Voice() {
   }, []);
 
   useEffect(() => {
-    if (subRef.current) subRef.current.scrollTop = subRef.current.scrollHeight;
-  }, [subtitles]);
+    const timer = setInterval(() => {
+      setVoiceLevel(prev => {
+        const next = prev * 0.72;
+        return next < 0.03 ? 0 : next;
+      });
+    }, 90);
+    return () => clearInterval(timer);
+  }, []);
 
   // ── 延迟模拟 ────────────────────────────────────────────────────────────────
 
@@ -441,14 +534,19 @@ export function Voice() {
     if (!config) return;
     if (!hasAsrConfig) { toast.error('请先配置语音识别服务'); return; }
     const nextVad = !config.VadEnabled;
+    const wasRunning = await api.getMonitorStatus().catch(() => false);
     const updated = { ...config, VadEnabled: nextVad };
     setConfig(updated);
     monitorRestarting.current = true;
     try {
       await api.saveConfig(updated);
-      await api.stopMonitor().catch(() => {});
-      if (nextVad) await api.startMonitor();
+      if (wasRunning) {
+        await api.stopMonitor().catch(() => {});
+        await new Promise(resolve => setTimeout(resolve, 250));
+      }
+      if (nextVad || wasRunning) await api.startMonitor();
       setMicState(nextVad ? 'listening' : 'off');
+      if (!nextVad) setVoiceLevel(0);
       monitorRestarting.current = false;
       toast.success(nextVad ? '麦克风已开启' : '麦克风已关闭');
     } catch (e) {
@@ -468,6 +566,10 @@ export function Voice() {
   const ttsOpts = ttsList(config).map(p => ({ value: p.Id, label: p.Name }));
 
   const latestFresh = subtitles.filter(s => s.fresh).at(-1);
+  const latestUserText = [...subtitles].reverse().find(s => s.role === 'user')?.text || '等待语音识别结果';
+  const latestAiText = [...subtitles].reverse().find(s => s.role === 'ai')?.text || '等待 LLM 回复';
+  const micScale = 1 + voiceLevel * 0.18;
+  const micGlow = 14 + Math.round(voiceLevel * 30);
 
   if (loading) return <div className="h-full flex items-center justify-center text-gray-400 text-[12px]">加载中...</div>;
 
@@ -485,74 +587,81 @@ export function Voice() {
 
 
 	        {/* ══ 上栏：服务配置 + 麦克风 ════════════════════════════════════════ */}
-	        <div className="flex items-center justify-between shrink-0 bg-white/40 dark:bg-white/5 border border-white/60 dark:border-white/10 rounded-[24px] px-6 py-3 shadow-xl">
-	          <div className="flex items-center gap-6">
+	        <div className="shrink-0 bg-white/40 dark:bg-white/5 border border-white/60 dark:border-white/10 rounded-[24px] px-5 py-3 shadow-xl">
+            <div className="flex items-center gap-4 min-w-0">
+              <div className="flex-1 min-w-0">
+                <div className="flex items-center gap-3 min-w-0">
+                  <div className="min-w-0 flex items-center gap-2">
+                    <span className="text-[10px] font-black text-gray-400 tracking-[0.18em] whitespace-nowrap" title="语言模型">模型</span>
+                    <GlassSelect value={llmId} onChange={onLlmChange} options={llmOpts} emptyHint="去配置" />
+                  </div>
 
-            {/* LLM */}
-            <div className="flex items-center gap-3">
-              <span className="text-[11px] font-black text-gray-400 tracking-widest" title="语言模型">语言模型</span>
-              <GlassSelect value={llmId} onChange={onLlmChange} options={llmOpts} emptyHint="去配置" />
-            </div>
+                  <div className="w-px h-4 bg-black/10 dark:bg-white/10 hidden sm:block" />
 
-            <div className="w-px h-4 bg-black/10 dark:bg-white/10" />
+                  <div className="min-w-0 flex items-center gap-2">
+                    <span className="text-[10px] font-black text-gray-400 tracking-[0.18em] whitespace-nowrap" title="语音转文字（基础能力）">转写</span>
+                    {asrOpts.length === 0 ? (
+                      <Link to="/models" className="flex items-center gap-1 h-[30px] px-2.5 rounded-xl text-[10px] text-amber-600 dark:text-amber-400 bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-700/40 whitespace-nowrap">
+                        <Cpu className="w-3 h-3 shrink-0" />去配置
+                      </Link>
+                    ) : (
+                      <GlassSelect value={asrId} onChange={onAsrChange} options={asrOpts} />
+                    )}
+                  </div>
 
-            {/* ASR */}
-            <div className="flex items-center gap-3">
-              <span className="text-[11px] font-black text-gray-400 tracking-widest" title="语音转文字（基础能力）">语音转文字</span>
-              {asrOpts.length === 0 ? (
-                <Link to="/models" className="flex items-center gap-1 h-[30px] px-2.5 rounded-xl text-[10px] text-amber-600 dark:text-amber-400 bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-700/40 whitespace-nowrap">
-                  <Cpu className="w-3 h-3 shrink-0" />去配置
-                </Link>
-              ) : (
-                <GlassSelect value={asrId} onChange={onAsrChange} options={asrOpts} />
-              )}
-            </div>
+                  <div className="w-px h-4 bg-black/10 dark:bg-white/10 hidden sm:block" />
 
-            <div className="w-px h-4 bg-black/10 dark:bg-white/10" />
+                  <div className="flex items-center gap-2">
+                    <span className="text-[10px] font-black text-gray-400 tracking-[0.18em] whitespace-nowrap" title="语音播报（可选）">播报</span>
+                    {ttsOpts.length === 0 ? (
+                      <Link to="/models" className="flex items-center gap-1 h-[30px] px-2.5 rounded-xl text-[10px] text-amber-600 dark:text-amber-400 bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-700/40 whitespace-nowrap">
+                        <Cpu className="w-3 h-3 shrink-0" />去配置
+                      </Link>
+                    ) : (
+                      <Toggle checked={ttsEnabled} onChange={onTtsToggle} />
+                    )}
+                  </div>
 
-            {/* TTS */}
-            <div className="flex items-center gap-3">
-              <span className="text-[11px] font-black text-gray-400 tracking-widest" title="语音播报（可选）">语音播报</span>
-              {ttsOpts.length === 0 ? (
-                <Link to="/models" className="flex items-center gap-1 h-[30px] px-2.5 rounded-xl text-[10px] text-amber-600 dark:text-amber-400 bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-700/40 whitespace-nowrap">
-                  <Cpu className="w-3 h-3 shrink-0" />去配置
-                </Link>
-              ) : (
-                <>
-                  <Toggle checked={ttsEnabled} onChange={onTtsToggle} />
-                  {ttsEnabled && (() => {
-                    const selTts = config?.AiProviders.find(p => p.Id === ttsId);
-                    if (selTts?.Name.includes('本地')) return (
-                      <span className="text-[10px] font-bold text-gray-400 whitespace-nowrap">{selTts.Name}</span>
-                    );
-                    return (
-                      <button onClick={() => setVoiceOpen(true)}
-                        className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-full bg-white/80 dark:bg-white/10 border border-white/40 dark:border-white/20 text-[11px] font-bold text-gray-600 dark:text-gray-200 hover:bg-white dark:hover:bg-white/20 transition-colors">
-                        <Volume2 className="w-3.5 h-3.5 text-gray-400 shrink-0" />
-                        {(() => {
-                          const v = (['edge_tts','minimax_tts','volcano_engine'] as TtsProvider[]).reduce<TtsVoice | undefined>((found, pr) => found ?? findVoice(pr, ttsVoice), undefined);
-                          return v ? v.name : (ttsVoice || '选声音');
-                        })()}
-                        <ChevronDown className="w-3 h-3 opacity-50" />
-                      </button>
-                    );
-                  })()}
-                  {/* 语速滑块：TTS 启用后显示 */}
-                  {ttsEnabled && (
-                    <div className="flex items-center gap-2 ml-1">
+                  {ttsEnabled && ttsOpts.length > 0 && (
+                    <>
+                      <div className="w-px h-4 bg-black/10 dark:bg-white/10 hidden sm:block" />
+                    {(() => {
+                      const selTts = config?.AiProviders.find(p => p.Id === ttsId);
+                      if (selTts?.Name.includes('本地')) {
+                        return (
+                          <div className="px-3 py-1.5 rounded-full bg-white/70 dark:bg-white/10 border border-white/40 dark:border-white/20 text-[11px] font-bold text-gray-500 whitespace-nowrap">
+                            本地播报
+                          </div>
+                        );
+                      }
+                      return (
+                        <button onClick={() => setVoiceOpen(true)}
+                          className="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-white/80 dark:bg-white/10 border border-white/40 dark:border-white/20 text-[11px] font-bold text-gray-600 dark:text-gray-200 hover:bg-white dark:hover:bg-white/20 transition-colors max-w-[170px] shrink min-w-0">
+                          <Volume2 className="w-3.5 h-3.5 text-gray-400 shrink-0" />
+                          <span className="truncate">
+                            {(() => {
+                              const v = (['edge_tts','minimax_tts','volcano_engine'] as TtsProvider[]).reduce<TtsVoice | undefined>((found, pr) => found ?? findVoice(pr, ttsVoice), undefined);
+                              return v ? v.name : (ttsVoice || '选声音');
+                            })()}
+                          </span>
+                          <ChevronDown className="w-3 h-3 opacity-50 shrink-0" />
+                        </button>
+                      );
+                    })()}
+
+                    <div className="flex items-center gap-2 shrink-0">
                       <span className="text-[10px] text-gray-400 whitespace-nowrap">语速</span>
                       <input type="range" min={0.5} max={2.0} step={0.1} value={ttsSpeed}
                         onChange={e => onSpeedChange(Number(e.target.value))}
-                        className="w-20 cursor-pointer" style={{ accentColor: 'var(--primary-color)' }} />
-                      <span className="text-[10px] font-mono text-gray-500 w-7 text-right">{ttsSpeed.toFixed(1)}×</span>
+                        className="w-16 cursor-pointer" style={{ accentColor: 'var(--primary-color)' }} />
+                      <span className="text-[10px] font-mono text-gray-500 whitespace-nowrap">{ttsSpeed.toFixed(1)}×</span>
                     </div>
+                    </>
                   )}
-                </>
-              )}
-            </div>
-          </div>
+                </div>
+              </div>
 
-          <div className="flex items-center gap-3">
+              <div className="flex items-center gap-2 shrink-0">
             {/* 通用/专业 模式切换 */}
             <div className="flex items-center p-0.5 rounded-xl bg-black/5 dark:bg-white/8 border border-gray-200 dark:border-white/12">
               {(['通用', '专业'] as const).map(m => (
@@ -588,13 +697,31 @@ export function Voice() {
               </button>
             </div>
           </div>
+          </div>
         </div>
 
         {/* ══ 下栏：字幕 + 可选专业面板 ══════════════════════════════════════ */}
         <div className="flex-1 flex gap-4 min-h-0">
 
           {/* 字幕卡片 */}
-          <GlassCard className="flex-1 flex flex-col overflow-hidden border-white/60 dark:border-white/10 bg-white/60 dark:bg-black/20 shadow-2xl min-w-0">
+          <GlassCard className="relative flex-1 flex flex-col overflow-hidden border-white/60 dark:border-white/10 bg-[linear-gradient(180deg,rgba(255,255,255,0.86),rgba(238,242,247,0.94))] dark:bg-[linear-gradient(180deg,rgba(15,18,28,0.96),rgba(8,10,18,0.98))] shadow-2xl min-w-0">
+            <div
+              className="absolute inset-0 pointer-events-none"
+              style={{
+                background: 'radial-gradient(ellipse at 50% 18%, rgba(255,255,255,0.72), rgba(191,219,254,0.22) 34%, transparent 62%)',
+                opacity: micActive ? 0.78 + voiceLevel * 0.2 : 0.42,
+                animation: 'stage-spotlight 5.5s ease-in-out infinite',
+              }}
+            />
+            <div
+              className="absolute inset-0 pointer-events-none"
+              style={{
+                background: 'radial-gradient(ellipse at center, transparent 34%, rgba(15,23,42,0.08) 78%, rgba(15,23,42,0.18) 100%)',
+                animation: 'curtain-breathe 6s ease-in-out infinite',
+              }}
+            />
+            <div className="absolute left-1/2 top-4 h-[52%] w-[52%] -translate-x-1/2 rounded-full bg-amber-200/18 blur-3xl pointer-events-none" style={{ opacity: micActive ? 0.42 + voiceLevel * 0.28 : 0.18 }} />
+            <div className="absolute bottom-0 left-0 right-0 h-28 bg-[linear-gradient(180deg,transparent,rgba(148,163,184,0.14))] dark:bg-[linear-gradient(180deg,transparent,rgba(0,0,0,0.28))] pointer-events-none" />
             <div className="flex items-center justify-between px-5 py-3 border-b border-black/5 dark:border-white/8 bg-white/40 dark:bg-black/10 shrink-0">
               <div className="flex items-center gap-2 min-w-0">
                 <div className={`w-2 h-2 rounded-full transition-colors ${micActive ? 'bg-[var(--primary-color)] animate-pulse' : 'bg-gray-300'}`} />
@@ -603,27 +730,69 @@ export function Voice() {
               </div>
               <button onClick={() => setSubtitles([])} className="h-7 px-3 rounded-full border border-gray-200 dark:border-white/15 text-[10px] font-bold text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 hover:bg-white/60 transition-all">清空</button>
             </div>
-            <div ref={subRef} className="flex-1 overflow-y-auto p-5 space-y-3 scrollbar-none">
+            <div className="relative flex-1 min-h-0 p-6 flex flex-col justify-center gap-5">
               {subtitles.length === 0 ? (
-                <div className="h-full flex flex-col items-center justify-center gap-3 opacity-25 select-none">
-                  <MessageSquareText className="w-16 h-16 text-gray-400" />
-                  <p className="text-[13px] font-bold tracking-wide text-gray-400">开启麦克风后，实时字幕将显示在此处</p>
+                <div className="h-full flex flex-col items-center justify-center gap-4 opacity-40 select-none text-center relative z-10">
+                  <div className="w-24 h-24 rounded-full border border-white/50 dark:border-white/10 bg-white/55 dark:bg-white/5 flex items-center justify-center shadow-xl">
+                    <MessageSquareText className="w-11 h-11 text-gray-400" />
+                  </div>
+                  <p className="text-[15px] font-bold tracking-wide text-gray-400">开启麦克风后，字幕舞台将在这里点亮</p>
                 </div>
               ) : (
-                subtitles.map(sub => (
-                  <div key={sub.id} className={`flex ${sub.role === 'user' ? 'justify-end' : 'justify-start'} ${sub.fresh ? 'animate-in slide-in-from-bottom-2 duration-300' : ''}`}>
-                    <div className={cn('max-w-[82%] px-4 py-2.5 rounded-2xl text-[13px] shadow-sm',
-                      sub.role === 'user'
-                        ? 'bg-gray-100 dark:bg-white/10 text-gray-700 dark:text-gray-200 rounded-br-sm'
-                        : 'bg-[var(--primary-color)] text-white rounded-bl-sm')}>
-                      {sub.text}
+                <div className="relative z-10 grid grid-rows-2 gap-5 h-full min-h-0">
+                  <div className="relative overflow-hidden rounded-[18px] border border-white/70 dark:border-white/10 bg-white/76 dark:bg-white/7 px-6 py-5 shadow-xl" style={{ animation: 'caption-glow 4.5s ease-in-out infinite' }}>
+                    <div className="absolute inset-y-0 w-1/2 bg-[linear-gradient(90deg,transparent,rgba(255,255,255,0.55),transparent)] dark:bg-[linear-gradient(90deg,transparent,rgba(255,255,255,0.10),transparent)]" style={{ animation: 'caption-sweep 3.2s ease-in-out infinite' }} />
+                    <div className="relative flex items-center gap-2 text-[11px] font-black tracking-[0.24em] text-slate-400 uppercase">
+                      <span>语音识别</span>
+                      {latestFresh?.role === 'user' && <SubWave role="user" />}
+                    </div>
+                    <div key={`user-${latestUserText}`} className="relative mt-4 text-[clamp(26px,3.1vw,44px)] leading-[1.16] font-black text-slate-800 dark:text-slate-50 break-words" style={{ animation: 'caption-pop 420ms cubic-bezier(0.2, 0.8, 0.2, 1)' }}>
+                      {latestUserText}
                     </div>
                   </div>
-                ))
+
+                  <div className="relative overflow-hidden rounded-[18px] border border-amber-200/70 dark:border-amber-300/15 bg-[linear-gradient(135deg,rgba(251,191,36,0.13),rgba(255,255,255,0.70))] dark:bg-[linear-gradient(135deg,rgba(69,42,10,0.56),rgba(15,23,42,0.92))] px-6 py-5 shadow-xl" style={{ animation: 'caption-glow 5.2s ease-in-out infinite' }}>
+                    <div className="absolute inset-y-0 w-1/2 bg-[linear-gradient(90deg,transparent,rgba(255,255,255,0.48),transparent)] dark:bg-[linear-gradient(90deg,transparent,rgba(251,191,36,0.10),transparent)]" style={{ animation: 'caption-sweep 3.8s ease-in-out infinite' }} />
+                    <div className="relative flex items-center gap-2 text-[11px] font-black tracking-[0.24em] text-amber-600/80 dark:text-amber-200/80 uppercase">
+                      <span>LLM 回复</span>
+                      {latestFresh?.role === 'ai' && <SubWave role="ai" />}
+                    </div>
+                    <div key={`ai-${latestAiText}`} className="relative mt-4 text-[clamp(22px,2.4vw,34px)] leading-[1.2] font-bold text-slate-800 dark:text-white break-words" style={{ animation: 'caption-pop 480ms cubic-bezier(0.2, 0.8, 0.2, 1)' }}>
+                      {latestAiText}
+                    </div>
+                  </div>
+                </div>
               )}
             </div>
-            <div className="px-6 pb-5 pt-2 shrink-0">
-              <FullWave active={micActive} color={micActive ? 'var(--primary-color)' : '#d1d5db'} barCount={64} />
+            <div className="px-6 pb-6 pt-2 shrink-0">
+              <div className="flex items-center gap-5">
+                <div className="relative shrink-0">
+                  {micActive && (
+                    <>
+                      <div className="absolute inset-0 rounded-full border-2 border-[var(--primary-color)]/45" style={{ animation: 'mic-pulse-strong 1.25s ease-out infinite', transform: `scale(${1 + voiceLevel * 0.12})` }} />
+                      <div className="absolute inset-0 rounded-full border-2 border-emerald-400/30" style={{ animation: 'mic-pulse-strong 1.65s ease-out infinite', animationDelay: '0.25s', transform: `scale(${1 + voiceLevel * 0.16})` }} />
+                    </>
+                  )}
+                  <div
+                    className={cn(
+                      'relative w-20 h-20 rounded-full flex items-center justify-center border transition-all duration-150',
+                      micActive
+                        ? 'bg-[radial-gradient(circle_at_30%_30%,rgba(255,255,255,0.96),rgba(191,219,254,0.75))] border-sky-200/80 dark:border-sky-400/20'
+                        : 'bg-white/70 dark:bg-white/5 border-white/60 dark:border-white/10'
+                    )}
+                    style={{ transform: `scale(${micScale})`, boxShadow: micActive ? `0 0 ${micGlow}px rgba(59,130,246,0.28)` : 'none' }}
+                  >
+                    {micActive ? <Mic className="w-9 h-9 text-[var(--primary-color)]" /> : <MicOff className="w-9 h-9 text-gray-400" />}
+                  </div>
+                </div>
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center justify-between mb-2">
+                    <span className="text-[11px] font-black tracking-[0.22em] text-gray-400 uppercase">人声输入强度</span>
+                    <span className="text-[11px] font-mono text-gray-500">{Math.round(voiceLevel * 100)}%</span>
+                  </div>
+                  <FullWave active={micActive} color={micActive ? 'var(--primary-color)' : '#d1d5db'} barCount={72} />
+                </div>
+              </div>
             </div>
           </GlassCard>
 

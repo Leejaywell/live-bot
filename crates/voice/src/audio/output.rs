@@ -29,27 +29,28 @@ impl AudioPlayer {
     pub fn new() -> Result<Self, String> {
         let (tx, rx) = std::sync::mpsc::sync_channel::<AudioFrame>(64);
         let monitor = Arc::new(LatencyMonitor::default());
-        Self::spawn(tx, rx, monitor)
+        Self::spawn(tx, rx, monitor, false)
     }
 
     /// 打开低延迟输出设备。用于实时监听类音频，队列满时宁愿丢帧也不累计秒级延迟。
     pub fn new_low_latency() -> Result<Self, String> {
         let (tx, rx) = std::sync::mpsc::sync_channel::<AudioFrame>(4);
         let monitor = Arc::new(LatencyMonitor::fixed(48000 / 5));
-        Self::spawn(tx, rx, monitor)
+        Self::spawn(tx, rx, monitor, true)
     }
 
     fn spawn(
         tx: std::sync::mpsc::SyncSender<AudioFrame>,
         rx: std::sync::mpsc::Receiver<AudioFrame>,
         monitor: Arc<LatencyMonitor>,
+        drop_on_overflow: bool,
     ) -> Result<Self, String> {
         let monitor_thread = Arc::clone(&monitor);
 
         let thread = std::thread::Builder::new()
             .name("audio-output".to_string())
             .spawn(move || {
-                if let Err(e) = run_playback_thread(rx, monitor_thread) {
+                if let Err(e) = run_playback_thread(rx, monitor_thread, drop_on_overflow) {
                     error!("音频播放线程退出: {e}");
                 }
             })
@@ -74,6 +75,7 @@ impl AudioPlayer {
 fn run_playback_thread(
     rx: std::sync::mpsc::Receiver<AudioFrame>,
     monitor: Arc<LatencyMonitor>,
+    drop_on_overflow: bool,
 ) -> Result<(), String> {
     use cpal::traits::{DeviceTrait, HostTrait, StreamTrait};
     use cpal::{SampleFormat, StreamConfig};
@@ -135,7 +137,7 @@ fn run_playback_thread(
 
     // 接收帧并推入 ring buffer（含自适应延迟控制）
     while let Ok(frame) = rx.recv() {
-        push_to_buffer(&frame, &buffer, device_sample_rate, &monitor);
+        push_to_buffer(&frame, &buffer, device_sample_rate, &monitor, drop_on_overflow);
     }
 
     Ok(())
@@ -146,6 +148,7 @@ fn push_to_buffer(
     buffer: &SegQueue<f32>,
     device_rate: u32,
     monitor: &LatencyMonitor,
+    drop_on_overflow: bool,
 ) {
     // 使用 SIMD 友好的批量 i16→f32 转换
     let samples = i16_to_f32_bulk(&frame.data);
@@ -161,7 +164,7 @@ fn push_to_buffer(
         .target_max
         .load(std::sync::atomic::Ordering::Relaxed);
     let current = buffer.len();
-    if current + resampled.len() > max_buf {
+    if drop_on_overflow && current + resampled.len() > max_buf {
         let drop_n = (current + resampled.len()).saturating_sub(max_buf);
         for _ in 0..drop_n {
             buffer.pop();

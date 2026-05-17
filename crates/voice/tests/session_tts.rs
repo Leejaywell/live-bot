@@ -43,6 +43,39 @@ async fn test_edge_tts_speak_emits_audio_ready() {
 
 #[tokio::test]
 #[ignore = "需要网络，手动运行"]
+async fn test_edge_tts_danmu_text_emits_full_audio() {
+    let (session, _handle) = VoiceSession::spawn(SessionConfig::default());
+    let mut events = session.subscribe();
+
+    session
+        .speak(
+            SpeakRequest::new("测试昵称说，主播晚上好，今天声音很清楚。")
+                .with_engine(TtsEngine::Edge)
+                .with_rate("+0%"),
+        )
+        .await
+        .unwrap();
+
+    let mut audio_bytes = 0usize;
+    while let Ok(ev) = events.recv().await {
+        match ev {
+            SessionEvent::AudioReady(frame) => {
+                audio_bytes += frame.data.len();
+            }
+            SessionEvent::SpeechEnd => break,
+            SessionEvent::SpeechInterrupted => break,
+            _ => {}
+        }
+    }
+
+    println!("danmu edge audio bytes: {audio_bytes}");
+    assert!(audio_bytes > 64_000, "danmu audio is unexpectedly short");
+
+    session.shutdown().await;
+}
+
+#[tokio::test]
+#[ignore = "需要网络，手动运行"]
 async fn test_interrupt_cancels_tts() {
     let (session, _handle) = VoiceSession::spawn(SessionConfig::default());
     let mut events = session.subscribe();

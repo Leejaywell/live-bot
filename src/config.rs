@@ -179,6 +179,9 @@ pub struct AppConfig {
     /// TTS 语速倍率（0.5 – 2.0，默认 1.0）
     #[serde(default = "default_tts_speed")]
     pub tts_speed: f32,
+    /// 实时弹幕播报语速倍率（0.5 – 2.0，默认 1.0）
+    #[serde(default = "default_danmu_announce_speed")]
+    pub danmu_announce_speed: f32,
     /// TTS 音调偏移（-1.0 – 1.0，默认 0.0）
     #[serde(default)]
     pub tts_pitch: f32,
@@ -422,6 +425,7 @@ impl Default for AppConfig {
             asr_engine: default_asr_engine(),
             asr_language: default_asr_language(),
             tts_speed: default_tts_speed(),
+            danmu_announce_speed: default_danmu_announce_speed(),
             tts_pitch: 0.0,
             voice_changer_model_id: String::new(),
             voice_changer_input_gain: default_voice_changer_input_gain(),
@@ -449,11 +453,14 @@ fn default_true() -> bool {
 }
 fn default_vad_threshold() -> f32 { 0.3 }
 fn default_vad_min_speech_duration() -> f32 { 0.08 }
-fn default_vad_min_silence_duration() -> f32 { 0.4 }
+fn default_vad_min_silence_duration() -> f32 { 0.3 }
 fn default_asr_language() -> String {
     "zh".to_string()
 }
 fn default_tts_speed() -> f32 {
+    1.0
+}
+fn default_danmu_announce_speed() -> f32 {
     1.0
 }
 fn default_voice_changer_input_gain() -> f32 {

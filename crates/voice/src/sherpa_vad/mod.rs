@@ -10,6 +10,7 @@
 
 use std::path::PathBuf;
 use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, Ordering};
 
 use crossbeam_queue::SegQueue;
 use sherpa_onnx::{VadModelConfig, VoiceActivityDetector};
@@ -249,6 +250,7 @@ impl SherpaMicCapture {
         audio_tap: Option<mpsc::UnboundedSender<Vec<f32>>>,
         status_tx: Option<std::sync::mpsc::Sender<String>>,
         mic_gain: f32,
+        capture_enabled: Option<Arc<AtomicBool>>,
     ) -> Result<Self, String> {
         let tx = pipeline.audio_tx.clone();
         let cancel = pipeline.cancel.clone();
@@ -258,7 +260,15 @@ impl SherpaMicCapture {
         let thread = std::thread::Builder::new()
             .name("sherpa-mic".into())
             .spawn(move || {
-                if let Err(e) = run_mic(tx, audio_tap, cancel_t, status_tx.clone(), startup_tx, mic_gain) {
+                if let Err(e) = run_mic(
+                    tx,
+                    audio_tap,
+                    cancel_t,
+                    status_tx.clone(),
+                    startup_tx,
+                    mic_gain,
+                    capture_enabled,
+                ) {
                     if let Some(ref status) = status_tx {
                         let _ = status.send(format!("麦克风捕获失败: {e}"));
                     }
@@ -302,6 +312,7 @@ fn run_mic(
     status_tx: Option<std::sync::mpsc::Sender<String>>,
     startup_tx: std::sync::mpsc::Sender<Result<(), String>>,
     mic_gain: f32,
+    capture_enabled: Option<Arc<AtomicBool>>,
 ) -> Result<(), String> {
     use cpal::traits::{DeviceTrait, HostTrait, StreamTrait};
     use cpal::{BufferSize, SampleFormat, StreamConfig};
@@ -502,6 +513,12 @@ fn run_mic(
         // 按 512 样本分块推入 VAD pipeline
         while vad_buf.len() >= VAD_CHUNK {
             let chunk: Vec<f32> = vad_buf.drain(..VAD_CHUNK).collect();
+            if capture_enabled
+                .as_ref()
+                .is_some_and(|enabled| !enabled.load(Ordering::Relaxed))
+            {
+                continue;
+            }
             if let Some(ref tap) = audio_tap {
                 let _ = tap.send(chunk.clone());
             }

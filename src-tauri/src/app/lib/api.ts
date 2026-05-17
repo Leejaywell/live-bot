@@ -84,6 +84,7 @@ export interface AppConfig {
   TtsEnabled: boolean;
   TtsVoice: string;
   TtsSpeed: number;
+  DanmuAnnounceSpeed: number;
   TtsPitch: number;
   VoiceChangerModelId: string;
   VoiceChangerInputGain: number;
@@ -289,8 +290,8 @@ export const api = {
 
   // Danmaku polling (replaces Tauri event broadcast)
   getRecentDanmaku: () => invoke<string[]>('get_recent_danmaku'),
-  speakText: (text: string, voice: string, providerId?: string) =>
-    invoke<void>('speak_text_cmd', { text, voice, providerId: providerId ?? null }),
+  speakText: (text: string, voice: string, providerId?: string, speed?: number) =>
+    invoke<void>('speak_text_cmd', { text, voice, providerId: providerId ?? null, speed: speed ?? null }),
 
   // Blind box stats
   getBlindBoxStats: (days: number) => invoke<[string, number][]>('get_blind_box_stats', { days }),

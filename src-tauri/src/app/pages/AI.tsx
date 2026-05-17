@@ -7,14 +7,12 @@ import { TextArea } from '../components/TextArea';
 import { Toggle } from '../components/Toggle';
 import { IconButton } from '../components/IconButton';
 import {
-  Send, Volume2, Bot, Sparkles, Zap, Brain, MessageCircle,
-  AlertCircle, Cpu, Plus, X, Pencil, ChevronDown, Settings as SettingsIcon, Copy, Check
+  Send, Bot, Sparkles, Zap, Brain, MessageCircle,
+  AlertCircle, Cpu, Plus, X, Pencil, Settings as SettingsIcon, Copy, Check
 } from 'lucide-react';
 import { api, AppConfig, AiBot, AiProvider } from '../lib/api';
 import { toast } from 'sonner';
 import { invoke } from '@tauri-apps/api/core';
-import { TtsProvider, availableProviders, findVoice, TtsVoice } from '../lib/voices';
-import { VoicePicker } from '../components/VoicePicker';
 import { Modal, ModalCloseButton } from '../components/Modal';
 import { useLoggedIn } from '../context/LoginContext';
 import { cn } from '../lib/utils';
@@ -119,9 +117,6 @@ export function AI() {
   const [isSending,     setIsSending]     = useState(false);
   const [editingBot,    setEditingBot]    = useState<AiBot | null>(null);
   const [isNewBot,      setIsNewBot]      = useState(false);
-  const [ttsVoice,      setTtsVoice]      = useState('zh-CN-XiaoxiaoNeural');
-  const [ttsProviderId, setTtsProviderId] = useState('');
-  const [voiceOpen,     setVoiceOpen]     = useState(false);
   const [settingsOpen,  setSettingsOpen]  = useState(false);
   const [promptDraft,   setPromptDraft]   = useState('');
   const [copiedIdx,     setCopiedIdx]     = useState<number | null>(null);
@@ -132,11 +127,7 @@ export function AI() {
     api.loadConfig().then(c => {
       setConfig(c);
       setSendToDanmaku(c.AiReplyToDanmaku ?? false);
-      if (c.TtsVoice) setTtsVoice(c.TtsVoice);
       setPromptDraft(c.AiAssistantPrompt ?? '');
-      const ttsProviders = (c.AiProviders ?? []).filter(p => p.ProviderType === 'tts' && p.Enabled);
-      const saved = c.ActiveTtsProviderId && ttsProviders.find(p => p.Id === c.ActiveTtsProviderId);
-      setTtsProviderId(saved ? c.ActiveTtsProviderId : (ttsProviders[0]?.Id ?? ''));
     }).catch(console.error);
   }, []);
 
@@ -295,22 +286,6 @@ export function AI() {
                <input type="checkbox" checked={sendToDanmaku} onChange={e => handleDanmakuReplyToggle(e.target.checked)} className="w-3.5 h-3.5 rounded-md accent-[var(--primary-color)]" id="reply-danmu" />
                <label htmlFor="reply-danmu" className="text-[11px] font-bold text-gray-600 cursor-pointer">将回复发送到弹幕</label>
             </div>
-            {(() => {
-              const ttsProviders = (config?.AiProviders ?? []).filter(p => p.ProviderType === 'tts' && p.Enabled);
-              if (ttsProviders.length === 0) return null;
-              const curProv = ttsProviders.find(p => p.Id === ttsProviderId) ?? ttsProviders[0];
-              const v = (['edge_tts','minimax_tts','volcano_engine'] as TtsProvider[]).reduce<TtsVoice | undefined>((found, p) => found ?? findVoice(p, ttsVoice), undefined);
-              return (
-                <button
-                  onClick={() => setVoiceOpen(true)}
-                  className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-full bg-white/80 border border-white/40 text-[11px] font-bold text-gray-600 hover:bg-white transition-colors"
-                >
-                  <Volume2 className="w-3.5 h-3.5 text-gray-400 shrink-0" />
-                  {v ? v.name : (ttsVoice || '选声音')}
-                  <ChevronDown className="w-3 h-3 opacity-50" />
-                </button>
-              );
-            })()}
             {firstEnabled && <span className="text-[11px] font-bold text-gray-400">包含昵称自动路由，未指定默认 <span className="text-gray-600">{firstEnabled.Nickname}</span></span>}
           </div>
           <div className="flex items-center gap-2">
@@ -365,8 +340,6 @@ export function AI() {
           </div>
         </div>
       </GlassCard>
-
-      <VoicePicker open={voiceOpen} onClose={() => setVoiceOpen(false)} providers={(() => { const list = (config?.AiProviders ?? []).filter(p => p.ProviderType === 'tts' && p.Enabled); return config ? availableProviders(list.map(p => p.Name)) : ['edge_tts' as const]; })()} currentVoice={ttsVoice} onSelect={v => { setTtsVoice(v); setConfig({ ...config!, TtsVoice: v }); api.saveConfig({ ...config!, TtsVoice: v }); }} />
 
       {editingBot && (
         <BotEditModal

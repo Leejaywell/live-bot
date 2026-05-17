@@ -247,10 +247,6 @@ async fn auto_download_models(
     config: &AppConfig,
     cancel: CancellationToken,
 ) {
-    use streamix_voice::{DownloadStage, ModelHub, ModelSource};
-
-    let hub = ModelHub::new(model_dir);
-
     // ── VAD (silero_vad.onnx，缺失或损坏时自动下载) ──────────────────────────
     let vad_out = model_dir.join("silero_vad.onnx");
     let vad_exists = vad_out.exists();
