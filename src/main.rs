@@ -742,7 +742,7 @@ async fn start_voice_changer(
         base.display(),
         model_dir_path.display()
     );
-    let mut model_path = resolve_voice_changer_model_path(&base, &model_id);
+    let mut model_path = resolve_voice_changer_runtime_model_path(&base, &model_id);
     println!("[VoiceChanger] resolved model_path={model_path:?}");
     if model_path.is_none() && has_rvc_pth_model(&model_dir_path) {
         println!("[VoiceChanger] pth found, converting model_id={model_id}");
@@ -761,7 +761,7 @@ async fn start_voice_changer(
             );
             return Err(err);
         }
-        model_path = resolve_voice_changer_model_path(&base, &model_id);
+        model_path = resolve_voice_changer_runtime_model_path(&base, &model_id);
         println!("[VoiceChanger] after convert model_path={model_path:?}");
     }
     let model_path = model_path.ok_or_else(|| {
@@ -1589,6 +1589,32 @@ fn resolve_voice_changer_model_path(
         .flatten()
         .map(|e| e.path())
         .find(|p| p.extension().and_then(|x| x.to_str()) == Some("onnx"))
+}
+
+#[cfg(feature = "tauri")]
+fn resolve_voice_changer_runtime_model_path(
+    base: &std::path::Path,
+    model_id: &str,
+) -> Option<std::path::PathBuf> {
+    resolve_voice_changer_pth_model_path(base, model_id)
+        .or_else(|| resolve_voice_changer_model_path(base, model_id))
+}
+
+#[cfg(feature = "tauri")]
+fn resolve_voice_changer_pth_model_path(
+    base: &std::path::Path,
+    model_id: &str,
+) -> Option<std::path::PathBuf> {
+    let dir = base.join(model_id);
+    let pth = dir.join("model.pth");
+    if pth.exists() {
+        return Some(pth);
+    }
+    std::fs::read_dir(&dir)
+        .ok()?
+        .flatten()
+        .map(|e| e.path())
+        .find(|p| p.extension().and_then(|x| x.to_str()) == Some("pth"))
 }
 
 #[cfg(feature = "tauri")]

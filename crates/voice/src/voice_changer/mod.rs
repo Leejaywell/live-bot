@@ -1,4 +1,6 @@
 #[cfg(feature = "voice-changer")]
+pub mod py_worker;
+#[cfg(feature = "voice-changer")]
 pub mod rvc;
 
 #[cfg(feature = "voice-changer")]
@@ -99,7 +101,7 @@ impl VoiceChanger {
         config: VoiceChangerConfig,
     ) -> anyhow::Result<Self> {
         let config = config.sanitized();
-        let engine = Arc::new(rvc::RvcEngine::new(model_path, hubert_path)?);
+        let engine = Arc::new(py_worker::PythonWorkerEngine::new(model_path, hubert_path)?);
         let status = Arc::new(Mutex::new(VoiceChangerStatus::new(
             model_id.to_string(),
             config.clone(),
@@ -156,7 +158,7 @@ impl VoiceChanger {
 
 #[cfg(feature = "voice-changer")]
 fn run_realtime_loop(
-    engine: Arc<rvc::RvcEngine>,
+    engine: Arc<py_worker::PythonWorkerEngine>,
     config: VoiceChangerConfig,
     status: Arc<Mutex<VoiceChangerStatus>>,
     cancel: CancellationToken,
@@ -228,11 +230,15 @@ fn run_realtime_loop(
         supported.sample_format()
     );
 
-    let frame_samples = config.frame_samples().max(engine.recommended_chunk_samples());
+    let window_samples = engine.recommended_chunk_samples();
+    let hop_samples = (config.frame_samples().saturating_mul(5)).clamp(1_600, window_samples / 2);
     let mut interleaved_buf: Vec<f32> = Vec::with_capacity(4096);
-    let mut mono_buf: Vec<f32> = Vec::with_capacity(frame_samples * 2);
+    let mut mono_buf: Vec<f32> = Vec::with_capacity(window_samples * 2);
+    let mut context_buf = vec![0.0f32; window_samples];
+    let mut context_filled = 0usize;
     let mut diag_frames = 0u64;
     let mut diag_peak = 0.0f32;
+    let mut last_output_sample = 0.0f32;
 
     while !cancel.is_cancelled() {
         let mut got = false;
@@ -258,32 +264,68 @@ fn run_realtime_loop(
         } else {
             mono_buf.extend(resample_linear(&mono, device_rate, 16_000));
         }
-        if mono_buf.len() > frame_samples * 3 {
-            let drop_n = mono_buf.len().saturating_sub(frame_samples);
+        if mono_buf.len() > window_samples + hop_samples * 4 {
+            let drop_n = mono_buf.len().saturating_sub(window_samples + hop_samples);
             mono_buf.drain(..drop_n);
             warn!("变声器输入积压，丢弃 {drop_n} 个旧样本以降低延迟");
         }
 
-        while mono_buf.len() >= frame_samples {
-            let mut dry = mono_buf.drain(..frame_samples).collect::<Vec<_>>();
-            for sample in &mut dry {
+        while mono_buf.len() >= hop_samples {
+            let mut dry_hop = mono_buf.drain(..hop_samples).collect::<Vec<_>>();
+            for sample in &mut dry_hop {
                 *sample = (*sample * config.input_gain).clamp(-1.0, 1.0);
                 diag_peak = diag_peak.max(sample.abs());
             }
+            shift_append(&mut context_buf, &dry_hop);
+            context_filled = (context_filled + hop_samples).min(window_samples);
+
+            if context_filled < window_samples {
+                let mut warmed = dry_hop.clone();
+                smooth_leading_edge(&mut warmed, last_output_sample, 128);
+                last_output_sample = warmed.last().copied().unwrap_or(last_output_sample);
+                let pcm = f32_to_pcm16_bytes(&warmed);
+                player.push_frame(AudioFrame::new_pcm16(Bytes::from(pcm), 16_000));
+                if let Ok(mut st) = status.lock() {
+                    st.processed_frames = st.processed_frames.saturating_add(1);
+                    st.output_latency_ms = player.latency.target_latency_ms();
+                    st.last_error = None;
+                }
+                continue;
+            }
 
             let infer_start = std::time::Instant::now();
-            let wet = engine.process(&dry).map_err(|e| e.to_string())?;
+            let wet_window = engine.process(&context_buf).map_err(|e| e.to_string())?;
             let infer_ms = infer_start.elapsed().as_millis();
-            let mixed = mix_samples(&dry, &wet, config.wet_mix);
+            let wet_hop = tail_chunk(&wet_window, hop_samples);
+            let dry_rms = rms(&dry_hop);
+            let wet_rms = rms(&wet_hop);
+            let dry_zcr = zero_crossing_rate(&dry_hop);
+            let wet_zcr = zero_crossing_rate(&wet_hop);
+            let suspicious_wet = wet_hop.is_empty()
+                || wet_rms < dry_rms * 0.12
+                || wet_zcr > 0.32 && dry_zcr < 0.18;
+            let mut mixed = if suspicious_wet {
+                dry_hop.clone()
+            } else {
+                mix_samples(&dry_hop, &wet_hop, config.wet_mix)
+            };
+            smooth_leading_edge(&mut mixed, last_output_sample, 128);
+            last_output_sample = mixed.last().copied().unwrap_or(last_output_sample);
             let pcm = f32_to_pcm16_bytes(&mixed);
             player.push_frame(AudioFrame::new_pcm16(Bytes::from(pcm), 16_000));
             diag_frames = diag_frames.saturating_add(1);
             if diag_frames % 25 == 0 {
                 eprintln!(
-                    "[VoiceChanger] processed_frames={} input_peak={:.4} wet_samples={} output_latency_ms={}",
+                    "[VoiceChanger] processed_frames={} input_peak={:.4} wet_window_samples={} hop_samples={} dry_rms={:.4} wet_rms={:.4} dry_zcr={:.3} wet_zcr={:.3} fallback={} output_latency_ms={}",
                     diag_frames,
                     diag_peak,
-                    wet.len(),
+                    wet_window.len(),
+                    hop_samples,
+                    dry_rms,
+                    wet_rms,
+                    dry_zcr,
+                    wet_zcr,
+                    suspicious_wet,
                     player.latency.target_latency_ms()
                 );
                 diag_peak = 0.0;
@@ -307,6 +349,63 @@ fn run_realtime_loop(
         st.running = false;
     }
     Ok(())
+}
+
+#[cfg(feature = "voice-changer")]
+fn shift_append(window: &mut [f32], append: &[f32]) {
+    if append.is_empty() || window.is_empty() {
+        return;
+    }
+    if append.len() >= window.len() {
+        let start = append.len() - window.len();
+        window.copy_from_slice(&append[start..]);
+        return;
+    }
+    let hop = append.len();
+    window.rotate_left(hop);
+    let len = window.len();
+    window[len - hop..].copy_from_slice(append);
+}
+
+#[cfg(feature = "voice-changer")]
+fn tail_chunk(input: &[f32], len: usize) -> Vec<f32> {
+    if input.len() <= len {
+        return input.to_vec();
+    }
+    input[input.len() - len..].to_vec()
+}
+
+#[cfg(feature = "voice-changer")]
+fn rms(input: &[f32]) -> f32 {
+    if input.is_empty() {
+        return 0.0;
+    }
+    let energy = input.iter().map(|sample| sample * sample).sum::<f32>() / input.len() as f32;
+    energy.sqrt()
+}
+
+#[cfg(feature = "voice-changer")]
+fn zero_crossing_rate(input: &[f32]) -> f32 {
+    if input.len() < 2 {
+        return 0.0;
+    }
+    let crossings = input
+        .windows(2)
+        .filter(|pair| pair[0].signum() != pair[1].signum())
+        .count();
+    crossings as f32 / (input.len() - 1) as f32
+}
+
+#[cfg(feature = "voice-changer")]
+fn smooth_leading_edge(input: &mut [f32], prev_last: f32, fade_len: usize) {
+    if input.is_empty() {
+        return;
+    }
+    let len = fade_len.min(input.len());
+    for (idx, sample) in input.iter_mut().take(len).enumerate() {
+        let alpha = (idx + 1) as f32 / len as f32;
+        *sample = prev_last * (1.0 - alpha) + *sample * alpha;
+    }
 }
 
 #[cfg(feature = "voice-changer")]

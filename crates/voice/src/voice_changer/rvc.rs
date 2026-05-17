@@ -8,14 +8,14 @@ use ort::{
 };
 use tracing::info;
 
-const HUBERT_HOP: usize = 320;
+const RVC_HOP: usize = 160;
 const SAMPLE_RATE: f32 = 16_000.0;
 const F0_MIN_HZ: f32 = 50.0;
 const F0_MAX_HZ: f32 = 1100.0;
 const F0_BINS: i64 = 256;
-const MIN_HUBERT_SAMPLES: usize = 2000;
-const MIN_RVC_FRAMES: usize = 8;
-const RECOMMENDED_CHUNK_SAMPLES: usize = 8192;
+const HUBERT_TARGET_FRAMES: usize = 50;
+const RVC_TARGET_FRAMES: usize = HUBERT_TARGET_FRAMES * 2;
+const RECOMMENDED_CHUNK_SAMPLES: usize = 16_080;
 
 /// RVC (Retrieval-based Voice Conversion) ONNX inference engine.
 ///
@@ -40,6 +40,7 @@ pub struct RvcEngine {
     hubert_output_name: String,
     model_padding_mask: bool,
     model_rnd: bool,
+    model_sample_rate: usize,
 }
 
 impl std::fmt::Debug for RvcEngine {
@@ -94,7 +95,7 @@ impl RvcEngine {
         println!("[RVC] HuBERT inputs={h_in:?} outputs={h_out:?}");
         println!("[RVC] Model inputs={m_in:?} outputs={m_out:?}");
 
-        Ok(Self {
+        let mut engine = Self {
             hubert_padding_mask: h_in.iter().any(|name| name == "padding_mask"),
             hubert_output_name: if h_out.iter().any(|name| name == "embed") {
                 "embed".to_string()
@@ -108,31 +109,36 @@ impl RvcEngine {
             model_rnd: m_in.iter().any(|name| name == "rnd"),
             hubert: Mutex::new(hubert),
             model: Mutex::new(model),
-        })
+            model_sample_rate: 48_000,
+        };
+        engine.model_sample_rate = engine.probe_model_sample_rate()?;
+
+        Ok(engine)
     }
 
     pub fn process(&self, input: &[f32]) -> Result<Vec<f32>> {
         if input.is_empty() {
             return Ok(Vec::new());
         }
-        let hubert_input;
-        let model_input = if input.len() < MIN_HUBERT_SAMPLES {
-            hubert_input = pad_audio(input, MIN_HUBERT_SAMPLES);
-            hubert_input.as_slice()
+        let prepared_input;
+        let model_input = if input.len() < RECOMMENDED_CHUNK_SAMPLES {
+            prepared_input = pad_audio(input, RECOMMENDED_CHUNK_SAMPLES);
+            prepared_input.as_slice()
         } else {
             input
         };
         let (feats, t, d) = self.extract_hubert(model_input)?;
-        if t == 0 {
+        if t != HUBERT_TARGET_FRAMES {
             return Ok(input.to_vec());
         }
-        if t < MIN_RVC_FRAMES {
-            return Ok(input.to_vec());
-        }
-        let (pitch_q, pitchf) = estimate_f0(model_input, t);
-        let mut converted = self.run_rvc(feats, t, d, &pitch_q, &pitchf, 0)?;
+        let (phone, rvc_t) = upsample_phone_features(&feats, t, d);
+        let (pitch_q, pitchf) = estimate_f0(model_input, rvc_t, RVC_HOP);
+        let mut converted = self.run_rvc(phone, rvc_t, d, &pitch_q, &pitchf, 0)?;
         if converted.is_empty() {
             return Ok(input.to_vec());
+        }
+        if self.model_sample_rate != SAMPLE_RATE as usize {
+            converted = resample_by_rate(&converted, self.model_sample_rate, SAMPLE_RATE as usize);
         }
         if converted.len() != input.len() {
             converted = resample_to_len(&converted, input.len());
@@ -142,6 +148,33 @@ impl RvcEngine {
 
     pub fn recommended_chunk_samples(&self) -> usize {
         RECOMMENDED_CHUNK_SAMPLES
+    }
+
+    fn probe_model_sample_rate(&self) -> Result<usize> {
+        let silent = vec![0.0f32; RECOMMENDED_CHUNK_SAMPLES];
+        let (feats, t, d) = self.extract_hubert(&silent)?;
+        if t != HUBERT_TARGET_FRAMES {
+            bail!("HuBERT 探测帧数异常: {t}");
+        }
+        let (dummy_phone, _) = upsample_phone_features(&feats, t, d);
+        let dummy_pitch = vec![0i64; RVC_TARGET_FRAMES];
+        let dummy_pitchf = vec![0.0f32; RVC_TARGET_FRAMES];
+        let audio = self.run_rvc(
+            dummy_phone,
+            RVC_TARGET_FRAMES,
+            d,
+            &dummy_pitch,
+            &dummy_pitchf,
+            0,
+        )?;
+        if audio.is_empty() {
+            bail!("RVC 模型输出为空，无法推断输出采样率");
+        }
+        let sample_rate = ((audio.len() as f32 / RVC_TARGET_FRAMES as f32) * 100.0).round() as usize;
+        if sample_rate == 0 {
+            bail!("RVC 模型输出长度无效，无法推断输出采样率");
+        }
+        Ok(sample_rate)
     }
 
     fn extract_hubert(&self, audio: &[f32]) -> Result<(Vec<f32>, usize, usize)> {
@@ -251,6 +284,18 @@ fn pad_audio(input: &[f32], len: usize) -> Vec<f32> {
     audio
 }
 
+fn upsample_phone_features(input: &[f32], t: usize, d: usize) -> (Vec<f32>, usize) {
+    let mut out = Vec::with_capacity(t * 2 * d);
+    for frame in 0..t {
+        let start = frame * d;
+        let end = start + d;
+        let feat = &input[start..end];
+        out.extend_from_slice(feat);
+        out.extend_from_slice(feat);
+    }
+    (out, t * 2)
+}
+
 fn resample_to_len(input: &[f32], target_len: usize) -> Vec<f32> {
     if input.is_empty() || target_len == 0 {
         return Vec::new();
@@ -271,10 +316,18 @@ fn resample_to_len(input: &[f32], target_len: usize) -> Vec<f32> {
     out
 }
 
+fn resample_by_rate(input: &[f32], from_rate: usize, to_rate: usize) -> Vec<f32> {
+    if input.is_empty() || from_rate == 0 || to_rate == 0 || from_rate == to_rate {
+        return input.to_vec();
+    }
+    let target_len = ((input.len() as f64 * to_rate as f64) / from_rate as f64).round() as usize;
+    resample_to_len(input, target_len.max(1))
+}
+
 /// Normalized autocorrelation (NSDF) F0 estimator — one pitch value per HuBERT frame.
 ///
 /// Returns (quantized pitch bins 0–255, raw Hz).  0 = unvoiced.
-fn estimate_f0(audio: &[f32], num_frames: usize) -> (Vec<i64>, Vec<f32>) {
+fn estimate_f0(audio: &[f32], num_frames: usize, hop: usize) -> (Vec<i64>, Vec<f32>) {
     let min_period = (SAMPLE_RATE / F0_MAX_HZ) as usize; // ~14 samples
     let max_period = (SAMPLE_RATE / F0_MIN_HZ) as usize; // ~320 samples
     let win = max_period * 2 + 64;
@@ -284,7 +337,7 @@ fn estimate_f0(audio: &[f32], num_frames: usize) -> (Vec<i64>, Vec<f32>) {
     let mut pitchf = vec![0.0f32; num_frames];
 
     for frame in 0..num_frames {
-        let center = frame * HUBERT_HOP + HUBERT_HOP / 2;
+        let center = frame * hop + hop / 2;
         let start = center.saturating_sub(win / 2);
         if start >= audio.len() {
             continue;
