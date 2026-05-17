@@ -25,7 +25,9 @@ impl FromStr for AsrLanguage {
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         match s.to_lowercase().as_str() {
-            "zh" | "zh-cn" | "zh-tw" | "zh-hans" | "zh-hant" | "chinese" | "mandarin" => Ok(AsrLanguage::Zh),
+            "zh" | "zh-cn" | "zh-tw" | "zh-hans" | "zh-hant" | "chinese" | "mandarin" => {
+                Ok(AsrLanguage::Zh)
+            }
             "en" | "en-us" | "en-gb" | "english" => Ok(AsrLanguage::En),
             "yue" | "yue-hk" | "cantonese" => Ok(AsrLanguage::Yue),
             "ja" | "ja-jp" | "japanese" => Ok(AsrLanguage::Ja),

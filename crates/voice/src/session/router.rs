@@ -17,8 +17,8 @@ use tokio::sync::mpsc;
 use tokio_util::sync::CancellationToken;
 use tracing::warn;
 
-use crate::tts::emotion::detect_prosody;
 use super::{SessionConfig, SessionError, SessionEvent, SpeakRequest, TtsEngine, VoiceSession};
+use crate::tts::emotion::detect_prosody;
 
 pub const PRIORITY_SYSTEM: u8 = 10;
 pub const PRIORITY_AI: u8 = 5;
@@ -56,7 +56,12 @@ impl SpeakerRouter {
     ) -> Self {
         let (session, _handle) = VoiceSession::spawn(session_config);
         let (tx, rx) = mpsc::channel::<RouteRequest>(32);
-        tokio::spawn(router_task_with_audio(rx, session.clone(), default_engine, cancel));
+        tokio::spawn(router_task_with_audio(
+            rx,
+            session.clone(),
+            default_engine,
+            cancel,
+        ));
         Self { tx, session }
     }
 
@@ -85,15 +90,24 @@ impl SpeakerRouter {
     }
 
     pub async fn speak_bot(&self, text: impl Into<String>) -> Result<(), SessionError> {
-        self.tx.send(RouteRequest::Bot(text.into())).await.map_err(|_| SessionError::SessionClosed)
+        self.tx
+            .send(RouteRequest::Bot(text.into()))
+            .await
+            .map_err(|_| SessionError::SessionClosed)
     }
 
     pub async fn speak_ai(&self, text: impl Into<String>) -> Result<(), SessionError> {
-        self.tx.send(RouteRequest::Ai(text.into())).await.map_err(|_| SessionError::SessionClosed)
+        self.tx
+            .send(RouteRequest::Ai(text.into()))
+            .await
+            .map_err(|_| SessionError::SessionClosed)
     }
 
     pub async fn speak_system(&self, text: impl Into<String>) -> Result<(), SessionError> {
-        self.tx.send(RouteRequest::System(text.into())).await.map_err(|_| SessionError::SessionClosed)
+        self.tx
+            .send(RouteRequest::System(text.into()))
+            .await
+            .map_err(|_| SessionError::SessionClosed)
     }
 }
 
@@ -172,7 +186,9 @@ async fn run_router(
             RouteRequest::System(text) => {
                 bot_queue.clear();
                 ai_queue.clear();
-                let r = SpeakRequest::new(text).with_engine(default_engine.clone()).with_priority(PRIORITY_SYSTEM);
+                let r = SpeakRequest::new(text)
+                    .with_engine(default_engine.clone())
+                    .with_priority(PRIORITY_SYSTEM);
                 let _ = session.speak(r).await;
             }
             RouteRequest::Ai(text) => {
@@ -193,9 +209,16 @@ async fn run_router(
     }
 }
 
-async fn flush(session: &VoiceSession, queue: &mut VecDeque<String>, priority: u8, engine: &TtsEngine) {
+async fn flush(
+    session: &VoiceSession,
+    queue: &mut VecDeque<String>,
+    priority: u8,
+    engine: &TtsEngine,
+) {
     while let Some(text) = queue.pop_front() {
-        let req = SpeakRequest::new(text).with_engine(engine.clone()).with_priority(priority);
+        let req = SpeakRequest::new(text)
+            .with_engine(engine.clone())
+            .with_priority(priority);
         if session.speak(req).await.is_err() {
             break;
         }
@@ -206,7 +229,9 @@ async fn flush(session: &VoiceSession, queue: &mut VecDeque<String>, priority: u
 async fn flush_ai(session: &VoiceSession, queue: &mut VecDeque<String>, engine: &TtsEngine) {
     while let Some(text) = queue.pop_front() {
         let prosody = detect_prosody(&text);
-        let mut req = SpeakRequest::new(text).with_engine(engine.clone()).with_priority(PRIORITY_AI);
+        let mut req = SpeakRequest::new(text)
+            .with_engine(engine.clone())
+            .with_priority(PRIORITY_AI);
         if let Some(rate) = prosody.rate {
             req = req.with_rate(rate);
         }

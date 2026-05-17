@@ -12,9 +12,9 @@ use std::sync::Arc;
 use anyhow::Result;
 use serde_json::{Value, json};
 
+use super::tool::{Tool, ToolCall, ToolDefinition};
 use crate::api::BiliApi;
 use crate::config::AiProvider;
-use super::tool::{Tool, ToolCall, ToolDefinition};
 
 const MAX_TOOL_ROUNDS: usize = 3;
 
@@ -23,11 +23,15 @@ pub struct AgentRuntime {
 }
 
 impl Default for AgentRuntime {
-    fn default() -> Self { Self::new() }
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 impl AgentRuntime {
-    pub fn new() -> Self { Self { tools: Vec::new() } }
+    pub fn new() -> Self {
+        Self { tools: Vec::new() }
+    }
 
     pub fn register(mut self, tool: impl Tool + 'static) -> Self {
         self.tools.push(Arc::new(tool));
@@ -55,10 +59,16 @@ impl AgentRuntime {
         }
         messages.push(json!({"role": "user", "content": user_prompt}));
 
-        let tools_opt = if tool_defs.is_empty() { None } else { Some(tool_defs.as_slice()) };
+        let tools_opt = if tool_defs.is_empty() {
+            None
+        } else {
+            Some(tool_defs.as_slice())
+        };
 
         for _ in 0..MAX_TOOL_ROUNDS {
-            let response = http.chat_completions_raw(provider, &messages, tools_opt).await?;
+            let response = http
+                .chat_completions_raw(provider, &messages, tools_opt)
+                .await?;
             let msg = &response["choices"][0]["message"];
 
             let calls_raw = msg.get("tool_calls").and_then(|v| v.as_array()).cloned();
@@ -68,12 +78,21 @@ impl AgentRuntime {
                 for call_val in &calls_raw {
                     let call: ToolCall = match serde_json::from_value(call_val.clone()) {
                         Ok(c) => c,
-                        Err(e) => { eprintln!("[agent] tool call 解析失败: {e}"); continue; }
+                        Err(e) => {
+                            eprintln!("[agent] tool call 解析失败: {e}");
+                            continue;
+                        }
                     };
-                    let tool = self.tools.iter().find(|t| t.spec().name == call.function.name);
+                    let tool = self
+                        .tools
+                        .iter()
+                        .find(|t| t.spec().name == call.function.name);
                     let result = if let Some(tool) = tool {
-                        let args: Value = serde_json::from_str(&call.function.arguments).unwrap_or(json!({}));
-                        tool.execute(args).await.unwrap_or_else(|e| format!("工具错误: {e}"))
+                        let args: Value =
+                            serde_json::from_str(&call.function.arguments).unwrap_or(json!({}));
+                        tool.execute(args)
+                            .await
+                            .unwrap_or_else(|e| format!("工具错误: {e}"))
                     } else {
                         format!("未知工具: {}", call.function.name)
                     };

@@ -206,7 +206,10 @@ pub fn get_voice_for_language(language: &str) -> Option<&'static str> {
 fn capitalize_allowed(name: &str) -> Option<&'static str> {
     // Match case-insensitively to allowed names and return the canonical form
     let lower = name.trim().to_ascii_lowercase();
-    ALLOWED.iter().find(|&v| v.to_ascii_lowercase() == lower).map(|v| v as _)
+    ALLOWED
+        .iter()
+        .find(|&v| v.to_ascii_lowercase() == lower)
+        .map(|v| v as _)
 }
 
 fn normalize_language_or_locale(s: &str) -> Option<&'static str> {
@@ -259,7 +262,9 @@ fn normalize_language_or_locale(s: &str) -> Option<&'static str> {
 pub fn normalize_minimax_lang(input: Option<&str>) -> String {
     match input {
         None => "auto".to_string(),
-        Some(s) => normalize_language_or_locale(s).unwrap_or("auto").to_string(),
+        Some(s) => normalize_language_or_locale(s)
+            .unwrap_or("auto")
+            .to_string(),
     }
 }
 
@@ -316,7 +321,11 @@ pub fn lingua_language_confidences(text: &str) -> Vec<(Language, f64)> {
     let start_time = std::time::Instant::now();
     let result = LINGUA_DETECTOR.compute_language_confidence_values(text);
     let elapsed_ms = start_time.elapsed().as_millis();
-    tracing::debug!("🌐 Lingua 语言检测耗时: {}ms (text_len={})", elapsed_ms, text.len());
+    tracing::debug!(
+        "🌐 Lingua 语言检测耗时: {}ms (text_len={})",
+        elapsed_ms,
+        text.len()
+    );
     result
 }
 
@@ -326,7 +335,10 @@ pub fn detect_language_boost(text: &str, min_confidence: f64, min_margin: f64) -
     let mut confidences = lingua_language_confidences(text);
     if confidences.is_empty() {
         let elapsed_ms = start_time.elapsed().as_millis();
-        tracing::debug!("🌐 Lingua detect_language_boost 总耗时: {}ms (empty confidences)", elapsed_ms);
+        tracing::debug!(
+            "🌐 Lingua detect_language_boost 总耗时: {}ms (empty confidences)",
+            elapsed_ms
+        );
         return None;
     }
 
@@ -412,8 +424,14 @@ mod tests {
 
     #[test]
     fn test_lingua_language_mapping() {
-        assert_eq!(lingua_language_to_minimax(Language::English), Some("English"));
-        assert_eq!(lingua_language_to_minimax(Language::Chinese), Some("Chinese"));
+        assert_eq!(
+            lingua_language_to_minimax(Language::English),
+            Some("English")
+        );
+        assert_eq!(
+            lingua_language_to_minimax(Language::Chinese),
+            Some("Chinese")
+        );
         assert_eq!(lingua_language_to_minimax(Language::Esperanto), None);
     }
 

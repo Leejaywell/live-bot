@@ -73,7 +73,6 @@ export interface AppConfig {
   GiftSummaryTemplate: string;
   CronDanmu: boolean;
   CronDanmuList: any[];
-  DanmuCntEnable: boolean;
   BlindBoxStat: boolean;
   DBPath: string;
   DBName: string;
@@ -86,6 +85,10 @@ export interface AppConfig {
   TtsVoice: string;
   TtsSpeed: number;
   TtsPitch: number;
+  VoiceChangerModelId: string;
+  VoiceChangerInputGain: number;
+  VoiceChangerWetMix: number;
+  VoiceChangerFrameMs: number;
   ObsEnabled: boolean;
   ObsHost: string;
   ObsPort: number;
@@ -191,6 +194,17 @@ export interface SystemInfo {
   db_path: string;
 }
 
+export interface VoiceChangerState {
+  running: boolean;
+  model_id: string;
+  input_gain: number;
+  wet_mix: number;
+  frame_ms: number;
+  processed_frames: number;
+  output_latency_ms: number;
+  last_error: string | null;
+}
+
 export const api = {
   // Config
   loadConfig: () => invoke<AppConfig>('load_config'),
@@ -269,6 +283,8 @@ export const api = {
 
   // Danmaku polling (replaces Tauri event broadcast)
   getRecentDanmaku: () => invoke<string[]>('get_recent_danmaku'),
+  speakText: (text: string, voice: string, providerId?: string) =>
+    invoke<void>('speak_text_cmd', { text, voice, providerId: providerId ?? null }),
 
   // Blind box stats
   getBlindBoxStats: (days: number) => invoke<[string, number][]>('get_blind_box_stats', { days }),
@@ -285,8 +301,13 @@ export const api = {
   softDeleteTrackedUser: (uid: number) => invoke<void>('soft_delete_tracked_user', { uid }),
 
   // Voice Changer
-  startVoiceChanger: (modelId: string) => invoke<void>('start_voice_changer', { modelId }),
+  startVoiceChanger: (modelId: string, inputGain: number, wetMix: number, frameMs: number) =>
+    invoke<void>('start_voice_changer', { modelId, inputGain, wetMix, frameMs }),
+  switchVoiceChangerModel: (modelId: string, inputGain: number, wetMix: number, frameMs: number) =>
+    invoke<void>('switch_voice_changer_model', { modelId, inputGain, wetMix, frameMs }),
   stopVoiceChanger: () => invoke<void>('stop_voice_changer'),
   getVoiceChangerStatus: () => invoke<boolean>('get_voice_changer_status'),
+  getVoiceChangerState: () => invoke<VoiceChangerState>('get_voice_changer_state'),
   searchRvcModels: (query: string) => invoke<any[]>('search_rvc_models', { query }),
+  convertRvcPthToOnnx: (modelId: string) => invoke<string>('convert_rvc_pth_to_onnx', { modelId }),
 };

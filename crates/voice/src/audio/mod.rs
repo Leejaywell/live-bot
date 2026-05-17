@@ -47,7 +47,9 @@ pub mod output;
 pub mod tts_frame;
 
 // 重新导出核心类型
-pub use opus_proc::{OpusDecoder, OpusDecoderConfig, OpusEncoder, OpusEncoderConfig, OpusError, OpusFrame};
+pub use opus_proc::{
+    OpusDecoder, OpusDecoderConfig, OpusEncoder, OpusEncoderConfig, OpusError, OpusFrame,
+};
 
 // 新的配置结构体将在下面定义并自动导出
 pub use input_processor::{AudioInputConfig, AudioInputProcessor, InputProcessorError};
@@ -61,7 +63,12 @@ pub use tts_frame::{TTS_OUTPUT_SAMPLE_RATE, TTS_SOURCE_SAMPLE_RATE, TtsAudioFram
 pub enum AudioFormat {
     /// 16-bit PCM (小端序)
     #[default]
-    #[serde(alias = "pcm", alias = "pcm_s16_le", alias = "PcmS16Le", alias = "pcm_s16le")]
+    #[serde(
+        alias = "pcm",
+        alias = "pcm_s16_le",
+        alias = "PcmS16Le",
+        alias = "pcm_s16le"
+    )]
     PcmS16Le,
     /// 24-bit PCM (小端序)
     #[serde(alias = "pcm_s24_le", alias = "PcmS24Le", alias = "pcm_s24le")]
@@ -149,7 +156,10 @@ impl AudioFormat {
 
     /// 检测音频格式是否为PCM
     pub fn is_pcm(&self) -> bool {
-        matches!(self, AudioFormat::PcmS16Le | AudioFormat::PcmS24Le | AudioFormat::PcmS32Le)
+        matches!(
+            self,
+            AudioFormat::PcmS16Le | AudioFormat::PcmS24Le | AudioFormat::PcmS32Le
+        )
     }
 
     /// 检测音频格式是否为Opus
@@ -160,7 +170,11 @@ impl AudioFormat {
 
 impl Default for OutputAudioConfig {
     fn default() -> Self {
-        Self { format: AudioFormat::PcmS16Le, slice_ms: 20, opus_config: None }
+        Self {
+            format: AudioFormat::PcmS16Le,
+            slice_ms: 20,
+            opus_config: None,
+        }
     }
 }
 
@@ -172,18 +186,33 @@ impl OutputAudioConfig {
 
     /// 创建默认PCM输出配置
     pub fn default_pcm(slice_ms: u32) -> Self {
-        Self { format: AudioFormat::PcmS16Le, slice_ms, opus_config: None }
+        Self {
+            format: AudioFormat::PcmS16Le,
+            slice_ms,
+            opus_config: None,
+        }
     }
 
     /// 创建Opus输出配置
     pub fn opus(slice_ms: u32, opus_config: OpusEncoderConfig) -> Self {
-        Self { format: AudioFormat::Opus, slice_ms, opus_config: Some(opus_config) }
+        Self {
+            format: AudioFormat::Opus,
+            slice_ms,
+            opus_config: Some(opus_config),
+        }
     }
 
     /// 创建默认Opus输出配置
     pub fn default_opus(slice_ms: u32) -> Self {
-        let opus_config = OpusEncoderConfig { frame_duration_ms: Some(slice_ms), ..Default::default() };
-        Self { format: AudioFormat::Opus, slice_ms, opus_config: Some(opus_config) }
+        let opus_config = OpusEncoderConfig {
+            frame_duration_ms: Some(slice_ms),
+            ..Default::default()
+        };
+        Self {
+            format: AudioFormat::Opus,
+            slice_ms,
+            opus_config: Some(opus_config),
+        }
     }
 
     /// 检查配置是否有效
@@ -225,12 +254,18 @@ impl OutputAudioConfig {
                 if let Some(ref mut opus_config) = self.opus_config {
                     opus_config.frame_duration_ms = Some(corrected);
                 } else {
-                    self.opus_config = Some(OpusEncoderConfig { frame_duration_ms: Some(corrected), ..Default::default() });
+                    self.opus_config = Some(OpusEncoderConfig {
+                        frame_duration_ms: Some(corrected),
+                        ..Default::default()
+                    });
                 }
             } else if let Some(ref mut opus_config) = self.opus_config {
                 opus_config.frame_duration_ms = Some(self.slice_ms);
             } else {
-                self.opus_config = Some(OpusEncoderConfig { frame_duration_ms: Some(self.slice_ms), ..Default::default() });
+                self.opus_config = Some(OpusEncoderConfig {
+                    frame_duration_ms: Some(self.slice_ms),
+                    ..Default::default()
+                });
             }
         }
     }
@@ -279,9 +314,14 @@ pub fn bytes_to_f32_vec(bytes: &[u8]) -> Result<(Vec<f32>, usize), String> {
     let mut result = Vec::with_capacity(sample_count);
 
     // 直接将 &[u8] 重解释为 &[i16]，然后转换为 Vec<f32>
-    let i16_slice = unsafe { std::slice::from_raw_parts(bytes.as_ptr() as *const i16, sample_count) };
+    let i16_slice =
+        unsafe { std::slice::from_raw_parts(bytes.as_ptr() as *const i16, sample_count) };
 
-    result.extend(i16_slice.iter().map(|&x| i16::from_le(x) as f32 / (i16::MAX as f32)));
+    result.extend(
+        i16_slice
+            .iter()
+            .map(|&x| i16::from_le(x) as f32 / (i16::MAX as f32)),
+    );
 
     Ok((result, sample_count))
 }

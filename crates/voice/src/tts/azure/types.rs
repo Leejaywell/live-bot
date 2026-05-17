@@ -26,7 +26,7 @@ impl fmt::Display for AzureTtsError {
             AzureTtsError::Decode(msg) => write!(f, "Azure TTS 解码错误: {}", msg),
             AzureTtsError::UnsupportedLanguage(lang) => {
                 write!(f, "Azure TTS 不支持的语言: {}", lang)
-            },
+            }
         }
     }
 }

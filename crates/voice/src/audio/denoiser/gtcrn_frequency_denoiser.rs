@@ -7,7 +7,7 @@
 
 use ndarray::prelude::*;
 use ort::execution_providers::CPUExecutionProvider;
-use ort::io_binding::IoBinding;
+use ort::session::IoBinding;
 use ort::session::Session;
 use ort::session::builder::GraphOptimizationLevel;
 use ort::value::Tensor;
@@ -70,7 +70,10 @@ impl Complex {
     }
 
     fn zero() -> Self {
-        Self { real: 0.0, imag: 0.0 }
+        Self {
+            real: 0.0,
+            imag: 0.0,
+        }
     }
 }
 
@@ -80,14 +83,26 @@ impl GtcrnFrequencyDenoiser {
         let cpu_provider = CPUExecutionProvider::default();
         let providers = vec![cpu_provider.build()];
 
-        let session = Session::builder()?
-            .with_optimization_level(GraphOptimizationLevel::Level3)?
-            .with_log_level(ort::logging::LogLevel::Warning)?
-            .with_execution_providers(providers)?
-            .with_parallel_execution(false)?
-            .with_intra_threads(1)?
-            .with_memory_pattern(true)?
-            .commit_from_memory(MODEL_DATA)?;
+        let mut b = Session::builder().map_err(|e| anyhow::anyhow!("{e}"))?;
+        b = b
+            .with_optimization_level(GraphOptimizationLevel::Level3)
+            .map_err(|e| anyhow::anyhow!("{e}"))?;
+        b = b
+            .with_log_level(ort::logging::LogLevel::Warning)
+            .map_err(|e| anyhow::anyhow!("{e}"))?;
+        b = b
+            .with_execution_providers(providers)
+            .map_err(|e| anyhow::anyhow!("{e}"))?;
+        b = b
+            .with_parallel_execution(false)
+            .map_err(|e| anyhow::anyhow!("{e}"))?;
+        b = b
+            .with_intra_threads(1)
+            .map_err(|e| anyhow::anyhow!("{e}"))?;
+        b = b
+            .with_memory_pattern(true)
+            .map_err(|e| anyhow::anyhow!("{e}"))?;
+        let session = b.commit_from_memory(MODEL_DATA)?;
 
         // Initialize model state caches (all zeros initially)
         let conv_cache = Array5::<f32>::zeros((2, 1, 16, 16, 33));
@@ -195,10 +210,15 @@ impl GtcrnFrequencyDenoiser {
         assert_eq!(audio.len(), WIN_LENGTH);
 
         // Apply window
-        let windowed: Vec<f32> = audio.iter().zip(self.window.iter()).map(|(a, w)| a * w).collect();
+        let windowed: Vec<f32> = audio
+            .iter()
+            .zip(self.window.iter())
+            .map(|(a, w)| a * w)
+            .collect();
 
         // Compute FFT
-        let mut complex_input: Vec<Complex> = windowed.iter().map(|&x| Complex::new(x, 0.0)).collect();
+        let mut complex_input: Vec<Complex> =
+            windowed.iter().map(|&x| Complex::new(x, 0.0)).collect();
 
         self.fft_512(&mut complex_input);
 
@@ -225,14 +245,25 @@ impl GtcrnFrequencyDenoiser {
             .as_mut()
             .ok_or_else(|| anyhow::anyhow!("io_binding not initialized"))?;
         binding.bind_input("mix", &Tensor::from_array(spec.view().to_owned())?)?;
-        binding.bind_input("conv_cache", &Tensor::from_array(self.conv_cache.view().to_owned())?)?;
-        binding.bind_input("tra_cache", &Tensor::from_array(self.tra_cache.view().to_owned())?)?;
-        binding.bind_input("inter_cache", &Tensor::from_array(self.inter_cache.view().to_owned())?)?;
+        binding.bind_input(
+            "conv_cache",
+            &Tensor::from_array(self.conv_cache.view().to_owned())?,
+        )?;
+        binding.bind_input(
+            "tra_cache",
+            &Tensor::from_array(self.tra_cache.view().to_owned())?,
+        )?;
+        binding.bind_input(
+            "inter_cache",
+            &Tensor::from_array(self.inter_cache.view().to_owned())?,
+        )?;
 
         let outputs = self.session.run_binding(binding)?;
 
         // Extract enhanced spectrum (minimize copies)
-        let enh = outputs.get("enh").ok_or_else(|| anyhow::anyhow!("enh output not found"))?;
+        let enh = outputs
+            .get("enh")
+            .ok_or_else(|| anyhow::anyhow!("enh output not found"))?;
         let (_, enh_data) = enh.try_extract_tensor::<f32>()?;
         let enhanced = Array4::from_shape_vec((1, N_FREQS, 1, 2), enh_data.to_vec())?;
 
@@ -314,7 +345,13 @@ impl GtcrnFrequencyDenoiser {
     fn fft_512(&self, data: &mut [Complex]) {
         assert_eq!(data.len(), N_FFT);
         // Convert to rustfft complex buffer
-        let mut buffer: Vec<RComplex> = data.iter().map(|c| RComplex { re: c.real, im: c.imag }).collect();
+        let mut buffer: Vec<RComplex> = data
+            .iter()
+            .map(|c| RComplex {
+                re: c.real,
+                im: c.imag,
+            })
+            .collect();
         // Execute plan
         self.fft_forward.process(&mut buffer);
         // Copy back
@@ -328,7 +365,13 @@ impl GtcrnFrequencyDenoiser {
     fn ifft_512(&self, data: &mut [Complex]) {
         assert_eq!(data.len(), N_FFT);
         // Convert to rustfft complex buffer
-        let mut buffer: Vec<RComplex> = data.iter().map(|c| RComplex { re: c.real, im: c.imag }).collect();
+        let mut buffer: Vec<RComplex> = data
+            .iter()
+            .map(|c| RComplex {
+                re: c.real,
+                im: c.imag,
+            })
+            .collect();
         // Execute inverse plan (includes 1/N scaling semantics we apply manually below)
         self.fft_inverse.process(&mut buffer);
         // Apply scaling (rustfft inverse does not scale by default)

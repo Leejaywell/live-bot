@@ -71,11 +71,20 @@ impl Mp3Decoder {
 
         loop {
             match decoder.next_frame() {
-                Ok(Frame { data, sample_rate, channels, .. }) => {
+                Ok(Frame {
+                    data,
+                    sample_rate,
+                    channels,
+                    ..
+                }) => {
                     // 记录检测到的采样率（仅第一帧）
                     if self.detected_sample_rate.is_none() {
                         self.detected_sample_rate = Some(sample_rate);
-                        tracing::debug!("MP3 检测到采样率: {} Hz, channels: {}", sample_rate, channels);
+                        tracing::debug!(
+                            "MP3 检测到采样率: {} Hz, channels: {}",
+                            sample_rate,
+                            channels
+                        );
                     }
 
                     // 转换为单声道 PCM
@@ -94,12 +103,12 @@ impl Mp3Decoder {
 
                     // 更新已解码的字节数（使用 Cursor 的位置）
                     decoded_bytes = decoder.reader().position() as usize;
-                },
+                }
                 Err(Mp3Error::Eof) => break,
                 Err(Mp3Error::InsufficientData) => {
                     // 数据不足，保留未解码的部分
                     break;
-                },
+                }
                 Err(Mp3Error::SkippedData) => continue,
                 Err(_) => continue, // 跳过其他错误
             }
@@ -108,7 +117,11 @@ impl Mp3Decoder {
         // 移除已解码的数据，保留未解码的部分
         if decoded_bytes > 0 {
             self.buffer.drain(..decoded_bytes);
-            tracing::debug!("增量解码: 已解码 {} 字节，剩余 {} 字节", decoded_bytes, self.buffer.len());
+            tracing::debug!(
+                "增量解码: 已解码 {} 字节，剩余 {} 字节",
+                decoded_bytes,
+                self.buffer.len()
+            );
         }
 
         Ok(pcm_output)
@@ -142,7 +155,12 @@ impl Mp3Decoder {
 
         loop {
             match decoder.next_frame() {
-                Ok(Frame { data, sample_rate, channels, .. }) => {
+                Ok(Frame {
+                    data,
+                    sample_rate,
+                    channels,
+                    ..
+                }) => {
                     if self.detected_sample_rate.is_none() {
                         self.detected_sample_rate = Some(sample_rate);
                     }
@@ -160,14 +178,14 @@ impl Mp3Decoder {
                             pcm_output.extend_from_slice(&sample.to_le_bytes());
                         }
                     }
-                },
+                }
                 Err(Mp3Error::Eof) => break,
                 Err(Mp3Error::InsufficientData) => break,
                 Err(Mp3Error::SkippedData) => continue,
                 Err(e) => {
                     tracing::warn!("MP3 解码错误（跳过）: {:?}", e);
                     continue;
-                },
+                }
             }
         }
 
@@ -193,7 +211,10 @@ pub fn resample_to_16k(input: &[u8], input_sample_rate: i32) -> Vec<u8> {
     }
 
     // 解析输入样本
-    let samples: Vec<i16> = input.chunks_exact(2).map(|c| i16::from_le_bytes([c[0], c[1]])).collect();
+    let samples: Vec<i16> = input
+        .chunks_exact(2)
+        .map(|c| i16::from_le_bytes([c[0], c[1]]))
+        .collect();
 
     if samples.is_empty() {
         return Vec::new();

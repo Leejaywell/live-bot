@@ -9,8 +9,8 @@ use anyhow::Result;
 use serde_json::{Value, json};
 use tokio::sync::mpsc;
 
-use crate::storage::Storage;
 use super::tool::{BoxFuture, FunctionSpec, Tool, ToolOutput};
+use crate::storage::Storage;
 
 /// 向直播间发送弹幕
 pub struct SendDanmuTool {
@@ -42,7 +42,9 @@ impl Tool for SendDanmuTool {
             if text.is_empty() {
                 return Ok("错误：弹幕内容为空".to_string());
             }
-            tx.send(text.clone()).await.map_err(|_| anyhow::anyhow!("弹幕队列已关闭"))?;
+            tx.send(text.clone())
+                .await
+                .map_err(|_| anyhow::anyhow!("弹幕队列已关闭"))?;
             Ok(format!("已发送弹幕：{text}"))
         })
     }
@@ -78,8 +80,12 @@ impl Tool for GetSessionStatsTool {
             match storage.live_session_summary(&id) {
                 Ok(s) => Ok(format!(
                     "本场直播：弹幕 {} 条，互动 {} 次，礼物价值 {} 电池，新增关注 {} 人，舰长购买 {} 次，峰值人气 {}",
-                    s.danmu_count, s.interact_count, s.gift_value,
-                    s.follow_count, s.guard_buy_count, s.peak_popularity,
+                    s.danmu_count,
+                    s.interact_count,
+                    s.gift_value,
+                    s.follow_count,
+                    s.guard_buy_count,
+                    s.peak_popularity,
                 )),
                 Err(e) => Ok(format!("查询失败：{e}")),
             }

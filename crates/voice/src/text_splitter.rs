@@ -64,7 +64,10 @@ pub struct TtsError {
 
 impl TtsError {
     pub fn new(msg: &str, code: &str) -> Self {
-        Self { message: msg.to_owned(), code: code.to_owned() }
+        Self {
+            message: msg.to_owned(),
+            code: code.to_owned(),
+        }
     }
 }
 
@@ -163,11 +166,15 @@ impl SimplifiedStreamingSplitter {
                 let sentence = self.buffer[last_end..sentence_end].trim().to_string();
                 if !sentence.is_empty() {
                     // 仅将逗号/顿号/分号视为"可控弱边界"，用于首句提前吐出
-                    let is_comma_like_boundary = matched_text.chars().any(|c| "，,、；;".contains(c));
+                    let is_comma_like_boundary =
+                        matched_text.chars().any(|c| "，,、；;".contains(c));
                     // 短句保护：仅对非强终止符（如换行/波浪线等）启用更高的最小长度要求
                     let is_strong_ending = matched_text.chars().any(|c| "。！？…?!".contains(c));
                     // 如果是逗号类弱边界，且已经产出首句，则跳过该分割点，继续累积到强终止符
-                    if is_comma_like_boundary && !self.allow_comma_like_boundary_for_first_sentence && !is_strong_ending {
+                    if is_comma_like_boundary
+                        && !self.allow_comma_like_boundary_for_first_sentence
+                        && !is_strong_ending
+                    {
                         continue;
                     }
                     let effective_min_len = if is_strong_ending {
@@ -260,7 +267,11 @@ impl SimplifiedStreamingSplitter {
                 remaining_text.len(),
                 remaining_text.chars().take(100).collect::<String>()
             );
-            let chunk = TextChunk { text: remaining_text, can_synthesize_immediately: true, requires_context: false };
+            let chunk = TextChunk {
+                text: remaining_text,
+                can_synthesize_immediately: true,
+                requires_context: false,
+            };
 
             results.push(chunk);
         } else {
@@ -303,8 +314,13 @@ impl SimplifiedStreamingSplitter {
             // 🔧 修复：使用字符索引而不是字节索引
             let raw_chunk: String = self.buffer.chars().take(split_char_pos).collect();
             let chunk_text = self.clean_text(raw_chunk.trim()).trim().to_string();
-            if !chunk_text.is_empty() && chunk_text.chars().count() >= self.config.min_chunk_length {
-                return Some(TextChunk { text: chunk_text, can_synthesize_immediately: true, requires_context: false });
+            if !chunk_text.is_empty() && chunk_text.chars().count() >= self.config.min_chunk_length
+            {
+                return Some(TextChunk {
+                    text: chunk_text,
+                    can_synthesize_immediately: true,
+                    requires_context: false,
+                });
             }
         }
         None
@@ -330,7 +346,11 @@ impl SimplifiedStreamingSplitter {
                 current_byte += ch.len_utf8();
                 char_pos = i;
             }
-            if current_byte == byte_pos { Some(char_pos + 1) } else { None }
+            if current_byte == byte_pos {
+                Some(char_pos + 1)
+            } else {
+                None
+            }
         };
 
         let Some(dot_char_pos) = byte_to_char_pos(dot_end_pos) else {
@@ -359,20 +379,23 @@ impl SimplifiedStreamingSplitter {
             Some(char_after) if char_after.is_ascii_digit() => {
                 // 前后都是数字，确定是小数点
                 true
-            },
-            Some(char_after) if char_after.is_whitespace() || "。！？!?；;，,、）)」》>".contains(*char_after) => {
+            }
+            Some(char_after)
+                if char_after.is_whitespace()
+                    || "。！？!?；;，,、）)」》>".contains(*char_after) =>
+            {
                 // 后面是空格或标点，确定不是小数点
                 false
-            },
+            }
             None => {
                 // 流式输入场景：后面还没有内容，暂时保护以等待更多输入
                 // 如果前面是数字，我们暂时认为这可能是小数点，不要立即分割
                 true
-            },
+            }
             _ => {
                 // 后面是其他字符（如字母），不是小数点
                 false
-            },
+            }
         }
     }
 
@@ -410,13 +433,15 @@ impl SimplifiedStreamingSplitter {
     /// 高级包装：在内部出现 panic 时自动捕获、重置状态并返回空结果，防止崩溃
     pub fn process_input(&mut self, input: impl AsRef<str>) -> Vec<TextChunk> {
         let input_ref = input.as_ref();
-        match std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| self.found_first_sentence(input_ref))) {
+        match std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            self.found_first_sentence(input_ref)
+        })) {
             Ok(chunks) => chunks,
             Err(e) => {
                 tracing::error!("✂️ Text splitter panic captured: {:?}", e);
                 self.reset();
                 Vec::new()
-            },
+            }
         }
     }
 }
@@ -425,7 +450,9 @@ impl SimplifiedStreamingSplitter {
 /**
  * 创建简化版流式文本分割器 - 便利函数
  */
-pub fn create_simplified_text_splitter(config: Option<PartialSplitterConfig>) -> SimplifiedStreamingSplitter {
+pub fn create_simplified_text_splitter(
+    config: Option<PartialSplitterConfig>,
+) -> SimplifiedStreamingSplitter {
     SimplifiedStreamingSplitter::new(config)
 }
 
@@ -484,7 +511,10 @@ mod tests {
         // first 3 inputs merge into one chunk, last input becomes finalize chunk
         assert_eq!(all_chunks.len(), 2);
         // Verify by checking the chunk contains the input fragments
-        assert!(all_chunks[0].text.len() > 10, "first chunk should be long enough");
+        assert!(
+            all_chunks[0].text.len() > 10,
+            "first chunk should be long enough"
+        );
         assert_eq!(
             all_chunks[1].text.chars().count(),
             4,
@@ -510,7 +540,8 @@ mod tests {
         let mut splitter = SimplifiedStreamingSplitter::new(None);
 
         // 测试日语分割（min_chunk_length=10，短句合并）
-        let chunks = splitter.found_first_sentence("こんにちは！私はAIアシスタントです。よろしくお願いします。");
+        let chunks = splitter
+            .found_first_sentence("こんにちは！私はAIアシスタントです。よろしくお願いします。");
         assert_eq!(chunks.len(), 2);
         assert_eq!(chunks[0].text, "こんにちは！私はAIアシスタントです。");
         assert_eq!(chunks[1].text, "よろしくお願いします。");
@@ -541,7 +572,8 @@ mod tests {
         let mut splitter = SimplifiedStreamingSplitter::new(None);
 
         // 测试长文本分割（min_chunk_length=10，短句合并）
-        let long_text = "第一句话。这是第二句。这是第三句话！这是第四句？这是第五句。这是最后一句了。";
+        let long_text =
+            "第一句话。这是第二句。这是第三句话！这是第四句？这是第五句。这是最后一句了。";
         let chunks = splitter.found_first_sentence(long_text);
         assert_eq!(chunks.len(), 3);
 
@@ -568,7 +600,10 @@ mod tests {
     #[test]
     fn test_force_splitting_long_buffer() {
         // 使用较小的max_chunk_length进行测试
-        let config = PartialSplitterConfig { max_chunk_length: Some(8), min_chunk_length: Some(3) };
+        let config = PartialSplitterConfig {
+            max_chunk_length: Some(8),
+            min_chunk_length: Some(3),
+        };
         let mut splitter = SimplifiedStreamingSplitter::new(Some(config));
 
         // 添加一个没有分割标志的长文本
@@ -579,8 +614,14 @@ mod tests {
 
         // 第一个块不应该超过最大长度
         if !chunks.is_empty() {
-            assert!(chunks[0].text.chars().count() <= 8, "分割的块不应超过最大长度");
-            assert!(chunks[0].text.chars().count() >= 3, "分割的块不应小于最小长度");
+            assert!(
+                chunks[0].text.chars().count() <= 8,
+                "分割的块不应超过最大长度"
+            );
+            assert!(
+                chunks[0].text.chars().count() >= 3,
+                "分割的块不应小于最小长度"
+            );
         }
 
         // 缓冲区应该还有剩余内容
@@ -660,7 +701,12 @@ mod tests {
 
         println!("最终chunks数量: {}", all_chunks.len());
         for (i, chunk) in all_chunks.iter().enumerate() {
-            println!("Final Chunk {}: '{}' (长度: {})", i, chunk.text, chunk.text.chars().count());
+            println!(
+                "Final Chunk {}: '{}' (长度: {})",
+                i,
+                chunk.text,
+                chunk.text.chars().count()
+            );
         }
 
         // 验证结果 - 至少应该有一些分割产生
@@ -670,7 +716,10 @@ mod tests {
         for chunk in &all_chunks {
             if chunk.text.chars().count() >= 3 {
                 // 只检查非空的合理块
-                assert!(chunk.text.chars().count() >= 3, "每个块都应该满足最小长度要求");
+                assert!(
+                    chunk.text.chars().count() >= 3,
+                    "每个块都应该满足最小长度要求"
+                );
             }
         }
     }
@@ -700,11 +749,18 @@ mod tests {
 
         // 验证完整文本包含完整的数字
         let full_text: String = all_chunks.iter().map(|c| c.text.as_str()).collect();
-        assert!(full_text.contains("0.0"), "应该保留完整的小数 0.0，而不是切开成 0. 和 0");
+        assert!(
+            full_text.contains("0.0"),
+            "应该保留完整的小数 0.0，而不是切开成 0. 和 0"
+        );
 
         // 验证没有产生只包含 "0." 或以 "0." 结尾的不完整分片
         for chunk in &all_chunks {
-            assert!(!chunk.text.trim().ends_with("0."), "不应该在小数点处分割: '{}'", chunk.text);
+            assert!(
+                !chunk.text.trim().ends_with("0."),
+                "不应该在小数点处分割: '{}'",
+                chunk.text
+            );
         }
     }
 }

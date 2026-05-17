@@ -29,6 +29,21 @@ impl AudioPlayer {
     pub fn new() -> Result<Self, String> {
         let (tx, rx) = std::sync::mpsc::sync_channel::<AudioFrame>(64);
         let monitor = Arc::new(LatencyMonitor::default());
+        Self::spawn(tx, rx, monitor)
+    }
+
+    /// 打开低延迟输出设备。用于实时监听类音频，队列满时宁愿丢帧也不累计秒级延迟。
+    pub fn new_low_latency() -> Result<Self, String> {
+        let (tx, rx) = std::sync::mpsc::sync_channel::<AudioFrame>(4);
+        let monitor = Arc::new(LatencyMonitor::fixed(48000 / 5));
+        Self::spawn(tx, rx, monitor)
+    }
+
+    fn spawn(
+        tx: std::sync::mpsc::SyncSender<AudioFrame>,
+        rx: std::sync::mpsc::Receiver<AudioFrame>,
+        monitor: Arc<LatencyMonitor>,
+    ) -> Result<Self, String> {
         let monitor_thread = Arc::clone(&monitor);
 
         let thread = std::thread::Builder::new()
@@ -40,7 +55,11 @@ impl AudioPlayer {
             })
             .map_err(|e| e.to_string())?;
 
-        Ok(Self { tx, _thread: thread, latency: monitor })
+        Ok(Self {
+            tx,
+            _thread: thread,
+            latency: monitor,
+        })
     }
 
     /// 将 AudioFrame 送入播放队列（非阻塞，队列满则丢弃）
@@ -138,14 +157,19 @@ fn push_to_buffer(
     };
 
     // 自适应缓冲上限（来自 LatencyMonitor）
-    let max_buf = monitor.target_max.load(std::sync::atomic::Ordering::Relaxed);
+    let max_buf = monitor
+        .target_max
+        .load(std::sync::atomic::Ordering::Relaxed);
     let current = buffer.len();
     if current + resampled.len() > max_buf {
         let drop_n = (current + resampled.len()).saturating_sub(max_buf);
         for _ in 0..drop_n {
             buffer.pop();
         }
-        warn!("音频缓冲溢出，丢弃 {drop_n} 个样本 (target={}ms)", monitor.target_latency_ms());
+        warn!(
+            "音频缓冲溢出，丢弃 {drop_n} 个样本 (target={}ms)",
+            monitor.target_latency_ms()
+        );
     }
 
     for s in &resampled {

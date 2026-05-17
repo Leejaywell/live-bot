@@ -1,9 +1,9 @@
 use std::time::{SystemTime, UNIX_EPOCH};
 
+use crate::token;
 use anyhow::{Result, anyhow};
 use reqwest::header::{COOKIE, HeaderMap, HeaderValue, USER_AGENT};
 use serde::Deserialize;
-use crate::token;
 
 const UA: &str = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36";
 
@@ -124,7 +124,12 @@ impl BiliApi {
             0 => {
                 let cookie = token::parse_set_cookie(&headers);
                 // After success, visit a main page to get more security cookies (like sec_ck)
-                let _ = self.client.get("https://live.bilibili.com/").header(reqwest::header::COOKIE, &cookie).send().await;
+                let _ = self
+                    .client
+                    .get("https://live.bilibili.com/")
+                    .header(reqwest::header::COOKIE, &cookie)
+                    .send()
+                    .await;
                 Ok(LoginPoll::Success(cookie, body.data.refresh_token))
             }
             86038 => Ok(LoginPoll::Expired(body.data.message)),
@@ -212,9 +217,14 @@ impl BiliApi {
 
     async fn fetch_wbi_keys(&self, cookie: &str) -> Result<(String, String)> {
         #[derive(Deserialize)]
-        struct WbiImg { img_url: String, sub_url: String }
+        struct WbiImg {
+            img_url: String,
+            sub_url: String,
+        }
         #[derive(Deserialize)]
-        struct NavData { wbi_img: WbiImg }
+        struct NavData {
+            wbi_img: WbiImg,
+        }
         let response: ApiResponse<NavData> = self
             .client
             .get("https://api.bilibili.com/x/web-interface/nav")
@@ -225,22 +235,30 @@ impl BiliApi {
             .json()
             .await?;
         let img = &response.data.wbi_img;
-        let img_key = img.img_url
-            .rsplit('/').next().unwrap_or("").trim_end_matches(".png");
-        let sub_key = img.sub_url
-            .rsplit('/').next().unwrap_or("").trim_end_matches(".png");
+        let img_key = img
+            .img_url
+            .rsplit('/')
+            .next()
+            .unwrap_or("")
+            .trim_end_matches(".png");
+        let sub_key = img
+            .sub_url
+            .rsplit('/')
+            .next()
+            .unwrap_or("")
+            .trim_end_matches(".png");
         Ok((img_key.to_string(), sub_key.to_string()))
     }
 
     fn wbi_sign(params: &str, img_key: &str, sub_key: &str) -> String {
         const MIXIN_KEY_ENC_TAB: &[usize] = &[
-            46, 47, 18,  2, 53,  8, 23, 32, 15, 50, 10, 31, 58,  3, 45, 35,
-            27, 43,  5, 49, 33,  9, 42, 19, 29, 28, 14, 39, 12, 38, 41, 13,
-            37, 48,  7, 16, 24, 55, 40, 61, 26, 17,  0,  1, 60, 51, 30,  4,
-            22, 25, 54, 21, 56, 59,  6, 63, 57, 62, 11, 36, 20, 34, 44, 52,
+            46, 47, 18, 2, 53, 8, 23, 32, 15, 50, 10, 31, 58, 3, 45, 35, 27, 43, 5, 49, 33, 9, 42,
+            19, 29, 28, 14, 39, 12, 38, 41, 13, 37, 48, 7, 16, 24, 55, 40, 61, 26, 17, 0, 1, 60,
+            51, 30, 4, 22, 25, 54, 21, 56, 59, 6, 63, 57, 62, 11, 36, 20, 34, 44, 52,
         ];
         let raw: Vec<char> = format!("{img_key}{sub_key}").chars().collect();
-        let mixin_key: String = MIXIN_KEY_ENC_TAB.iter()
+        let mixin_key: String = MIXIN_KEY_ENC_TAB
+            .iter()
             .filter_map(|&i| raw.get(i).copied())
             .take(32)
             .collect();
@@ -262,17 +280,15 @@ impl BiliApi {
     }
 
     pub async fn danmu_info(&self, room_id: i64, cookie: &str) -> Result<DanmuInfo> {
-        let (img_key, sub_key) = self.fetch_wbi_keys(cookie).await
-            .unwrap_or_default();
+        let (img_key, sub_key) = self.fetch_wbi_keys(cookie).await.unwrap_or_default();
         let base_params = format!("id={room_id}&type=0");
         let signed = if img_key.is_empty() {
             base_params
         } else {
             Self::wbi_sign(&base_params, &img_key, &sub_key)
         };
-        let url = format!(
-            "https://api.live.bilibili.com/xlive/web-room/v1/index/getDanmuInfo?{signed}"
-        );
+        let url =
+            format!("https://api.live.bilibili.com/xlive/web-room/v1/index/getDanmuInfo?{signed}");
         let response: ApiResponse<DanmuInfoData> = self
             .client
             .get(&url)
@@ -284,15 +300,25 @@ impl BiliApi {
             .json()
             .await?;
         if response.code != 0 {
-            return Err(anyhow!("getDanmuInfo 失败 (code={}): {}", response.code, response.message));
+            return Err(anyhow!(
+                "getDanmuInfo 失败 (code={}): {}",
+                response.code,
+                response.message
+            ));
         }
-        let hosts = response.data.host_list.into_iter()
+        let hosts = response
+            .data
+            .host_list
+            .into_iter()
             .map(|h| bilibili_live_protocol::DanmuHost {
                 host: h.host,
                 wss_port: h.wss_port,
             })
             .collect();
-        Ok(DanmuInfo { token: response.data.token, hosts })
+        Ok(DanmuInfo {
+            token: response.data.token,
+            hosts,
+        })
     }
 
     pub async fn user_info(&self, cookie: &str) -> Result<UserInfo> {
@@ -438,7 +464,13 @@ impl BiliApi {
             Ok(r) => r
                 .json::<ApiResponse<SpaceData>>()
                 .await
-                .map(|r| if r.code == 0 { r.data.sign } else { String::new() })
+                .map(|r| {
+                    if r.code == 0 {
+                        r.data.sign
+                    } else {
+                        String::new()
+                    }
+                })
                 .unwrap_or_default(),
             Err(_) => String::new(),
         };
@@ -476,7 +508,10 @@ impl BiliApi {
         let url = if provider.api_url.ends_with("/chat/completions") {
             provider.api_url.clone()
         } else {
-            format!("{}/chat/completions", provider.api_url.trim_end_matches('/'))
+            format!(
+                "{}/chat/completions",
+                provider.api_url.trim_end_matches('/')
+            )
         };
         let mut body = serde_json::json!({
             "model": provider.model,

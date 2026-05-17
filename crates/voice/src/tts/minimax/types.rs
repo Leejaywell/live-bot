@@ -40,8 +40,20 @@ impl AudioChunk {
     }
 
     /// 创建指定采样率的音频块
-    pub fn new_with_sample_rate(data: Vec<u8>, sequence_id: u64, is_final: bool, sample_rate: u32) -> Self {
-        Self { data, sequence_id, is_final, sentence_text: None, gain_db: 0.0, sample_rate }
+    pub fn new_with_sample_rate(
+        data: Vec<u8>,
+        sequence_id: u64,
+        is_final: bool,
+        sample_rate: u32,
+    ) -> Self {
+        Self {
+            data,
+            sequence_id,
+            is_final,
+            sentence_text: None,
+            gain_db: 0.0,
+            sample_rate,
+        }
     }
 
     /// 创建带增益的音频块
@@ -57,8 +69,21 @@ impl AudioChunk {
     }
 
     /// 创建带增益和采样率的音频块
-    pub fn new_with_gain_and_sample_rate(data: Vec<u8>, sequence_id: u64, is_final: bool, gain_db: f32, sample_rate: u32) -> Self {
-        Self { data, sequence_id, is_final, sentence_text: None, gain_db, sample_rate }
+    pub fn new_with_gain_and_sample_rate(
+        data: Vec<u8>,
+        sequence_id: u64,
+        is_final: bool,
+        gain_db: f32,
+        sample_rate: u32,
+    ) -> Self {
+        Self {
+            data,
+            sequence_id,
+            is_final,
+            sentence_text: None,
+            gain_db,
+            sample_rate,
+        }
     }
 
     /// 🆕 创建带文字的空块（用于在首帧前发送文字信令）
@@ -74,7 +99,11 @@ impl AudioChunk {
     }
 
     /// 创建带增益和文字的空块
-    pub fn new_text_marker_with_gain(sentence_text: String, sequence_id: u64, gain_db: f32) -> Self {
+    pub fn new_text_marker_with_gain(
+        sentence_text: String,
+        sequence_id: u64,
+        gain_db: f32,
+    ) -> Self {
         Self {
             data: Vec::new(),
             sequence_id,
@@ -339,9 +368,12 @@ where
             // 公式：pitch_int = (pitch_float * 12.0).round()
             let mapped = (v * 12.0).round();
             let result = mapped as i64;
-            let pitch_int: i32 = result
-                .try_into()
-                .map_err(|_| E::custom(format!("pitch value {} (mapped from {}) out of range for i32", result, v)))?;
+            let pitch_int: i32 = result.try_into().map_err(|_| {
+                E::custom(format!(
+                    "pitch value {} (mapped from {}) out of range for i32",
+                    result, v
+                ))
+            })?;
             // 限制在 [-12, 12] 范围内
             Ok(pitch_int.clamp(-12, 12))
         }
@@ -364,7 +396,10 @@ pub struct VoiceSetting {
     pub vol: Option<f64>,
     /// 合成音频的语调，取值范围 [-12, 12]，默认值为 0
     /// 注意：WebSocket 传入的是 [-1, 1] 范围的浮点数，会被自动映射到 [-12, 12] 整数以符合 MiniMax API 要求
-    #[serde(skip_serializing_if = "Option::is_none", deserialize_with = "deserialize_pitch")]
+    #[serde(
+        skip_serializing_if = "Option::is_none",
+        deserialize_with = "deserialize_pitch"
+    )]
     pub pitch: Option<i32>,
     /// 控制合成语音的情绪
     #[serde(skip_serializing_if = "Option::is_none")]

@@ -23,7 +23,7 @@ impl BotEngine {
         }
     }
 
-    pub fn handle_event(&self, event: &LiveEvent, storage: Option<&Storage>) -> Vec<String> {
+    pub fn handle_event(&self, event: &LiveEvent, _storage: Option<&Storage>) -> Vec<String> {
         if self.is_permanently_blacklisted(event) {
             return Vec::new();
         }
@@ -32,7 +32,6 @@ impl BotEngine {
         }
 
         let mut out = Vec::new();
-        self.track_danmu(event, storage);
         out.extend(self.welcome(event));
         out.extend(self.help(event));
         out.extend(self.thanks(event));
@@ -120,20 +119,6 @@ impl BotEngine {
         *count >= self.config.danmu_filter_repeat_threshold
     }
 
-    fn track_danmu(&self, event: &LiveEvent, storage: Option<&Storage>) {
-        if !self.config.danmu_cnt_enable {
-            return;
-        }
-        let LiveEvent::Danmu { user_id, user, .. } = event else {
-            return;
-        };
-        if let Some(storage) = storage {
-            let _ = storage.increment_danmu_count(*user_id, user);
-        }
-    }
-
-
-
     fn help(&self, event: &LiveEvent) -> Vec<String> {
         let LiveEvent::Danmu { text, .. } = event else {
             return Vec::new();
@@ -191,7 +176,9 @@ impl BotEngine {
             LiveEvent::GuardBuy { user, gift, .. } if self.config.thanks_gift => {
                 vec![format!("感谢 {user} 的 {gift}")]
             }
-            LiveEvent::SuperChat { user, text, price, .. } if self.config.thanks_super_chat => {
+            LiveEvent::SuperChat {
+                user, text, price, ..
+            } if self.config.thanks_super_chat => {
                 vec![format!("感谢 {user} 的 SC (¥{price})：{text}")]
             }
             _ => Vec::new(),
@@ -264,7 +251,11 @@ impl BotEngine {
 
         if self.config.fuzzy_match_cmd {
             if text.contains(&self.config.talk_robot_cmd) {
-                Some(text.replace(&self.config.talk_robot_cmd, "").trim().to_string())
+                Some(
+                    text.replace(&self.config.talk_robot_cmd, "")
+                        .trim()
+                        .to_string(),
+                )
             } else {
                 None
             }
@@ -510,56 +501,104 @@ mod tests {
     #[test]
     fn comprehensive_switch_coverage() {
         let mut config = test_config();
-        
+
         // 1. Thanks Focus Switch
         config.thanks_focus = false;
         let engine = BotEngine::new(config.clone());
-        let event = LiveEvent::Interact { kind: InteractKind::Follow, user_id: 1, user: "u".to_string() };
-        assert!(engine.handle_event(&event, None).is_empty(), "Thanks focus should be disabled");
-        
+        let event = LiveEvent::Interact {
+            kind: InteractKind::Follow,
+            user_id: 1,
+            user: "u".to_string(),
+        };
+        assert!(
+            engine.handle_event(&event, None).is_empty(),
+            "Thanks focus should be disabled"
+        );
+
         config.thanks_focus = true;
         let engine = BotEngine::new(config.clone());
-        assert!(!engine.handle_event(&event, None).is_empty(), "Thanks focus should be enabled");
+        assert!(
+            !engine.handle_event(&event, None).is_empty(),
+            "Thanks focus should be enabled"
+        );
 
         // 3. Thanks Share Switch
         config.thanks_share = false;
         let engine = BotEngine::new(config.clone());
-        let event = LiveEvent::Interact { kind: InteractKind::Share, user_id: 1, user: "u".to_string() };
-        assert!(engine.handle_event(&event, None).is_empty(), "Thanks share should be disabled");
-        
+        let event = LiveEvent::Interact {
+            kind: InteractKind::Share,
+            user_id: 1,
+            user: "u".to_string(),
+        };
+        assert!(
+            engine.handle_event(&event, None).is_empty(),
+            "Thanks share should be disabled"
+        );
+
         config.thanks_share = true;
         let engine = BotEngine::new(config.clone());
-        assert!(!engine.handle_event(&event, None).is_empty(), "Thanks share should be enabled");
+        assert!(
+            !engine.handle_event(&event, None).is_empty(),
+            "Thanks share should be enabled"
+        );
 
         // 4. PK Notice Switch
         config.pk_notice = false;
         let engine = BotEngine::new(config.clone());
-        let event = LiveEvent::Pk { kind: PkEventKind::Start { init_room_id: 1, match_room_id: 2 } };
-        assert!(engine.handle_event(&event, None).is_empty(), "PK notice should be disabled");
-        
+        let event = LiveEvent::Pk {
+            kind: PkEventKind::Start {
+                init_room_id: 1,
+                match_room_id: 2,
+            },
+        };
+        assert!(
+            engine.handle_event(&event, None).is_empty(),
+            "PK notice should be disabled"
+        );
+
         config.pk_notice = true;
         let engine = BotEngine::new(config.clone());
-        assert!(!engine.handle_event(&event, None).is_empty(), "PK notice should be enabled");
+        assert!(
+            !engine.handle_event(&event, None).is_empty(),
+            "PK notice should be enabled"
+        );
 
         // 5. Block Msg Switch
         config.show_block_msg = false;
         let engine = BotEngine::new(config.clone());
-        let event = LiveEvent::Block { user: "u".to_string() };
-        assert!(engine.handle_event(&event, None).is_empty(), "Block msg should be disabled");
-        
+        let event = LiveEvent::Block {
+            user: "u".to_string(),
+        };
+        assert!(
+            engine.handle_event(&event, None).is_empty(),
+            "Block msg should be disabled"
+        );
+
         config.show_block_msg = true;
         let engine = BotEngine::new(config.clone());
-        assert!(!engine.handle_event(&event, None).is_empty(), "Block msg should be enabled");
-        
+        assert!(
+            !engine.handle_event(&event, None).is_empty(),
+            "Block msg should be enabled"
+        );
+
         // 6. Thanks Gift Switch (GuardBuy)
         config.thanks_gift = false;
         let engine = BotEngine::new(config.clone());
-        let event = LiveEvent::GuardBuy { user_id: 1, user: "u".to_string(), gift: "舰长".to_string() };
-        assert!(engine.handle_event(&event, None).is_empty(), "Thanks gift should be disabled for GuardBuy");
-        
+        let event = LiveEvent::GuardBuy {
+            user_id: 1,
+            user: "u".to_string(),
+            gift: "舰长".to_string(),
+        };
+        assert!(
+            engine.handle_event(&event, None).is_empty(),
+            "Thanks gift should be disabled for GuardBuy"
+        );
+
         config.thanks_gift = true;
         let engine = BotEngine::new(config.clone());
-        assert!(!engine.handle_event(&event, None).is_empty(), "Thanks gift should be enabled for GuardBuy");
+        assert!(
+            !engine.handle_event(&event, None).is_empty(),
+            "Thanks gift should be enabled for GuardBuy"
+        );
     }
 }
-

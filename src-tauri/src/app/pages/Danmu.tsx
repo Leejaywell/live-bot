@@ -5,7 +5,7 @@ import { Input } from '../components/Input';
 import { Toggle } from '../components/Toggle';
 import { RefreshCw, ChevronDown, Radio, Plus, Pause } from 'lucide-react';
 import { api, AiProvider, AppConfig } from '../lib/api';
-import { availableProviders, findVoice, TtsProvider } from '../lib/voices';
+import { availableProviders, detectProvider, findVoice, TtsProvider } from '../lib/voices';
 import { VoicePicker } from '../components/VoicePicker';
 import { toast } from 'sonner';
 import { useLogin } from '../context/LoginContext';
@@ -114,6 +114,7 @@ export function Danmu() {
   const [isTtsEnabled, setIsTtsEnabled] = useState(() => sessionStorage.getItem('danmuAnnounce') === 'true');
   const isTtsEnabledRef = useRef(sessionStorage.getItem('danmuAnnounce') === 'true');
   const [ttsProviders, setTtsProviders] = useState<AiProvider[]>([]);
+  const [ttsProviderId, setTtsProviderId] = useState('');
   const [config, setConfig] = useState<AppConfig | null>(null);
   const [ttsVoice, setTtsVoice] = useState('');
   const ttsVoiceRef = useRef('');
@@ -137,6 +138,8 @@ export function Danmu() {
       setConfig(c);
       const enabled = (c.AiProviders ?? []).filter(p => p.ProviderType === 'tts' && p.Enabled);
       setTtsProviders(enabled);
+      const saved = c.ActiveTtsProviderId && enabled.find(p => p.Id === c.ActiveTtsProviderId);
+      setTtsProviderId(saved ? saved.Id : (enabled[0]?.Id ?? ''));
       if (!ttsVoice) {
         const voice = c.TtsVoice || enabled[0]?.Model || 'zh-CN-XiaoxiaoNeural';
         setTtsVoice(voice);
@@ -159,8 +162,17 @@ export function Danmu() {
     if (lastSpokenAt && now - lastSpokenAt < SPEECH_DEDUP_MS) return;
     spokenRef.current.set(dedupKey, now);
 
-    invoke('speak_text_cmd', { text, voice: ttsVoiceRef.current }).catch(console.error);
-  }, []);
+    const currentProviderId = (() => {
+      if (ttsProviderId && ttsProviders.some(p => p.Id === ttsProviderId)) return ttsProviderId;
+      const matched = ttsProviders.find((p) => {
+        const provider = detectProvider(p.Name);
+        return provider ? Boolean(findVoice(provider, ttsVoiceRef.current)) : false;
+      });
+      return matched?.Id ?? '';
+    })();
+
+    api.speakText(text, ttsVoiceRef.current, currentProviderId || undefined).catch(console.error);
+  }, [ttsProviderId, ttsProviders]);
 
   const pushEntry = useCallback((entry: LogEntry, announce = false) => {
     if (announce) speakDanmu(entry);
@@ -584,7 +596,16 @@ export function Danmu() {
           setTtsVoice(v);
           ttsVoiceRef.current = v;
           if (!config) return;
-          const next = { ...config, TtsVoice: v };
+          const matched = ttsProviders.find((p) => {
+            const provider = detectProvider(p.Name);
+            return provider ? Boolean(findVoice(provider, v)) : false;
+          });
+          const next = {
+            ...config,
+            TtsVoice: v,
+            ActiveTtsProviderId: matched?.Id ?? config.ActiveTtsProviderId,
+          };
+          if (matched) setTtsProviderId(matched.Id);
           setConfig(next);
           try {
             await api.saveConfig(next);

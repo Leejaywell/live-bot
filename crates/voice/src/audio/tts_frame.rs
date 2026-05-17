@@ -77,7 +77,8 @@ const FRAC_ONE: u32 = 1 << FRAC_BITS;
 const RESAMPLE_STEP_NUM: u32 = 441;
 const RESAMPLE_STEP_DEN: u32 = 160;
 /// Q16.16格式的步进，用于快速累加采样位置
-const RESAMPLE_STEP_Q16: u32 = ((RESAMPLE_STEP_NUM << FRAC_BITS) + (RESAMPLE_STEP_DEN / 2)) / RESAMPLE_STEP_DEN;
+const RESAMPLE_STEP_Q16: u32 =
+    ((RESAMPLE_STEP_NUM << FRAC_BITS) + (RESAMPLE_STEP_DEN / 2)) / RESAMPLE_STEP_DEN;
 /// Q16.16的小数部分掩码
 const FRAC_MASK_Q16: u32 = FRAC_ONE - 1;
 
@@ -204,7 +205,9 @@ pub fn adjust_and_resample_raw_db(data: &[u8], db_gain: f32) -> Vec<u8> {
         "TTS音量增益处理: db_gain={:.1}dB (linear={:.3}), input_samples={}, input_bytes={}",
         db_gain, linear_gain, input_sample_count, input_len
     );
-    let output_len = (input_sample_count as u64 * RESAMPLE_STEP_DEN as u64 / RESAMPLE_STEP_NUM as u64) as usize + 1;
+    let output_len = (input_sample_count as u64 * RESAMPLE_STEP_DEN as u64
+        / RESAMPLE_STEP_NUM as u64) as usize
+        + 1;
 
     let mut result = Vec::with_capacity(output_len * 2);
     let last_idx = input_sample_count.saturating_sub(1);
@@ -459,7 +462,8 @@ mod tests {
 
         // 允许一定的误差范围
         assert!(
-            (actual_max as f32 - expected_output_max as f32).abs() < expected_output_max as f32 * 0.1,
+            (actual_max as f32 - expected_output_max as f32).abs()
+                < expected_output_max as f32 * 0.1,
             "Expected max around {}, got {}",
             expected_output_max,
             actual_max
@@ -529,9 +533,15 @@ mod tests {
     #[test]
     fn test_performance_resample_to_16k_with_gain() {
         println!("\n");
-        println!("╔══════════════════════════════════════════════════════════════════════════════╗");
-        println!("║                    resample_to_16k_with_gain 性能测试                        ║");
-        println!("╚══════════════════════════════════════════════════════════════════════════════╝");
+        println!(
+            "╔══════════════════════════════════════════════════════════════════════════════╗"
+        );
+        println!(
+            "║                    resample_to_16k_with_gain 性能测试                        ║"
+        );
+        println!(
+            "╚══════════════════════════════════════════════════════════════════════════════╝"
+        );
 
         let test_durations = vec![100, 500, 1000, 5000];
         let iterations = 100;
@@ -553,7 +563,8 @@ mod tests {
             let elapsed = start.elapsed();
 
             let input_samples = TTS_SOURCE_SAMPLE_RATE as u64 * duration_ms as u64 / 1000;
-            let output_samples = (input_samples * RESAMPLE_STEP_DEN as u64 / RESAMPLE_STEP_NUM as u64) + 1;
+            let output_samples =
+                (input_samples * RESAMPLE_STEP_DEN as u64 / RESAMPLE_STEP_NUM as u64) + 1;
             let total_input_samples = input_samples * iterations;
             let total_output_samples = output_samples * iterations;
             let input_samples_per_sec = total_input_samples as f64 / elapsed.as_secs_f64();
@@ -561,7 +572,9 @@ mod tests {
             let avg_time_per_frame = elapsed.as_secs_f64() / iterations as f64 * 1000.0;
             let total_time_ms = elapsed.as_secs_f64() * 1000.0;
 
-            println!("  ┌─────────────────────────────────────────────────────────────────────────┐");
+            println!(
+                "  ┌─────────────────────────────────────────────────────────────────────────┐"
+            );
             println!("  │ 测试音频长度: {} ms", duration_ms);
             println!(
                 "  │ 输入: {} 样本 ({:.2} KB)",
@@ -576,9 +589,17 @@ mod tests {
             println!("  │ 迭代次数: {}", iterations);
             println!("  │ 总耗时: {:.3} ms", total_time_ms);
             println!("  │ 平均每帧耗时: {:.3} ms", avg_time_per_frame);
-            println!("  │ 输入处理速度: {:.2} M samples/s", input_samples_per_sec / 1_000_000.0);
-            println!("  │ 输出生成速度: {:.2} M samples/s", output_samples_per_sec / 1_000_000.0);
-            println!("  └─────────────────────────────────────────────────────────────────────────┘");
+            println!(
+                "  │ 输入处理速度: {:.2} M samples/s",
+                input_samples_per_sec / 1_000_000.0
+            );
+            println!(
+                "  │ 输出生成速度: {:.2} M samples/s",
+                output_samples_per_sec / 1_000_000.0
+            );
+            println!(
+                "  └─────────────────────────────────────────────────────────────────────────┘"
+            );
         }
         println!();
     }
@@ -586,9 +607,15 @@ mod tests {
     #[test]
     fn test_performance_comprehensive() {
         println!("\n");
-        println!("╔══════════════════════════════════════════════════════════════════════════════╗");
-        println!("║                          综合性能测试                                          ║");
-        println!("╚══════════════════════════════════════════════════════════════════════════════╝");
+        println!(
+            "╔══════════════════════════════════════════════════════════════════════════════╗"
+        );
+        println!(
+            "║                          综合性能测试                                          ║"
+        );
+        println!(
+            "╚══════════════════════════════════════════════════════════════════════════════╝"
+        );
         println!();
         println!("测试不同音频长度的处理性能（单次迭代）");
         println!();
@@ -614,7 +641,10 @@ mod tests {
             let _ = frame.resample_to_16k_with_db_gain(7.0); // +7dB增益
             let resample_time = start.elapsed().as_secs_f64() * 1000.0;
 
-            println!("│ {:8} │ {:20.3} │ {:12.2} │", duration_ms, resample_time, data_size_kb);
+            println!(
+                "│ {:8} │ {:20.3} │ {:12.2} │",
+                duration_ms, resample_time, data_size_kb
+            );
         }
 
         println!("└──────────┴──────────────────────┴──────────────┘");

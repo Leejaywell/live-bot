@@ -17,7 +17,10 @@ use tokio_tungstenite::{MaybeTlsStream, WebSocketStream};
 use tracing::{debug, error, info, warn};
 use uuid::Uuid;
 
-use super::config::{EDGE_TTS_WS_URL, EdgeTtsConfig, SEC_MS_GEC_VERSION, TRUSTED_CLIENT_TOKEN, generate_muid, generate_sec_ms_gec};
+use super::config::{
+    EDGE_TTS_WS_URL, EdgeTtsConfig, SEC_MS_GEC_VERSION, TRUSTED_CLIENT_TOKEN, generate_muid,
+    generate_sec_ms_gec,
+};
 use super::mp3_decoder::{Mp3Decoder, resample_to_16k};
 use super::types::EdgeTtsError;
 use super::voice_mapping::get_voice_for_language;
@@ -95,10 +98,10 @@ impl EdgeTtsClient {
                         pool.push(conn);
                         debug!("🔥 Edge TTS 预热连接 {}/{} 成功", i + 1, count);
                     }
-                },
+                }
                 Err(e) => {
                     warn!("⚠️ Edge TTS 预热连接 {}/{} 失败: {}", i + 1, count, e);
-                },
+                }
             }
         }
 
@@ -125,8 +128,16 @@ impl EdgeTtsClient {
         let headers = request.headers_mut();
         headers.insert("Pragma", "no-cache".parse().unwrap());
         headers.insert("Cache-Control", "no-cache".parse().unwrap());
-        headers.insert("Origin", "chrome-extension://jdiccldimpdaibmpdkjnbmckianbfold".parse().unwrap());
-        headers.insert("Accept-Encoding", "gzip, deflate, br, zstd".parse().unwrap());
+        headers.insert(
+            "Origin",
+            "chrome-extension://jdiccldimpdaibmpdkjnbmckianbfold"
+                .parse()
+                .unwrap(),
+        );
+        headers.insert(
+            "Accept-Encoding",
+            "gzip, deflate, br, zstd".parse().unwrap(),
+        );
         headers.insert("Accept-Language", "en-US,en;q=0.9".parse().unwrap());
         headers.insert(
             "User-Agent",
@@ -151,7 +162,11 @@ impl EdgeTtsClient {
 
         debug!("Edge TTS 预连接已建立并发送配置");
 
-        Ok(PrewarmedConnection { writer, reader, created_at: std::time::Instant::now() })
+        Ok(PrewarmedConnection {
+            writer,
+            reader,
+            created_at: std::time::Instant::now(),
+        })
     }
 
     /// 从池中获取连接，如果没有则新建
@@ -162,7 +177,10 @@ impl EdgeTtsClient {
             while let Some(conn) = pool.pop() {
                 // 检查连接是否过期
                 if conn.created_at.elapsed().as_secs() < MAX_CONNECTION_AGE_SECS {
-                    debug!("♻️ Edge TTS 使用预热连接 (age={}ms)", conn.created_at.elapsed().as_millis());
+                    debug!(
+                        "♻️ Edge TTS 使用预热连接 (age={}ms)",
+                        conn.created_at.elapsed().as_millis()
+                    );
 
                     // 后台补充连接
                     self.background_refill();
@@ -207,26 +225,39 @@ impl EdgeTtsClient {
                             pool.push(conn);
                             debug!("🔥 Edge TTS 后台补充连接成功，池大小: {}", pool.len());
                         }
-                    },
+                    }
                     Err(e) => {
                         warn!("⚠️ Edge TTS 后台补充连接失败: {}", e);
-                    },
+                    }
                 }
             }
 
-            client.warming.store(false, std::sync::atomic::Ordering::SeqCst);
+            client
+                .warming
+                .store(false, std::sync::atomic::Ordering::SeqCst);
         });
     }
 
     /// 根据语言自动选择声音进行合成
-    pub async fn synthesize_for_language(&self, text: &str, language: &str) -> Result<Pin<Box<dyn Stream<Item = Result<AudioChunk, EdgeTtsError>> + Send>>, EdgeTtsError> {
-        let voice = get_voice_for_language(language).ok_or_else(|| EdgeTtsError::UnsupportedLanguage(language.to_string()))?;
+    pub async fn synthesize_for_language(
+        &self,
+        text: &str,
+        language: &str,
+    ) -> Result<Pin<Box<dyn Stream<Item = Result<AudioChunk, EdgeTtsError>> + Send>>, EdgeTtsError>
+    {
+        let voice = get_voice_for_language(language)
+            .ok_or_else(|| EdgeTtsError::UnsupportedLanguage(language.to_string()))?;
 
         self.synthesize(text, Some(voice)).await
     }
 
     /// 合成文本为音频流
-    pub async fn synthesize(&self, text: &str, voice: Option<&str>) -> Result<Pin<Box<dyn Stream<Item = Result<AudioChunk, EdgeTtsError>> + Send>>, EdgeTtsError> {
+    pub async fn synthesize(
+        &self,
+        text: &str,
+        voice: Option<&str>,
+    ) -> Result<Pin<Box<dyn Stream<Item = Result<AudioChunk, EdgeTtsError>> + Send>>, EdgeTtsError>
+    {
         let voice = voice.unwrap_or(&self.config.default_voice).to_string();
         let text = text.to_string();
         let config = self.config.clone();
@@ -237,7 +268,9 @@ impl EdgeTtsClient {
 
         // 获取连接（从池中或新建）
         let start = std::time::Instant::now();
-        let PrewarmedConnection { mut writer, reader, .. } = self.get_connection().await?;
+        let PrewarmedConnection {
+            mut writer, reader, ..
+        } = self.get_connection().await?;
         debug!("Edge TTS 获取连接耗时: {}ms", start.elapsed().as_millis());
 
         // 发送 SSML 合成请求
@@ -353,17 +386,31 @@ fn build_config_message(output_format: &str) -> String {
 }
 
 /// 构建 SSML 合成请求消息
-fn build_ssml_message(request_id: &str, voice: &str, text: &str, rate: Option<&str>, pitch: Option<&str>, volume: Option<&str>) -> String {
+fn build_ssml_message(
+    request_id: &str,
+    voice: &str,
+    text: &str,
+    rate: Option<&str>,
+    pitch: Option<&str>,
+    volume: Option<&str>,
+) -> String {
     let timestamp = Utc::now().format("%Y-%m-%dT%H:%M:%S%.3fZ");
 
     let escaped_text = html_escape::encode_text(text);
 
     let rate_attr = rate.map(|r| format!(" rate=\"{}\"", r)).unwrap_or_default();
-    let pitch_attr = pitch.map(|p| format!(" pitch=\"{}\"", p)).unwrap_or_default();
-    let volume_attr = volume.map(|v| format!(" volume=\"{}\"", v)).unwrap_or_default();
+    let pitch_attr = pitch
+        .map(|p| format!(" pitch=\"{}\"", p))
+        .unwrap_or_default();
+    let volume_attr = volume
+        .map(|v| format!(" volume=\"{}\"", v))
+        .unwrap_or_default();
 
     let content = if rate.is_some() || pitch.is_some() || volume.is_some() {
-        format!("<prosody{}{}{}>{}</prosody>", rate_attr, pitch_attr, volume_attr, escaped_text)
+        format!(
+            "<prosody{}{}{}>{}</prosody>",
+            rate_attr, pitch_attr, volume_attr, escaped_text
+        )
     } else {
         escaped_text.to_string()
     };
@@ -386,7 +433,10 @@ fn extract_audio_data(data: &[u8]) -> Option<Vec<u8>> {
     }
 
     let header_marker = b"Path:audio\r\n";
-    if let Some(pos) = data.windows(header_marker.len()).position(|w| w == header_marker) {
+    if let Some(pos) = data
+        .windows(header_marker.len())
+        .position(|w| w == header_marker)
+    {
         let after_header = &data[pos + header_marker.len()..];
         if let Some(body_start) = after_header.windows(2).position(|w| w == b"\r\n") {
             return Some(after_header[body_start + 2..].to_vec());
@@ -426,7 +476,14 @@ mod tests {
 
     #[test]
     fn test_build_ssml_message_with_prosody() {
-        let msg = build_ssml_message("test-id", "zh-CN-XiaoxiaoNeural", "你好", Some("+20%"), Some("+5Hz"), None);
+        let msg = build_ssml_message(
+            "test-id",
+            "zh-CN-XiaoxiaoNeural",
+            "你好",
+            Some("+20%"),
+            Some("+5Hz"),
+            None,
+        );
         assert!(msg.contains("prosody"));
         assert!(msg.contains("rate=\"+20%\""));
         assert!(msg.contains("pitch=\"+5Hz\""));

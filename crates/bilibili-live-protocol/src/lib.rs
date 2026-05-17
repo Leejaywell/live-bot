@@ -165,7 +165,9 @@ impl fmt::Display for LiveEvent {
             },
             Self::EntryEffect { user, .. } => write!(f, "进场特效 {user}"),
             Self::GuardBuy { user, gift, .. } => write!(f, "大航海 {user}: {gift}"),
-            Self::SuperChat { user, text, price, .. } => write!(f, "醒目留言 {user} (¥{price}): {text}"),
+            Self::SuperChat {
+                user, text, price, ..
+            } => write!(f, "醒目留言 {user} (¥{price}): {text}"),
             Self::Block { user } => write!(f, "禁言 {user}"),
             Self::Popularity { value } => write!(f, "人气 {value}"),
             Self::Pk { kind } => write!(f, "PK {kind:?}"),

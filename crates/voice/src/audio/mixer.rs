@@ -18,7 +18,7 @@ pub fn mix_add(dst: &mut [f32], src: &[f32], gain: f32) {
     // 4 样本展开：让编译器生成 SIMD 指令
     for i in 0..chunks {
         let b = i * 4;
-        dst[b]     += src[b]     * gain;
+        dst[b] += src[b] * gain;
         dst[b + 1] += src[b + 1] * gain;
         dst[b + 2] += src[b + 2] * gain;
         dst[b + 3] += src[b + 3] * gain;
@@ -52,7 +52,7 @@ pub fn i16_to_f32_bulk(input: &[u8]) -> Vec<f32> {
     // 4 样本展开
     for i in 0..chunks {
         let b = i * 8;
-        let s0 = i16::from_le_bytes([input[b],     input[b + 1]]) as f32 * (1.0 / 32767.0);
+        let s0 = i16::from_le_bytes([input[b], input[b + 1]]) as f32 * (1.0 / 32767.0);
         let s1 = i16::from_le_bytes([input[b + 2], input[b + 3]]) as f32 * (1.0 / 32767.0);
         let s2 = i16::from_le_bytes([input[b + 4], input[b + 5]]) as f32 * (1.0 / 32767.0);
         let s3 = i16::from_le_bytes([input[b + 6], input[b + 7]]) as f32 * (1.0 / 32767.0);

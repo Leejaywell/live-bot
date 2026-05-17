@@ -6,6 +6,8 @@ pub mod azure;
 pub mod baidu;
 pub mod edge;
 pub mod emotion;
+#[cfg(feature = "local-tts")]
+pub mod local;
 pub mod minimax;
 pub mod volc_engine;
 pub mod volc_engine_ws;
@@ -24,15 +26,20 @@ pub use baidu::{
     SystemStartPayload,
 };
 pub use minimax::{
-    AudioChunk, AudioSetting, MiniMaxConfig, MiniMaxError, MiniMaxHttpOptions, MiniMaxHttpTtsClient,
-    MiniMaxWsTtsClient, PronunciationDict, TimbreWeight, VoiceLibrary, VoiceLibraryConfig, VoiceSetting,
-    global_voice_library, normalize_minimax_lang,
+    AudioChunk, AudioSetting, MiniMaxConfig, MiniMaxError, MiniMaxHttpOptions,
+    MiniMaxHttpTtsClient, MiniMaxWsTtsClient, PronunciationDict, TimbreWeight, VoiceLibrary,
+    VoiceLibraryConfig, VoiceSetting, global_voice_library, normalize_minimax_lang,
 };
 pub use volc_engine::{VolcEngineConfig, VolcEngineRequest, VolcEngineTtsClient};
 pub use volc_engine_ws::VolcEngineWsTtsClient;
 
 // Edge TTS: 免费的微软 Edge 浏览器内置 TTS（100+ 语言）
-pub use edge::{EDGE_TTS_VOICE_MAP, EdgeTtsClient, EdgeTtsConfig, EdgeTtsError, get_voice_for_language};
+pub use edge::{
+    EDGE_TTS_VOICE_MAP, EdgeTtsClient, EdgeTtsConfig, EdgeTtsError, get_voice_for_language,
+};
 
 // Azure TTS: 微软 Azure 认知服务语音 API（140+ 语言，600+ 声音）
-pub use azure::{AZURE_VOICE_MAP, AzureTtsClient, AzureTtsConfig, AzureTtsError, get_voice_for_language as get_azure_voice};
+pub use azure::{
+    AZURE_VOICE_MAP, AzureTtsClient, AzureTtsConfig, AzureTtsError,
+    get_voice_for_language as get_azure_voice,
+};

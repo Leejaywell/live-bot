@@ -23,19 +23,23 @@ pub mod sherpa_vad;
 
 #[cfg(feature = "voice-changer")]
 pub mod voice_changer;
+#[cfg(feature = "voice-changer")]
+pub use voice_changer::{VoiceChanger, VoiceChangerConfig, VoiceChangerStatus};
 
 // 顶层重导出，方便调用方
 pub use pipeline::{Frame, FrameProcessor, ProcessorChain};
-pub use session::{SessionCommand, SessionConfig, SessionEvent, VoiceSession, SpeakRequest, TtsEngine};
-pub use session::router::{SpeakerRouter, PRIORITY_AI, PRIORITY_BOT, PRIORITY_SYSTEM};
+pub use session::router::{PRIORITY_AI, PRIORITY_BOT, PRIORITY_SYSTEM, SpeakerRouter};
+pub use session::{
+    SessionCommand, SessionConfig, SessionEvent, SpeakRequest, TtsEngine, VoiceSession,
+};
 
 #[cfg(feature = "playback")]
 pub use audio::output::AudioPlayer;
 
 #[cfg(feature = "vad")]
-pub use sherpa_vad::{TurnEvent, SherpaPipeline, SherpaMicCapture};
+pub use sherpa_vad::{SherpaMicCapture, SherpaPipeline, TurnEvent};
 
 #[cfg(feature = "model-hub")]
 pub mod model_hub;
 #[cfg(feature = "model-hub")]
-pub use model_hub::{ModelHub, ModelSource, DownloadProgress, DownloadStage};
+pub use model_hub::{DownloadProgress, DownloadStage, ModelHub, ModelSource};

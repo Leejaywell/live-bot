@@ -2,9 +2,7 @@
 ///
 /// 运行前需要网络（连接微软 Edge TTS 服务）。
 /// `cargo test -p streamix-voice --test session_tts -- --nocapture`
-use streamix_voice::{
-    SessionConfig, SpeakRequest, SessionEvent, TtsEngine, VoiceSession,
-};
+use streamix_voice::{SessionConfig, SessionEvent, SpeakRequest, TtsEngine, VoiceSession};
 
 #[tokio::test]
 #[ignore = "需要网络，手动运行"]

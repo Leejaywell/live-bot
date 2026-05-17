@@ -69,9 +69,10 @@ impl SessionMemory {
 
     /// 记录发言者互动（AI 回复前调用，返回最新次数用于 prompt）
     pub fn note_speaker(&mut self, uid: i64, _uname: &str) -> u32 {
-        let p = self.speakers.entry(uid).or_insert_with(|| SpeakerProfile {
-            turn_count: 0,
-        });
+        let p = self
+            .speakers
+            .entry(uid)
+            .or_insert_with(|| SpeakerProfile { turn_count: 0 });
         p.turn_count += 1;
         p.turn_count
     }

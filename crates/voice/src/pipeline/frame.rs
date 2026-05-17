@@ -38,7 +38,12 @@ pub struct AudioFrame {
 
 impl AudioFrame {
     pub fn new_pcm16(data: Bytes, sample_rate: u32) -> Self {
-        Self { data, sample_rate, channels: 1, bytes_per_sample: 2 }
+        Self {
+            data,
+            sample_rate,
+            channels: 1,
+            bytes_per_sample: 2,
+        }
     }
 
     /// 样本数
@@ -61,10 +66,16 @@ pub struct TextFrame {
 
 impl TextFrame {
     pub fn new(text: impl Into<String>) -> Self {
-        Self { text: text.into(), is_final: true }
+        Self {
+            text: text.into(),
+            is_final: true,
+        }
     }
     pub fn partial(text: impl Into<String>) -> Self {
-        Self { text: text.into(), is_final: false }
+        Self {
+            text: text.into(),
+            is_final: false,
+        }
     }
 }
 

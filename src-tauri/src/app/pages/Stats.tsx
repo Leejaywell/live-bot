@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Download, TrendingUp, TrendingDown, Wallet, Medal } from 'lucide-react';
+import { TrendingUp, TrendingDown, Wallet, Medal } from 'lucide-react';
 import { GlassCard } from '../components/GlassCard';
 import { api, UserGiftStat } from '../lib/api';
 
@@ -284,33 +284,6 @@ export function Stats() {
     }
   };
 
-  const exportCsv = () => {
-    const periodLabel = { '-1': '本场', '0': '今日', '7': '近7天', '30': '近30天' }[period] ?? period;
-    const rows: string[][] = [
-      ['指标', '数值'],
-      ['弹幕总数', String(summary?.danmu_count ?? 0)],
-      ['进场人数', String(summary?.entry_count ?? 0)],
-      ['新增关注', String(summary?.follow_count ?? 0)],
-      ['礼物总值(电池)', String(summary?.gift_value ?? 0)],
-      ['互动数', String(summary?.interact_count ?? 0)],
-      ['最高人气', String(summary?.peak_popularity ?? 0)],
-      [],
-      ['礼物名', '数量', '电池价值'],
-      ...giftStats.map(g => [g.name, String(g.count), String(g.value)]),
-      [],
-      ['排名', '用户名', 'UID', '礼物数', '礼物价值(电池)'],
-      ...userGiftStats.map((u, i) => [String(i + 1), u.uname, String(u.uid), String(u.gift_count), String(u.gift_value)]),
-    ];
-    const csv = rows.map(r => r.map(c => `"${c}"`).join(',')).join('\n');
-    const blob = new Blob(['﻿' + csv], { type: 'text/csv;charset=utf-8;' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `直播数据_${periodLabel}_${new Date().toLocaleDateString('zh-CN').replace(/\//g, '-')}.csv`;
-    a.click();
-    URL.revokeObjectURL(url);
-  };
-
   const statItems = [
     { label: '弹幕总数', value: summary?.danmu_count || 0 },
     { label: '进场', value: summary?.entry_count || 0 },
@@ -333,7 +306,7 @@ export function Stats() {
 
   return (
     <div className="p-[18px] space-y-3.5">
-      {/* Period selector + export */}
+      {/* Period selector */}
       <div className="flex items-center justify-between">
         <div className="flex gap-2">
           {[
@@ -353,14 +326,6 @@ export function Stats() {
             </button>
           ))}
         </div>
-        <button
-          onClick={exportCsv}
-          disabled={loading || !summary}
-          className="flex items-center gap-1.5 px-3 py-1.5 rounded-full text-[11px] font-bold bg-white/40 dark:bg-white/10 hover:bg-white/60 dark:hover:bg-white/20 transition-colors disabled:opacity-40"
-        >
-          <Download className="w-3.5 h-3.5" />
-          导出 CSV
-        </button>
       </div>
 
       {/* Summary tiles */}

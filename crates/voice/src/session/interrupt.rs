@@ -7,8 +7,8 @@
 //! - Interrupt 信号到来时 abort 当前任务并刷新 ID
 //! - 零等待：tokio JoinHandle::abort() 是立即生效的
 
-use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
+use std::sync::atomic::{AtomicU64, Ordering};
 use tokio::task::JoinHandle;
 use tokio_util::sync::CancellationToken;
 use tracing::debug;
@@ -58,7 +58,9 @@ pub struct InterruptEngine {
 
 impl InterruptEngine {
     pub fn new() -> Self {
-        Self { generation_id: Arc::new(AtomicU64::new(0)) }
+        Self {
+            generation_id: Arc::new(AtomicU64::new(0)),
+        }
     }
 
     /// 启动一个新的 TTS 生成任务
@@ -83,7 +85,11 @@ impl InterruptEngine {
             task(token_clone).await;
         });
         debug!("generation {} started", id);
-        GenerationHandle { id, inner: Some(handle), token }
+        GenerationHandle {
+            id,
+            inner: Some(handle),
+            token,
+        }
     }
 
     /// 发出中断信号（不需要持有 handle）

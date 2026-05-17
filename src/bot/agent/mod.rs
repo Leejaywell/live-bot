@@ -7,12 +7,12 @@ pub use tools::{GetSessionStatsTool, SendDanmuTool};
 
 // re-exported for external tooling
 #[allow(unused_imports)]
-pub use tool::{ToolCall, FunctionCallInfo};
+pub use tool::{FunctionCallInfo, ToolCall};
 
-use std::sync::Arc;
 use crate::api::BiliApi;
-use crate::config::{AppConfig, AiBot};
 use crate::bot::memory::SessionMemory;
+use crate::config::{AiBot, AppConfig};
+use std::sync::Arc;
 
 /// 弹幕触发机器人解析结果
 pub struct BotResolveResult<'a> {
@@ -24,7 +24,9 @@ pub struct BotResolveResult<'a> {
 pub fn resolve_bot_danmu<'a>(config: &'a AppConfig, text: &str) -> Option<BotResolveResult<'a>> {
     // 1. @昵称 触发（遍历 ai_bots，已启用的机器人）
     for bot in &config.ai_bots {
-        if !bot.enabled { continue; }
+        if !bot.enabled {
+            continue;
+        }
         let trigger = format!("@{}", bot.nickname);
         if text.starts_with(&trigger) {
             let prompt = text[trigger.len()..].trim().to_string();
@@ -37,7 +39,9 @@ pub fn resolve_bot_danmu<'a>(config: &'a AppConfig, text: &str) -> Option<BotRes
 
     // 2. 昵称模糊匹配（消息中包含昵称；未启用则静默）
     for bot in &config.ai_bots {
-        if !bot.enabled || bot.nickname.is_empty() { continue; }
+        if !bot.enabled || bot.nickname.is_empty() {
+            continue;
+        }
         if text.contains(&bot.nickname) {
             return Some(BotResolveResult {
                 bot,
@@ -105,7 +109,10 @@ pub async fn call_ai(
     let reply = agent
         .run_with_provider(http, provider, &system_prompt, &history, &enriched_prompt)
         .await
-        .unwrap_or_else(|e| { eprintln!("[AI] 调用失败: {e}"); String::new() });
+        .unwrap_or_else(|e| {
+            eprintln!("[AI] 调用失败: {e}");
+            String::new()
+        });
 
     {
         let mut mem = memory.lock().unwrap_or_else(|e| e.into_inner());
@@ -132,7 +139,9 @@ pub async fn call_ai_voice(
         eprintln!("[AI voice] provider not found for bot {bot_id}");
         return String::new();
     };
-    let sys = config.voice_system_prompt.replace("{{gender}}", &config.voice_gender);
+    let sys = config
+        .voice_system_prompt
+        .replace("{{gender}}", &config.voice_gender);
     let (history, enriched_prompt) = {
         let mem = memory.lock().unwrap_or_else(|e| e.into_inner());
         (mem.history_pairs(bot_id), prompt.to_string())
@@ -140,7 +149,10 @@ pub async fn call_ai_voice(
     let reply = agent
         .run_with_provider(http, provider, &sys, &history, &enriched_prompt)
         .await
-        .unwrap_or_else(|e| { eprintln!("[AI] 调用失败: {e}"); String::new() });
+        .unwrap_or_else(|e| {
+            eprintln!("[AI] 调用失败: {e}");
+            String::new()
+        });
     {
         let mut mem = memory.lock().unwrap_or_else(|e| e.into_inner());
         mem.push_turn(bot_id, prompt.to_string(), reply.clone());

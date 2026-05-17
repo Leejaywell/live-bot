@@ -29,7 +29,10 @@ fn dedupe_adjacent_repeat(text: &str) -> String {
         let first: String = chars[..half].iter().collect();
         let second: String = chars[half..].iter().collect();
         if first == second {
-            info!("🔧 [WhisperLive] 检测到相邻重复，折叠: '{}' -> '{}'", trimmed, first);
+            info!(
+                "🔧 [WhisperLive] 检测到相邻重复，折叠: '{}' -> '{}'",
+                trimmed, first
+            );
             return first;
         }
     }
@@ -223,7 +226,9 @@ impl LanguageRoutingConfig {
     fn from_env() -> Self {
         // 尝试从 WHISPERLIVE_ROUTING 环境变量解析 JSON
         if let Ok(json_str) = std::env::var("WHISPERLIVE_ROUTING") {
-            if let Ok(parsed) = serde_json::from_str::<HashMap<String, serde_json::Value>>(&json_str) {
+            if let Ok(parsed) =
+                serde_json::from_str::<HashMap<String, serde_json::Value>>(&json_str)
+            {
                 let mut routes = HashMap::new();
                 let mut default_backend: Option<BackendConfig> = None;
 
@@ -245,17 +250,27 @@ impl LanguageRoutingConfig {
 
                 // 如果没有配置默认后端，使用 WHISPERLIVE_PATH
                 let default_backend = default_backend.unwrap_or_else(|| BackendConfig {
-                    url: std::env::var("WHISPERLIVE_PATH").unwrap_or_else(|_| "ws://localhost:9090".to_string()),
+                    url: std::env::var("WHISPERLIVE_PATH")
+                        .unwrap_or_else(|_| "ws://localhost:9090".to_string()),
                     supports_hotwords: false,
                 });
 
                 info!("✅ 语言路由配置加载成功: {} 条规则", routes.len());
-                info!("   默认: {} (热词: {})", default_backend.url, default_backend.supports_hotwords);
+                info!(
+                    "   默认: {} (热词: {})",
+                    default_backend.url, default_backend.supports_hotwords
+                );
                 for (lang, cfg) in &routes {
-                    debug!("   {} -> {} (热词: {})", lang, cfg.url, cfg.supports_hotwords);
+                    debug!(
+                        "   {} -> {} (热词: {})",
+                        lang, cfg.url, cfg.supports_hotwords
+                    );
                 }
 
-                return Self { routes, default_backend };
+                return Self {
+                    routes,
+                    default_backend,
+                };
             } else {
                 warn!("⚠️ WHISPERLIVE_ROUTING JSON 解析失败，使用兜底配置");
             }
@@ -263,13 +278,20 @@ impl LanguageRoutingConfig {
 
         // 兜底：使用 WHISPERLIVE_PATH
         let default_backend = BackendConfig {
-            url: std::env::var("WHISPERLIVE_PATH").unwrap_or_else(|_| "ws://localhost:9090".to_string()),
+            url: std::env::var("WHISPERLIVE_PATH")
+                .unwrap_or_else(|_| "ws://localhost:9090".to_string()),
             supports_hotwords: false,
         };
 
-        info!("ℹ️ 未配置 WHISPERLIVE_ROUTING，所有语言使用: {}", default_backend.url);
+        info!(
+            "ℹ️ 未配置 WHISPERLIVE_ROUTING，所有语言使用: {}",
+            default_backend.url
+        );
 
-        Self { routes: HashMap::new(), default_backend }
+        Self {
+            routes: HashMap::new(),
+            default_backend,
+        }
     }
 
     /// 解析后端配置值
@@ -278,17 +300,29 @@ impl LanguageRoutingConfig {
     /// - 对象: {"url": "ws://...", "hotwords": true}
     fn parse_backend_value(value: &serde_json::Value) -> BackendConfig {
         match value {
-            serde_json::Value::String(url) => BackendConfig { url: url.clone(), supports_hotwords: false },
+            serde_json::Value::String(url) => BackendConfig {
+                url: url.clone(),
+                supports_hotwords: false,
+            },
             serde_json::Value::Object(obj) => {
                 let url = obj
                     .get("url")
                     .and_then(|v| v.as_str())
                     .unwrap_or("ws://localhost:9090")
                     .to_string();
-                let supports_hotwords = obj.get("hotwords").and_then(|v| v.as_bool()).unwrap_or(false);
-                BackendConfig { url, supports_hotwords }
+                let supports_hotwords = obj
+                    .get("hotwords")
+                    .and_then(|v| v.as_bool())
+                    .unwrap_or(false);
+                BackendConfig {
+                    url,
+                    supports_hotwords,
+                }
+            }
+            _ => BackendConfig {
+                url: "ws://localhost:9090".to_string(),
+                supports_hotwords: false,
             },
-            _ => BackendConfig { url: "ws://localhost:9090".to_string(), supports_hotwords: false },
         }
     }
 
@@ -393,7 +427,13 @@ impl WhisperLiveAsrBackend {
     /// - `context`: 日志上下文标识，如 "" 或 "(后台)"
     ///
     /// 返回: json_string
-    fn build_init_message(uid: &str, language: &str, supports_hotwords: bool, hotwords: &Option<Vec<String>>, context: &str) -> String {
+    fn build_init_message(
+        uid: &str,
+        language: &str,
+        supports_hotwords: bool,
+        hotwords: &Option<Vec<String>>,
+        context: &str,
+    ) -> String {
         let mut init_msg = json!({
             "uid": uid,
             "task": "transcribe",
@@ -449,8 +489,19 @@ impl WhisperLiveAsrBackend {
 
     /// 创建后端（使用 BackendConfig）
     /// - `uid_override`: 若为 `Some(s)` 且非空，则用作 WhisperLive 连接 uid（例如 session_id），便于与业务会话关联
-    pub fn new_with_config(config: BackendConfig, language: String, hotwords: Option<Vec<String>>, uid_override: Option<String>) -> Self {
-        Self::new_internal(config.url, language, config.supports_hotwords, hotwords, uid_override)
+    pub fn new_with_config(
+        config: BackendConfig,
+        language: String,
+        hotwords: Option<Vec<String>>,
+        uid_override: Option<String>,
+    ) -> Self {
+        Self::new_internal(
+            config.url,
+            language,
+            config.supports_hotwords,
+            hotwords,
+            uid_override,
+        )
     }
 
     /// 创建后端（兼容旧API，不支持热词）
@@ -458,7 +509,13 @@ impl WhisperLiveAsrBackend {
         Self::new_internal(ws_urls_raw, language, false, None, None)
     }
 
-    fn new_internal(ws_urls_raw: String, language: String, supports_hotwords: bool, hotwords: Option<Vec<String>>, uid_override: Option<String>) -> Self {
+    fn new_internal(
+        ws_urls_raw: String,
+        language: String,
+        supports_hotwords: bool,
+        hotwords: Option<Vec<String>>,
+        uid_override: Option<String>,
+    ) -> Self {
         let uid = uid_override.filter(|s| !s.is_empty()).unwrap_or_else(|| {
             format!(
                 "rust-{}",
@@ -576,11 +633,14 @@ impl WhisperLiveAsrBackend {
                     timeout_secs
                 );
 
-                let connect_result = tokio::time::timeout(Duration::from_secs(timeout_secs), connect_async(&url)).await;
+                let connect_result =
+                    tokio::time::timeout(Duration::from_secs(timeout_secs), connect_async(&url))
+                        .await;
 
                 match connect_result {
                     Ok(Ok((ws, _))) => {
-                        let (mut write, mut read): (SplitSink<Ws, Message>, SplitStream<Ws>) = ws.split();
+                        let (mut write, mut read): (SplitSink<Ws, Message>, SplitStream<Ws>) =
+                            ws.split();
 
                         let recv_state_for_read = recv_state.clone();
                         let uid_for_read = uid.clone();
@@ -670,7 +730,13 @@ impl WhisperLiveAsrBackend {
                         });
 
                         // 发送初始配置（使用统一的构建函数）
-                        let init_msg_str = WhisperLiveAsrBackend::build_init_message(&uid, &language, supports_hotwords, &hotwords, "(后台)");
+                        let init_msg_str = WhisperLiveAsrBackend::build_init_message(
+                            &uid,
+                            &language,
+                            supports_hotwords,
+                            &hotwords,
+                            "(后台)",
+                        );
                         use tokio_tungstenite::tungstenite::Utf8Bytes;
                         let utf8: Utf8Bytes = Utf8Bytes::from(init_msg_str);
                         if let Err(e) = write.send(Message::Text(utf8)).await {
@@ -694,14 +760,19 @@ impl WhisperLiveAsrBackend {
                         }
 
                         info!("✅ WhisperLive 已连接(后台): {}", url);
-                        return Ok(PendingConnectResult { write, read_task, stop_read_tx: stop_tx, url_index: idx });
-                    },
+                        return Ok(PendingConnectResult {
+                            write,
+                            read_task,
+                            stop_read_tx: stop_tx,
+                            url_index: idx,
+                        });
+                    }
                     Ok(Err(e)) => {
                         warn!("⚠️ WhisperLive 连接失败(后台): {} -> {}", url, e);
-                    },
+                    }
                     Err(_) => {
                         warn!("⚠️ WhisperLive 连接超时(后台): {} ({}s)", url, timeout_secs);
-                    },
+                    }
                 }
             }
             Err("WhisperLive 无法连接任何可用地址(后台)".to_string())
@@ -728,7 +799,9 @@ impl WhisperLiveAsrBackend {
 
         // 连接任务已完成：把连接状态迁移回 self
         let h = self.connect_task.take().unwrap();
-        let result = h.await.map_err(|e| format!("connect task join error: {}", e))?;
+        let result = h
+            .await
+            .map_err(|e| format!("connect task join error: {}", e))?;
         let connected = result?;
         self.ws_write = Some(connected.write);
         self.read_task = Some(connected.read_task);
@@ -764,7 +837,10 @@ impl WhisperLiveAsrBackend {
         }
         if t.starts_with("zh-") {
             if t.starts_with("zh-hk") || t.starts_with("zh-mo") {
-                debug!("normalize_language_code: '{}' -> 'yue' (zh-HK/zh-MO)", input);
+                debug!(
+                    "normalize_language_code: '{}' -> 'yue' (zh-HK/zh-MO)",
+                    input
+                );
                 return "yue".to_string();
             }
             debug!("normalize_language_code: '{}' -> 'zh' (Chinese)", input);
@@ -790,7 +866,10 @@ impl WhisperLiveAsrBackend {
         }
         if primary.len() == 3 && primary.chars().all(|c| c.is_ascii_alphabetic()) {
             if let Some(&code) = THREE_TO_TWO.get(primary) {
-                debug!("normalize_language_code: '{}' -> '{}' (3-to-2 letter mapping)", input, code);
+                debug!(
+                    "normalize_language_code: '{}' -> '{}' (3-to-2 letter mapping)",
+                    input, code
+                );
                 return code.to_string();
             } else {
                 debug!(
@@ -802,12 +881,18 @@ impl WhisperLiveAsrBackend {
         }
         // If no hyphen and whole token looks like code
         if t.len() == 2 && t.chars().all(|c| c.is_ascii_alphabetic()) {
-            debug!("normalize_language_code: '{}' -> '{}' (2-letter code)", input, t);
+            debug!(
+                "normalize_language_code: '{}' -> '{}' (2-letter code)",
+                input, t
+            );
             return t;
         }
         if t.len() == 3 && t.chars().all(|c| c.is_ascii_alphabetic()) {
             if let Some(&code) = THREE_TO_TWO.get(t.as_str()) {
-                debug!("normalize_language_code: '{}' -> '{}' (3-to-2 letter mapping)", input, code);
+                debug!(
+                    "normalize_language_code: '{}' -> '{}' (3-to-2 letter mapping)",
+                    input, code
+                );
                 return code.to_string();
             } else {
                 debug!(
@@ -841,7 +926,8 @@ impl WhisperLiveAsrBackend {
                 len,
                 timeout_secs
             );
-            let connect_result = tokio::time::timeout(Duration::from_secs(timeout_secs), connect_async(&url)).await;
+            let connect_result =
+                tokio::time::timeout(Duration::from_secs(timeout_secs), connect_async(&url)).await;
             match connect_result {
                 Ok(Ok((ws, _))) => {
                     let (write, mut read): (SplitSink<Ws, Message>, SplitStream<Ws>) = ws.split();
@@ -939,13 +1025,13 @@ impl WhisperLiveAsrBackend {
                     });
                     self.read_task = Some(handle);
                     break;
-                },
+                }
                 Ok(Err(e)) => {
                     warn!("⚠️ WhisperLive 连接失败: {} -> {}", url, e);
-                },
+                }
                 Err(_) => {
                     warn!("⚠️ WhisperLive 连接超时: {} ({}s)", url, timeout_secs);
-                },
+                }
             }
         }
         if self.ws_write.is_none() {
@@ -953,7 +1039,13 @@ impl WhisperLiveAsrBackend {
         }
 
         // 发送初始配置（使用统一的构建函数）
-        let init_msg_str = Self::build_init_message(&self.uid, &self.language, self.supports_hotwords, &self.hotwords, "");
+        let init_msg_str = Self::build_init_message(
+            &self.uid,
+            &self.language,
+            self.supports_hotwords,
+            &self.hotwords,
+            "",
+        );
         self.send_text(init_msg_str).await?;
 
         // 等待 SERVER_READY（通过读任务更新的共享状态）
@@ -984,7 +1076,10 @@ impl WhisperLiveAsrBackend {
     }
 
     #[allow(dead_code)]
-    async fn send_text(&mut self, text: String) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+    async fn send_text(
+        &mut self,
+        text: String,
+    ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         if let Some(ws) = &mut self.ws_write {
             use tokio_tungstenite::tungstenite::Utf8Bytes;
             let utf8: Utf8Bytes = Utf8Bytes::from(text);
@@ -995,12 +1090,19 @@ impl WhisperLiveAsrBackend {
         }
     }
 
-    async fn send_binary(&mut self, data: Vec<u8>) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+    async fn send_binary(
+        &mut self,
+        data: Vec<u8>,
+    ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         if let Some(ws) = &mut self.ws_write {
             if !data.is_empty() && data != b"END_OF_AUDIO" {
                 let samples = data.len() / 4;
                 self.total_samples_sent = self.total_samples_sent.saturating_add(samples);
-                debug!("WhisperLive 发送音频: samples={}, bytes={}", samples, data.len());
+                debug!(
+                    "WhisperLive 发送音频: samples={}, bytes={}",
+                    samples,
+                    data.len()
+                );
             }
             ws.send(Message::Binary(Bytes::from(data))).await?;
             Ok(())
@@ -1023,12 +1125,15 @@ impl WhisperLiveAsrBackend {
                         self.total_samples_sent = self.total_samples_sent.saturating_add(samples);
                     }
                     Ok(())
-                },
+                }
                 Err(e) => {
-                    warn!("⚠️ WhisperLive WebSocket 发送失败: {}, 数据已重新缓冲 (uid={})", e, self.uid);
+                    warn!(
+                        "⚠️ WhisperLive WebSocket 发送失败: {}, 数据已重新缓冲 (uid={})",
+                        e, self.uid
+                    );
                     self.ws_write = None;
                     Err(recovery.to_vec())
-                },
+                }
             }
         } else {
             Err(data)
@@ -1064,7 +1169,9 @@ impl WhisperLiveAsrBackend {
         }
     }
 
-    async fn finalize_and_collect(&mut self) -> Result<String, Box<dyn std::error::Error + Send + Sync>> {
+    async fn finalize_and_collect(
+        &mut self,
+    ) -> Result<String, Box<dyn std::error::Error + Send + Sync>> {
         // 发送 END_OF_AUDIO
         info!("WhisperLive 发送 END_OF_AUDIO (uid={})", self.uid);
         self.send_binary(b"END_OF_AUDIO".to_vec()).await?;
@@ -1117,7 +1224,12 @@ impl WhisperLiveAsrBackend {
 
 #[async_trait]
 impl AsrBackend for WhisperLiveAsrBackend {
-    async fn streaming_recognition(&mut self, audio: &[f32], is_last: bool, _enable_final_inference: bool) -> Result<Option<VoiceText>, Box<dyn std::error::Error + Send + Sync>> {
+    async fn streaming_recognition(
+        &mut self,
+        audio: &[f32],
+        is_last: bool,
+        _enable_final_inference: bool,
+    ) -> Result<Option<VoiceText>, Box<dyn std::error::Error + Send + Sync>> {
         info!(
             "🔍 [WhisperLive] streaming_recognition: audio_len={}, is_last={}, sent={}, merge_buf={}, pending={}",
             audio.len(),
@@ -1134,7 +1246,8 @@ impl AsrBackend for WhisperLiveAsrBackend {
         }
 
         // Step 2: 合并缓冲区达到阈值(2帧=64ms)或段末 → 编码并发送
-        let should_flush_merge = is_last || self.send_merge_buffer.len() >= Self::MERGE_TARGET_SAMPLES;
+        let should_flush_merge =
+            is_last || self.send_merge_buffer.len() >= Self::MERGE_TARGET_SAMPLES;
 
         if should_flush_merge && !self.send_merge_buffer.is_empty() {
             let merged = std::mem::take(&mut self.send_merge_buffer);
@@ -1167,7 +1280,10 @@ impl AsrBackend for WhisperLiveAsrBackend {
         }
 
         // Step 4: is_last — 段末收尾
-        if self.total_samples_sent == 0 && self.pending_audio.is_empty() && self.send_merge_buffer.is_empty() {
+        if self.total_samples_sent == 0
+            && self.pending_audio.is_empty()
+            && self.send_merge_buffer.is_empty()
+        {
             info!("🔍 [WhisperLive] is_last=true 但无音频数据，返回 None");
             return Ok(None);
         }
@@ -1280,7 +1396,11 @@ impl AsrBackend for WhisperLiveAsrBackend {
         // 使用读端共享状态
         // 注意：无法在此处 await，保留原接口语义，尽力返回最近一次快照
         if let Ok(s) = self.recv_state.try_read() {
-            let result = if s.last_text.is_empty() { None } else { Some(s.last_text.clone()) };
+            let result = if s.last_text.is_empty() {
+                None
+            } else {
+                Some(s.last_text.clone())
+            };
             info!(
                 "🔍 [WhisperLive] get_intermediate_accumulated_text: last_text='{}', returning={:?}",
                 s.last_text, result

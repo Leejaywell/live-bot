@@ -11,7 +11,7 @@ pub mod sherpa;
 
 pub use backend::AsrBackend;
 pub use types::{VoiceText, voice_text_from_text};
-pub use whisperlive::{WhisperLiveAsrBackend, BackendConfig};
+pub use whisperlive::{BackendConfig, WhisperLiveAsrBackend};
 
 #[cfg(feature = "vad")]
 pub use sherpa::SherpaAsrBackend;

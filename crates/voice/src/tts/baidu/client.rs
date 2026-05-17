@@ -23,7 +23,10 @@ use tokio_tungstenite::{connect_async, tungstenite::Message};
 use tracing::{debug, info, warn};
 
 use super::config::{BaiduTtsConfig, FIXED_SAMPLE_RATE_16K};
-use super::types::{BaiduTtsError, BaiduTtsResponse, SystemFinishRequest, SystemStartPayload, SystemStartRequest, TextRequest};
+use super::types::{
+    BaiduTtsError, BaiduTtsResponse, SystemFinishRequest, SystemStartPayload, SystemStartRequest,
+    TextRequest,
+};
 
 /// 连接超时时间（秒）
 const CONNECT_TIMEOUT_SECS: u64 = 10;
@@ -45,7 +48,11 @@ pub struct BaiduTtsRequest {
 impl BaiduTtsRequest {
     /// 创建新的合成请求
     pub fn new(text: impl Into<String>) -> Self {
-        Self { text: text.into(), start_payload: None, per: None }
+        Self {
+            text: text.into(),
+            start_payload: None,
+            per: None,
+        }
     }
 
     /// 设置自定义合成参数
@@ -87,15 +94,22 @@ impl BaiduTtsClient {
     /// 执行流式语音合成，返回音频块流
     ///
     /// 返回 [`AudioChunk`] 流，与其他 TTS 提供商保持一致的接口
-    pub fn synthesize(&self, request: BaiduTtsRequest) -> Result<Pin<Box<dyn Stream<Item = Result<AudioChunk>> + Send + '_>>> {
+    pub fn synthesize(
+        &self,
+        request: BaiduTtsRequest,
+    ) -> Result<Pin<Box<dyn Stream<Item = Result<AudioChunk>> + Send + '_>>> {
         let config = self.config.clone();
-        let start_payload = request.start_payload.unwrap_or_else(|| self.config.build_start_payload());
+        let start_payload = request
+            .start_payload
+            .unwrap_or_else(|| self.config.build_start_payload());
         let per_override = request.per.clone();
         let text = request.text;
 
         // 验证文本长度（百度限制 1000 字）
         if text.chars().count() > 1000 {
-            return Err(anyhow!(BaiduTtsError::TextTooLong("文本过长，请控制在1000字以内".to_string())));
+            return Err(anyhow!(BaiduTtsError::TextTooLong(
+                "文本过长，请控制在1000字以内".to_string()
+            )));
         }
 
         let stream = try_stream! {
@@ -282,12 +296,16 @@ impl BaiduTtsClient {
                 // per 现在可由每次请求动态覆盖；预热阶段缺少 per 就直接跳过（不视为失败）
                 debug!("🔥 百度 TTS: 预热跳过（未设置 BAIDU_TTS_PER 且预热无请求上下文）");
                 return Ok(());
-            },
+            }
         };
 
         let ws_url = self.config.build_ws_url_with_per(&access_token, per);
 
-        let connect_result = timeout(Duration::from_secs(CONNECT_TIMEOUT_SECS), connect_async(&ws_url)).await;
+        let connect_result = timeout(
+            Duration::from_secs(CONNECT_TIMEOUT_SECS),
+            connect_async(&ws_url),
+        )
+        .await;
 
         match connect_result {
             Ok(Ok((ws_stream, _))) => {
@@ -296,15 +314,15 @@ impl BaiduTtsClient {
                 let _ = write.close().await;
                 info!("🔥 百度 TTS: WebSocket 连接预热完成");
                 Ok(())
-            },
+            }
             Ok(Err(e)) => {
                 warn!("⚠️ 百度 TTS: 连接预热失败: {}", e);
                 Err(anyhow!(e))
-            },
+            }
             Err(_) => {
                 warn!("⚠️ 百度 TTS: 连接预热超时");
                 Err(anyhow!("连接预热超时"))
-            },
+            }
         }
     }
 
@@ -374,7 +392,13 @@ mod tests {
 
     #[test]
     fn test_request_with_payload() {
-        let payload = SystemStartPayload { spd: Some(10), pit: Some(8), vol: Some(7), aue: Some(3), audio_ctrl: None };
+        let payload = SystemStartPayload {
+            spd: Some(10),
+            pit: Some(8),
+            vol: Some(7),
+            aue: Some(3),
+            audio_ctrl: None,
+        };
 
         let request = BaiduTtsRequest::new("测试").with_payload(payload);
         assert!(request.start_payload.is_some());
@@ -406,7 +430,9 @@ mod tests {
             audio_ctrl: Some(r#"{"sampling_rate":24000}"#.to_string()),
         };
 
-        let request = BaiduTtsRequest::new("测试文本").with_payload(payload).with_per("4148");
+        let request = BaiduTtsRequest::new("测试文本")
+            .with_payload(payload)
+            .with_per("4148");
         let cloned = request.clone();
 
         assert_eq!(cloned.text, request.text);

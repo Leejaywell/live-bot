@@ -5,7 +5,8 @@ use std::env;
 use std::time::{SystemTime, UNIX_EPOCH};
 
 /// Edge TTS WebSocket URL
-pub const EDGE_TTS_WS_URL: &str = "wss://speech.platform.bing.com/consumer/speech/synthesize/readaloud/edge/v1";
+pub const EDGE_TTS_WS_URL: &str =
+    "wss://speech.platform.bing.com/consumer/speech/synthesize/readaloud/edge/v1";
 
 /// 固定的客户端 Token
 pub const TRUSTED_CLIENT_TOKEN: &str = "6A5AA1D4EAFF4E9FB37E23D68491D6F4";
@@ -25,7 +26,10 @@ const WIN_EPOCH: u64 = 11644473600;
 /// 基于当前时间（对齐到5分钟）和 TRUSTED_CLIENT_TOKEN 生成 SHA256 哈希
 pub fn generate_sec_ms_gec() -> String {
     // 获取当前 Unix 时间戳（秒）
-    let now = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_secs();
+    let now = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap()
+        .as_secs();
 
     // 转换为 Windows 纪元时间
     let ticks = now + WIN_EPOCH;
@@ -47,7 +51,10 @@ pub fn generate_sec_ms_gec() -> String {
 /// 生成随机 MUID
 pub fn generate_muid() -> String {
     use std::time::{SystemTime, UNIX_EPOCH};
-    let seed = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_nanos() as u64;
+    let seed = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap()
+        .as_nanos() as u64;
 
     // 生成 16 字节的伪随机数据
     let mut bytes = [0u8; 16];
@@ -77,7 +84,8 @@ pub struct EdgeTtsConfig {
 impl Default for EdgeTtsConfig {
     fn default() -> Self {
         Self {
-            default_voice: env::var("EDGE_TTS_VOICE").unwrap_or_else(|_| "zh-CN-XiaoxiaoNeural".to_string()),
+            default_voice: env::var("EDGE_TTS_VOICE")
+                .unwrap_or_else(|_| "zh-CN-XiaoxiaoNeural".to_string()),
             output_format: "audio-24khz-48kbitrate-mono-mp3".to_string(),
             connect_timeout_secs: 10,
             rate: None,

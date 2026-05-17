@@ -131,8 +131,6 @@ pub struct AppConfig {
     #[serde(default)]
     pub cron_danmu_list: Vec<CronDanmu>,
     #[serde(default)]
-    pub danmu_cnt_enable: bool,
-    #[serde(default)]
     pub blind_box_stat: bool,
     #[serde(default)]
     pub customize_bullet: bool,
@@ -175,6 +173,18 @@ pub struct AppConfig {
     /// TTS 音调偏移（-1.0 – 1.0，默认 0.0）
     #[serde(default)]
     pub tts_pitch: f32,
+    /// 变声器当前选中的模型 ID
+    #[serde(default)]
+    pub voice_changer_model_id: String,
+    /// 变声器输入增益
+    #[serde(default = "default_voice_changer_input_gain")]
+    pub voice_changer_input_gain: f32,
+    /// 变声器干湿比（0 = 原声，1 = 全处理）
+    #[serde(default = "default_voice_changer_wet_mix")]
+    pub voice_changer_wet_mix: f32,
+    /// 变声器处理帧大小（毫秒）
+    #[serde(default = "default_voice_changer_frame_ms")]
+    pub voice_changer_frame_ms: u32,
     /// 语音交互模式的 AI 系统提示词（支持 {{gender}} 占位符）
     #[serde(default = "default_voice_system_prompt")]
     pub voice_system_prompt: String,
@@ -271,10 +281,14 @@ impl AppConfig {
         }
 
         let text = std::fs::read_to_string(&path)?;
-        match toml::from_str(&text) {
+        match toml::from_str::<Self>(&text) {
             Ok(config) => Ok(config),
             Err(e) => {
-                let backup_path = format!("{}.bak.{}", path.display(), chrono::Local::now().timestamp());
+                let backup_path = format!(
+                    "{}.bak.{}",
+                    path.display(),
+                    chrono::Local::now().timestamp()
+                );
                 let _ = std::fs::rename(&path, &backup_path);
                 eprintln!("配置解析失败，已备份至: {}, 错误: {}", backup_path, e);
 
@@ -372,7 +386,6 @@ impl Default for AppConfig {
                     "喜欢主播的小伙伴可以动动小手点个关注~".to_string(),
                 ],
             }],
-            danmu_cnt_enable: false,
             blind_box_stat: true,
             customize_bullet: false,
             ai_reply_to_danmaku: false,
@@ -389,6 +402,10 @@ impl Default for AppConfig {
             asr_language: default_asr_language(),
             tts_speed: default_tts_speed(),
             tts_pitch: 0.0,
+            voice_changer_model_id: String::new(),
+            voice_changer_input_gain: default_voice_changer_input_gain(),
+            voice_changer_wet_mix: default_voice_changer_wet_mix(),
+            voice_changer_frame_ms: default_voice_changer_frame_ms(),
             voice_system_prompt: default_voice_system_prompt(),
             voice_gender: default_voice_gender(),
             general_welcome_enabled: false,
@@ -400,11 +417,30 @@ impl Default for AppConfig {
     }
 }
 
-fn default_asr_engine() -> String { "funasr".to_string() }
-fn default_true() -> bool { true }
-fn default_asr_language() -> String { "zh".to_string() }
-fn default_tts_speed() -> f32 { 1.0 }
-fn default_provider_type() -> String { "llm".to_string() }
+fn default_asr_engine() -> String {
+    "funasr".to_string()
+}
+fn default_true() -> bool {
+    true
+}
+fn default_asr_language() -> String {
+    "zh".to_string()
+}
+fn default_tts_speed() -> f32 {
+    1.0
+}
+fn default_voice_changer_input_gain() -> f32 {
+    1.0
+}
+fn default_voice_changer_wet_mix() -> f32 {
+    1.0
+}
+fn default_voice_changer_frame_ms() -> u32 {
+    40
+}
+fn default_provider_type() -> String {
+    "llm".to_string()
+}
 fn default_general_welcome_msgs() -> Vec<String> {
     vec![
         "欢迎 {user} 进入直播间！".to_string(),
@@ -415,7 +451,9 @@ fn default_general_welcome_msgs() -> Vec<String> {
     ]
 }
 
-fn default_voice_gender() -> String { "女AI".to_string() }
+fn default_voice_gender() -> String {
+    "女AI".to_string()
+}
 
 fn default_voice_system_prompt() -> String {
     r#"你是一个直播间 AI 语音搭子，正在与主播实时语音聊天。
@@ -565,7 +603,8 @@ AI：“因为我一直在后台偷听气氛。”
 【最终目标】
 让主播和观众觉得：
 这是一个会聊天、有情绪反应、像真实连麦搭子的 AI。
-语音互动自然、不僵硬、不像机器人。"#.to_string()
+语音互动自然、不僵硬、不像机器人。"#
+        .to_string()
 }
 
 fn default_tts_voice() -> String {
@@ -603,4 +642,3 @@ fn default_ws_url() -> String {
 fn default_danmu_len() -> i32 {
     20
 }
-

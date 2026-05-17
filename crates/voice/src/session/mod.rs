@@ -48,7 +48,14 @@ pub struct SpeakRequest {
 
 impl SpeakRequest {
     pub fn new(text: impl Into<String>) -> Self {
-        Self { text: text.into(), engine: TtsEngine::Edge, priority: 0, rate: None, pitch: None, volume: None }
+        Self {
+            text: text.into(),
+            engine: TtsEngine::Edge,
+            priority: 0,
+            rate: None,
+            pitch: None,
+            volume: None,
+        }
     }
     pub fn with_engine(mut self, engine: TtsEngine) -> Self {
         self.engine = engine;
@@ -75,9 +82,27 @@ impl SpeakRequest {
 #[derive(Debug, Clone)]
 pub enum TtsEngine {
     Edge,
-    MiniMax { api_key: String, voice_id: String },
-    Azure { subscription_key: String, region: String },
-    VolcEngine { app_id: String, access_key: String, resource_id: String, speaker: String },
+    MiniMax {
+        api_key: String,
+        voice_id: String,
+    },
+    Azure {
+        subscription_key: String,
+        region: String,
+    },
+    VolcEngine {
+        app_id: String,
+        access_key: String,
+        resource_id: String,
+        speaker: String,
+    },
+    /// 本地 sherpa-onnx 推理（Kokoro / MeloTTS / Piper）
+    #[cfg(feature = "local-tts")]
+    LocalTts {
+        engine: std::sync::Arc<crate::tts::local::LocalTtsEngine>,
+        speaker_id: i32,
+        speed: f32,
+    },
 }
 
 /// Session 产出的事件（可订阅）
@@ -117,7 +142,9 @@ impl VoiceSession {
 
         let cmd_tx_inner = session.cmd_tx.clone();
         let handle = tokio::spawn(async move {
-            SessionActor::new(config, cmd_tx_inner, cmd_rx, event_tx_clone).run().await;
+            SessionActor::new(config, cmd_tx_inner, cmd_rx, event_tx_clone)
+                .run()
+                .await;
         });
 
         (session, handle)
@@ -125,17 +152,26 @@ impl VoiceSession {
 
     /// 合成并播放文本
     pub async fn speak(&self, req: SpeakRequest) -> Result<(), SessionError> {
-        self.cmd_tx.send(SessionCommand::Speak(req)).await.map_err(|_| SessionError::SessionClosed)
+        self.cmd_tx
+            .send(SessionCommand::Speak(req))
+            .await
+            .map_err(|_| SessionError::SessionClosed)
     }
 
     /// 中断当前 TTS
     pub async fn interrupt(&self) -> Result<(), SessionError> {
-        self.cmd_tx.send(SessionCommand::Interrupt).await.map_err(|_| SessionError::SessionClosed)
+        self.cmd_tx
+            .send(SessionCommand::Interrupt)
+            .await
+            .map_err(|_| SessionError::SessionClosed)
     }
 
     /// 推送外部帧（麦克风音频等）
     pub async fn push_frame(&self, frame: Frame) -> Result<(), SessionError> {
-        self.cmd_tx.send(SessionCommand::Frame(frame)).await.map_err(|_| SessionError::SessionClosed)
+        self.cmd_tx
+            .send(SessionCommand::Frame(frame))
+            .await
+            .map_err(|_| SessionError::SessionClosed)
     }
 
     /// 关闭 session
@@ -255,7 +291,11 @@ impl SessionActor {
         #[cfg(feature = "tts")]
         let edge_client = {
             if req.rate.is_some() || req.pitch.is_some() || req.volume.is_some() {
-                self.edge_client.with_prosody_override(req.rate.clone(), req.pitch.clone(), req.volume.clone())
+                self.edge_client.with_prosody_override(
+                    req.rate.clone(),
+                    req.pitch.clone(),
+                    req.volume.clone(),
+                )
             } else {
                 self.edge_client.clone()
             }
@@ -378,7 +418,10 @@ async fn synthesize_sentence(
 
     match engine {
         TtsEngine::Edge => {
-            let mut stream = edge_client.synthesize(text, None).await.map_err(|e| e.to_string())?;
+            let mut stream = edge_client
+                .synthesize(text, None)
+                .await
+                .map_err(|e| e.to_string())?;
 
             let mut pcm: Vec<u8> = Vec::new();
             let mut sample_rate = 16000u32;
@@ -398,13 +441,13 @@ async fn synthesize_sentence(
 
             Ok(AudioFrame::new_pcm16(bytes::Bytes::from(pcm), sample_rate))
         }
-        TtsEngine::MiniMax { voice_id, .. } => {
+        TtsEngine::MiniMax { api_key, voice_id } => {
             let client = crate::tts::MiniMaxWsTtsClient::with_defaults();
             let mut stream = client
-                .synthesize(voice_id, text, None, None)
+                .synthesize_direct(api_key, voice_id, text, None, None)
                 .map_err(|e: crate::tts::MiniMaxError| e.to_string())?;
 
-            let mut pcm: Vec<u8> = Vec::new();
+            let mut audio_bytes: Vec<u8> = Vec::new();
             let mut sample_rate = 44100u32;
 
             while let Some(chunk) = stream.next().await {
@@ -414,15 +457,32 @@ async fn synthesize_sentence(
                             break;
                         }
                         sample_rate = c.sample_rate;
-                        pcm.extend_from_slice(&c.data);
+                        audio_bytes.extend_from_slice(&c.data);
                     }
                     Err(e) => return Err(e.to_string()),
                 }
             }
 
+            let pcm = if looks_like_mp3(&audio_bytes) {
+                let mut decoder = crate::tts::edge::mp3_decoder::Mp3Decoder::new();
+                let mut pcm = decoder.decode(&audio_bytes).map_err(|e| e.to_string())?;
+                pcm.extend_from_slice(&decoder.flush().map_err(|e| e.to_string())?);
+                if let Some(decoded_rate) = decoder.sample_rate() {
+                    sample_rate = decoded_rate as u32;
+                }
+                pcm
+            } else {
+                audio_bytes
+            };
+
             Ok(AudioFrame::new_pcm16(bytes::Bytes::from(pcm), sample_rate))
         }
-        TtsEngine::VolcEngine { app_id, access_key, resource_id, speaker } => {
+        TtsEngine::VolcEngine {
+            app_id,
+            access_key,
+            resource_id,
+            speaker,
+        } => {
             use crate::tts::{VolcEngineConfig, VolcEngineRequest, VolcEngineWsTtsClient};
 
             let config = VolcEngineConfig {
@@ -439,7 +499,9 @@ async fn synthesize_sentence(
 
             let client = VolcEngineWsTtsClient::new(config);
             let request = VolcEngineRequest::from_text(text);
-            let mut stream = client.synthesize(request).map_err(|e: anyhow::Error| e.to_string())?;
+            let mut stream = client
+                .synthesize(request)
+                .map_err(|e: anyhow::Error| e.to_string())?;
 
             let mut pcm: Vec<u8> = Vec::new();
             let mut sample_rate = 24000u32;
@@ -463,5 +525,29 @@ async fn synthesize_sentence(
             // TODO: 接入 AzureTtsClient
             Ok(AudioFrame::new_pcm16(bytes::Bytes::new(), 16000))
         }
+        #[cfg(feature = "local-tts")]
+        TtsEngine::LocalTts {
+            engine,
+            speaker_id,
+            speed,
+        } => {
+            let engine = engine.clone();
+            let text = text.to_string();
+            let sid = *speaker_id;
+            let spd = *speed;
+            tokio::task::spawn_blocking(move || engine.synthesize(&text, sid, spd))
+                .await
+                .map_err(|e| e.to_string())?
+        }
     }
+}
+
+fn looks_like_mp3(data: &[u8]) -> bool {
+    if data.len() < 2 {
+        return false;
+    }
+    if data.starts_with(b"ID3") {
+        return true;
+    }
+    data[0] == 0xFF && (data[1] & 0xE0) == 0xE0
 }

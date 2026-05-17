@@ -35,7 +35,11 @@ impl AzureTtsClient {
             .build()
             .expect("创建 HTTP 客户端失败");
 
-        Self { config, http_client, pool_ready: Arc::new(Mutex::new(false)) }
+        Self {
+            config,
+            http_client,
+            pool_ready: Arc::new(Mutex::new(false)),
+        }
     }
 
     /// 从环境变量创建客户端
@@ -79,19 +83,33 @@ impl AzureTtsClient {
         } else {
             let status = response.status();
             let body = response.text().await.unwrap_or_default();
-            Err(AzureTtsError::Auth(format!("预热失败: HTTP {} - {}", status, body)))
+            Err(AzureTtsError::Auth(format!(
+                "预热失败: HTTP {} - {}",
+                status, body
+            )))
         }
     }
 
     /// 根据语言自动选择声音进行合成
-    pub async fn synthesize_for_language(&self, text: &str, language: &str) -> Result<Pin<Box<dyn Stream<Item = Result<AudioChunk, AzureTtsError>> + Send>>, AzureTtsError> {
-        let voice = get_voice_for_language(language).ok_or_else(|| AzureTtsError::UnsupportedLanguage(language.to_string()))?;
+    pub async fn synthesize_for_language(
+        &self,
+        text: &str,
+        language: &str,
+    ) -> Result<Pin<Box<dyn Stream<Item = Result<AudioChunk, AzureTtsError>> + Send>>, AzureTtsError>
+    {
+        let voice = get_voice_for_language(language)
+            .ok_or_else(|| AzureTtsError::UnsupportedLanguage(language.to_string()))?;
 
         self.synthesize(text, Some(voice)).await
     }
 
     /// 合成文本为音频流
-    pub async fn synthesize(&self, text: &str, voice: Option<&str>) -> Result<Pin<Box<dyn Stream<Item = Result<AudioChunk, AzureTtsError>> + Send>>, AzureTtsError> {
+    pub async fn synthesize(
+        &self,
+        text: &str,
+        voice: Option<&str>,
+    ) -> Result<Pin<Box<dyn Stream<Item = Result<AudioChunk, AzureTtsError>> + Send>>, AzureTtsError>
+    {
         let voice = voice.unwrap_or("zh-CN-XiaoxiaoNeural").to_string();
         let text = text.to_string();
         let config = self.config.clone();
@@ -100,7 +118,12 @@ impl AzureTtsClient {
         info!(voice = %voice, text_len = text.len(), "Azure TTS 开始合成");
 
         let endpoint = config.tts_endpoint();
-        let ssml = build_ssml(&voice, &text, config.rate.as_deref(), config.pitch.as_deref());
+        let ssml = build_ssml(
+            &voice,
+            &text,
+            config.rate.as_deref(),
+            config.pitch.as_deref(),
+        );
 
         debug!("Azure TTS SSML: {}", ssml);
 
@@ -127,7 +150,10 @@ impl AzureTtsClient {
         if !response.status().is_success() {
             let status = response.status();
             let body = response.text().await.unwrap_or_default();
-            return Err(AzureTtsError::Http(format!("合成失败: HTTP {} - {}", status, body)));
+            return Err(AzureTtsError::Http(format!(
+                "合成失败: HTTP {} - {}",
+                status, body
+            )));
         }
 
         // 创建流式响应
@@ -207,10 +233,15 @@ fn build_ssml(voice: &str, text: &str, rate: Option<&str>, pitch: Option<&str>) 
     let escaped_text = html_escape::encode_text(text);
 
     let rate_attr = rate.map(|r| format!(" rate=\"{}\"", r)).unwrap_or_default();
-    let pitch_attr = pitch.map(|p| format!(" pitch=\"{}\"", p)).unwrap_or_default();
+    let pitch_attr = pitch
+        .map(|p| format!(" pitch=\"{}\"", p))
+        .unwrap_or_default();
 
     let content = if rate.is_some() || pitch.is_some() {
-        format!("<prosody{}{}>{}</prosody>", rate_attr, pitch_attr, escaped_text)
+        format!(
+            "<prosody{}{}>{}</prosody>",
+            rate_attr, pitch_attr, escaped_text
+        )
     } else {
         escaped_text.to_string()
     };

@@ -10,8 +10,8 @@
 //!
 //! LatencyMonitor 是 Send + Sync，可在 cpal 回调和接收线程间共享。
 
-use std::sync::atomic::{AtomicU32, AtomicUsize, Ordering};
 use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, AtomicU32, AtomicUsize, Ordering};
 
 /// 缓冲健康状态
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -24,11 +24,11 @@ pub enum BufferHealth {
     Backlogged,
 }
 
-const LOW_WATER: f32 = 0.15;    // 低水位
+const LOW_WATER: f32 = 0.15; // 低水位
 const NOMINAL_WATER: f32 = 0.35; // 目标水位
-const HIGH_WATER: f32 = 0.65;   // 高水位
-const MIN_BUFFER: usize = 48000 / 5;  // 最少 200ms @ 48kHz
-const MAX_BUFFER: usize = 48000 * 4;  // 最多 4s @ 48kHz
+const HIGH_WATER: f32 = 0.65; // 高水位
+const MIN_BUFFER: usize = 48000 / 5; // 最少 200ms @ 48kHz
+const MAX_BUFFER: usize = 48000 * 4; // 最多 4s @ 48kHz
 
 /// 延迟监控器（可 Arc 共享）
 pub struct LatencyMonitor {
@@ -42,6 +42,7 @@ pub struct LatencyMonitor {
     pub underrun_count: Arc<AtomicUsize>,
     /// 累计 backlog 次数
     pub backlog_count: Arc<AtomicUsize>,
+    adaptive: AtomicBool,
 }
 
 impl Default for LatencyMonitor {
@@ -58,7 +59,14 @@ impl LatencyMonitor {
             last_synthesis_ms: Arc::new(AtomicU32::new(0)),
             underrun_count: Arc::new(AtomicUsize::new(0)),
             backlog_count: Arc::new(AtomicUsize::new(0)),
+            adaptive: AtomicBool::new(true),
         }
+    }
+
+    pub fn fixed(max_samples: usize) -> Self {
+        let monitor = Self::new(max_samples);
+        monitor.adaptive.store(false, Ordering::Relaxed);
+        monitor
     }
 
     /// 当前缓冲填充率（0.0 – 1.0）
@@ -104,6 +112,9 @@ impl LatencyMonitor {
 
     /// 根据当前填充率自适应调整缓冲上限
     fn adapt(&self) {
+        if !self.adaptive.load(Ordering::Relaxed) {
+            return;
+        }
         let ratio = self.fill_ratio();
         let current = self.target_max.load(Ordering::Relaxed);
 
@@ -147,7 +158,10 @@ impl FetchSaturatingSub for AtomicUsize {
         loop {
             let current = self.load(Ordering::Relaxed);
             let next = current.saturating_sub(val);
-            if self.compare_exchange(current, next, order, Ordering::Relaxed).is_ok() {
+            if self
+                .compare_exchange(current, next, order, Ordering::Relaxed)
+                .is_ok()
+            {
                 return current;
             }
         }

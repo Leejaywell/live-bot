@@ -143,7 +143,9 @@ pub fn get_baidu_voice_params() -> BaiduVoiceParamsSnapshot {
 pub fn update_baidu_voice_params(snapshot: &BaiduVoiceParamsSnapshot) {
     let params = voice_params_lock().read().unwrap();
     if !params.hot_update_enabled {
-        tracing::warn!("⚠️ 百度音色热更新被禁用（BAIDU_TTS_VOICE_HOT_UPDATE_ENABLED 未设置为 true），忽略热更新请求");
+        tracing::warn!(
+            "⚠️ 百度音色热更新被禁用（BAIDU_TTS_VOICE_HOT_UPDATE_ENABLED 未设置为 true），忽略热更新请求"
+        );
         return;
     }
     drop(params);
@@ -172,7 +174,7 @@ pub fn baidu_per_for_voice_id(voice_id: &str) -> Option<String> {
         BAIDU_TTS_VOICE_ID_DUHANZHU_BRIGHT => {
             let params = voice_params_lock().read().unwrap();
             Some(params.per.clone())
-        },
+        }
         _ => None,
     }
 }
@@ -183,13 +185,16 @@ pub fn baidu_speed_factor_for_voice_id(voice_id: &str) -> Option<f64> {
         BAIDU_TTS_VOICE_ID_DUHANZHU_BRIGHT => {
             let params = voice_params_lock().read().unwrap();
             Some(params.speed_factor)
-        },
+        }
         _ => None,
     }
 }
 
 /// 根据 voice_id 返回百度 system.start payload 的覆盖（仅覆盖 spd/pit/vol，其余保持 base）。
-pub fn baidu_payload_override_for_voice_id(voice_id: &str, mut base: SystemStartPayload) -> Option<SystemStartPayload> {
+pub fn baidu_payload_override_for_voice_id(
+    voice_id: &str,
+    mut base: SystemStartPayload,
+) -> Option<SystemStartPayload> {
     match voice_id {
         BAIDU_TTS_VOICE_ID_DUHANZHU_BRIGHT => {
             let p = voice_params_lock().read().unwrap();
@@ -197,7 +202,7 @@ pub fn baidu_payload_override_for_voice_id(voice_id: &str, mut base: SystemStart
             base.pit = Some(p.pit);
             base.vol = Some(p.vol);
             Some(base)
-        },
+        }
         _ => None,
     }
 }
@@ -228,7 +233,8 @@ pub fn pcm_speed_adjust(pcm_data: &[u8], speed_factor: f64) -> Vec<u8> {
         if idx + 1 < sample_count {
             // 线性插值：在两个相邻采样点之间插值
             let s0 = i16::from_le_bytes([pcm_data[idx * 2], pcm_data[idx * 2 + 1]]) as f64;
-            let s1 = i16::from_le_bytes([pcm_data[(idx + 1) * 2], pcm_data[(idx + 1) * 2 + 1]]) as f64;
+            let s1 =
+                i16::from_le_bytes([pcm_data[(idx + 1) * 2], pcm_data[(idx + 1) * 2 + 1]]) as f64;
             let interpolated = (s0 * (1.0 - frac) + s1 * frac) as i16;
             output.extend_from_slice(&interpolated.to_le_bytes());
         } else if idx < sample_count {

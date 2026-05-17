@@ -16,8 +16,9 @@ default = ["tts", "asr", "playback"]
 tts = ["dep:minimp3", "dep:async-stream", "dep:uuid", "dep:lingua"]
 asr = []
 vad = ["dep:sherpa-onnx", "dep:cpal"]
+local-tts = ["dep:sherpa-onnx"]
 denoiser = ["dep:ort", "dep:ndarray", "dep:rustfft"]
-voice-changer = ["dep:ort", "dep:ndarray", "dep:cpal"]
+voice-changer = ["dep:ort", "dep:ndarray", "dep:cpal", "playback"]
 playback = ["dep:cpal"]
 model-hub = ["dep:hf-hub"]
 
@@ -88,7 +89,7 @@ sherpa-onnx = { version = "1.12", optional = true }
 
 # GTCRN 频域降噪（denoiser feature）
 ort = { version = "2.0.0-rc.12", optional = true }
-ndarray = { version = "0.16", optional = true }
+ndarray = { version = "0.17", optional = true }
 rustfft = { version = "6", optional = true }
 
 # HuggingFace Hub 模型下载（model-hub feature）

@@ -85,11 +85,10 @@ const AUTO_GROUPS: AutoGroup[] = [
   {
     title: '语音陪伴',
     Icon: Headphones,
-    mainSessionKey: 'voiceAssistantEnabled',
+    mainKey: 'VadEnabled',
     to: '/voice',
     subs: [
-      { label: '语音合成', key: 'TtsEnabled' },
-      { label: '语音识别', key: 'VadEnabled' },
+      { label: '语音播报（可选）', key: 'TtsEnabled' },
     ],
   },
   {
@@ -116,7 +115,6 @@ const AUTO_GROUPS: AutoGroup[] = [
     Icon: BarChart2,
     subs: [
       { label: '盲盒统计', key: 'BlindBoxProfitLossStat' },
-      { label: '弹幕计数', key: 'DanmuCntEnable' },
     ],
   },
   {
@@ -143,7 +141,7 @@ const ALL_TOGGLE_KEYS: (keyof AppConfig)[] = [
   'ThanksFocus', 'ThanksShare', 'ThanksGift', 'GiftSummaryThanks', 'ThanksGiftUseAt',
   'EntryEffect', 'PkNotice', 'ShowBlockMsg',
   'TtsEnabled', 'VadEnabled',
-  'BlindBoxProfitLossStat', 'DanmuCntEnable',
+  'BlindBoxProfitLossStat',
   'CronDanmu', 'DanmuFilterEnable',
 ];
 
@@ -230,6 +228,10 @@ function getEnabledTtsProviders(config: AppConfig): AiProvider[] {
   return (config.AiProviders ?? []).filter((provider) => provider.ProviderType === 'tts' && provider.Enabled);
 }
 
+function getEnabledAsrProviders(config: AppConfig): AiProvider[] {
+  return (config.AiProviders ?? []).filter((provider) => provider.ProviderType === 'asr' && provider.Enabled);
+}
+
 function getGroupMeta(group: AutoGroup, config: AppConfig, opts: { connected: boolean; isMonitoring: boolean; sessionValues: Record<string, boolean> }): GroupMeta {
   const { connected, isMonitoring } = opts;
   const baseCount = group.countKey ? (((config as unknown as Record<string, unknown>)[group.countKey] as unknown[])?.length ?? 0) : null;
@@ -301,7 +303,7 @@ function getGroupMeta(group: AutoGroup, config: AppConfig, opts: { connected: bo
   }
 
   if (group.title === '消息记录') {
-    const recordKeys: (keyof AppConfig)[] = ['BlindBoxProfitLossStat', 'DanmuCntEnable'];
+    const recordKeys: (keyof AppConfig)[] = ['BlindBoxProfitLossStat'];
     const recordEnabled = recordKeys.filter(k => Boolean(config[k])).length;
     return {
       status: recordEnabled === 0 ? '未启用' : !isMonitoring ? '待启动监听' : '记录中',
@@ -314,22 +316,32 @@ function getGroupMeta(group: AutoGroup, config: AppConfig, opts: { connected: bo
   }
 
   if (group.title === '语音陪伴') {
-    const assistantEnabled = opts.sessionValues['voiceAssistantEnabled'] ?? false;
     const ttsEnabled = Boolean(config.TtsEnabled);
     const vadEnabled = Boolean(config.VadEnabled);
-    const enabledCount = [ttsEnabled, vadEnabled].filter(Boolean).length;
+    const asrProviders = getEnabledAsrProviders(config);
     const ttsProviders = getEnabledTtsProviders(config);
+    const hasAsr = asrProviders.length > 0 || Boolean(config.AsrUrl);
     return {
-      status: !assistantEnabled ? '本次会话已关闭' : !connected ? '待连接直播间' : !isMonitoring ? '待启动监听' : '运行中',
-      tone: assistantEnabled && connected && isMonitoring ? 'active' : assistantEnabled ? 'warning' : 'muted',
+      status: !vadEnabled
+        ? '话筒已关闭'
+        : !hasAsr
+        ? '缺少语音转文字服务'
+        : !connected
+        ? '待连接直播间'
+        : !isMonitoring
+        ? '待启动监听'
+        : '话筒运行中',
+      tone: vadEnabled && hasAsr && connected && isMonitoring ? 'active' : vadEnabled ? 'warning' : 'muted',
       metrics: [
-        `语音能力 ${enabledCount}/${group.subs.length} 项已配置`,
+        hasAsr
+          ? `语音转文字已就绪${asrProviders.length > 0 ? `，ASR 提供商 ${asrProviders.length} 个` : '，使用旧版 ASR 地址'}`
+          : '缺少语音转文字服务，请先配置 ASR',
         ttsEnabled
-          ? `TTS 提供商 ${ttsProviders.length} 个${config.TtsVoice ? `，音色 ${config.TtsVoice}` : ''}`
-          : vadEnabled ? '麦克风 VAD + ASR 已激活' : '语音合成 / 识别待开启',
+          ? `语音播报已开启${ttsProviders.length > 0 ? `，TTS 提供商 ${ttsProviders.length} 个` : '，当前没有可用 TTS 提供商'}`
+          : '语音播报未开启，这不会影响语音陪伴',
       ],
       hints: [
-        ...(assistantEnabled ? ['当前仅对本次会话生效，不写入配置文件'] : ['打开后可快速进入和 AI 的语音对话状态']),
+        ...(!hasAsr ? ['请先在模型服务中配置可用 ASR'] : []),
         ...(ttsEnabled && ttsProviders.length === 0 ? ['已开启语音合成但没有可用 TTS 提供商'] : []),
       ],
     };
@@ -399,7 +411,6 @@ export function Dashboard() {
   const [stats, setStats] = useState<any>(null);
   const [sessionValues, setSessionValues] = useState<Record<string, boolean>>(() => ({
     danmuAnnounce: sessionStorage.getItem('danmuAnnounce') === 'true',
-    voiceAssistantEnabled: sessionStorage.getItem('voiceAssistantEnabled') === 'true',
   }));
 
   const updateSessionValue = (key: string, value: boolean) => {
@@ -446,6 +457,15 @@ export function Dashboard() {
     } catch (err) {
       toast.error(`更新失败: ${err}`);
     }
+  };
+
+  const toggleGroupSub = async (group: AutoGroup, sub: SubToggle, value: boolean) => {
+    if (sub.sessionKey != null) {
+      updateSessionValue(sub.sessionKey, value);
+      return;
+    }
+
+    await toggleAuto(sub.key!, value);
   };
 
   const statItems = [
@@ -563,7 +583,9 @@ export function Dashboard() {
             {mainChecked != null && (
               <Toggle
                 checked={mainChecked}
-                onChange={(v) => mainSessionKey != null ? updateSessionValue(mainSessionKey, v) : toggleAuto(mainKey!, v)}
+                onChange={(v) => mainSessionKey != null
+                  ? updateSessionValue(mainSessionKey, v)
+                  : toggleAuto(mainKey!, v)}
               />
             )}
           </div>
@@ -596,7 +618,7 @@ export function Dashboard() {
                 <span className="text-[12px] text-gray-500 dark:text-gray-400 font-medium">{sub.label}</span>
                 <Toggle
                   checked={sub.sessionKey != null ? (sessionValues[sub.sessionKey] ?? false) : Boolean(config[sub.key!])}
-                  onChange={(v) => sub.sessionKey != null ? updateSessionValue(sub.sessionKey!, v) : toggleAuto(sub.key!, v)}
+                  onChange={(v) => toggleGroupSub(g, sub, v)}
                 />
               </div>
             ))}

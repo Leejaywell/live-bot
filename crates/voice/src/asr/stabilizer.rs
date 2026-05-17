@@ -346,7 +346,10 @@ impl SemanticStabilizer {
         if stable_count > self.confirmed_units {
             // 取最新的历史记录来获取稳定部分的文本
             if let Some(latest) = self.history.back() {
-                let new_stable: String = latest[self.confirmed_units..stable_count].iter().cloned().collect();
+                let new_stable: String = latest[self.confirmed_units..stable_count]
+                    .iter()
+                    .cloned()
+                    .collect();
                 self.confirmed_units = stable_count;
                 return Some(new_stable);
             }
@@ -365,7 +368,11 @@ impl SemanticStabilizer {
         let mut common_count = first.len();
 
         for units in self.history.iter().skip(1) {
-            let matching = first.iter().zip(units.iter()).take_while(|(a, b)| a == b).count();
+            let matching = first
+                .iter()
+                .zip(units.iter())
+                .take_while(|(a, b)| a == b)
+                .count();
             common_count = common_count.min(matching);
         }
 
@@ -401,7 +408,10 @@ mod tests {
         assert_eq!(stabilizer.process("今天天气"), None);
 
         // 第二次结果，前缀稳定
-        assert_eq!(stabilizer.process("今天天气很好"), Some("今天天气".to_string()));
+        assert_eq!(
+            stabilizer.process("今天天气很好"),
+            Some("今天天气".to_string())
+        );
 
         // 第三次结果，公共前缀仍为"今天天气"（已确认），无新稳定文本
         assert_eq!(stabilizer.process("今天天气很好啊"), None);

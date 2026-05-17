@@ -73,7 +73,9 @@ impl VoiceLibraryConfig {
         let value: serde_json::Value = serde_json::from_str(json)?;
 
         // 提取keys
-        let keys_value = value.get("keys").ok_or_else(|| anyhow!("缺少 'keys' 字段"))?;
+        let keys_value = value
+            .get("keys")
+            .ok_or_else(|| anyhow!("缺少 'keys' 字段"))?;
         let keys: FxHashMap<String, String> = serde_json::from_value(keys_value.clone())?;
 
         // 提取gains（可选）
@@ -113,14 +115,18 @@ impl VoiceLibraryConfig {
             .unwrap_or_default();
 
         // 保留字段列表
-        const RESERVED_KEYS: &[&str] = &["keys", "gains", "speeds", "pitches", "models", "emotions", "volumes"];
+        const RESERVED_KEYS: &[&str] = &[
+            "keys", "gains", "speeds", "pitches", "models", "emotions", "volumes",
+        ];
 
         // 提取所有voice_id映射（除了保留字段外的所有字段）
         let mut voice_mappings = FxHashMap::default();
         if let Some(obj) = value.as_object() {
             for (key, val) in obj.iter() {
                 if !RESERVED_KEYS.contains(&key.as_str()) {
-                    if let Ok(mapping) = serde_json::from_value::<FxHashMap<String, String>>(val.clone()) {
+                    if let Ok(mapping) =
+                        serde_json::from_value::<FxHashMap<String, String>>(val.clone())
+                    {
                         voice_mappings.insert(key.clone(), mapping);
                     }
                 }
@@ -131,12 +137,25 @@ impl VoiceLibraryConfig {
         for (voice_id, mapping) in &voice_mappings {
             for keyname in mapping.keys() {
                 if !keys.contains_key(keyname) {
-                    return Err(anyhow!("voice_id '{}' 引用了不存在的 keyname '{}'", voice_id, keyname));
+                    return Err(anyhow!(
+                        "voice_id '{}' 引用了不存在的 keyname '{}'",
+                        voice_id,
+                        keyname
+                    ));
                 }
             }
         }
 
-        Ok(Self { keys, gains, speeds, pitches, models, emotions, volumes, voice_mappings })
+        Ok(Self {
+            keys,
+            gains,
+            speeds,
+            pitches,
+            models,
+            emotions,
+            volumes,
+            voice_mappings,
+        })
     }
 
     /// 验证配置有效性
@@ -152,7 +171,11 @@ impl VoiceLibraryConfig {
             }
             for keyname in mapping.keys() {
                 if !self.keys.contains_key(keyname) {
-                    return Err(anyhow!("voice_id '{}' 引用了不存在的 keyname '{}'", voice_id, keyname));
+                    return Err(anyhow!(
+                        "voice_id '{}' 引用了不存在的 keyname '{}'",
+                        voice_id,
+                        keyname
+                    ));
                 }
             }
         }
@@ -166,7 +189,11 @@ impl VoiceLibraryConfig {
         if let Some(mapping) = self.voice_mappings.get(virtual_voice_id) {
             mapping
                 .iter()
-                .filter_map(|(keyname, actual_voice_id)| self.keys.get(keyname).map(|api_key| (api_key.clone(), actual_voice_id.clone())))
+                .filter_map(|(keyname, actual_voice_id)| {
+                    self.keys
+                        .get(keyname)
+                        .map(|api_key| (api_key.clone(), actual_voice_id.clone()))
+                })
                 .collect()
         } else {
             Vec::new()
@@ -271,7 +298,10 @@ impl VoiceLibrary {
         }
 
         // 轮换选择
-        let index = self.current_index.fetch_add(1, std::sync::atomic::Ordering::Relaxed) % options.len();
+        let index = self
+            .current_index
+            .fetch_add(1, std::sync::atomic::Ordering::Relaxed)
+            % options.len();
         Some(options[index].clone())
     }
 
@@ -312,12 +342,18 @@ impl VoiceLibrary {
 
     /// 获取 voice_id 对应的模型，未配置时返回 None
     pub fn get_model(&self, voice_id: &str) -> Option<String> {
-        self.config.read().get_model(voice_id).map(|s| s.to_string())
+        self.config
+            .read()
+            .get_model(voice_id)
+            .map(|s| s.to_string())
     }
 
     /// 获取 voice_id 对应的情绪，未配置时返回 None
     pub fn get_emotion(&self, voice_id: &str) -> Option<String> {
-        self.config.read().get_emotion(voice_id).map(|s| s.to_string())
+        self.config
+            .read()
+            .get_emotion(voice_id)
+            .map(|s| s.to_string())
     }
 
     /// 获取 voice_id 对应的音量，未配置时返回 None
@@ -333,7 +369,8 @@ impl Default for VoiceLibrary {
 }
 
 /// 全局声音库实例
-static GLOBAL_VOICE_LIBRARY: once_cell::sync::Lazy<VoiceLibrary> = once_cell::sync::Lazy::new(VoiceLibrary::new);
+static GLOBAL_VOICE_LIBRARY: once_cell::sync::Lazy<VoiceLibrary> =
+    once_cell::sync::Lazy::new(VoiceLibrary::new);
 
 /// 获取全局声音库实例
 pub fn global_voice_library() -> &'static VoiceLibrary {

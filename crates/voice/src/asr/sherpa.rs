@@ -16,13 +16,13 @@ use crate::asr::types::{VoiceText, voice_text_from_text};
 
 pub struct SherpaAsrBackend {
     recognizer: OfflineRecognizer,
-    pcm_buf:    Vec<f32>,
+    pcm_buf: Vec<f32>,
 }
 
 impl SherpaAsrBackend {
     /// `model_dir` 应包含 `model.int8.onnx` 和 `tokens.txt`。
     pub fn new(model_dir: &PathBuf, language: &str) -> Result<Self, Box<dyn Error + Send + Sync>> {
-        let model_path  = model_dir.join("model.int8.onnx");
+        let model_path = model_dir.join("model.int8.onnx");
         let tokens_path = model_dir.join("tokens.txt");
 
         if !model_path.exists() {
@@ -34,11 +34,11 @@ impl SherpaAsrBackend {
 
         let mut config = OfflineRecognizerConfig::default();
         config.model_config.sense_voice = OfflineSenseVoiceModelConfig {
-            model:    Some(model_path.to_string_lossy().to_string()),
+            model: Some(model_path.to_string_lossy().to_string()),
             language: Some(language.to_string()),
-            use_itn:  true,
+            use_itn: true,
         };
-        config.model_config.tokens      = Some(tokens_path.to_string_lossy().to_string());
+        config.model_config.tokens = Some(tokens_path.to_string_lossy().to_string());
         config.model_config.num_threads = 2;
         // feat_config defaults (sample_rate=16000, feature_dim=80) are already correct
 
@@ -46,7 +46,10 @@ impl SherpaAsrBackend {
             .ok_or("sherpa-onnx OfflineRecognizer 初始化失败（请检查模型路径）")?;
 
         info!("✅ SenseVoice ASR (sherpa-onnx) 已就绪，语言: {}", language);
-        Ok(Self { recognizer, pcm_buf: Vec::new() })
+        Ok(Self {
+            recognizer,
+            pcm_buf: Vec::new(),
+        })
     }
 
     fn infer_buf(&mut self) -> Result<Option<String>, Box<dyn Error + Send + Sync>> {
@@ -55,7 +58,11 @@ impl SherpaAsrBackend {
             return Ok(None);
         }
         let pcm = std::mem::take(&mut self.pcm_buf);
-        debug!("[SenseVoice] 推理 {}ms ({} 样本)", pcm.len() / 16, pcm.len());
+        debug!(
+            "[SenseVoice] 推理 {}ms ({} 样本)",
+            pcm.len() / 16,
+            pcm.len()
+        );
 
         let stream = self.recognizer.create_stream();
         stream.accept_waveform(16000, &pcm);
@@ -78,15 +85,17 @@ impl SherpaAsrBackend {
 impl AsrBackend for SherpaAsrBackend {
     async fn streaming_recognition(
         &mut self,
-        audio:   &[f32],
+        audio: &[f32],
         is_last: bool,
         _enable_final_inference: bool,
     ) -> Result<Option<VoiceText>, Box<dyn Error + Send + Sync>> {
         self.pcm_buf.extend_from_slice(audio);
-        if !is_last { return Ok(None); }
+        if !is_last {
+            return Ok(None);
+        }
         match self.infer_buf()? {
             Some(text) => Ok(Some(voice_text_from_text(text))),
-            None       => Ok(None),
+            None => Ok(None),
         }
     }
 

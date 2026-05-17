@@ -54,7 +54,11 @@ pub enum ModelSource {
 
 impl ModelSource {
     pub fn hf(repo: impl Into<String>, file: impl Into<String>) -> Self {
-        Self::HuggingFace { repo: repo.into(), file: file.into(), revision: None }
+        Self::HuggingFace {
+            repo: repo.into(),
+            file: file.into(),
+            revision: None,
+        }
     }
 
     pub fn hf_rev(
@@ -63,24 +67,26 @@ impl ModelSource {
         revision: impl Into<String>,
     ) -> Self {
         Self::HuggingFace {
-            repo:     repo.into(),
-            file:     file.into(),
+            repo: repo.into(),
+            file: file.into(),
             revision: Some(revision.into()),
         }
     }
 
     pub fn url(url: impl Into<String>, filename: impl Into<String>) -> Self {
-        Self::Url { url: url.into(), filename: filename.into() }
+        Self::Url {
+            url: url.into(),
+            filename: filename.into(),
+        }
     }
 
     /// 本地缓存文件名（用于 Url 来源，或 HF 的 file 最终片段）
     fn local_filename(&self) -> &str {
         match self {
-            Self::HuggingFace { file, .. } => {
-                Path::new(file).file_name()
-                    .and_then(|n| n.to_str())
-                    .unwrap_or(file.as_str())
-            }
+            Self::HuggingFace { file, .. } => Path::new(file)
+                .file_name()
+                .and_then(|n| n.to_str())
+                .unwrap_or(file.as_str()),
             Self::Url { filename, .. } => filename.as_str(),
         }
     }
@@ -99,7 +105,9 @@ pub struct ModelHub {
 
 impl ModelHub {
     pub fn new(cache_dir: impl Into<PathBuf>) -> Self {
-        Self { cache_dir: cache_dir.into() }
+        Self {
+            cache_dir: cache_dir.into(),
+        }
     }
 
     /// 返回模型本地路径。已缓存则直接返回，否则下载。
@@ -111,18 +119,24 @@ impl ModelHub {
         progress_tx: Option<mpsc::Sender<DownloadProgress>>,
     ) -> Result<PathBuf> {
         let send = |p: DownloadProgress| {
-            if let Some(ref tx) = progress_tx { let _ = tx.try_send(p); }
+            if let Some(ref tx) = progress_tx {
+                let _ = tx.try_send(p);
+            }
         };
 
-        send(DownloadProgress { stage: DownloadStage::Checking, downloaded: 0, total: None });
+        send(DownloadProgress {
+            stage: DownloadStage::Checking,
+            downloaded: 0,
+            total: None,
+        });
 
         match &source {
-            ModelSource::HuggingFace { repo, file, revision } => {
-                self.ensure_hf(repo, file, revision.as_deref(), send).await
-            }
-            ModelSource::Url { url, filename } => {
-                self.ensure_url(url, filename, send).await
-            }
+            ModelSource::HuggingFace {
+                repo,
+                file,
+                revision,
+            } => self.ensure_hf(repo, file, revision.as_deref(), send).await,
+            ModelSource::Url { url, filename } => self.ensure_url(url, filename, send).await,
         }
     }
 
@@ -150,12 +164,11 @@ impl ModelHub {
         revision: Option<&str>,
         send: impl Fn(DownloadProgress),
     ) -> Result<PathBuf> {
-        use hf_hub::{Repo, RepoType};
         use hf_hub::api::tokio::ApiBuilder;
+        use hf_hub::{Repo, RepoType};
 
         let hf_cache = self.cache_dir.join("hf");
-        std::fs::create_dir_all(&hf_cache)
-            .context("创建 HF 缓存目录失败")?;
+        std::fs::create_dir_all(&hf_cache).context("创建 HF 缓存目录失败")?;
 
         let api = ApiBuilder::new()
             .with_cache_dir(hf_cache)
@@ -164,17 +177,27 @@ impl ModelHub {
 
         let repo_obj = match revision {
             Some(rev) => Repo::with_revision(repo.to_string(), RepoType::Model, rev.to_string()),
-            None      => Repo::new(repo.to_string(), RepoType::Model),
+            None => Repo::new(repo.to_string(), RepoType::Model),
         };
         let model_api = api.repo(repo_obj);
 
-        send(DownloadProgress { stage: DownloadStage::Downloading, downloaded: 0, total: None });
+        send(DownloadProgress {
+            stage: DownloadStage::Downloading,
+            downloaded: 0,
+            total: None,
+        });
 
         // hf-hub 自动处理缓存命中
-        let path: PathBuf = model_api.get(file).await
+        let path: PathBuf = model_api
+            .get(file)
+            .await
             .with_context(|| format!("HF 下载失败: {repo}/{file}"))?;
 
-        send(DownloadProgress { stage: DownloadStage::Done, downloaded: 0, total: None });
+        send(DownloadProgress {
+            stage: DownloadStage::Done,
+            downloaded: 0,
+            total: None,
+        });
         Ok(path)
     }
 
@@ -188,27 +211,38 @@ impl ModelHub {
 
         let dest = self.cache_dir.join(filename);
         if dest.exists() {
-            send(DownloadProgress { stage: DownloadStage::Done, downloaded: 0, total: None });
+            send(DownloadProgress {
+                stage: DownloadStage::Done,
+                downloaded: 0,
+                total: None,
+            });
             return Ok(dest);
         }
 
-        std::fs::create_dir_all(&self.cache_dir)
-            .context("创建模型缓存目录失败")?;
+        std::fs::create_dir_all(&self.cache_dir).context("创建模型缓存目录失败")?;
 
-        send(DownloadProgress { stage: DownloadStage::Downloading, downloaded: 0, total: None });
+        send(DownloadProgress {
+            stage: DownloadStage::Downloading,
+            downloaded: 0,
+            total: None,
+        });
 
         let client = reqwest::Client::builder()
             .timeout(std::time::Duration::from_secs(600))
             .build()?;
 
-        let mut resp = client.get(url).send().await
+        let mut resp = client
+            .get(url)
+            .send()
+            .await
             .with_context(|| format!("请求失败: {url}"))?
             .error_for_status()
             .with_context(|| format!("HTTP 错误: {url}"))?;
 
         let total = resp.content_length();
         let tmp = dest.with_extension("tmp");
-        let mut file = tokio::fs::File::create(&tmp).await
+        let mut file = tokio::fs::File::create(&tmp)
+            .await
             .context("创建临时文件失败")?;
         let mut downloaded: u64 = 0;
 
@@ -216,7 +250,7 @@ impl ModelHub {
             file.write_all(&chunk).await.context("写入失败")?;
             downloaded += chunk.len() as u64;
             send(DownloadProgress {
-                stage:      DownloadStage::Downloading,
+                stage: DownloadStage::Downloading,
                 downloaded,
                 total,
             });
@@ -226,7 +260,11 @@ impl ModelHub {
         drop(file);
         tokio::fs::rename(&tmp, &dest).await.context("重命名失败")?;
 
-        send(DownloadProgress { stage: DownloadStage::Done, downloaded, total });
+        send(DownloadProgress {
+            stage: DownloadStage::Done,
+            downloaded,
+            total,
+        });
         Ok(dest)
     }
 }

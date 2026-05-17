@@ -80,9 +80,10 @@ export function ConfigProvider({ children }: { children: ReactNode }) {
     setModelDl(prev => ({ ...prev, [modelId]: { active: true, pct: 0, stage: 'downloading' } }));
     try {
       await api.downloadModel(modelId);
+      setModelDl(prev => ({ ...prev, [modelId]: { active: false, pct: 100, stage: 'done' } }));
       toast.success('模型下载完成');
     } catch (e) {
-      setModelDl(prev => ({ ...prev, [modelId]: { active: false, pct: 0 } }));
+      setModelDl(prev => ({ ...prev, [modelId]: { active: false, pct: 0, stage: 'failed' } }));
       const msg = String(e);
       if (!msg.includes('已取消')) toast.error(`下载失败: ${e}`);
     }
@@ -91,7 +92,7 @@ export function ConfigProvider({ children }: { children: ReactNode }) {
   const cancelModel = async (modelId: string) => {
     try {
       await api.cancelModelDownload(modelId);
-      setModelDl(prev => ({ ...prev, [modelId]: { active: false, pct: 0 } }));
+      setModelDl(prev => ({ ...prev, [modelId]: { active: false, pct: 0, stage: 'cancelled' } }));
     } catch (e) {
       console.error('cancel model failed:', e);
     }

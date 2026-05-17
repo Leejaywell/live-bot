@@ -39,6 +39,7 @@ interface ChatMessage {
   role: 'user' | 'assistant' | 'error';
   content: string;
   botName?: string;
+  botColor?: string;
   providerName?: string;
 }
 
@@ -185,14 +186,27 @@ export function AI() {
   };
 
   const handleSendMessage = async () => {
-    if (!inputMessage.trim() || isSending || !firstEnabled) return;
-    const userMsg = inputMessage;
-    setTestMessages(prev => [...prev, { role: 'user', content: userMsg }]);
+    if (!inputMessage.trim() || isSending || !config) return;
+    const enabledBots = (config.AiBots ?? []).filter(b => b.Enabled);
+    if (enabledBots.length === 0) return;
+
+    // 消息中已包含机器人昵称（@或模糊匹配）则原样发送；都不包含则默认发给第一个
+    const mentionedBot = enabledBots.some(b => inputMessage.includes(b.Nickname));
+    const prompt = mentionedBot ? inputMessage : `@${enabledBots[0].Nickname} ${inputMessage}`;
+
+    setTestMessages(prev => [...prev, { role: 'user', content: inputMessage }]);
     setInputMessage('');
     setIsSending(true);
     try {
-      const reply = await invoke<string>('send_ai_message', { prompt: userMsg });
-      setTestMessages(prev => [...prev, { role: 'assistant', content: reply, botName: firstEnabled.Nickname }]);
+      const raw = await invoke<string>('send_ai_message', { prompt });
+      // 后端返回格式: [BotName]reply content，解析出机器人名和内容
+      const m = raw.match(/^\[(.+?)\](.*)/s);
+      const botName = m ? m[1] : '';
+      const content = m ? m[2] : raw;
+      const bot = botName ? (config.AiBots ?? []).find(b => b.Nickname === botName) : undefined;
+      const botIdx = bot ? (config.AiBots ?? []).findIndex(b => b.Id === bot.Id) : -1;
+      const botColor = botIdx >= 0 ? BOT_COLORS[botIdx % BOT_COLORS.length] : undefined;
+      setTestMessages(prev => [...prev, { role: 'assistant', content, botName, botColor }]);
     } catch (err) {
       setTestMessages(prev => [...prev, { role: 'error', content: String(err) }]);
     } finally {
@@ -297,7 +311,7 @@ export function AI() {
                 </button>
               );
             })()}
-            {firstEnabled && <span className="text-[11px] font-bold text-gray-400">默认使用 <span className="text-gray-600">{firstEnabled.Nickname}</span>，可用 @名字 切换</span>}
+            {firstEnabled && <span className="text-[11px] font-bold text-gray-400">包含昵称自动路由，未指定默认 <span className="text-gray-600">{firstEnabled.Nickname}</span></span>}
           </div>
           <div className="flex items-center gap-2">
             <button onClick={() => { setPromptDraft(config?.AiAssistantPrompt ?? ''); setSettingsOpen(true); }} className="w-8 h-8 rounded-full hover:bg-white/60 flex items-center justify-center transition-colors" title="AI 助手提示词">
@@ -329,7 +343,12 @@ export function AI() {
                       {copiedIdx === i ? <Check className="w-3 h-3 text-green-500" /> : <Copy className="w-3 h-3 text-gray-400" />}
                     </button>
                   )}
-                  {msg.botName && <div className="text-[10px] font-black uppercase mb-1 opacity-60">{msg.botName}</div>}
+                  {msg.botName && (
+                    <div className="flex items-center gap-1.5 mb-1.5">
+                      <span className="w-2 h-2 rounded-full shrink-0" style={{ background: msg.botColor ?? '#888' }} />
+                      <span className="text-[11px] font-bold" style={{ color: msg.botColor ?? '#666' }}>{msg.botName}</span>
+                    </div>
+                  )}
                   {msg.content}
                 </div>
               </div>
@@ -347,7 +366,7 @@ export function AI() {
         </div>
       </GlassCard>
 
-      <VoicePicker open={voiceOpen} onClose={() => setVoiceOpen(false)} providers={config ? availableProviders((config.AiProviders ?? []).filter(p => p.ProviderType === 'tts' && p.Enabled).map(p => p.Name)) : ['edge_tts']} currentVoice={ttsVoice} onSelect={v => { setTtsVoice(v); setConfig({ ...config!, TtsVoice: v }); api.saveConfig({ ...config!, TtsVoice: v }); }} />
+      <VoicePicker open={voiceOpen} onClose={() => setVoiceOpen(false)} providers={(() => { const list = (config?.AiProviders ?? []).filter(p => p.ProviderType === 'tts' && p.Enabled); return config ? availableProviders(list.map(p => p.Name)) : ['edge_tts' as const]; })()} currentVoice={ttsVoice} onSelect={v => { setTtsVoice(v); setConfig({ ...config!, TtsVoice: v }); api.saveConfig({ ...config!, TtsVoice: v }); }} />
 
       {editingBot && (
         <BotEditModal

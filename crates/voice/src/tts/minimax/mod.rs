@@ -16,6 +16,8 @@ pub mod ws_client;
 pub use config::MiniMaxConfig;
 pub use http_client::{MiniMaxHttpOptions, MiniMaxHttpTtsClient};
 pub use lang::normalize_minimax_lang;
-pub use types::{AudioChunk, AudioSetting, MiniMaxError, PronunciationDict, TimbreWeight, VoiceSetting};
+pub use types::{
+    AudioChunk, AudioSetting, MiniMaxError, PronunciationDict, TimbreWeight, VoiceSetting,
+};
 pub use voice_library::{VoiceLibrary, VoiceLibraryConfig, global_voice_library};
 pub use ws_client::MiniMaxWsTtsClient;

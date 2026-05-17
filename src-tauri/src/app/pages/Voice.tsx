@@ -52,6 +52,8 @@ interface SubLine {
   fresh: boolean;
 }
 
+type LogMicState = 'idle' | 'speaking' | 'settled';
+
 // ── 工具 ───────────────────────────────────────────────────────────────────────
 
 function parseLog(text: string): SubLine | null {
@@ -83,6 +85,37 @@ function parseLog(text: string): SubLine | null {
     // 其他带中括号的消息尝试作为 AI 回复（如直连 logs）
     return { id: `${Date.now()}-${Math.random()}`, role: 'ai', text: content, fresh: true };
   }
+  return null;
+}
+
+function classifyMicLog(text: string): LogMicState {
+  if (
+    text.includes('[VAD] 开始录音') ||
+    text.includes('[VAD] 检测到语音段')
+  ) {
+    return 'speaking';
+  }
+  if (
+    text.includes('[VAD] 话轮结束') ||
+    text.includes('[ASR] 识别结果:') ||
+    text.includes('[ASR] 识别失败:') ||
+    text.includes('[ASR→AI]')
+  ) {
+    return 'settled';
+  }
+  return 'idle';
+}
+
+function describeVoiceLog(text: string): string | null {
+  if (text.includes('麦克风已就绪')) return '麦克风已开启，等待说话';
+  if (text.includes('[VAD] 开始录音') || text.includes('[VAD] 检测到语音段')) return '检测到你正在说话';
+  if (text.includes('[VAD] 话轮结束')) return '说话结束，正在识别';
+  if (text.includes('[ASR] 识别结果:')) return '识别完成';
+  if (text.includes('[ASR→AI]')) return 'AI 已收到语音内容';
+  if (text.includes('[ASR] 识别失败:')) return text.replace('[ASR] ', '');
+  if (text.includes('ASR 服务不可达')) return text;
+  if (text.includes('麦克风启动失败')) return text;
+  if (text.includes('VAD 初始化失败')) return text;
   return null;
 }
 
@@ -172,11 +205,13 @@ export function Voice() {
   const [asrId,      setAsrId]      = useState('');
   const [ttsId,      setTtsId]      = useState('');
   const [ttsVoice,   setTtsVoice]   = useState('zh-CN-XiaoxiaoNeural');
+  const [ttsSpeed,   setTtsSpeed]   = useState(1.0);
   const [voiceOpen,  setVoiceOpen]  = useState(false);
   const [ttsEnabled, setTtsEnabled] = useState(false);   // TTS 默认关闭
-  const [asrEnabled, setAsrEnabled] = useState(false);   // 等配置加载后再设
 
   const [micState,    setMicState]    = useState<MicState>('off');
+  const [voiceStatus, setVoiceStatus] = useState('麦克风未开启');
+  const [voiceDetail, setVoiceDetail] = useState('等待语音链路事件');
   const [subtitles,   setSubtitles]   = useState<SubLine[]>([]);
   const [latency,     setLatency]     = useState(0);
   const [settingsOpen, setSettingsOpen] = useState(false);
@@ -187,6 +222,8 @@ export function Voice() {
 
   const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const subRef    = useRef<HTMLDivElement>(null);
+  const micVisualTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const monitorRestarting = useRef(false);
 
   // ── 加载 ────────────────────────────────────────────────────────────────────
 
@@ -210,8 +247,11 @@ export function Voice() {
       if (asr) setAsrId(asr.Id);
       if (tts) setTtsId(tts.Id);
       if (cfg.TtsVoice) setTtsVoice(cfg.TtsVoice);
+      if (cfg.TtsSpeed) setTtsSpeed(cfg.TtsSpeed);
       setTtsEnabled(false); // always start off; runtime-only
-      if (asr) setAsrEnabled(true);
+      setMicState(cfg.VadEnabled ? 'listening' : 'off');
+      setVoiceStatus(cfg.VadEnabled ? '麦克风已开启，等待说话' : '麦克风未开启');
+      setVoiceDetail(cfg.VadEnabled ? '等待语音链路事件' : '麦克风关闭中');
     }).catch(console.error).finally(() => setLoading(false));
   }, []);
 
@@ -235,41 +275,80 @@ export function Voice() {
     }
   }, [settingsOpen]);
 
-  const onLlmChange  = (id: string) => { setLlmId(id);  scheduleSave({ ActiveProviderId: id }); };
-  const onAsrChange  = (id: string) => { setAsrId(id); scheduleSave({ ActiveAsrProviderId: id }); };
-  const onTtsChange  = (id: string) => { setTtsId(id); scheduleSave({ ActiveTtsProviderId: id }); };
-  const onTtsToggle  = (v: boolean) => { setTtsEnabled(v); };
-  const onVoiceChange  = (v: string) => { setTtsVoice(v); scheduleSave({ TtsVoice: v }); };
-  const onAsrToggle  = (v: boolean) => {
-    setAsrEnabled(v);
-    // 关闭 ASR 时同时关闭麦克风
-    if (!v && micState !== 'off') { setMicState('off'); setLatency(0); }
-    scheduleSave({ VadEnabled: v });
-  };
+  const onLlmChange    = (id: string) => { setLlmId(id);  scheduleSave({ ActiveProviderId: id }); };
+  const onAsrChange    = (id: string) => { setAsrId(id); scheduleSave({ ActiveAsrProviderId: id }); };
+  const onTtsChange    = (id: string) => { setTtsId(id); scheduleSave({ ActiveTtsProviderId: id }); };
+  const onTtsToggle    = (v: boolean) => { setTtsEnabled(v); };
+  const onVoiceChange  = (v: string)  => { setTtsVoice(v); scheduleSave({ TtsVoice: v }); };
+  const onSpeedChange  = (v: number)  => { setTtsSpeed(v); scheduleSave({ TtsSpeed: v }); };
 
   // ── 监控同步 ────────────────────────────────────────────────────────────────
 
   useEffect(() => {
     let unl: (() => void) | undefined;
+    api.getMonitorStatus().then((running) => {
+      if (running && config?.VadEnabled) {
+        setMicState('listening');
+        setVoiceStatus('麦克风已开启，等待说话');
+        setVoiceDetail('等待语音链路事件');
+      }
+    }).catch(() => {});
     api.onMonitorStatus(s => {
-      if (s !== '运行中') { setMicState('off'); setLatency(0); }
+      if (s === '运行中') {
+        monitorRestarting.current = false;
+        if (config?.VadEnabled) {
+          setMicState('listening');
+          setVoiceStatus('麦克风已开启，等待说话');
+          setVoiceDetail('监听线程已运行，等待语音链路事件');
+        }
+        return;
+      }
+      if (!monitorRestarting.current) {
+        setMicState('off');
+        setVoiceStatus('麦克风未开启');
+        setVoiceDetail('监听线程已停止');
+        setLatency(0);
+      }
     }).then(f => { unl = f; });
     return () => unl?.();
-  }, []);
+  }, [config?.VadEnabled]);
 
   // ── 实时字幕 ────────────────────────────────────────────────────────────────
 
   useEffect(() => {
-    let unl: (() => void) | undefined;
-    api.onMonitorLog(text => {
+    const applyLog = (text: string) => {
+      setVoiceDetail(text);
+      const micLogState = classifyMicLog(text);
+      const statusText = describeVoiceLog(text);
+      if (statusText) setVoiceStatus(statusText);
+      if (micLogState === 'speaking') {
+        setMicState('speaking');
+        if (micVisualTimer.current) clearTimeout(micVisualTimer.current);
+        micVisualTimer.current = setTimeout(() => {
+          setMicState(prev => (prev === 'off' ? prev : 'listening'));
+        }, 1600);
+      } else if (micLogState === 'settled') {
+        if (micVisualTimer.current) clearTimeout(micVisualTimer.current);
+        setMicState(prev => (prev === 'off' ? prev : 'listening'));
+      }
+
       const sub = parseLog(text);
       if (!sub) return;
       setSubtitles(prev => [...prev, sub].slice(-60));
       setTimeout(() => {
         setSubtitles(prev => prev.map(s => s.id === sub.id ? { ...s, fresh: false } : s));
       }, 2200);
-    }).then(f => { unl = f; });
-    return () => unl?.();
+    };
+
+    let unl: (() => void) | undefined;
+    let unlBatch: (() => void) | undefined;
+    api.onMonitorLog(applyLog).then(f => { unl = f; });
+    api.onMonitorLogs(lines => { for (const line of lines) applyLog(line); }).then(f => { unlBatch = f; });
+    return () => {
+      unl?.();
+      unlBatch?.();
+      if (micVisualTimer.current) clearTimeout(micVisualTimer.current);
+    };
   }, []);
 
   useEffect(() => {
@@ -288,66 +367,77 @@ export function Voice() {
 
   // ── 麦克风 ──────────────────────────────────────────────────────────────────
 
-  const hasAsrConfig  = asrList(config).length > 0 && !!asrId && asrEnabled;
+  const currentAsrProvider = findAsrProvider(config, asrId);
+  const usingBuiltInSenseVoice = currentAsrProvider?.Model === 'sensevoice' || (!currentAsrProvider && !(config?.AsrUrl));
+  const usingExternalAsrService = !usingBuiltInSenseVoice && (!!currentAsrProvider?.APIUrl || !!config?.AsrUrl);
+  const hasAsrProvider = asrList(config).length > 0 && !!asrId;
+  const hasAsrConfig  = usingBuiltInSenseVoice ? hasAsrProvider : usingExternalAsrService;
   const vadModelOk    = modelStatus?.models['silero-vad'] ?? false;
-  // ASR 可用条件：有外部 ASR URL（provider 或旧版配置）或本地模型完整
-  const hasAnyAsrUrl  = !!(config?.AsrUrl) || asrList(config).some(p => p.Id === asrId && !!p.APIUrl);
-  const asrModelOk    = hasAnyAsrUrl || (modelStatus?.models['sensevoice'] ?? false);
+  const asrModelOk    = usingExternalAsrService || (modelStatus?.models['sensevoice'] ?? false);
   const micEnabled    = hasAsrConfig && vadModelOk && asrModelOk;
 
   // 麦克风不可用的原因
   const micBlockReasons: string[] = [];
   if (!vadModelOk) micBlockReasons.push('缺少语音检测模型，请先下载模型文件');
-  if (hasAsrConfig && !asrModelOk) micBlockReasons.push('缺少语音识别模型且未配置外部服务地址');
+  if (usingBuiltInSenseVoice && !asrModelOk) micBlockReasons.push('缺少 SenseVoice 本地模型，请先下载后再开启');
+  if (!usingBuiltInSenseVoice && hasAsrConfig) micBlockReasons.push('当前 ASR 依赖外部 WebSocket 服务，请确认对应服务已启动');
   if (!hasAsrConfig) micBlockReasons.push('请先在「模型服务」中添加并启用语音识别服务');
 
   const handleMicClick = async () => {
+    if (!config) {
+      setVoiceDetail('配置尚未加载，无法开启麦克风');
+      return;
+    }
+    if (!hasAsrConfig) {
+      setVoiceDetail('麦克风未启动：未配置 ASR 服务');
+      toast.error('请先在「模型服务」中配置语音识别服务');
+      return;
+    }
     if (!vadModelOk) {
+      setVoiceDetail('麦克风未启动：缺少 VAD 语音检测模型');
       toast.error('缺少语音检测模型', { description: '请先在「模型服务」页下载所需模型文件' });
       return;
     }
     if (!asrModelOk) {
-      toast.error('缺少语音识别模型', {
-        description: '请在「模型服务」中添加语音识别服务，或下载本地 SenseVoice 模型',
+      setVoiceDetail('麦克风未启动：缺少 ASR 模型或外部 ASR 服务不可用');
+      toast.error('缺少语音识别模型', { description: '请下载本地 SenseVoice 模型，或确认外部 ASR 服务已启动' });
+      return;
+    }
+    const nextVad = !(config.VadEnabled);
+    const updated = { ...config, VadEnabled: nextVad };
+    setConfig(updated);
+    monitorRestarting.current = true;
+    setVoiceStatus(nextVad ? '正在开启麦克风...' : '正在关闭麦克风...');
+    setVoiceDetail(nextVad ? '正在重启监听并申请麦克风链路' : '正在关闭监听和麦克风链路');
+    try {
+      console.info('[Voice] mic toggle requested', {
+        nextVad,
+        asrId,
+        usingBuiltInSenseVoice,
+        hasAsrConfig,
+        vadModelOk,
+        asrModelOk,
       });
-      return;
-    }
-    if (asrList(config).length === 0) {
-      toast.error('请先在「模型服务」中添加语音识别服务');
-      return;
-    }
-    if (!asrEnabled) {
-      toast.error('请先开启语音识别开关');
-      return;
-    }
-    if (!asrId) {
-      toast.error('请选择语音识别服务');
-      return;
-    }
-    if (micState === 'off') {
-      // 开启：同步保存 vad_enabled=true，再重启 monitor 让 VAD 生效
-      const updated = { ...config!, VadEnabled: true };
-      setConfig(updated);
-      try {
-        await api.saveConfig(updated);
-        await api.stopMonitor().catch(() => {});
-        await api.startMonitor();
-        setMicState('listening');
-        setLatency(0);
-        toast.success('语音识别已开启');
-      } catch (e) {
-        toast.error(`开启失败: ${e}`);
-      }
-    } else {
-      // 关闭：同步保存 vad_enabled=false，重启 monitor 恢复普通模式
-      const updated = { ...config!, VadEnabled: false };
-      setConfig(updated);
+      setVoiceDetail('正在保存麦克风配置...');
       await api.saveConfig(updated);
+      setVoiceDetail('正在停止旧监听线程...');
       await api.stopMonitor().catch(() => {});
-      await api.startMonitor().catch(() => {});
-      setMicState('off');
-      setLatency(0);
-      toast.success('语音识别已关闭');
+      if (nextVad) {
+        setVoiceDetail('正在启动监听线程...');
+        await api.startMonitor();
+      }
+      setMicState(nextVad ? 'listening' : 'off');
+      setVoiceStatus(nextVad ? '麦克风已开启，等待说话' : '麦克风未开启');
+      setVoiceDetail(nextVad ? '监听线程已启动，等待语音链路事件' : '麦克风关闭完成');
+      monitorRestarting.current = false;
+      toast.success(nextVad ? '麦克风已开启' : '麦克风已关闭');
+    } catch (e) {
+      console.error('[Voice] mic toggle failed', e);
+      monitorRestarting.current = false;
+      setMicState(config.VadEnabled ? 'listening' : 'off');
+      setVoiceStatus(config.VadEnabled ? '麦克风已开启，等待说话' : '麦克风未开启');
+      setVoiceDetail(`操作失败: ${String(e)}`);
+      toast.error(`操作失败: ${e}`);
     }
   };
 
@@ -367,15 +457,30 @@ export function Voice() {
   return (
     <>
       <style>{STYLES}</style>
-      <div className="h-full flex flex-col gap-4 p-5 overflow-hidden">
+	      <div className="h-full flex flex-col gap-4 p-5 overflow-hidden">
 
-        {/* ══ 上栏：服务配置 + 麦克风 ════════════════════════════════════════ */}
-        <div className="flex items-center justify-between shrink-0 bg-white/40 dark:bg-white/5 border border-white/60 dark:border-white/10 rounded-[24px] px-6 py-3 shadow-xl">
-          <div className="flex items-center gap-6">
+        {currentAsrProvider && currentAsrProvider.Model !== 'sensevoice' && (
+          <div className="flex items-center gap-2 px-3.5 py-2.5 rounded-2xl bg-amber-500/8 border border-amber-500/20 text-amber-700 dark:text-amber-300 shrink-0">
+            <AlertCircle className="w-3.5 h-3.5 shrink-0" />
+            <span className="text-[11px] font-bold">当前语音转文字是外部服务接入模式。仅在这里选择 FunASR / Faster-Whisper 不会自动启动服务，需要对应的 WebSocket 端点已经可用。</span>
+          </div>
+        )}
+
+        <div className="px-4 py-3 rounded-2xl bg-black/5 dark:bg-white/5 border border-black/5 dark:border-white/10 shrink-0">
+          <div className="flex items-center gap-2">
+            <div className={cn("w-2.5 h-2.5 rounded-full shrink-0", micState === 'speaking' ? 'bg-emerald-500' : micState === 'listening' ? 'bg-sky-500' : 'bg-gray-300')} />
+            <span className="text-[12px] font-bold text-gray-700 dark:text-gray-200">{voiceStatus}</span>
+          </div>
+          <p className="mt-1.5 text-[11px] text-gray-500 dark:text-gray-400 break-all">{voiceDetail}</p>
+        </div>
+
+	        {/* ══ 上栏：服务配置 + 麦克风 ════════════════════════════════════════ */}
+	        <div className="flex items-center justify-between shrink-0 bg-white/40 dark:bg-white/5 border border-white/60 dark:border-white/10 rounded-[24px] px-6 py-3 shadow-xl">
+	          <div className="flex items-center gap-6">
 
             {/* LLM */}
             <div className="flex items-center gap-3">
-              <span className="text-[11px] font-black text-gray-400 uppercase tracking-widest" title="语言模型">LLM</span>
+              <span className="text-[11px] font-black text-gray-400 tracking-widest" title="语言模型">语言模型</span>
               <GlassSelect value={llmId} onChange={onLlmChange} options={llmOpts} emptyHint="去配置" />
             </div>
 
@@ -383,16 +488,13 @@ export function Voice() {
 
             {/* ASR */}
             <div className="flex items-center gap-3">
-              <span className="text-[11px] font-black text-gray-400 uppercase tracking-widest" title="语音识别">ASR</span>
+              <span className="text-[11px] font-black text-gray-400 tracking-widest" title="语音转文字（基础能力）">语音转文字</span>
               {asrOpts.length === 0 ? (
                 <Link to="/models" className="flex items-center gap-1 h-[30px] px-2.5 rounded-xl text-[10px] text-amber-600 dark:text-amber-400 bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-700/40 whitespace-nowrap">
                   <Cpu className="w-3 h-3 shrink-0" />去配置
                 </Link>
               ) : (
-                <>
-                  <Toggle checked={asrEnabled} onChange={onAsrToggle} />
-                  <GlassSelect value={asrId} onChange={onAsrChange} options={asrOpts} disabled={!asrEnabled} />
-                </>
+                <GlassSelect value={asrId} onChange={onAsrChange} options={asrOpts} />
               )}
             </div>
 
@@ -400,7 +502,7 @@ export function Voice() {
 
             {/* TTS */}
             <div className="flex items-center gap-3">
-              <span className="text-[11px] font-black text-gray-400 uppercase tracking-widest" title="语音合成">TTS</span>
+              <span className="text-[11px] font-black text-gray-400 tracking-widest" title="语音播报（可选）">语音播报</span>
               {ttsOpts.length === 0 ? (
                 <Link to="/models" className="flex items-center gap-1 h-[30px] px-2.5 rounded-xl text-[10px] text-amber-600 dark:text-amber-400 bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-700/40 whitespace-nowrap">
                   <Cpu className="w-3 h-3 shrink-0" />去配置
@@ -408,18 +510,32 @@ export function Voice() {
               ) : (
                 <>
                   <Toggle checked={ttsEnabled} onChange={onTtsToggle} />
+                  {ttsEnabled && (() => {
+                    const selTts = config?.AiProviders.find(p => p.Id === ttsId);
+                    if (selTts?.Name.includes('本地')) return (
+                      <span className="text-[10px] font-bold text-gray-400 whitespace-nowrap">{selTts.Name}</span>
+                    );
+                    return (
+                      <button onClick={() => setVoiceOpen(true)}
+                        className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-full bg-white/80 dark:bg-white/10 border border-white/40 dark:border-white/20 text-[11px] font-bold text-gray-600 dark:text-gray-200 hover:bg-white dark:hover:bg-white/20 transition-colors">
+                        <Volume2 className="w-3.5 h-3.5 text-gray-400 shrink-0" />
+                        {(() => {
+                          const v = (['edge_tts','minimax_tts','volcano_engine'] as TtsProvider[]).reduce<TtsVoice | undefined>((found, pr) => found ?? findVoice(pr, ttsVoice), undefined);
+                          return v ? v.name : (ttsVoice || '选声音');
+                        })()}
+                        <ChevronDown className="w-3 h-3 opacity-50" />
+                      </button>
+                    );
+                  })()}
+                  {/* 语速滑块：TTS 启用后显示 */}
                   {ttsEnabled && (
-                    <button
-                      onClick={() => setVoiceOpen(true)}
-                      className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-full bg-white/80 dark:bg-white/10 border border-white/40 dark:border-white/20 text-[11px] font-bold text-gray-600 dark:text-gray-200 hover:bg-white dark:hover:bg-white/20 transition-colors"
-                    >
-                      <Volume2 className="w-3.5 h-3.5 text-gray-400 shrink-0" />
-                      {(() => {
-                        const v = (['edge_tts','minimax_tts','volcano_engine'] as TtsProvider[]).reduce<TtsVoice | undefined>((found, p) => found ?? findVoice(p, ttsVoice), undefined);
-                        return v ? v.name : (ttsVoice || '选声音');
-                      })()}
-                      <ChevronDown className="w-3 h-3 opacity-50" />
-                    </button>
+                    <div className="flex items-center gap-2 ml-1">
+                      <span className="text-[10px] text-gray-400 whitespace-nowrap">语速</span>
+                      <input type="range" min={0.5} max={2.0} step={0.1} value={ttsSpeed}
+                        onChange={e => onSpeedChange(Number(e.target.value))}
+                        className="w-20 cursor-pointer" style={{ accentColor: 'var(--primary-color)' }} />
+                      <span className="text-[10px] font-mono text-gray-500 w-7 text-right">{ttsSpeed.toFixed(1)}×</span>
+                    </div>
                   )}
                 </>
               )}
@@ -427,20 +543,21 @@ export function Voice() {
           </div>
 
           <div className="flex items-center gap-4">
-            <button onClick={() => setSettingsOpen(true)} className="w-9 h-9 rounded-full hover:bg-black/5 dark:hover:bg-white/5 flex items-center justify-center text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 transition-all"><SettingsIcon className="w-4 h-4" /></button>
-            {/* Mic button with pulsing rings when active */}
-            <div className="relative">
+	            <button onClick={() => setSettingsOpen(true)} className="w-9 h-9 rounded-full hover:bg-black/5 dark:hover:bg-white/5 flex items-center justify-center text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 transition-all"><SettingsIcon className="w-4 h-4" /></button>
+	            {/* Mic button with pulsing rings when active */}
+	            <div className="relative">
               {micActive && (
                 <>
                   <div className="absolute inset-0 rounded-full border-2 border-[var(--primary-color)]/50 animate-mic-ring" />
                   <div className="absolute inset-0 rounded-full border-2 border-[var(--primary-color)]/30 animate-mic-ring" style={{ animationDelay: '0.7s' }} />
                 </>
               )}
-              <button
-                onClick={handleMicClick}
-                className={cn(
-                  "relative w-12 h-12 rounded-full flex items-center justify-center transition-all shadow-lg active:scale-95",
-                  micActive
+	              <button
+	                onClick={handleMicClick}
+                  title={hasAsrConfig ? (micActive ? '关闭麦克风' : '开启麦克风') : '请先配置语音识别服务'}
+	                className={cn(
+	                  "relative w-12 h-12 rounded-full flex items-center justify-center transition-all shadow-lg active:scale-95",
+	                  micActive
                     ? "bg-white text-[var(--primary-color)]"
                     : "bg-black/5 dark:bg-white/10 text-gray-400"
                 )}
@@ -455,9 +572,10 @@ export function Voice() {
         <GlassCard className="flex-1 flex flex-col overflow-hidden border-white/60 dark:border-white/10 bg-white/60 dark:bg-black/20 shadow-2xl">
           {/* header */}
           <div className="flex items-center justify-between px-5 py-3 border-b border-black/5 dark:border-white/8 bg-white/40 dark:bg-black/10 shrink-0">
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-2 min-w-0">
               <div className={`w-2 h-2 rounded-full transition-colors ${micActive ? 'bg-[var(--primary-color)] animate-pulse' : 'bg-gray-300'}`} />
-              <span className="text-[12px] font-bold text-gray-600 dark:text-gray-300">实时字幕</span>
+              <span className="text-[12px] font-bold text-gray-600 dark:text-gray-300 shrink-0">实时字幕</span>
+              <span className="text-[11px] text-gray-400 truncate">{voiceStatus}</span>
               {micActive && latency > 0 && (
                 <span className="text-[10px] text-gray-400 ml-2">{latency}ms</span>
               )}
@@ -473,6 +591,7 @@ export function Voice() {
               <div className="h-full flex flex-col items-center justify-center gap-3 opacity-25 select-none">
                 <MessageSquareText className="w-16 h-16 text-gray-400" />
                 <p className="text-[13px] font-bold tracking-wide text-gray-400">开启麦克风后，实时字幕将显示在此处</p>
+                <p className="text-[11px] text-gray-400">{voiceStatus}</p>
               </div>
             ) : (
               subtitles.map(sub => (
@@ -500,7 +619,10 @@ export function Voice() {
       <VoicePicker
         open={voiceOpen}
         onClose={() => setVoiceOpen(false)}
-        providers={config ? availableProviders((config.AiProviders ?? []).filter(p => p.ProviderType === 'tts').map(p => p.Name)) : ['edge_tts']}
+        providers={(() => {
+          const list = (config?.AiProviders ?? []).filter(p => p.ProviderType === 'tts' && p.Enabled);
+          return config ? availableProviders(list.map(p => p.Name)) : ['edge_tts' as const];
+        })()}
         currentVoice={ttsVoice}
         onSelect={v => { setTtsVoice(v); onVoiceChange(v); }}
       />
@@ -583,4 +705,7 @@ function asrList(config: AppConfig | null) {
 }
 function ttsList(config: AppConfig | null) {
   return (config?.AiProviders ?? []).filter(p => p.ProviderType === 'tts' && p.Enabled);
+}
+function findAsrProvider(config: AppConfig | null, id: string) {
+  return (config?.AiProviders ?? []).find(p => p.ProviderType === 'asr' && p.Id === id);
 }

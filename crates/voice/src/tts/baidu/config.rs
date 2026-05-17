@@ -90,7 +90,8 @@ impl CachedToken {
 }
 
 /// 全局 Token 缓存
-static TOKEN_CACHE: std::sync::OnceLock<Arc<RwLock<Option<CachedToken>>>> = std::sync::OnceLock::new();
+static TOKEN_CACHE: std::sync::OnceLock<Arc<RwLock<Option<CachedToken>>>> =
+    std::sync::OnceLock::new();
 
 fn get_token_cache() -> &'static Arc<RwLock<Option<CachedToken>>> {
     TOKEN_CACHE.get_or_init(|| Arc::new(RwLock::new(None)))
@@ -117,13 +118,21 @@ impl BaiduTtsConfig {
     /// 从环境变量构建配置（仅支持 API Key + Secret Key）
     pub fn from_env() -> Result<Self> {
         let api_key = env::var("BAIDU_TTS_API_KEY").context("缺少环境变量 BAIDU_TTS_API_KEY")?;
-        let secret_key = env::var("BAIDU_TTS_SECRET_KEY").context("缺少环境变量 BAIDU_TTS_SECRET_KEY")?;
+        let secret_key =
+            env::var("BAIDU_TTS_SECRET_KEY").context("缺少环境变量 BAIDU_TTS_SECRET_KEY")?;
 
         // per 可由每次请求覆盖；因此这里不强制要求设置 BAIDU_TTS_PER
         // 若最终未提供 per（env 或 request），会在实际发起 synthesize 时返回错误。
         let per = env::var("BAIDU_TTS_PER").ok();
 
-        Ok(Self { api_key, secret_key, per, spd: DEFAULT_SPD, pit: DEFAULT_PIT, vol: DEFAULT_VOL })
+        Ok(Self {
+            api_key,
+            secret_key,
+            per,
+            spd: DEFAULT_SPD,
+            pit: DEFAULT_PIT,
+            vol: DEFAULT_VOL,
+        })
     }
 
     /// 设置百度侧 prosody 参数（0-15），由上层（如 `main.rs` / 运行时配置）注入。
@@ -195,12 +204,21 @@ impl BaiduTtsConfig {
         if !status.is_success() {
             // 尝试解析错误响应
             if let Ok(err) = serde_json::from_str::<OAuthError>(&body) {
-                return Err(anyhow!("百度 OAuth 错误: {} - {}", err.error, err.error_description));
+                return Err(anyhow!(
+                    "百度 OAuth 错误: {} - {}",
+                    err.error,
+                    err.error_description
+                ));
             }
-            return Err(anyhow!("百度 OAuth 请求失败: status={}, body={}", status, body));
+            return Err(anyhow!(
+                "百度 OAuth 请求失败: status={}, body={}",
+                status,
+                body
+            ));
         }
 
-        let oauth_resp: OAuthResponse = serde_json::from_str(&body).context("解析 OAuth 响应失败")?;
+        let oauth_resp: OAuthResponse =
+            serde_json::from_str(&body).context("解析 OAuth 响应失败")?;
 
         let expires_at = Instant::now() + Duration::from_secs(oauth_resp.expires_in);
         let access_token = oauth_resp.access_token.clone();
@@ -208,10 +226,16 @@ impl BaiduTtsConfig {
         // 更新缓存
         {
             let mut cached = cache.write().await;
-            *cached = Some(CachedToken { access_token: access_token.clone(), expires_at });
+            *cached = Some(CachedToken {
+                access_token: access_token.clone(),
+                expires_at,
+            });
         }
 
-        info!("百度 TTS: Access Token 获取成功，有效期 {} 秒", oauth_resp.expires_in);
+        info!(
+            "百度 TTS: Access Token 获取成功，有效期 {} 秒",
+            oauth_resp.expires_in
+        );
 
         Ok(access_token)
     }
@@ -222,7 +246,10 @@ impl BaiduTtsConfig {
     /// 请先调用 `get_access_token()` 获取 token
     /// 构建带 per 的 WebSocket URL（百度新模块：要求显式提供 per）
     pub fn build_ws_url_with_per(&self, access_token: &str, per: &str) -> String {
-        format!("{}?access_token={}&per={}", DEFAULT_ENDPOINT, access_token, per)
+        format!(
+            "{}?access_token={}&per={}",
+            DEFAULT_ENDPOINT, access_token, per
+        )
     }
 
     /// 构建 system.start 请求的 payload

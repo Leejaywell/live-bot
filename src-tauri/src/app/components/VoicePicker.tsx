@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import { Volume2, X, Mic } from 'lucide-react';
-import { TtsProvider, TtsVoice, getLanguages, filterVoices, PROVIDER_META } from '../lib/voices';
+import { TtsProvider, TtsVoice, getLanguages, getVoices, filterVoices, PROVIDER_META } from '../lib/voices';
 import { cn } from '../lib/utils';
 import { MODAL_W } from './Modal';
 
@@ -23,8 +23,14 @@ export function VoicePicker({ open, onClose, providers, currentVoice, onSelect }
   const ref = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    if (open) { setRendered(true); setClosing(false); }
-    else if (rendered) {
+    if (open) {
+      setRendered(true); setClosing(false);
+      // 根据当前声音恢复到对应服务商
+      for (const p of providers) {
+        const v = getVoices(p).find(voice => voice.id === currentVoice);
+        if (v) { setProvider(p); break; }
+      }
+    } else if (rendered) {
       setClosing(true);
       const t = setTimeout(() => { setRendered(false); setClosing(false); }, 220);
       return () => clearTimeout(t);
@@ -67,16 +73,14 @@ export function VoicePicker({ open, onClose, providers, currentVoice, onSelect }
 
         {/* Filters */}
         <div className="flex items-center gap-2 px-4 py-2.5 border-b border-white/10 bg-white/20 dark:bg-white/5 shrink-0 flex-wrap">
-          {/* Provider tabs */}
-          <div className="flex items-center gap-0.5 p-0.5 rounded-lg bg-gray-200/60 dark:bg-white/8">
+          {/* Provider select */}
+          <select value={provider} onChange={e => { setProvider(e.target.value as TtsProvider); setLang(''); setGender(''); }}
+            className="h-[24px] pl-1.5 pr-5 rounded-lg text-[10px] bg-white dark:bg-white/10 border border-gray-200 dark:border-white/10 focus:outline-none focus:ring-1 focus:ring-[var(--primary-color)]/40 appearance-none"
+            style={{ backgroundImage: `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='8' height='8' viewBox='0 0 8 8'%3E%3Cpath d='M0 2l4 4 4-4' fill='%23999'/%3E%3C/svg%3E")`, backgroundRepeat: 'no-repeat', backgroundPosition: 'right 4px center' }}>
             {providers.map(k => (
-              <button key={k} onClick={() => { setProvider(k); setLang(''); setGender(''); }}
-                className={cn('h-[24px] px-2.5 rounded-md text-[10px] font-medium transition-all',
-                  provider === k ? 'bg-white dark:bg-white/20 text-gray-800 dark:text-white shadow-sm' : 'text-gray-500 hover:text-gray-700')}>
-                {PROVIDER_META[k].label.replace(' TTS', '').replace('（免费）','').replace('（云端）','')}
-              </button>
+              <option key={k} value={k}>{PROVIDER_META[k].label}</option>
             ))}
-          </div>
+          </select>
           {/* Lang */}
           {langs.length > 0 && (
             <select value={lang} onChange={e => { setLang(e.target.value); setGender(''); }}

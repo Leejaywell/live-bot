@@ -8,25 +8,31 @@ export interface TtsVoice {
   gender: string;
 }
 
-export type TtsProvider = 'edge_tts' | 'minimax_tts' | 'volcano_engine';
+export type TtsProvider = 'edge_tts' | 'minimax_tts' | 'volcano_engine' | 'cosyvoice' | 'fish_speech' | 'azure';
 
 interface VoicesJson {
-  edge_tts:      { description: string; voices: TtsVoice[] };
-  minimax_tts:   { description: string; voices: TtsVoice[] };
+  edge_tts:       { description: string; voices: TtsVoice[] };
+  minimax_tts:    { description: string; voices: TtsVoice[] };
   volcano_engine: { description: string; voices: TtsVoice[] };
+  cosyvoice:      { description: string; voices: TtsVoice[] };
+  fish_speech:    { description: string; voices: TtsVoice[] };
+  azure:          { description: string; voices: TtsVoice[] };
 }
 
 const data = voicesRaw as unknown as VoicesJson;
 
 export const PROVIDER_META: Record<TtsProvider, { label: string; accent: string }> = {
-  edge_tts:      { label: 'Edge TTS（免费）',    accent: '#0078d4' },
-  minimax_tts:   { label: 'MiniMax TTS（云端）',  accent: '#f97316' },
-  volcano_engine:{ label: '火山 TTS（云端）',     accent: '#ed2939' },
+  edge_tts:       { label: 'Edge TTS（免费）',     accent: '#0078d4' },
+  minimax_tts:    { label: 'MiniMax TTS（云端）',  accent: '#f97316' },
+  volcano_engine: { label: '火山 TTS（云端）',     accent: '#ed2939' },
+  cosyvoice:      { label: 'CosyVoice（本地）',    accent: '#34c759' },
+  fish_speech:    { label: 'Fish Speech（本地）',  accent: '#af52de' },
+  azure:          { label: 'Azure TTS',            accent: '#0078d4' },
 };
 
 /** 获取所有 voice，过滤掉无效条目（id 为空或明显不是 voice_id 的） */
 export function getVoices(provider: TtsProvider): TtsVoice[] {
-  const voices = data[provider]?.voices ?? [];
+  const voices = (data as any)[provider]?.voices ?? [];
   return voices.filter(v => {
     if (!v.id || !v.name) return false;
     // 火山 engine 有很多脏数据，id 为纯中文描述的先过滤
@@ -82,15 +88,19 @@ export function detectProvider(name: string): TtsProvider | null {
   if (n.includes('edge')) return 'edge_tts';
   if (n.includes('minimax')) return 'minimax_tts';
   if (n.includes('火山') || n.includes('volcengine') || n.includes('volc')) return 'volcano_engine';
+  if (n.includes('cosyvoice') || n.includes('cosy')) return 'cosyvoice';
+  if (n.includes('fish') && n.includes('speech')) return 'fish_speech';
+  if (n.includes('azure')) return 'azure';
   return null;
 }
 
-/** 从配置的 TTS providers 列表中提取可用的 TtsProvider key */
-export function availableProviders(ttsNames: string[]): TtsProvider[] {
+/** 从配置的 TTS providers 的 Name 字段中提取 TtsProvider key */
+export function availableProviders(names: string[]): TtsProvider[] {
+  const VALID: TtsProvider[] = ['edge_tts', 'minimax_tts', 'volcano_engine'];
   const set = new Set<TtsProvider>();
-  for (const name of ttsNames) {
+  for (const name of names) {
     const k = detectProvider(name);
-    if (k) set.add(k);
+    if (k && (VALID as string[]).includes(k)) set.add(k);
   }
   if (set.size === 0) set.add('edge_tts'); // fallback
   return [...set];

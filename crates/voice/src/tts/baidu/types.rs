@@ -147,7 +147,10 @@ pub struct TextRequest {
 
 impl TextRequest {
     pub fn new(text: impl Into<String>) -> Self {
-        Self { msg_type: "text".to_string(), payload: TextPayload { text: text.into() } }
+        Self {
+            msg_type: "text".to_string(),
+            payload: TextPayload { text: text.into() },
+        }
     }
 }
 
@@ -168,7 +171,9 @@ pub struct SystemFinishRequest {
 
 impl Default for SystemFinishRequest {
     fn default() -> Self {
-        Self { msg_type: "system.finish".to_string() }
+        Self {
+            msg_type: "system.finish".to_string(),
+        }
     }
 }
 
@@ -251,7 +256,10 @@ impl TryFrom<u8> for BaiduAudioFormat {
             6 => Ok(Self::Wav),
             _ => Err(BaiduTtsError::Parameter {
                 code: 216100,
-                message: format!("无效的音频格式: {}, 支持 3=mp3, 4=pcm-16k, 5=pcm-8k, 6=wav", value),
+                message: format!(
+                    "无效的音频格式: {}, 支持 3=mp3, 4=pcm-16k, 5=pcm-8k, 6=wav",
+                    value
+                ),
             }),
         }
     }
@@ -268,10 +276,19 @@ mod tests {
         assert_eq!(BaiduTtsErrorCode::message(0), "成功");
         assert_eq!(BaiduTtsErrorCode::message(216100), "参数错误");
         assert_eq!(BaiduTtsErrorCode::message(216101), "参数缺失");
-        assert_eq!(BaiduTtsErrorCode::message(216103), "文本过长，请控制在1000字以内");
-        assert_eq!(BaiduTtsErrorCode::message(216419), "当前待处理文本过长，请稍后发送");
+        assert_eq!(
+            BaiduTtsErrorCode::message(216103),
+            "文本过长，请控制在1000字以内"
+        );
+        assert_eq!(
+            BaiduTtsErrorCode::message(216419),
+            "当前待处理文本过长，请稍后发送"
+        );
         assert_eq!(BaiduTtsErrorCode::message(401), "鉴权失败");
-        assert_eq!(BaiduTtsErrorCode::message(403), "无访问权限，接口功能未开通");
+        assert_eq!(
+            BaiduTtsErrorCode::message(403),
+            "无访问权限，接口功能未开通"
+        );
         assert_eq!(BaiduTtsErrorCode::message(404), "输入的 URL 错误");
         assert_eq!(BaiduTtsErrorCode::message(429), "触发限流");
         assert_eq!(BaiduTtsErrorCode::message(500), "服务器内部错误");
@@ -297,10 +314,22 @@ mod tests {
 
     #[test]
     fn test_audio_format_from_u8_valid() {
-        assert_eq!(BaiduAudioFormat::try_from(3).unwrap(), BaiduAudioFormat::Mp3);
-        assert_eq!(BaiduAudioFormat::try_from(4).unwrap(), BaiduAudioFormat::Pcm16k);
-        assert_eq!(BaiduAudioFormat::try_from(5).unwrap(), BaiduAudioFormat::Pcm8k);
-        assert_eq!(BaiduAudioFormat::try_from(6).unwrap(), BaiduAudioFormat::Wav);
+        assert_eq!(
+            BaiduAudioFormat::try_from(3).unwrap(),
+            BaiduAudioFormat::Mp3
+        );
+        assert_eq!(
+            BaiduAudioFormat::try_from(4).unwrap(),
+            BaiduAudioFormat::Pcm16k
+        );
+        assert_eq!(
+            BaiduAudioFormat::try_from(5).unwrap(),
+            BaiduAudioFormat::Pcm8k
+        );
+        assert_eq!(
+            BaiduAudioFormat::try_from(6).unwrap(),
+            BaiduAudioFormat::Wav
+        );
     }
 
     #[test]
@@ -475,11 +504,17 @@ mod tests {
         let error = BaiduTtsError::TextTooLong("超过1000字".to_string());
         assert!(error.to_string().contains("文本过长"));
 
-        let error = BaiduTtsError::Parameter { code: 216100, message: "语速参数错误".to_string() };
+        let error = BaiduTtsError::Parameter {
+            code: 216100,
+            message: "语速参数错误".to_string(),
+        };
         assert!(error.to_string().contains("216100"));
         assert!(error.to_string().contains("语速参数错误"));
 
-        let error = BaiduTtsError::Server { code: 500, message: "内部错误".to_string() };
+        let error = BaiduTtsError::Server {
+            code: 500,
+            message: "内部错误".to_string(),
+        };
         assert!(error.to_string().contains("500"));
     }
 }

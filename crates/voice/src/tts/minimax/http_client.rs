@@ -54,7 +54,10 @@
 use super::normalize_minimax_lang;
 use super::types::{BaseResponse, ExtraInfo};
 use super::voice_library::global_voice_library;
-use super::{AudioChunk, AudioSetting, MiniMaxConfig, MiniMaxError, PronunciationDict, TimbreWeight, VoiceSetting};
+use super::{
+    AudioChunk, AudioSetting, MiniMaxConfig, MiniMaxError, PronunciationDict, TimbreWeight,
+    VoiceSetting,
+};
 use async_stream::try_stream;
 use futures_util::Stream;
 use once_cell::sync::OnceCell;
@@ -136,7 +139,10 @@ impl MiniMaxHttpTtsClient {
                     .expect("构建 MiniMax HTTP 客户端失败")
             })
             .clone();
-        Self { config, http_client }
+        Self {
+            config,
+            http_client,
+        }
     }
 
     /// 访问配置
@@ -158,7 +164,10 @@ impl MiniMaxHttpTtsClient {
         timbre_weights: Option<Vec<TimbreWeight>>,
         language_boost: Option<String>,
         options: MiniMaxHttpOptions,
-    ) -> Result<Pin<Box<dyn Stream<Item = Result<AudioChunk, MiniMaxError>> + Send + '_>>, MiniMaxError> {
+    ) -> Result<
+        Pin<Box<dyn Stream<Item = Result<AudioChunk, MiniMaxError>> + Send + '_>>,
+        MiniMaxError,
+    > {
         if text.trim().is_empty() {
             return Err(MiniMaxError::Config("文本内容不能为空".to_string()));
         }
@@ -166,7 +175,9 @@ impl MiniMaxHttpTtsClient {
         let (api_key, actual_voice_id) = self
             .config
             .get_voice_from_library(virtual_voice_id)
-            .ok_or_else(|| MiniMaxError::Config(format!("声音库未找到虚拟 voice_id: {}", virtual_voice_id)))?;
+            .ok_or_else(|| {
+                MiniMaxError::Config(format!("声音库未找到虚拟 voice_id: {}", virtual_voice_id))
+            })?;
 
         let mut voice_setting = voice_setting.unwrap_or_default();
         voice_setting.voice_id = Some(actual_voice_id.clone());
@@ -196,13 +207,17 @@ impl MiniMaxHttpTtsClient {
 
         // 🔧 构造 stream_options（如果需要）
         let stream_options = if options.exclude_aggregated_audio.is_some() {
-            Some(StreamOptions { exclude_aggregated_audio: options.exclude_aggregated_audio })
+            Some(StreamOptions {
+                exclude_aggregated_audio: options.exclude_aggregated_audio,
+            })
         } else {
             None
         };
 
         // 规范化 language_boost 到 MiniMax 允许的取值
-        let normalized_language_boost = language_boost.as_deref().map(|s| normalize_minimax_lang(Some(s)));
+        let normalized_language_boost = language_boost
+            .as_deref()
+            .map(|s| normalize_minimax_lang(Some(s)));
 
         let request_body = HttpTtsRequest {
             model,
@@ -224,7 +239,8 @@ impl MiniMaxHttpTtsClient {
         headers.insert(CONTENT_TYPE, HeaderValue::from_static("application/json"));
         headers.insert(
             "Authorization",
-            HeaderValue::from_str(&format!("Bearer {}", api_key)).map_err(|err| MiniMaxError::Auth(err.to_string()))?,
+            HeaderValue::from_str(&format!("Bearer {}", api_key))
+                .map_err(|err| MiniMaxError::Auth(err.to_string()))?,
         );
 
         info!(
@@ -232,7 +248,10 @@ impl MiniMaxHttpTtsClient {
             actual_voice_id,
             request_body.model,
             request_body.stream,
-            request_body.stream_options.as_ref().and_then(|so| so.exclude_aggregated_audio),
+            request_body
+                .stream_options
+                .as_ref()
+                .and_then(|so| so.exclude_aggregated_audio),
             request_body.language_boost
         );
 
@@ -254,7 +273,10 @@ impl MiniMaxHttpTtsClient {
 
         // 从 voice_library 获取该 voice_id 对应的增益（未配置时默认 0.0）
         let gain_db = global_voice_library().get_gain_db(virtual_voice_id);
-        debug!("MiniMax HTTP TTS gain_db for voice_id '{}': {}dB", virtual_voice_id, gain_db);
+        debug!(
+            "MiniMax HTTP TTS gain_db for voice_id '{}': {}dB",
+            virtual_voice_id, gain_db
+        );
 
         let stream = try_stream! {
             let mut sequence_id: u64 = 0;
@@ -346,11 +368,11 @@ impl MiniMaxHttpTtsClient {
             Ok(_) => {
                 info!("🔥 MiniMax HTTP 连接已预热 (GET fallback)");
                 Ok(())
-            },
+            }
             Err(e) => {
                 warn!("⚠️ MiniMax 连接预热失败 (HEAD+GET): {}", e);
                 Err(anyhow::anyhow!(e))
-            },
+            }
         }
     }
 
@@ -412,7 +434,8 @@ fn parse_http_response_items(body: &str) -> Result<Vec<HttpTtsResponseItem>, Min
     }
 
     if trimmed.starts_with('[') {
-        return serde_json::from_str::<Vec<HttpTtsResponseItem>>(trimmed).map_err(|err| MiniMaxError::Other(format!("MiniMax HTTP 响应解析失败: {}", err)));
+        return serde_json::from_str::<Vec<HttpTtsResponseItem>>(trimmed)
+            .map_err(|err| MiniMaxError::Other(format!("MiniMax HTTP 响应解析失败: {}", err)));
     }
 
     if trimmed.starts_with("data:") {
@@ -440,7 +463,7 @@ fn parse_http_response_items(body: &str) -> Result<Vec<HttpTtsResponseItem>, Min
                         err,
                         payload.chars().take(128).collect::<String>()
                     )));
-                },
+                }
             }
         }
         if items.is_empty() {
@@ -466,7 +489,7 @@ fn parse_http_response_items(body: &str) -> Result<Vec<HttpTtsResponseItem>, Min
                     err,
                     trimmed.chars().take(128).collect::<String>()
                 )));
-            },
+            }
         }
     }
     if items.is_empty() {

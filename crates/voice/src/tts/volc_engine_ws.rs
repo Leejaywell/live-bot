@@ -38,8 +38,10 @@ impl VolcEngineWsTtsClient {
     pub fn synthesize(
         &self,
         request: VolcEngineRequest,
-    ) -> Result<Pin<Box<dyn Stream<Item = Result<AudioChunk, anyhow::Error>> + Send + 'static>>, anyhow::Error>
-    {
+    ) -> Result<
+        Pin<Box<dyn Stream<Item = Result<AudioChunk, anyhow::Error>> + Send + 'static>>,
+        anyhow::Error,
+    > {
         let speaker = request
             .speaker
             .clone()
@@ -85,9 +87,7 @@ impl VolcEngineWsTtsClient {
         let endpoint = if endpoint.starts_with("wss://") {
             endpoint
         } else {
-            format!(
-                "wss://openspeech.bytedance.com/api/v3/tts/bidirection"
-            )
+            format!("wss://openspeech.bytedance.com/api/v3/tts/bidirection")
         };
 
         let stream = try_stream! {

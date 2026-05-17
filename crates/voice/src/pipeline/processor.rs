@@ -28,7 +28,10 @@ pub struct ProcessorChain {
 
 impl ProcessorChain {
     pub fn new() -> Self {
-        Self { processors: Vec::new(), channel_size: 64 }
+        Self {
+            processors: Vec::new(),
+            channel_size: 64,
+        }
     }
 
     pub fn with_channel_size(mut self, size: usize) -> Self {

@@ -90,7 +90,8 @@ impl VolcEngineConfig {
         let default_speaker = env::var("VOLC_SPEAKER").ok();
         let default_model = env::var("VOLC_MODEL").ok();
         let default_namespace = env::var("VOLC_NAMESPACE").ok();
-        let default_audio_format = env::var("VOLC_AUDIO_FORMAT").unwrap_or_else(|_| DEFAULT_AUDIO_FORMAT.to_string());
+        let default_audio_format =
+            env::var("VOLC_AUDIO_FORMAT").unwrap_or_else(|_| DEFAULT_AUDIO_FORMAT.to_string());
 
         let default_sample_rate = env::var("VOLC_SAMPLE_RATE")
             .ok()
@@ -131,7 +132,8 @@ impl VolcEngineConfig {
         // 请求 ID 为可选，但生成一个有助于排障
         headers.insert(
             "X-Api-Request-Id",
-            HeaderValue::from_str(&Uuid::new_v4().to_string()).context("设置 X-Api-Request-Id 失败")?,
+            HeaderValue::from_str(&Uuid::new_v4().to_string())
+                .context("设置 X-Api-Request-Id 失败")?,
         );
         Ok(headers)
     }
@@ -187,7 +189,9 @@ impl VolcEngineRequest {
         let text = self.text;
         let ssml = self.ssml;
 
-        if text.as_ref().map(|s| s.trim().is_empty()).unwrap_or(true) && ssml.as_ref().map(|s| s.trim().is_empty()).unwrap_or(true) {
+        if text.as_ref().map(|s| s.trim().is_empty()).unwrap_or(true)
+            && ssml.as_ref().map(|s| s.trim().is_empty()).unwrap_or(true)
+        {
             return Err(anyhow!("VolcEngine 请求需要 text 或 ssml 至少一个非空"));
         }
 
@@ -196,11 +200,15 @@ impl VolcEngineRequest {
             .or_else(|| config.default_speaker.clone())
             .ok_or_else(|| anyhow!("未配置发音人：请在请求或 VOLC_SPEAKER 中提供"))?;
 
-        let user_uid = self.user_uid.unwrap_or_else(|| DEFAULT_USER_UID.to_string());
+        let user_uid = self
+            .user_uid
+            .unwrap_or_else(|| DEFAULT_USER_UID.to_string());
 
         let namespace = self.namespace.or_else(|| config.default_namespace.clone());
         let model = self.model.or_else(|| config.default_model.clone());
-        let audio_format = self.audio_format.unwrap_or_else(|| config.default_audio_format.clone());
+        let audio_format = self
+            .audio_format
+            .unwrap_or_else(|| config.default_audio_format.clone());
         let sample_rate = self.sample_rate.unwrap_or(config.default_sample_rate);
 
         let audio_params = VolcEngineAudioParams {
@@ -225,7 +233,11 @@ impl VolcEngineRequest {
             mix_speaker: self.mix_speaker,
         };
 
-        Ok(VolcEngineRequestBody { namespace, user: VolcEngineUserSection { uid: user_uid }, req_params })
+        Ok(VolcEngineRequestBody {
+            namespace,
+            user: VolcEngineUserSection { uid: user_uid },
+            req_params,
+        })
     }
 }
 
@@ -335,7 +347,10 @@ impl VolcEngineTtsClient {
                 .expect("构建 reqwest 客户端失败")
         });
         let http_client = http_client_ref.clone();
-        Self { config, http_client }
+        Self {
+            config,
+            http_client,
+        }
     }
 
     pub fn from_env() -> Result<Self> {
@@ -380,11 +395,11 @@ impl VolcEngineTtsClient {
             Ok(_) => {
                 info!("🔥 VolcEngine HTTP 连接已预热 (GET fallback)");
                 Ok(())
-            },
+            }
             Err(e) => {
                 warn!("⚠️ VolcEngine 连接预热失败 (HEAD+GET): {}", e);
                 Err(anyhow!(e))
-            },
+            }
         }
     }
 
@@ -431,7 +446,10 @@ impl VolcEngineTtsClient {
     ///
     /// 返回值为 [`AudioChunk`] 流：`code=0` 的音频事件会解码为音频块；
     /// `code=20000000` 会生成一次 `is_final=true` 的收尾块。
-    pub fn stream_sentence(&self, request: VolcEngineRequest) -> Result<Pin<Box<dyn Stream<Item = Result<AudioChunk>> + Send + '_>>> {
+    pub fn stream_sentence(
+        &self,
+        request: VolcEngineRequest,
+    ) -> Result<Pin<Box<dyn Stream<Item = Result<AudioChunk>> + Send + '_>>> {
         let headers = self.config.build_headers()?;
         let body = request.into_body(&self.config)?;
         let endpoint = self.config.endpoint.clone();
@@ -526,7 +544,9 @@ fn pop_event(buffer: &mut Vec<u8>) -> Option<String> {
     if let Some(pos) = buffer.iter().position(|&b| b == b'\n') {
         let event_bytes: Vec<u8> = buffer.drain(..=pos).collect();
         let event_str = String::from_utf8_lossy(&event_bytes).into_owned();
-        let trimmed = event_str.trim_matches(|c| c == '\r' || c == '\n').to_string();
+        let trimmed = event_str
+            .trim_matches(|c| c == '\r' || c == '\n')
+            .to_string();
         if trimmed.is_empty() {
             return Some(String::new());
         }
@@ -574,7 +594,8 @@ fn parse_payload(raw_event: &str) -> Result<Option<VolcEngineSsePayload>> {
         }));
     }
 
-    let payload: VolcEngineSsePayload = serde_json::from_str(&data).with_context(|| format!("解析 VolcEngine JSON 失败: {data}"))?;
+    let payload: VolcEngineSsePayload = serde_json::from_str(&data)
+        .with_context(|| format!("解析 VolcEngine JSON 失败: {data}"))?;
     Ok(Some(payload))
 }
 
@@ -593,7 +614,11 @@ fn parse_remaining_payload(buffer: &mut Vec<u8>) -> Result<Option<VolcEngineSseP
     parse_payload(trimmed)
 }
 
-fn dispatch_payload(payload: VolcEngineSsePayload, sequence_id: &mut u64, final_sent: &mut bool) -> Result<Option<AudioChunk>> {
+fn dispatch_payload(
+    payload: VolcEngineSsePayload,
+    sequence_id: &mut u64,
+    final_sent: &mut bool,
+) -> Result<Option<AudioChunk>> {
     match payload.code {
         0 => {
             if let Some(data_b64) = payload.data {
@@ -618,7 +643,10 @@ fn dispatch_payload(payload: VolcEngineSsePayload, sequence_id: &mut u64, final_
                 *sequence_id = sequence_id.saturating_add(1);
                 Ok(Some(chunk))
             } else if let Some(sentence) = payload.sentence {
-                info!("VolcEngine 文本事件: sentence='{}', extra={:?}", sentence.text, payload.extra);
+                info!(
+                    "VolcEngine 文本事件: sentence='{}', extra={:?}",
+                    sentence.text, payload.extra
+                );
                 Ok(None)
             } else {
                 info!(
@@ -627,10 +655,13 @@ fn dispatch_payload(payload: VolcEngineSsePayload, sequence_id: &mut u64, final_
                 );
                 Ok(None)
             }
-        },
+        }
         20000000 => {
             *final_sent = true;
-            info!("VolcEngine 合成完成: message='{}', extra={:?}", payload.message, payload.extra);
+            info!(
+                "VolcEngine 合成完成: message='{}', extra={:?}",
+                payload.message, payload.extra
+            );
             let final_chunk = AudioChunk {
                 data: Vec::new(),
                 sequence_id: u64::MAX,
@@ -640,7 +671,7 @@ fn dispatch_payload(payload: VolcEngineSsePayload, sequence_id: &mut u64, final_
                 sample_rate: DEFAULT_SAMPLE_RATE,
             };
             Ok(Some(final_chunk))
-        },
+        }
         code => {
             let message = if payload.message.is_empty() {
                 "VolcEngine 返回错误".to_string()
@@ -651,7 +682,7 @@ fn dispatch_payload(payload: VolcEngineSsePayload, sequence_id: &mut u64, final_
                 "VolcEngine 流错误: code={code}, message={message}, extra={:?}",
                 payload.extra
             ))
-        },
+        }
     }
 }
 
@@ -677,7 +708,10 @@ mod tests {
     fn pop_event_handles_single_newline_json() {
         let mut buf = b"{\"code\":0,\"message\":\"\",\"data\":null}\n".to_vec();
         let event = pop_event(&mut buf);
-        assert_eq!(event.unwrap(), "{\"code\":0,\"message\":\"\",\"data\":null}");
+        assert_eq!(
+            event.unwrap(),
+            "{\"code\":0,\"message\":\"\",\"data\":null}"
+        );
         assert!(buf.is_empty());
     }
 
@@ -694,7 +728,9 @@ mod tests {
 
     #[test]
     fn parse_payload_reads_json_line() {
-        let payload = parse_payload("{\"code\":0,\"message\":\"\",\"data\":null}").unwrap().unwrap();
+        let payload = parse_payload("{\"code\":0,\"message\":\"\",\"data\":null}")
+            .unwrap()
+            .unwrap();
         assert_eq!(payload.code, 0);
     }
 

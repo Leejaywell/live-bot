@@ -109,23 +109,40 @@ impl OpusDecoderConfig {
         if channels == 2 {
             channels_d = Channels::Stereo;
         }
-        Self { sample_rate, channels: channels_d, ..Default::default() }
+        Self {
+            sample_rate,
+            channels: channels_d,
+            ..Default::default()
+        }
     }
 }
 
 impl Default for OpusDecoderConfig {
     fn default() -> Self {
-        Self { sample_rate: 16000, channels: Channels::Mono, fec: false, plc: true }
+        Self {
+            sample_rate: 16000,
+            channels: Channels::Mono,
+            fec: false,
+            plc: true,
+        }
     }
 }
 
 impl OpusEncoderConfig {
     pub fn new(frame_duration_ms: Option<u32>) -> Self {
-        Self { frame_duration_ms, application: "audio".to_string(), ..Default::default() }
+        Self {
+            frame_duration_ms,
+            application: "audio".to_string(),
+            ..Default::default()
+        }
     }
 
     /// 转换为内部配置（使用opus crate的枚举类型），sample_rate和channels由TTS输出决定
-    pub fn to_internal(&self, sample_rate: u32, channels: u16) -> Result<InternalOpusEncoderConfig, OpusError> {
+    pub fn to_internal(
+        &self,
+        sample_rate: u32,
+        channels: u16,
+    ) -> Result<InternalOpusEncoderConfig, OpusError> {
         let channels_enum = match channels {
             1 => Channels::Mono,
             2 => Channels::Stereo,
@@ -136,7 +153,12 @@ impl OpusEncoderConfig {
             "voip" => Application::Voip,
             "audio" => Application::Audio,
             "lowdelay" => Application::LowDelay,
-            _ => return Err(OpusError::Config(format!("不支持的应用类型: {}", self.application))),
+            _ => {
+                return Err(OpusError::Config(format!(
+                    "不支持的应用类型: {}",
+                    self.application
+                )));
+            }
         };
 
         let bandwidth = match self.bandwidth.to_lowercase().as_str() {
@@ -145,14 +167,24 @@ impl OpusEncoderConfig {
             "wideband" => Bandwidth::Wideband,
             "superwideband" => Bandwidth::Superwideband,
             "fullband" => Bandwidth::Fullband,
-            _ => return Err(OpusError::Config(format!("不支持的带宽: {}", self.bandwidth))),
+            _ => {
+                return Err(OpusError::Config(format!(
+                    "不支持的带宽: {}",
+                    self.bandwidth
+                )));
+            }
         };
 
         let signal = match self.signal.to_lowercase().as_str() {
             "auto" => Signal::Auto,
             "voice" => Signal::Voice,
             "music" => Signal::Music,
-            _ => return Err(OpusError::Config(format!("不支持的信号类型: {}", self.signal))),
+            _ => {
+                return Err(OpusError::Config(format!(
+                    "不支持的信号类型: {}",
+                    self.signal
+                )));
+            }
         };
 
         Ok(InternalOpusEncoderConfig {
@@ -243,7 +275,8 @@ impl OpusDecoder {
     /// 使用自定义配置创建Opus解码器
     pub fn with_config(config: OpusDecoderConfig) -> Result<Self, OpusError> {
         // 创建Opus解码器
-        let decoder = opus::Decoder::new(config.sample_rate, config.channels).map_err(|e| OpusError::Decode(format!("创建解码器失败: {}", e)))?;
+        let decoder = opus::Decoder::new(config.sample_rate, config.channels)
+            .map_err(|e| OpusError::Decode(format!("创建解码器失败: {}", e)))?;
 
         // 预分配更大的输出缓冲区，支持最大120ms帧
         // Opus最大解码帧大小为120ms * 采样率 * 声道数
@@ -282,7 +315,11 @@ impl OpusDecoder {
             .decode_float(opus_data, &mut self.output_buffer, false)
             .map_err(|e| {
                 // 提供更详细的错误信息
-                OpusError::Decode(format!("解码失败: {:?} (数据大小: {}字节)", e, opus_data.len()))
+                OpusError::Decode(format!(
+                    "解码失败: {:?} (数据大小: {}字节)",
+                    e,
+                    opus_data.len()
+                ))
             })?;
 
         // 检查解码结果是否合理
@@ -323,8 +360,11 @@ impl OpusDecoder {
     /// 更新配置
     pub fn update_config(&mut self, config: OpusDecoderConfig) -> Result<(), OpusError> {
         // 如果关键参数发生变化，需要重新创建解码器
-        if config.sample_rate != self.config.sample_rate || config.channels != self.config.channels {
-            return Err(OpusError::Config("采样率或声道数变化需要重新创建解码器".to_string()));
+        if config.sample_rate != self.config.sample_rate || config.channels != self.config.channels
+        {
+            return Err(OpusError::Config(
+                "采样率或声道数变化需要重新创建解码器".to_string(),
+            ));
         }
 
         self.config = config;
@@ -341,7 +381,8 @@ impl OpusDecoder {
         self.output_buffer.fill(0.0);
 
         // 确保缓冲区大小正确
-        let max_frame_size = (self.config.sample_rate as usize * self.config.channels as usize * 120) / 1000;
+        let max_frame_size =
+            (self.config.sample_rate as usize * self.config.channels as usize * 120) / 1000;
         if self.output_buffer.len() != max_frame_size {
             self.output_buffer.resize(max_frame_size, 0.0);
         }
@@ -357,20 +398,29 @@ impl OpusDecoder {
 
 impl OpusEncoder {
     /// 创建新的Opus编码器
-    pub fn new(sample_rate: u32, channels: u16, frame_duration_ms: Option<u32>) -> Result<Self, OpusError> {
+    pub fn new(
+        sample_rate: u32,
+        channels: u16,
+        frame_duration_ms: Option<u32>,
+    ) -> Result<Self, OpusError> {
         let config = OpusEncoderConfig::new(frame_duration_ms);
         Self::with_config(config, sample_rate, channels)
     }
 
     /// 使用自定义配置创建Opus编码器
-    pub fn with_config(config: OpusEncoderConfig, sample_rate: u32, channels: u16) -> Result<Self, OpusError> {
+    pub fn with_config(
+        config: OpusEncoderConfig,
+        sample_rate: u32,
+        channels: u16,
+    ) -> Result<Self, OpusError> {
         // 转换为内部配置
         let internal_config = config.to_internal(sample_rate, channels)?;
 
         // 计算帧大小
         // Opus 期待的 frame_size 是“每个声道的样本数”，不需要再乘以声道数。
         // 公式: samples_per_ms (sample_rate / 1000) * frame_duration_ms
-        let frame_size = (internal_config.sample_rate as usize / 1000) * internal_config.frame_duration_ms as usize;
+        let frame_size = (internal_config.sample_rate as usize / 1000)
+            * internal_config.frame_duration_ms as usize;
 
         // 创建Opus编码器
         let mut encoder = opus::Encoder::new(
@@ -400,7 +450,12 @@ impl OpusEncoder {
         // 预分配固定长度缓冲，避免每帧clear/resize
         let output_buffer = vec![0u8; 1275]; // 最大Opus帧大小
 
-        Ok(Self { config, encoder, frame_size, output_buffer })
+        Ok(Self {
+            config,
+            encoder,
+            frame_size,
+            output_buffer,
+        })
     }
 
     /// 编码音频数据 (零拷贝版本)
@@ -430,7 +485,10 @@ impl OpusEncoder {
         // };
 
         // 创建编码帧
-        let frame = OpusFrame { data: self.output_buffer[..encoded_size].to_vec().into(), size: encoded_size };
+        let frame = OpusFrame {
+            data: self.output_buffer[..encoded_size].to_vec().into(),
+            size: encoded_size,
+        };
 
         // trace!(
         //     "🎵 Opus编码完成: {}字节 -> {}字节 (压缩比: {:.2}x, 延迟: {}μs)",

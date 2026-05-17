@@ -11,10 +11,10 @@
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Emotion {
     Neutral,
-    Positive,   // 正向、开心、鼓励
-    Excited,    // 激动、高能、惊喜
-    Gentle,     // 温柔、安慰、轻松
-    Negative,   // 负向、失落、抱歉
+    Positive, // 正向、开心、鼓励
+    Excited,  // 激动、高能、惊喜
+    Gentle,   // 温柔、安慰、轻松
+    Negative, // 负向、失落、抱歉
 }
 
 /// 情绪对应的 prosody 参数
@@ -30,7 +30,11 @@ pub struct ProsodyParams {
 
 impl Default for ProsodyParams {
     fn default() -> Self {
-        Self { rate: None, pitch: None, volume: None }
+        Self {
+            rate: None,
+            pitch: None,
+            volume: None,
+        }
     }
 }
 
@@ -47,7 +51,10 @@ fn classify(text: &str) -> Emotion {
     let exclamation_count = text.chars().filter(|&c| c == '!' || c == '！').count();
     let has_excited_words = contains_any(
         &text_lower,
-        &["哇", "牛", "666", "厉害", "太棒", "绝了", "炸了", "爆了", "冲", "太强", "好爽", "yeah", "wow"],
+        &[
+            "哇", "牛", "666", "厉害", "太棒", "绝了", "炸了", "爆了", "冲", "太强", "好爽",
+            "yeah", "wow",
+        ],
     );
     if exclamation_count >= 2 || has_excited_words {
         return Emotion::Excited;
@@ -57,8 +64,23 @@ fn classify(text: &str) -> Emotion {
     let has_positive_words = contains_any(
         &text_lower,
         &[
-            "谢谢", "感谢", "棒", "好的", "好的呀", "欢迎", "加油", "开心", "高兴", "喜欢",
-            "太好了", "不错", "赞", "妙", "nice", "good", "great",
+            "谢谢",
+            "感谢",
+            "棒",
+            "好的",
+            "好的呀",
+            "欢迎",
+            "加油",
+            "开心",
+            "高兴",
+            "喜欢",
+            "太好了",
+            "不错",
+            "赞",
+            "妙",
+            "nice",
+            "good",
+            "great",
         ],
     );
     if has_positive_words {
@@ -68,7 +90,18 @@ fn classify(text: &str) -> Emotion {
     // 温柔：安慰、轻松、低调语气
     let has_gentle_words = contains_any(
         &text_lower,
-        &["没关系", "慢慢来", "放松", "别担心", "轻松", "小声", "悄悄", "温柔", "嗯嗯", "好好"],
+        &[
+            "没关系",
+            "慢慢来",
+            "放松",
+            "别担心",
+            "轻松",
+            "小声",
+            "悄悄",
+            "温柔",
+            "嗯嗯",
+            "好好",
+        ],
     );
     if has_gentle_words {
         return Emotion::Gentle;
@@ -77,7 +110,18 @@ fn classify(text: &str) -> Emotion {
     // 负向：道歉、失落、遗憾
     let has_negative_words = contains_any(
         &text_lower,
-        &["抱歉", "对不起", "不好意思", "遗憾", "可惜", "失败", "错了", "糟糕", "难过", "sad"],
+        &[
+            "抱歉",
+            "对不起",
+            "不好意思",
+            "遗憾",
+            "可惜",
+            "失败",
+            "错了",
+            "糟糕",
+            "难过",
+            "sad",
+        ],
     );
     if has_negative_words {
         return Emotion::Negative;

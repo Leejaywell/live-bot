@@ -47,6 +47,9 @@ pub trait Tool: Send + Sync {
 
 impl ToolDefinition {
     pub fn from(tool: &dyn Tool) -> Self {
-        Self { r#type: "function", function: tool.spec() }
+        Self {
+            r#type: "function",
+            function: tool.spec(),
+        }
     }
 }

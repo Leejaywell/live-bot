@@ -121,12 +121,8 @@ impl Storage {
             "
             PRAGMA journal_mode = WAL;
             PRAGMA synchronous = NORMAL;
+            drop table if exists danmu_count;
 
-            create table if not exists danmu_count (
-                uid integer primary key,
-                uname text not null,
-                count integer not null default 0
-            );
             create table if not exists blind_box_stat (
                 id integer primary key autoincrement,
                 uid integer not null,
@@ -212,32 +208,6 @@ impl Storage {
         Ok(Self {
             conn: Mutex::new(conn),
         })
-    }
-
-    #[allow(dead_code)]
-    pub fn danmu_count(&self, uid: i64) -> Result<i64> {
-        let conn = self.conn.lock().expect("storage mutex poisoned");
-        Ok(conn.query_row(
-            "select count from danmu_count where uid = ?1",
-            params![uid],
-            |row| row.get(0),
-        ).optional()?.unwrap_or(0))
-    }
-
-    pub fn increment_danmu_count(&self, uid: i64, uname: &str) -> Result<i64> {
-        let conn = self.conn.lock().expect("storage mutex poisoned");
-        conn.execute(
-            "
-            insert into danmu_count (uid, uname, count) values (?1, ?2, 1)
-            on conflict(uid) do update set uname = excluded.uname, count = count + 1
-            ",
-            params![uid, uname],
-        )?;
-        Ok(conn.query_row(
-            "select count from danmu_count where uid = ?1",
-            params![uid],
-            |row| row.get(0),
-        )?)
     }
 
     pub fn start_observed_live_session(
@@ -916,7 +886,12 @@ impl Storage {
             today_key()
         } else {
             let start = Local::now() - chrono::Duration::days(days);
-            format!("{:04}-{:02}-{:02}", start.year(), start.month(), start.day())
+            format!(
+                "{:04}-{:02}-{:02}",
+                start.year(),
+                start.month(),
+                start.day()
+            )
         };
         let conn = self.conn.lock().expect("storage mutex poisoned");
         let mut stmt = conn.prepare(
@@ -948,7 +923,6 @@ impl Storage {
         }
         Ok(result)
     }
-
 
     pub fn gift_top_n(&self, days: i64, n: i32) -> Result<Vec<GiftStat>> {
         let start_date = if days == 0 {
@@ -1122,7 +1096,13 @@ impl Storage {
         .map_err(Into::into)
     }
 
-    pub fn add_tracked_user(&self, uid: i64, nickname: &str, alias: &str, notes: &str) -> Result<()> {
+    pub fn add_tracked_user(
+        &self,
+        uid: i64,
+        nickname: &str,
+        alias: &str,
+        notes: &str,
+    ) -> Result<()> {
         let conn = self.conn.lock().expect("storage mutex poisoned");
         let now = Local::now().to_rfc3339();
         conn.execute(
@@ -1250,9 +1230,7 @@ impl Storage {
             order by day asc
             ",
         )?;
-        let rows = stmt.query_map(params![start_date], |row| {
-            Ok((row.get(0)?, row.get(1)?))
-        })?;
+        let rows = stmt.query_map(params![start_date], |row| Ok((row.get(0)?, row.get(1)?)))?;
 
         let mut result = Vec::new();
         for row in rows {
@@ -1383,15 +1361,6 @@ mod tests {
     use serde_json::json;
 
     use super::Storage;
-
-    #[test]
-    fn danmu_count_increments() {
-        let storage = Storage::open_in_memory().unwrap();
-
-        assert_eq!(storage.increment_danmu_count(10, "alice").unwrap(), 1);
-        assert_eq!(storage.increment_danmu_count(10, "alice").unwrap(), 2);
-        assert_eq!(storage.danmu_count(10).unwrap(), 2);
-    }
 
     #[test]
     fn observed_live_session_has_deterministic_id() {
@@ -2033,10 +2002,20 @@ mod tests {
         let room_id = 8792912;
 
         // Insert a fresh record
-        storage.record_interaction(session_id, room_id, &ParsedLiveEvent {
-            event: LiveEvent::Danmu { user_id: 1, user: "a".to_string(), text: "now".to_string() },
-            raw: json!({"cmd":"DANMU_MSG"}),
-        }).unwrap();
+        storage
+            .record_interaction(
+                session_id,
+                room_id,
+                &ParsedLiveEvent {
+                    event: LiveEvent::Danmu {
+                        user_id: 1,
+                        user: "a".to_string(),
+                        text: "now".to_string(),
+                    },
+                    raw: json!({"cmd":"DANMU_MSG"}),
+                },
+            )
+            .unwrap();
 
         // Manual insert of an old record (SQLite specific)
         {

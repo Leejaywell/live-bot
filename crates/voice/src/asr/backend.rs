@@ -18,7 +18,12 @@ pub trait AsrBackend: Send + Sync {
     /// * `Ok(Some(VoiceText))`  - 当模型输出了可用结果
     /// * `Ok(None)`            - 仍在等待更多音频
     /// * `Err(err)`            - 推理/解码过程中出现错误
-    async fn streaming_recognition(&mut self, audio: &[f32], is_last: bool, enable_final_inference: bool) -> Result<Option<VoiceText>, Box<dyn Error + Send + Sync>>;
+    async fn streaming_recognition(
+        &mut self,
+        audio: &[f32],
+        is_last: bool,
+        enable_final_inference: bool,
+    ) -> Result<Option<VoiceText>, Box<dyn Error + Send + Sync>>;
 
     /// 彻底重置流式前端与内部状态。
     fn reset_streaming(&mut self);
@@ -49,7 +54,10 @@ pub trait AsrBackend: Send + Sync {
     /// * `min_features` - 最小特征块数，只有当新增特征块数 >= 此值时才进行推理
     ///
     /// 默认返回None（不支持中间处理识别）。
-    async fn intermediate_recognition(&mut self, min_features: u32) -> Result<Option<VoiceText>, Box<dyn Error + Send + Sync>> {
+    async fn intermediate_recognition(
+        &mut self,
+        min_features: u32,
+    ) -> Result<Option<VoiceText>, Box<dyn Error + Send + Sync>> {
         let _ = min_features; // 避免未使用参数警告
         Ok(None)
     }

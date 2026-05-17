@@ -6,7 +6,11 @@ use crate::audio::{
 use tracing::warn;
 
 /// 重采样函数 - 将音频从任意采样率重采样到目标采样率
-fn resample_audio(input: &[f32], input_rate: u32, output_rate: u32) -> Result<Vec<f32>, InputProcessorError> {
+fn resample_audio(
+    input: &[f32],
+    input_rate: u32,
+    output_rate: u32,
+) -> Result<Vec<f32>, InputProcessorError> {
     if input.is_empty() {
         return Ok(Vec::new());
     }
@@ -37,7 +41,10 @@ fn resample_audio(input: &[f32], input_rate: u32, output_rate: u32) -> Result<Ve
         };
 
         if !sample.is_finite() {
-            return Err(InputProcessorError::Other(format!("重采样产生无效样本: {}", sample)));
+            return Err(InputProcessorError::Other(format!(
+                "重采样产生无效样本: {}",
+                sample
+            )));
         }
 
         output.push(sample);
@@ -58,7 +65,10 @@ pub struct AudioInputConfig {
 
 impl Default for AudioInputConfig {
     fn default() -> Self {
-        Self { format: crate::audio::AudioFormat::default_pcm(), sample_rate: 16000 }
+        Self {
+            format: crate::audio::AudioFormat::default_pcm(),
+            sample_rate: 16000,
+        }
     }
 }
 
@@ -71,7 +81,10 @@ impl AudioInputConfig {
 
         // 检查采样率是否在合理范围内
         if self.sample_rate < 8000 || self.sample_rate > 192000 {
-            return Err(format!("sample_rate ({}) 超出支持范围 [8000, 192000]", self.sample_rate));
+            return Err(format!(
+                "sample_rate ({}) 超出支持范围 [8000, 192000]",
+                self.sample_rate
+            ));
         }
 
         Ok(())
@@ -88,7 +101,7 @@ impl AudioInputConfig {
         InternalAudioInputConfig {
             format: self.format.clone(),
             input_sample_rate: self.sample_rate,
-            target_sample_rate: 16000,                    // 内部固定使用16kHz
+            target_sample_rate: 16000, // 内部固定使用16kHz
             enable_resampling: self.sample_rate != 16000, // 自动判断是否需要重采样
         }
     }
@@ -160,7 +173,8 @@ impl OpusProcessor {
     fn new(config: InternalAudioInputConfig) -> Result<Self, InputProcessorError> {
         // Opus解码器使用目标采样率
         let decoder_config = OpusDecoderConfig::new(config.target_sample_rate, 1);
-        let decoder = OpusDecoder::with_config(decoder_config).map_err(|e| InputProcessorError::DecoderInit(e.to_string()))?;
+        let decoder = OpusDecoder::with_config(decoder_config)
+            .map_err(|e| InputProcessorError::DecoderInit(e.to_string()))?;
 
         Ok(Self {
             decoder: std::sync::Mutex::new(decoder),
@@ -179,16 +193,20 @@ impl AudioProcessor for OpusProcessor {
             Ok(decoded_frame) => {
                 // 如果需要重采样且采样率不同
                 if self.enable_resampling && self.input_sample_rate != self.target_sample_rate {
-                    resample_audio(&decoded_frame, self.input_sample_rate, self.target_sample_rate)
+                    resample_audio(
+                        &decoded_frame,
+                        self.input_sample_rate,
+                        self.target_sample_rate,
+                    )
                 } else {
                     Ok(decoded_frame)
                 }
-            },
+            }
             Err(e) => {
                 warn!("Opus解码失败: {}, 数据大小: {}字节", e, data.len());
                 // 解码失败时返回空数据，让上层知道有数据被丢弃
                 Ok(Vec::new())
-            },
+            }
         }
     }
 
@@ -235,9 +253,14 @@ impl AudioInputProcessor {
     }
 
     /// 更新配置
-    pub fn update_config(&mut self, new_config: AudioInputConfig) -> Result<(), InputProcessorError> {
+    pub fn update_config(
+        &mut self,
+        new_config: AudioInputConfig,
+    ) -> Result<(), InputProcessorError> {
         // 如果格式或采样率发生变化，需要重新创建处理器
-        if new_config.format != self.config.format || new_config.sample_rate != self.config.sample_rate {
+        if new_config.format != self.config.format
+            || new_config.sample_rate != self.config.sample_rate
+        {
             self.config = new_config.clone();
             let internal_config = new_config.to_internal_config();
 

@@ -9,7 +9,10 @@ fn env_str(key: &str, default: &str) -> String {
     std::env::var(key).unwrap_or_else(|_| default.to_string())
 }
 fn env_u64(key: &str, default: u64) -> u64 {
-    std::env::var(key).ok().and_then(|v| v.parse().ok()).unwrap_or(default)
+    std::env::var(key)
+        .ok()
+        .and_then(|v| v.parse().ok())
+        .unwrap_or(default)
 }
 use std::time::Duration;
 
@@ -60,7 +63,12 @@ impl MiniMaxConfig {
     }
 
     /// 创建新配置
-    pub fn new(ws_url: Option<String>, http_url: Option<String>, model: Option<String>, default_voice_id: Option<String>) -> Self {
+    pub fn new(
+        ws_url: Option<String>,
+        http_url: Option<String>,
+        model: Option<String>,
+        default_voice_id: Option<String>,
+    ) -> Self {
         Self {
             ws_url: ws_url.unwrap_or_else(|| "wss://api.minimaxi.com/ws/v1/t2a_v2".to_string()),
             http_url: http_url.unwrap_or_else(|| "https://api.minimaxi.com/v1/t2a_v2".to_string()),

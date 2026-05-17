@@ -17,13 +17,13 @@ use futures_util::{SinkExt, Stream, StreamExt};
 use tokio_tungstenite::tungstenite::Message;
 use tracing::{debug, warn};
 
+use super::AudioChunk;
 use super::config::MiniMaxConfig;
 use super::types::{
     AudioSetting, MiniMaxError, TaskContinueRequest, TaskFinishRequest, TaskStartRequest,
     VoiceSetting, WebSocketResponse,
 };
 use super::voice_library::global_voice_library;
-use super::AudioChunk;
 
 /// MiniMax TTS WebSocket 客户端
 #[derive(Clone)]
@@ -49,8 +49,10 @@ impl MiniMaxWsTtsClient {
         text: &str,
         voice_setting: Option<VoiceSetting>,
         audio_setting: Option<AudioSetting>,
-    ) -> Result<Pin<Box<dyn Stream<Item = Result<AudioChunk, MiniMaxError>> + Send + 'static>>, MiniMaxError>
-    {
+    ) -> Result<
+        Pin<Box<dyn Stream<Item = Result<AudioChunk, MiniMaxError>> + Send + 'static>>,
+        MiniMaxError,
+    > {
         if text.trim().is_empty() {
             return Err(MiniMaxError::Config("文本内容不能为空".to_string()));
         }
@@ -249,6 +251,199 @@ impl MiniMaxWsTtsClient {
             );
             yield final_chunk;
 
+            let _ = write.close().await;
+        };
+
+        Ok(Box::pin(stream))
+    }
+
+    /// 直接使用调用方提供的 API Key 与 voice_id 进行合成。
+    pub fn synthesize_direct(
+        &self,
+        api_key: &str,
+        voice_id: &str,
+        text: &str,
+        voice_setting: Option<VoiceSetting>,
+        audio_setting: Option<AudioSetting>,
+    ) -> Result<
+        Pin<Box<dyn Stream<Item = Result<AudioChunk, MiniMaxError>> + Send + 'static>>,
+        MiniMaxError,
+    > {
+        if text.trim().is_empty() {
+            return Err(MiniMaxError::Config("文本内容不能为空".to_string()));
+        }
+        if api_key.trim().is_empty() {
+            return Err(MiniMaxError::Config("MiniMax API Key 不能为空".to_string()));
+        }
+        if voice_id.trim().is_empty() {
+            return Err(MiniMaxError::Config(
+                "MiniMax voice_id 不能为空".to_string(),
+            ));
+        }
+
+        let mut voice_setting = voice_setting.unwrap_or_default();
+        voice_setting.voice_id = Some(voice_id.to_string());
+
+        let audio_setting = audio_setting.unwrap_or_default();
+        let model = self.config.model.clone();
+        let ws_url = self.config.ws_url.clone();
+        let text = text.to_string();
+        let api_key = api_key.to_string();
+
+        let stream = try_stream! {
+            let request = tokio_tungstenite::tungstenite::http::Request::builder()
+                .uri(&ws_url)
+                .header("Authorization", format!("Bearer {}", api_key))
+                .body(())
+                .map_err(|e| MiniMaxError::WebSocket(format!("构建请求失败: {e}")))?;
+
+            let (ws_stream, _) = tokio_tungstenite::connect_async(request)
+                .await
+                .map_err(|e| MiniMaxError::WebSocket(format!("WebSocket 连接失败: {e}")))?;
+
+            let (mut write, mut read) = ws_stream.split();
+
+            let task_start = serde_json::to_string(&TaskStartRequest {
+                event: "task_start".to_string(),
+                model,
+                voice_setting,
+                audio_setting: Some(audio_setting),
+                pronunciation_dict: None,
+                timbre_weights: None,
+                language_boost: Some("Chinese".to_string()),
+                voice_modify: None,
+            })
+            .map_err(MiniMaxError::Json)?;
+
+            write
+                .send(Message::Text(task_start.into()))
+                .await
+                .map_err(|e| MiniMaxError::WebSocket(format!("发送 task_start 失败: {e}")))?;
+
+            debug!("MiniMax WS(direct): task_start 已发送");
+
+            // 文档要求：收到 task_started 后才能发送 task_continue / task_finish。
+            loop {
+                let msg = read.next().await.ok_or_else(|| MiniMaxError::WebSocket("等待 task_started 时连接已关闭".to_string()))?;
+                let msg = msg.map_err(|e| MiniMaxError::WebSocket(format!("读取消息失败: {e}")))?;
+                let text = match msg {
+                    Message::Text(t) => t.to_string(),
+                    Message::Ping(data) => {
+                        let _ = write.send(Message::Pong(data)).await;
+                        continue;
+                    }
+                    Message::Close(_) => Err(MiniMaxError::WebSocket("等待 task_started 时连接关闭".to_string()))?,
+                    _ => continue,
+                };
+                let response: WebSocketResponse = serde_json::from_str(&text)
+                    .map_err(|e| MiniMaxError::Other(format!("解析握手响应失败: {e}")))?;
+                match response {
+                    WebSocketResponse::ConnectedSuccess { base_resp, .. } => {
+                        if !base_resp.is_success() {
+                            Err(MiniMaxError::Api(base_resp.error_message()))?;
+                        }
+                    }
+                    WebSocketResponse::TaskStarted { base_resp, .. } => {
+                        if !base_resp.is_success() {
+                            Err(MiniMaxError::Api(base_resp.error_message()))?;
+                        }
+                        break;
+                    }
+                    WebSocketResponse::TaskFailed { base_resp, .. } => {
+                        Err(MiniMaxError::Api(base_resp.error_message()))?;
+                    }
+                    _ => {}
+                }
+            }
+
+            let task_continue = serde_json::to_string(&TaskContinueRequest {
+                event: "task_continue".to_string(),
+                text,
+            })
+            .map_err(MiniMaxError::Json)?;
+
+            write
+                .send(Message::Text(task_continue.into()))
+                .await
+                .map_err(|e| MiniMaxError::WebSocket(format!("发送 task_continue 失败: {e}")))?;
+
+            let task_finish = serde_json::to_string(&TaskFinishRequest {
+                event: "task_finish".to_string(),
+            })
+            .map_err(MiniMaxError::Json)?;
+
+            write
+                .send(Message::Text(task_finish.into()))
+                .await
+                .map_err(|e| MiniMaxError::WebSocket(format!("发送 task_finish 失败: {e}")))?;
+
+            let mut sequence_id: u64 = 0;
+            while let Some(msg) = read.next().await {
+                let msg = msg.map_err(|e| MiniMaxError::WebSocket(format!("读取消息失败: {e}")))?;
+                let text = match msg {
+                    Message::Text(t) => t.to_string(),
+                    Message::Binary(b) => {
+                        warn!("MiniMax WS(direct): 收到意外二进制消息，长度={}", b.len());
+                        continue;
+                    }
+                    Message::Close(_) => break,
+                    Message::Ping(data) => {
+                        let _ = write.send(Message::Pong(data)).await;
+                        continue;
+                    }
+                    Message::Pong(_) => continue,
+                    Message::Frame(_) => continue,
+                };
+
+                let response: WebSocketResponse = match serde_json::from_str(&text) {
+                    Ok(r) => r,
+                    Err(e) => {
+                        warn!("MiniMax WS(direct): 解析响应失败: {e}, raw={}", &text[..text.len().min(200)]);
+                        continue;
+                    }
+                };
+
+                match response {
+                    WebSocketResponse::TaskContinued { data, base_resp, extra_info, .. } => {
+                        if !base_resp.is_success() {
+                            Err(MiniMaxError::Api(base_resp.error_message()))?;
+                        }
+
+                        let sample_rate = extra_info
+                            .as_ref()
+                            .and_then(|extra| extra.audio_sample_rate)
+                            .unwrap_or(44100);
+
+                        if let Some(d) = data {
+                            let audio_bytes = hex::decode(&d.audio)
+                                .map_err(|e| MiniMaxError::Other(format!("音频数据hex解码失败: {e}")))?;
+
+                            if !audio_bytes.is_empty() {
+                                yield AudioChunk::new_with_gain_and_sample_rate(
+                                    audio_bytes,
+                                    sequence_id,
+                                    false,
+                                    0.0,
+                                    sample_rate,
+                                );
+                                sequence_id = sequence_id.saturating_add(1);
+                            }
+                        }
+                    }
+                    WebSocketResponse::TaskFinished { base_resp, .. } => {
+                        if !base_resp.is_success() {
+                            Err(MiniMaxError::Api(base_resp.error_message()))?;
+                        }
+                        break;
+                    }
+                    WebSocketResponse::TaskFailed { base_resp, .. } => {
+                        Err(MiniMaxError::Api(base_resp.error_message()))?;
+                    }
+                    WebSocketResponse::ConnectedSuccess { .. } | WebSocketResponse::TaskStarted { .. } => {}
+                }
+            }
+
+            yield AudioChunk::new_with_gain_and_sample_rate(Vec::new(), u64::MAX, true, 0.0, 44100);
             let _ = write.close().await;
         };
 

@@ -60,7 +60,13 @@ pub struct BaiduHttpTtsRequest {
 impl BaiduHttpTtsRequest {
     /// 创建新的合成请求
     pub fn new(text: impl Into<String>) -> Self {
-        Self { text: text.into(), per: None, spd: None, pit: None, vol: None }
+        Self {
+            text: text.into(),
+            per: None,
+            spd: None,
+            pit: None,
+            vol: None,
+        }
     }
 
     /// 设置发音人
@@ -88,7 +94,10 @@ impl BaiduHttpTtsRequest {
     }
 
     /// 从旧的 WebSocket 请求格式转换
-    pub fn from_ws_request(ws_req: &super::client::BaiduTtsRequest, config: &BaiduTtsConfig) -> Self {
+    pub fn from_ws_request(
+        ws_req: &super::client::BaiduTtsRequest,
+        config: &BaiduTtsConfig,
+    ) -> Self {
         let mut req = Self::new(ws_req.text.clone());
 
         // per 优先级: 请求指定 > 配置默认
@@ -129,7 +138,10 @@ impl BaiduHttpTtsClient {
             .build()
             .expect("Failed to create HTTP client");
 
-        Self { config, http_client }
+        Self {
+            config,
+            http_client,
+        }
     }
 
     /// 从环境变量创建客户端
@@ -147,7 +159,10 @@ impl BaiduHttpTtsClient {
     ///
     /// REST API 返回完整音频，但为兼容流式接口，
     /// 将结果包装为单个 AudioChunk 的流
-    pub fn synthesize(&self, request: BaiduHttpTtsRequest) -> Result<Pin<Box<dyn Stream<Item = Result<AudioChunk>> + Send + '_>>> {
+    pub fn synthesize(
+        &self,
+        request: BaiduHttpTtsRequest,
+    ) -> Result<Pin<Box<dyn Stream<Item = Result<AudioChunk>> + Send + '_>>> {
         let config = self.config.clone();
         let http_client = self.http_client.clone();
         let text = request.text.clone();

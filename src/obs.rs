@@ -13,7 +13,7 @@
 use anyhow::Result;
 use base64::{Engine as _, engine::general_purpose};
 use futures_util::SinkExt;
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 use sha2::{Digest, Sha256};
 use tokio_tungstenite::tungstenite::Message;
 use tokio_util::sync::CancellationToken;

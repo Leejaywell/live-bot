@@ -89,9 +89,14 @@ pub fn parse_set_cookie(headers: &HeaderMap) -> String {
     let mut map = BTreeMap::new();
     for value in headers.get_all(SET_COOKIE) {
         let Ok(raw) = value.to_str() else { continue };
-        let Some(pair) = raw.split(';').next() else { continue };
-        let Some((key, val)) = pair.split_once('=') else { continue };
-        map.entry(key.to_string()).or_insert_with(|| val.to_string());
+        let Some(pair) = raw.split(';').next() else {
+            continue;
+        };
+        let Some((key, val)) = pair.split_once('=') else {
+            continue;
+        };
+        map.entry(key.to_string())
+            .or_insert_with(|| val.to_string());
     }
     map.iter()
         .map(|(k, v)| format!("{k}={v}"))

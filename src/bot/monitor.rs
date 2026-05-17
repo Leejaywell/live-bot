@@ -3,14 +3,15 @@ use cron::Schedule;
 use serde_json::json;
 use std::str::FromStr;
 use std::sync::{Arc, Mutex};
+use tokio::net::TcpStream;
 use tokio::sync::mpsc;
-use tokio::time::{Duration, sleep};
+use tokio::time::{Duration, sleep, timeout};
 use tokio_util::sync::CancellationToken;
 
 use crate::api::BiliApi;
-use crate::bot::{self, agent};
 use crate::bot::EventEmitter;
 use crate::bot::engine::BotEngine;
+use crate::bot::{self, agent};
 use crate::config::AppConfig;
 use crate::storage::Storage;
 use crate::token;
@@ -19,7 +20,7 @@ use crate::token;
 #[cfg(feature = "vad")]
 use streamix_voice::asr::AsrBackend;
 
-pub async fn run_monitor_loop<E: EventEmitter>(
+pub async fn run_monitor_loop<E: EventEmitter + Send + Sync + 'static>(
     app: E,
     http: BiliApi,
     room_id: i64,
@@ -46,10 +47,14 @@ pub async fn run_monitor_loop<E: EventEmitter>(
 
     let (send_tx, send_rx) = mpsc::channel::<String>(1000);
     let (gift_tx, gift_rx) = mpsc::channel::<bilibili_live_protocol::LiveEvent>(1000);
-    let send_cookie = token::read_session().ok().map(|s| s.cookie).filter(|c| !c.is_empty());
+    let send_cookie = token::read_session()
+        .ok()
+        .map(|s| s.cookie)
+        .filter(|c| !c.is_empty());
 
     // 读取机器人自身 UID，用于过滤弹幕回声（B站会将机器人发送的弹幕也推送回来）
-    let self_uid: i64 = send_cookie.as_deref()
+    let self_uid: i64 = send_cookie
+        .as_deref()
         .and_then(|c| extract_cookie_value(c, "DedeUserID"))
         .and_then(|v| v.parse().ok())
         .unwrap_or(0);
@@ -58,7 +63,9 @@ pub async fn run_monitor_loop<E: EventEmitter>(
     use crate::bot::agent::{self, AgentRuntime, GetSessionStatsTool, SendDanmuTool};
     let agent_runtime = Arc::new(
         AgentRuntime::new()
-            .register(SendDanmuTool { tx: send_tx.clone() })
+            .register(SendDanmuTool {
+                tx: send_tx.clone(),
+            })
             .register(GetSessionStatsTool {
                 storage: storage.clone(),
                 session_id: current_session_id.clone(),
@@ -68,9 +75,16 @@ pub async fn run_monitor_loop<E: EventEmitter>(
     // TTS 语音播报：SpeakerRouter 按优先级路由（Bot=1, AI=5, System=10）
     use streamix_voice::{SessionConfig, SpeakerRouter};
     let tts_router: Option<SpeakerRouter> = if config.tts_enabled {
-        let tts_engine = resolve_tts_engine(&config);
-        let session_config = SessionConfig { tts_voice: config.tts_voice.clone(), ..SessionConfig::default() };
-        Some(SpeakerRouter::spawn_with_audio_and_engine(session_config, tts_engine, cancel.clone()))
+        let tts_engine = resolve_tts_engine(&config, &model_dir);
+        let session_config = SessionConfig {
+            tts_voice: config.tts_voice.clone(),
+            ..SessionConfig::default()
+        };
+        Some(SpeakerRouter::spawn_with_audio_and_engine(
+            session_config,
+            tts_engine,
+            cancel.clone(),
+        ))
     } else {
         None
     };
@@ -113,9 +127,18 @@ pub async fn run_monitor_loop<E: EventEmitter>(
             let obs_app = sender_app.clone();
             tokio::spawn(async move {
                 if let Err(e) = crate::obs::run_obs_client(
-                    &obs_host, obs_port, &obs_password, obs_router, obs_cancel,
-                ).await {
-                    let _ = obs_app.emit("monitor-log", serde_json::json!(format!("OBS 连接失败: {e}")));
+                    &obs_host,
+                    obs_port,
+                    &obs_password,
+                    obs_router,
+                    obs_cancel,
+                )
+                .await
+                {
+                    let _ = obs_app.emit(
+                        "monitor-log",
+                        serde_json::json!(format!("OBS 连接失败: {e}")),
+                    );
                 }
             });
         }
@@ -124,65 +147,115 @@ pub async fn run_monitor_loop<E: EventEmitter>(
     // VAD 麦克风捕获：检测主播语音段，触发 TTS 打断 + 话轮结束事件
     #[cfg(feature = "vad")]
     let _mic_capture: Option<streamix_voice::SherpaMicCapture> = if config.vad_enabled {
-        let vad_model     = model_dir.join("silero_vad.onnx");
-        let asr_url       = resolve_asr_url(&config);
-        // 本地 ASR 只在没有外部 ASR URL 时启用
-        let asr_model_dir = if asr_url.is_empty() {
-            Some(model_dir.join("sherpa-onnx-sense-voice-zh-en-ja-ko-yue-int8-2024-07-17"))
-        } else {
-            None
-        };
+        let vad_model = model_dir.join("silero_vad.onnx");
+        let (asr_url, asr_model_dir, asr_startup_notice) =
+            resolve_vad_asr_source(&config, &model_dir).await;
 
-        match streamix_voice::SherpaPipeline::spawn(vad_model, asr_model_dir, "auto", cancel.clone()) {
+        match streamix_voice::SherpaPipeline::spawn(
+            vad_model,
+            asr_model_dir,
+            "auto",
+            cancel.clone(),
+        ) {
             Ok(pipeline) => {
+                let _ = sender_app.emit(
+                    "monitor-log",
+                    serde_json::json!("语音检测（VAD）已就绪，正在启动麦克风..."),
+                );
+                if let Some(notice) = asr_startup_notice {
+                    let _ = sender_app.emit("monitor-log", serde_json::json!(notice));
+                }
+
                 // 事件循环
-                let events     = pipeline.subscribe();
-                let vad_app    = sender_app.clone();
+                let events = pipeline.subscribe();
+                let vad_app = sender_app.clone();
                 let vad_cancel = cancel.clone();
                 let vad_config = Arc::clone(&bot_config);
                 let vad_memory = session_memory.clone();
-                let vad_agent  = agent_runtime.clone();
-                let vad_http   = http.clone();
-                let vad_tx     = send_tx.clone();
+                let vad_agent = agent_runtime.clone();
+                let vad_http = http.clone();
+                let vad_tx = send_tx.clone();
 
                 // WhisperLive：需要音频 tap；本地 sherpa ASR：事件里直接携带文本
                 let audio_tap = if !asr_url.is_empty() {
                     let (tx, rx) = tokio::sync::mpsc::unbounded_channel::<Vec<f32>>();
-                    let events2      = pipeline.subscribe();
-                    let asr_cancel   = cancel.clone();
-                    let asr_app      = sender_app.clone();
-                    let asr_config   = Arc::clone(&bot_config);
-                    let asr_memory   = session_memory.clone();
-                    let asr_agent    = agent_runtime.clone();
-                    let asr_http     = http.clone();
-                    let asr_tx       = send_tx.clone();
-                    let asr_url_c    = asr_url.clone();
+                    let events2 = pipeline.subscribe();
+                    let asr_cancel = cancel.clone();
+                    let asr_app = sender_app.clone();
+                    let asr_config = Arc::clone(&bot_config);
+                    let asr_memory = session_memory.clone();
+                    let asr_agent = agent_runtime.clone();
+                    let asr_http = http.clone();
+                    let asr_tx = send_tx.clone();
+                    let asr_url_c = asr_url.clone();
                     tokio::spawn(async move {
                         #[cfg(feature = "asr")]
                         run_asr_loop(
-                            rx, events2, asr_url_c, asr_http, asr_config,
-                            asr_memory, asr_agent, asr_tx, asr_app, asr_cancel,
-                        ).await;
+                            rx, events2, asr_url_c, asr_http, asr_config, asr_memory, asr_agent,
+                            asr_tx, asr_app, asr_cancel,
+                        )
+                        .await;
                     });
                     Some(tx)
                 } else {
                     // 本地 sherpa ASR：SpeechEnd 事件里带文本，直接触发 AI
                     tokio::spawn(run_sherpa_asr_event_loop(
-                        events, vad_http, vad_config, vad_memory, vad_agent, vad_tx, vad_app, vad_cancel,
+                        events, vad_http, vad_config, vad_memory, vad_agent, vad_tx, vad_app,
+                        vad_cancel,
                     ));
                     None
                 };
 
-                match streamix_voice::SherpaMicCapture::start(&pipeline, audio_tap) {
-                    Ok(mic) => Some(mic),
+                let (mic_status_tx, mic_status_rx) = std::sync::mpsc::channel::<String>();
+                let mic_status_app = sender_app.clone();
+                let mic_status_cancel = cancel.clone();
+                std::thread::Builder::new()
+                    .name("sherpa-mic-status".into())
+                    .spawn(move || {
+                        while !mic_status_cancel.is_cancelled() {
+                            match mic_status_rx.recv_timeout(std::time::Duration::from_millis(200))
+                            {
+                                Ok(line) => {
+                                    let _ =
+                                        mic_status_app.emit("monitor-log", serde_json::json!(line));
+                                }
+                                Err(std::sync::mpsc::RecvTimeoutError::Timeout) => {}
+                                Err(std::sync::mpsc::RecvTimeoutError::Disconnected) => break,
+                            }
+                        }
+                    })
+                    .ok();
+
+                match streamix_voice::SherpaMicCapture::start(
+                    &pipeline,
+                    audio_tap,
+                    Some(mic_status_tx),
+                ) {
+                    Ok(mic) => {
+                        let _ = sender_app.emit(
+                            "monitor-log",
+                            serde_json::json!("麦克风已就绪，语音陪伴开始监听"),
+                        );
+                        let _ = sender_app.emit(
+                            "monitor-log",
+                            serde_json::json!("若3秒内未见「检测到你正在说话」，请检查：系统设置 > 隐私与安全 > 麦克风"),
+                        );
+                        Some(mic)
+                    }
                     Err(e) => {
-                        let _ = sender_app.emit("monitor-log", serde_json::json!(format!("麦克风启动失败: {e}")));
+                        let _ = sender_app.emit(
+                            "monitor-log",
+                            serde_json::json!(format!("麦克风启动失败: {e}")),
+                        );
                         None
                     }
                 }
             }
             Err(e) => {
-                let _ = sender_app.emit("monitor-log", serde_json::json!(format!("VAD 初始化失败: {e}")));
+                let _ = sender_app.emit(
+                    "monitor-log",
+                    serde_json::json!(format!("VAD 初始化失败: {e}")),
+                );
                 None
             }
         }
@@ -335,7 +408,10 @@ pub async fn run_monitor_loop<E: EventEmitter>(
     let ws_session = current_session_id.clone();
     let ws_danmaku = danmaku_buffer.clone();
     let ws_task = tokio::spawn(async move {
-        let original_cookie = token::read_session().ok().map(|s| s.cookie).unwrap_or_default();
+        let original_cookie = token::read_session()
+            .ok()
+            .map(|s| s.cookie)
+            .unwrap_or_default();
 
         loop {
             let bot_config = bot_config.clone();
@@ -506,12 +582,10 @@ pub async fn run_monitor_loop<E: EventEmitter>(
                         let danmu_uid = *user_id;
                         let danmu_uname = danmu_uname.clone();
 
-                        // Reload config from disk to pick up runtime toggle changes
-                        let current_config = AppConfig::load_or_default().ok();
-                        if current_config.as_ref().map(|c| c.ai_reply_to_danmaku).unwrap_or(false) {
-                            if let Some(res) = agent::resolve_bot_danmu(current_config.as_ref().unwrap_or(&bot_config), text) {
+                        if bot_config.ai_reply_to_danmaku {
+                            if let Some(res) = agent::resolve_bot_danmu(&bot_config, text) {
                                 let ai_http = ai_http.clone();
-                                let ai_config = Arc::new(current_config.clone().unwrap_or((*bot_config).clone()));
+                                let ai_config = Arc::clone(&bot_config);
                                 let ai_tx = event_tx.clone();
                                 let ai_router = event_tts_router.clone();
                                 let bot_id = res.bot.id.clone();
@@ -578,9 +652,12 @@ async fn run_asr_loop<E: crate::bot::EventEmitter + Send + Sync + 'static>(
     app: Arc<E>,
     cancel: tokio_util::sync::CancellationToken,
 ) {
-    use streamix_voice::asr::{WhisperLiveAsrBackend, BackendConfig};
+    use streamix_voice::asr::{BackendConfig, WhisperLiveAsrBackend};
 
-    let backend_cfg = BackendConfig { url: asr_url, supports_hotwords: false };
+    let backend_cfg = BackendConfig {
+        url: asr_url,
+        supports_hotwords: false,
+    };
     let mut asr = WhisperLiveAsrBackend::new_with_config(backend_cfg, "zh".to_string(), None, None);
 
     let mut speech_buf: Vec<f32> = Vec::new();
@@ -597,14 +674,15 @@ async fn run_asr_loop<E: crate::bot::EventEmitter + Send + Sync + 'static>(
                     asr.reset_streaming();
                     let _ = app.emit("monitor-log", serde_json::json!("[VAD] 开始录音"));
                 }
-                Ok(streamix_voice::TurnEvent::TurnEnd) => {
+                Ok(streamix_voice::TurnEvent::TurnEnd { samples }) => {
                     recording = false;
-                    if speech_buf.len() < 1600 {
-                        // 少于 100ms 的片段，忽略
+                    // sherpa-onnx 已完成端点检测，samples 就是完整语音段；
+                    // speech_buf 是外部采集的冗余路径，直接用 samples。
+                    let audio = if !samples.is_empty() { samples } else { std::mem::take(&mut speech_buf) };
+                    if audio.len() < 1600 {
                         speech_buf.clear();
                         continue;
                     }
-                    let audio = std::mem::take(&mut speech_buf);
                     let _ = app.emit("monitor-log", serde_json::json!(format!("[VAD] 话轮结束，送 ASR（{}ms）", audio.len() / 16)));
 
                     match asr.streaming_recognition(&audio, true, true).await {
@@ -658,7 +736,8 @@ fn extract_cookie_value(cookie: &str, name: &str) -> Option<String> {
     cookie.split(';').find_map(|s| {
         let s = s.trim();
         let prefix = format!("{}=", name);
-        s.starts_with(&prefix).then(|| s[prefix.len()..].to_string())
+        s.starts_with(&prefix)
+            .then(|| s[prefix.len()..].to_string())
     })
 }
 
@@ -672,28 +751,26 @@ fn extract_cookie_value(cookie: &str, name: &str) -> Option<String> {
 #[allow(clippy::too_many_arguments)]
 async fn run_sherpa_asr_event_loop<E: crate::bot::EventEmitter + Send + Sync + 'static>(
     mut events: tokio::sync::broadcast::Receiver<streamix_voice::TurnEvent>,
-    http:       crate::api::BiliApi,
-    config:     Arc<crate::config::AppConfig>,
-    memory:     Arc<std::sync::Mutex<crate::bot::memory::SessionMemory>>,
-    agent:      Arc<crate::bot::agent::AgentRuntime>,
-    danmu_tx:   tokio::sync::mpsc::Sender<String>,
-    app:        Arc<E>,
-    cancel:     tokio_util::sync::CancellationToken,
+    http: crate::api::BiliApi,
+    config: Arc<crate::config::AppConfig>,
+    memory: Arc<std::sync::Mutex<crate::bot::memory::SessionMemory>>,
+    agent: Arc<crate::bot::agent::AgentRuntime>,
+    danmu_tx: tokio::sync::mpsc::Sender<String>,
+    app: Arc<E>,
+    cancel: tokio_util::sync::CancellationToken,
 ) {
     loop {
         tokio::select! {
             _ = cancel.cancelled() => break,
             ev = events.recv() => match ev {
                 Ok(streamix_voice::TurnEvent::SpeechStart) => {
-                    let _ = app.emit("monitor-log", serde_json::json!("[VAD] 检测到说话，开始录音"));
+                    let _ = app.emit("monitor-log", serde_json::json!("[VAD] 检测到语音段，正在识别..."));
                 }
-                Ok(streamix_voice::TurnEvent::TurnEnd) => {
-                    let _ = app.emit("monitor-log", serde_json::json!("[VAD] 话轮结束，等待 ASR 推理"));
-                }
+                Ok(streamix_voice::TurnEvent::TurnEnd { .. }) => {}
                 Ok(streamix_voice::TurnEvent::SpeechEnd { text: Some(text), .. }) => {
                     let text = text.trim().to_string();
                     if text.is_empty() { continue; }
-                    let _ = app.emit("monitor-log", serde_json::json!(format!("[ASR] {}", text)));
+                    let _ = app.emit("monitor-log", serde_json::json!(format!("[ASR] 识别结果: {}", text)));
                     if let Some(bot) = config.ai_bots.iter().find(|b| b.enabled) {
                         let bot_id   = bot.id.clone();
                         let bot_nick = bot.nickname.clone();
@@ -717,11 +794,17 @@ async fn run_sherpa_asr_event_loop<E: crate::bot::EventEmitter + Send + Sync + '
 
 /// 根据 config 中 active_tts_provider_id 解析对应的 TTS 引擎配置。
 /// 未找到或未配置时回退为 Edge TTS。
-fn resolve_tts_engine(config: &AppConfig) -> streamix_voice::TtsEngine {
+fn resolve_tts_engine(
+    config: &AppConfig,
+    model_dir: &std::path::Path,
+) -> streamix_voice::TtsEngine {
     let tts_provider = if config.active_tts_provider_id.is_empty() {
         None
     } else {
-        config.ai_providers.iter().find(|p| p.provider_type == "tts" && p.id == config.active_tts_provider_id)
+        config
+            .ai_providers
+            .iter()
+            .find(|p| p.provider_type == "tts" && p.id == config.active_tts_provider_id)
     };
 
     let Some(provider) = tts_provider else {
@@ -739,7 +822,10 @@ fn resolve_tts_engine(config: &AppConfig) -> streamix_voice::TtsEngine {
                 provider.model.clone()
             },
         }
-    } else if name_lower.contains("火山") || name_lower.contains("volcengine") || name_lower.contains("volc") {
+    } else if name_lower.contains("火山")
+        || name_lower.contains("volcengine")
+        || name_lower.contains("volc")
+    {
         let app_id = if provider.api_key.is_empty() {
             std::env::var("VOLC_APP_ID").unwrap_or_default()
         } else {
@@ -752,11 +838,17 @@ fn resolve_tts_engine(config: &AppConfig) -> streamix_voice::TtsEngine {
             provider.model.clone()
         };
         let speaker = if provider.api_url.is_empty() {
-            std::env::var("VOLC_SPEAKER").unwrap_or_else(|_| "zh_female_shuangkuaisisi_moon_bigtts".to_string())
+            std::env::var("VOLC_SPEAKER")
+                .unwrap_or_else(|_| "zh_female_shuangkuaisisi_moon_bigtts".to_string())
         } else {
             provider.api_url.clone()
         };
-        streamix_voice::TtsEngine::VolcEngine { app_id, access_key, resource_id, speaker }
+        streamix_voice::TtsEngine::VolcEngine {
+            app_id,
+            access_key,
+            resource_id,
+            speaker,
+        }
     } else if name_lower.contains("azure") {
         streamix_voice::TtsEngine::Azure {
             subscription_key: provider.api_key.clone(),
@@ -767,8 +859,64 @@ fn resolve_tts_engine(config: &AppConfig) -> streamix_voice::TtsEngine {
             },
         }
     } else {
+        #[cfg(feature = "local-tts")]
+        {
+            if let Some(engine) = try_resolve_local_tts(&name_lower, model_dir, config.tts_speed) {
+                return engine;
+            }
+        }
         streamix_voice::TtsEngine::Edge
     }
+}
+
+/// 尝试将 provider 名称映射到本地 TTS 引擎。失败时返回 None（调用方回退到 Edge）。
+#[cfg(feature = "local-tts")]
+fn try_resolve_local_tts(
+    name_lower: &str,
+    model_dir: &std::path::Path,
+    speed: f32,
+) -> Option<streamix_voice::TtsEngine> {
+    use std::sync::Arc;
+    use streamix_voice::tts::local::LocalTtsEngine;
+
+    if name_lower.contains("kokoro") {
+        let dir = model_dir.join("sherpa-onnx-kokoro-multi-lang-v1.1-ONNX");
+        match LocalTtsEngine::new_kokoro(&dir) {
+            Ok(e) => {
+                return Some(streamix_voice::TtsEngine::LocalTts {
+                    engine: Arc::new(e),
+                    speaker_id: 0,
+                    speed,
+                });
+            }
+            Err(err) => eprintln!("[TTS] Kokoro 加载失败，回退至 Edge: {err}"),
+        }
+    } else if name_lower.contains("melo") {
+        let dir = model_dir.join("sherpa-onnx-melo-tts-zh_en");
+        match LocalTtsEngine::new_melo(&dir) {
+            Ok(e) => {
+                return Some(streamix_voice::TtsEngine::LocalTts {
+                    engine: Arc::new(e),
+                    speaker_id: 0,
+                    speed,
+                });
+            }
+            Err(err) => eprintln!("[TTS] MeloTTS 加载失败，回退至 Edge: {err}"),
+        }
+    } else if name_lower.contains("piper") {
+        let dir = model_dir.join("vits-piper-zh_CN-huayan-medium");
+        match LocalTtsEngine::new_piper(&dir) {
+            Ok(e) => {
+                return Some(streamix_voice::TtsEngine::LocalTts {
+                    engine: Arc::new(e),
+                    speaker_id: 0,
+                    speed,
+                });
+            }
+            Err(err) => eprintln!("[TTS] Piper 加载失败，回退至 Edge: {err}"),
+        }
+    }
+    None
 }
 
 /// 根据 config 中 active_asr_provider_id 解析 ASR WebSocket URL。
@@ -777,7 +925,10 @@ pub(crate) fn resolve_asr_url(config: &AppConfig) -> String {
     let asr_provider = if config.active_asr_provider_id.is_empty() {
         None
     } else {
-        config.ai_providers.iter().find(|p| p.provider_type == "asr" && p.id == config.active_asr_provider_id)
+        config
+            .ai_providers
+            .iter()
+            .find(|p| p.provider_type == "asr" && p.id == config.active_asr_provider_id)
     };
 
     if let Some(provider) = asr_provider {
@@ -788,4 +939,85 @@ pub(crate) fn resolve_asr_url(config: &AppConfig) -> String {
 
     // 回退到旧版 asr_url 字段
     config.asr_url.clone()
+}
+
+fn sensevoice_model_dir(model_dir: &std::path::Path) -> std::path::PathBuf {
+    model_dir.join("sherpa-onnx-sense-voice-zh-en-ja-ko-yue-int8-2024-07-17")
+}
+
+fn sensevoice_model_ready(model_dir: &std::path::Path) -> bool {
+    let dir = sensevoice_model_dir(model_dir);
+    dir.join("model.int8.onnx").exists() && dir.join("tokens.txt").exists()
+}
+
+fn is_loopback_ws_url(raw: &str) -> bool {
+    reqwest::Url::parse(raw)
+        .ok()
+        .and_then(|url| {
+            url.host_str()
+                .map(|host| matches!(host, "localhost" | "127.0.0.1" | "::1"))
+        })
+        .unwrap_or(false)
+}
+
+async fn ws_endpoint_reachable(raw: &str) -> bool {
+    let Some((host, port)) = reqwest::Url::parse(raw).ok().and_then(|url| {
+        url.host_str()
+            .map(|host| (host.to_string(), url.port_or_known_default().unwrap_or(80)))
+    }) else {
+        return false;
+    };
+
+    matches!(
+        timeout(
+            Duration::from_millis(800),
+            TcpStream::connect((host.as_str(), port))
+        )
+        .await,
+        Ok(Ok(_))
+    )
+}
+
+async fn resolve_vad_asr_source(
+    config: &AppConfig,
+    model_dir: &std::path::Path,
+) -> (String, Option<std::path::PathBuf>, Option<String>) {
+    let asr_provider = if config.active_asr_provider_id.is_empty() {
+        None
+    } else {
+        config
+            .ai_providers
+            .iter()
+            .find(|p| p.provider_type == "asr" && p.id == config.active_asr_provider_id)
+    };
+
+    let asr_url = resolve_asr_url(config);
+    let use_builtin_sensevoice = asr_provider
+        .map(|p| p.model == "sensevoice")
+        .unwrap_or(asr_url.is_empty());
+    if use_builtin_sensevoice || asr_url.is_empty() {
+        return ("".to_string(), Some(sensevoice_model_dir(model_dir)), None);
+    }
+
+    if is_loopback_ws_url(&asr_url) && !ws_endpoint_reachable(&asr_url).await {
+        if sensevoice_model_ready(model_dir) {
+            return (
+                "".to_string(),
+                Some(sensevoice_model_dir(model_dir)),
+                Some(format!(
+                    "ASR 服务不可达: {asr_url}，已自动回退到内置 SenseVoice 本地识别"
+                )),
+            );
+        }
+
+        return (
+            asr_url.clone(),
+            None,
+            Some(format!(
+                "ASR 服务不可达: {asr_url}。当前配置依赖外部 WebSocket 服务，语音将无法正常转文字"
+            )),
+        );
+    }
+
+    (asr_url, None, None)
 }

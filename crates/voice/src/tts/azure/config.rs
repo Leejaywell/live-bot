@@ -20,19 +20,31 @@ pub struct AzureTtsConfig {
 impl AzureTtsConfig {
     /// 从环境变量加载配置
     pub fn from_env() -> Result<Self, AzureTtsError> {
-        let subscription_key = std::env::var("AZURE_SPEECH_KEY").map_err(|_| AzureTtsError::Config("缺少环境变量 AZURE_SPEECH_KEY".to_string()))?;
+        let subscription_key = std::env::var("AZURE_SPEECH_KEY")
+            .map_err(|_| AzureTtsError::Config("缺少环境变量 AZURE_SPEECH_KEY".to_string()))?;
 
-        let region = std::env::var("AZURE_SPEECH_REGION").unwrap_or_else(|_| "eastasia".to_string());
+        let region =
+            std::env::var("AZURE_SPEECH_REGION").unwrap_or_else(|_| "eastasia".to_string());
 
         // 使用 24kHz 输出然后重采样到 16kHz，音质更好
-        let output_format = std::env::var("AZURE_TTS_OUTPUT_FORMAT").unwrap_or_else(|_| "raw-24khz-16bit-mono-pcm".to_string());
+        let output_format = std::env::var("AZURE_TTS_OUTPUT_FORMAT")
+            .unwrap_or_else(|_| "raw-24khz-16bit-mono-pcm".to_string());
 
-        Ok(Self { subscription_key, region, output_format, rate: None, pitch: None })
+        Ok(Self {
+            subscription_key,
+            region,
+            output_format,
+            rate: None,
+            pitch: None,
+        })
     }
 
     /// 获取 TTS REST API 端点
     pub fn tts_endpoint(&self) -> String {
-        format!("https://{}.tts.speech.microsoft.com/cognitiveservices/v1", self.region)
+        format!(
+            "https://{}.tts.speech.microsoft.com/cognitiveservices/v1",
+            self.region
+        )
     }
 }
 

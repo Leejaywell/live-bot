@@ -288,7 +288,10 @@ mod tests {
     #[test]
     fn test_get_voice_for_language() {
         // 测试精确匹配
-        assert_eq!(get_voice_for_language("zh-CN"), Some("zh-CN-XiaoxiaoNeural"));
+        assert_eq!(
+            get_voice_for_language("zh-CN"),
+            Some("zh-CN-XiaoxiaoNeural")
+        );
         assert_eq!(get_voice_for_language("en-US"), Some("en-US-JennyNeural"));
         assert_eq!(get_voice_for_language("ja-JP"), Some("ja-JP-NanamiNeural"));
 
