@@ -6,13 +6,12 @@
 //! 协议流程：
 //!   1. 建立 WebSocket 连接（Authorization: Bearer 头）
 //!   2. 发送 task_start → 接收 connected_success / task_started
-//!   3. 发送 task_continue(text) → 接收 task_continued（含 base64 音频）
+//!   3. 发送 task_continue(text) → 接收 task_continued（含 hex 音频）
 //!   4. 发送 task_finish → 接收 task_finished
 
 use std::pin::Pin;
 
 use async_stream::try_stream;
-use base64::Engine as _;
 use futures_util::{SinkExt, Stream, StreamExt};
 use tokio_tungstenite::tungstenite::Message;
 use tracing::{debug, warn};
@@ -124,6 +123,45 @@ impl MiniMaxWsTtsClient {
 
             debug!("MiniMax WS: task_start 已发送");
 
+            // 文档要求：收到 task_started 后才能发送 task_continue / task_finish。
+            loop {
+                let msg = read.next().await.ok_or_else(|| {
+                    MiniMaxError::WebSocket("等待 task_started 时连接已关闭".to_string())
+                })?;
+                let msg = msg.map_err(|e| MiniMaxError::WebSocket(format!("读取消息失败: {e}")))?;
+                let text = match msg {
+                    Message::Text(t) => t.to_string(),
+                    Message::Ping(data) => {
+                        let _ = write.send(Message::Pong(data)).await;
+                        continue;
+                    }
+                    Message::Close(_) => {
+                        Err(MiniMaxError::WebSocket("等待 task_started 时连接关闭".to_string()))?
+                    }
+                    _ => continue,
+                };
+                let response: WebSocketResponse = serde_json::from_str(&text)
+                    .map_err(|e| MiniMaxError::Other(format!("解析握手响应失败: {e}")))?;
+                match response {
+                    WebSocketResponse::ConnectedSuccess { base_resp, .. } => {
+                        if !base_resp.is_success() {
+                            Err(MiniMaxError::Api(base_resp.error_message()))?;
+                        }
+                    }
+                    WebSocketResponse::TaskStarted { base_resp, .. } => {
+                        if !base_resp.is_success() {
+                            Err(MiniMaxError::Api(base_resp.error_message()))?;
+                        }
+                        debug!("MiniMax WS: 任务已启动");
+                        break;
+                    }
+                    WebSocketResponse::TaskFailed { base_resp, .. } => {
+                        Err(MiniMaxError::Api(base_resp.error_message()))?;
+                    }
+                    _ => {}
+                }
+            }
+
             // 3. 发送 task_continue
             let task_continue = serde_json::to_string(&TaskContinueRequest {
                 event: "task_continue".to_string(),
@@ -211,17 +249,20 @@ impl MiniMaxWsTtsClient {
                         }
 
                         if let Some(d) = data {
-                            let audio_bytes = base64::engine::general_purpose::STANDARD
-                                .decode(&d.audio)
-                                .map_err(|e| MiniMaxError::Other(format!("base64 解码失败: {e}")))?;
+                            let audio_bytes = hex::decode(&d.audio)
+                                .map_err(|e| MiniMaxError::Other(format!("音频数据hex解码失败: {e}")))?;
 
                             if !audio_bytes.is_empty() {
+                                let sample_rate = extra_info
+                                    .as_ref()
+                                    .and_then(|extra| extra.audio_sample_rate)
+                                    .unwrap_or(44100);
                                 let chunk = AudioChunk::new_with_gain_and_sample_rate(
                                     audio_bytes,
                                     sequence_id,
                                     false,
                                     gain_db,
-                                    44100,
+                                    sample_rate,
                                 );
                                 sequence_id = sequence_id.saturating_add(1);
                                 yield chunk;

@@ -3,6 +3,8 @@ use cron::Schedule;
 use serde_json::json;
 use std::str::FromStr;
 use std::sync::{Arc, Mutex};
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
+use std::time::Instant;
 use tokio::net::TcpStream;
 use tokio::sync::mpsc;
 use tokio::time::{Duration, sleep, timeout};
@@ -88,6 +90,41 @@ pub async fn run_monitor_loop<E: EventEmitter + Send + Sync + 'static>(
     } else {
         None
     };
+    let mic_capture_enabled = Arc::new(AtomicBool::new(true));
+    let recent_tts_text: Arc<Mutex<Vec<(Instant, String)>>> = Arc::new(Mutex::new(Vec::new()));
+    if let Some(ref router) = tts_router {
+        let mut tts_events = router.voice_session().subscribe();
+        let capture_enabled = Arc::clone(&mic_capture_enabled);
+        let tts_generation = Arc::new(AtomicU64::new(0));
+        let tts_generation_for_task = Arc::clone(&tts_generation);
+        tokio::spawn(async move {
+            loop {
+                match tts_events.recv().await {
+                    Ok(streamix_voice::SessionEvent::SpeechStart { .. }) => {
+                        tts_generation_for_task.fetch_add(1, Ordering::Relaxed);
+                        capture_enabled.store(false, Ordering::Relaxed);
+                    }
+                    Ok(streamix_voice::SessionEvent::SpeechEnd)
+                    | Ok(streamix_voice::SessionEvent::SpeechInterrupted) => {
+                        let generation = tts_generation_for_task.load(Ordering::Relaxed);
+                        let capture_enabled = Arc::clone(&capture_enabled);
+                        let tts_generation = Arc::clone(&tts_generation_for_task);
+                        tokio::spawn(async move {
+                            tokio::time::sleep(Duration::from_millis(500)).await;
+                            if tts_generation.load(Ordering::Relaxed) == generation {
+                                capture_enabled.store(true, Ordering::Relaxed);
+                            }
+                        });
+                    }
+                    Ok(streamix_voice::SessionEvent::Closed) | Err(_) => {
+                        capture_enabled.store(true, Ordering::Relaxed);
+                        break;
+                    }
+                    _ => {}
+                }
+            }
+        });
+    }
 
     // Sender Task
     let sender_http = http.clone();
@@ -163,8 +200,8 @@ pub async fn run_monitor_loop<E: EventEmitter + Send + Sync + 'static>(
             asr_model_dir,
             &config.asr_language,
             config.vad_threshold,
-            config.vad_min_speech_duration,
-            config.vad_min_silence_duration,
+            config.vad_min_speech_duration.min(0.08),
+            config.vad_min_silence_duration.min(0.3),
             cancel.clone(),
         ) {
             Ok(pipeline) => {
@@ -209,11 +246,12 @@ pub async fn run_monitor_loop<E: EventEmitter + Send + Sync + 'static>(
                     let asr_tx = send_tx.clone();
                     let asr_url_c = asr_url.clone();
                     let asr_router = vad_router.clone();
+                    let asr_recent_tts = Arc::clone(&recent_tts_text);
                     tokio::spawn(async move {
                         #[cfg(feature = "asr")]
                         run_asr_loop(
                             rx, events2, asr_url_c, asr_router, asr_http, asr_config,
-                            asr_memory, asr_agent, asr_tx, asr_app, asr_cancel,
+                            asr_memory, asr_agent, asr_tx, asr_app, asr_cancel, asr_recent_tts,
                         )
                         .await;
                     });
@@ -222,7 +260,7 @@ pub async fn run_monitor_loop<E: EventEmitter + Send + Sync + 'static>(
                     // 本地 sherpa ASR：SpeechEnd 事件里带文本，直接触发 AI
                     tokio::spawn(run_sherpa_asr_event_loop(
                         events, has_asr, vad_router, vad_http, vad_config, vad_memory,
-                        vad_agent, vad_tx, vad_app, vad_cancel,
+                        vad_agent, vad_tx, vad_app, vad_cancel, Arc::clone(&recent_tts_text),
                     ));
                     None
                 };
@@ -252,6 +290,7 @@ pub async fn run_monitor_loop<E: EventEmitter + Send + Sync + 'static>(
                     audio_tap,
                     Some(mic_status_tx),
                     config.voice_mic_gain,
+                    Some(Arc::clone(&mic_capture_enabled)),
                 ) {
                     Ok(mic) => {
                         let _ = sender_app.emit(
@@ -670,10 +709,11 @@ async fn run_asr_loop<E: crate::bot::EventEmitter + Send + Sync + 'static>(
     http: crate::api::BiliApi,
     config: Arc<crate::config::AppConfig>,
     memory: Arc<std::sync::Mutex<crate::bot::memory::SessionMemory>>,
-    agent: Arc<crate::bot::agent::AgentRuntime>,
+    _agent: Arc<crate::bot::agent::AgentRuntime>,
     danmu_tx: tokio::sync::mpsc::Sender<String>,
     app: Arc<E>,
     cancel: tokio_util::sync::CancellationToken,
+    recent_tts_text: Arc<Mutex<Vec<(Instant, String)>>>,
 ) {
     use streamix_voice::asr::{BackendConfig, WhisperLiveAsrBackend};
 
@@ -692,10 +732,6 @@ async fn run_asr_loop<E: crate::bot::EventEmitter + Send + Sync + 'static>(
 
             ev = events.recv() => match ev {
                 Ok(streamix_voice::TurnEvent::SpeechStart) => {
-                    // 用户开口 → 立即打断正在播放的 AI TTS
-                    if let Some(ref router) = tts_router {
-                        let _ = router.voice_session().interrupt().await;
-                    }
                     recording = true;
                     speech_buf.clear();
                     asr.reset_streaming();
@@ -710,10 +746,14 @@ async fn run_asr_loop<E: crate::bot::EventEmitter + Send + Sync + 'static>(
                     }
                     let _ = app.emit("monitor-log", serde_json::json!(format!("[VAD] 话轮结束，送 ASR（{}ms）", audio.len() / 16)));
 
-                    match asr.streaming_recognition(&audio, true, true).await {
+                    match asr.streaming_recognition(&[], true, true).await {
                         Ok(Some(voice_text)) => {
                             let text = voice_text.content.trim().to_string();
                             if text.is_empty() { continue; }
+                            if is_recent_tts_echo(&text, &recent_tts_text) {
+                                let _ = app.emit("monitor-log", serde_json::json!(format!("[ASR] 忽略电脑回声: {}", text)));
+                                continue;
+                            }
                             let _ = app.emit("monitor-log", serde_json::json!(format!("[ASR] 识别结果: {}", text)));
 
                             if let Some(bot) = config.ai_bots.iter().find(|b| b.enabled) {
@@ -722,17 +762,18 @@ async fn run_asr_loop<E: crate::bot::EventEmitter + Send + Sync + 'static>(
                                 let h = http.clone();
                                 let c = Arc::clone(&config);
                                 let m = memory.clone();
-                                let ag = agent.clone();
                                 let tx = danmu_tx.clone();
                                 let ap = app.clone();
                                 let router = tts_router.clone();
+                                let recent_tts = Arc::clone(&recent_tts_text);
                                 tokio::spawn(async move {
-                                    let reply = agent::call_ai_voice(&h, &c, &bot_id, &text, &m, &ag).await;
-                                    let _ = ap.emit("monitor-log", serde_json::json!(format!("[ASR→AI] {}", reply)));
-                                    // AI 回复 → TTS 语音播报
-                                    if let Some(ref r) = router {
-                                        let _ = r.speak_ai(reply.clone()).await;
+                                    let (tts_tx, mut tts_rx) = tokio::sync::mpsc::unbounded_channel::<String>();
+                                    if let Some(r) = router.clone() {
+                                        let recent = Arc::clone(&recent_tts);
+                                        tokio::spawn(async move { speak_ai_chunks(r, &mut tts_rx, recent).await; });
                                     }
+                                    let reply = agent::call_ai_voice_streaming(&h, &c, &bot_id, &text, &m, tts_tx).await;
+                                    let _ = ap.emit("monitor-log", serde_json::json!(format!("[ASR→AI] {}", reply)));
                                     // 同时发弹幕
                                     let _ = tx.send(format!("[{}]{}", bot_nick, reply)).await;
                                 });
@@ -753,6 +794,18 @@ async fn run_asr_loop<E: crate::bot::EventEmitter + Send + Sync + 'static>(
                 if recording {
                     if let Some(c) = chunk {
                         speech_buf.extend_from_slice(&c);
+                        match asr.streaming_recognition(&c, false, false).await {
+                            Ok(Some(partial)) => {
+                                let partial_text = partial.content.trim();
+                                if !partial_text.is_empty() {
+                                    let _ = app.emit("monitor-log", serde_json::json!(format!("[ASR] 实时识别: {}", partial_text)));
+                                }
+                            }
+                            Ok(None) => {}
+                            Err(e) => {
+                                let _ = app.emit("monitor-log", serde_json::json!(format!("[ASR] 实时识别失败: {e}")));
+                            }
+                        }
                     } else {
                         break;
                     }
@@ -786,20 +839,17 @@ async fn run_sherpa_asr_event_loop<E: crate::bot::EventEmitter + Send + Sync + '
     http: crate::api::BiliApi,
     config: Arc<crate::config::AppConfig>,
     memory: Arc<std::sync::Mutex<crate::bot::memory::SessionMemory>>,
-    agent: Arc<crate::bot::agent::AgentRuntime>,
+    _agent: Arc<crate::bot::agent::AgentRuntime>,
     danmu_tx: tokio::sync::mpsc::Sender<String>,
     app: Arc<E>,
     cancel: tokio_util::sync::CancellationToken,
+    recent_tts_text: Arc<Mutex<Vec<(Instant, String)>>>,
 ) {
     loop {
         tokio::select! {
             _ = cancel.cancelled() => break,
             ev = events.recv() => match ev {
                 Ok(streamix_voice::TurnEvent::SpeechStart) => {
-                    // 用户开口 → 立即打断正在播放的 AI TTS
-                    if let Some(ref router) = tts_router {
-                        let _ = router.voice_session().interrupt().await;
-                    }
                     let msg = if has_asr {
                         "[VAD] 检测到语音段，正在识别..."
                     } else {
@@ -811,21 +861,27 @@ async fn run_sherpa_asr_event_loop<E: crate::bot::EventEmitter + Send + Sync + '
                 Ok(streamix_voice::TurnEvent::SpeechEnd { text: Some(text), .. }) => {
                     let text = text.trim().to_string();
                     if text.is_empty() { continue; }
+                    if is_recent_tts_echo(&text, &recent_tts_text) {
+                        let _ = app.emit("monitor-log", serde_json::json!(format!("[ASR] 忽略电脑回声: {}", text)));
+                        continue;
+                    }
                     let _ = app.emit("monitor-log", serde_json::json!(format!("[ASR] 识别结果: {}", text)));
                     if let Some(bot) = config.ai_bots.iter().find(|b| b.enabled) {
                         let bot_id   = bot.id.clone();
                         let bot_nick = bot.nickname.clone();
                         let h = http.clone(); let c = Arc::clone(&config);
-                        let m = memory.clone(); let ag = agent.clone();
+                        let m = memory.clone();
                         let tx = danmu_tx.clone(); let ap = app.clone();
                         let router = tts_router.clone();
+                        let recent_tts = Arc::clone(&recent_tts_text);
                         tokio::spawn(async move {
-                            let reply = agent::call_ai_voice(&h, &c, &bot_id, &text, &m, &ag).await;
-                            let _ = ap.emit("monitor-log", serde_json::json!(format!("[ASR→AI] {}", reply)));
-                            // AI 回复 → TTS 语音播报（优先级 AI=5，会被下一次用户说话打断）
-                            if let Some(ref r) = router {
-                                let _ = r.speak_ai(reply.clone()).await;
+                            let (tts_tx, mut tts_rx) = tokio::sync::mpsc::unbounded_channel::<String>();
+                            if let Some(r) = router.clone() {
+                                let recent = Arc::clone(&recent_tts);
+                                tokio::spawn(async move { speak_ai_chunks(r, &mut tts_rx, recent).await; });
                             }
+                            let reply = agent::call_ai_voice_streaming(&h, &c, &bot_id, &text, &m, tts_tx).await;
+                            let _ = ap.emit("monitor-log", serde_json::json!(format!("[ASR→AI] {}", reply)));
                             // 同时发弹幕（供直播间观众看到）
                             let _ = tx.send(format!("[{}]{}", bot_nick, reply)).await;
                         });
@@ -841,6 +897,86 @@ async fn run_sherpa_asr_event_loop<E: crate::bot::EventEmitter + Send + Sync + '
             }
         }
     }
+}
+
+async fn speak_ai_chunks(
+    router: streamix_voice::SpeakerRouter,
+    rx: &mut tokio::sync::mpsc::UnboundedReceiver<String>,
+    recent_tts_text: Arc<Mutex<Vec<(Instant, String)>>>,
+) {
+    while let Some(chunk) = rx.recv().await {
+        if chunk.trim().is_empty() {
+            continue;
+        }
+        remember_tts_text(&recent_tts_text, &chunk);
+        let mut events = router.voice_session().subscribe();
+        if router.speak_ai(chunk).await.is_err() {
+            break;
+        }
+        let _ = tokio::time::timeout(Duration::from_secs(20), async {
+            loop {
+                match events.recv().await {
+                    Ok(streamix_voice::SessionEvent::SpeechEnd)
+                    | Ok(streamix_voice::SessionEvent::SpeechInterrupted)
+                    | Ok(streamix_voice::SessionEvent::Closed)
+                    | Err(_) => break,
+                    _ => {}
+                }
+            }
+        })
+        .await;
+    }
+}
+
+fn remember_tts_text(recent: &Arc<Mutex<Vec<(Instant, String)>>>, text: &str) {
+    let normalized = normalize_echo_text(text);
+    if normalized.is_empty() {
+        return;
+    }
+    if let Ok(mut items) = recent.lock() {
+        let now = Instant::now();
+        items.retain(|(at, _)| now.duration_since(*at) < Duration::from_secs(45));
+        items.push((now, normalized));
+        if items.len() > 24 {
+            let overflow = items.len() - 24;
+            items.drain(..overflow);
+        }
+    }
+}
+
+fn is_recent_tts_echo(text: &str, recent: &Arc<Mutex<Vec<(Instant, String)>>>) -> bool {
+    let heard = normalize_echo_text(text);
+    if heard.chars().count() < 4 {
+        return false;
+    }
+    let Ok(items) = recent.lock() else {
+        return false;
+    };
+    let now = Instant::now();
+    items.iter().any(|(at, spoken)| {
+        now.duration_since(*at) < Duration::from_secs(45)
+            && echo_text_similarity(&heard, spoken) >= 0.62
+    })
+}
+
+fn normalize_echo_text(text: &str) -> String {
+    text.chars()
+        .filter(|ch| ch.is_alphanumeric() || ('\u{4e00}'..='\u{9fff}').contains(ch))
+        .flat_map(char::to_lowercase)
+        .collect()
+}
+
+fn echo_text_similarity(a: &str, b: &str) -> f32 {
+    if a.is_empty() || b.is_empty() {
+        return 0.0;
+    }
+    if a.contains(b) || b.contains(a) {
+        return 1.0;
+    }
+    let a_chars: Vec<char> = a.chars().collect();
+    let b_chars: Vec<char> = b.chars().collect();
+    let common = a_chars.iter().filter(|ch| b_chars.contains(ch)).count();
+    common as f32 / a_chars.len().min(b_chars.len()) as f32
 }
 
 /// 根据 config 中 active_tts_provider_id 解析对应的 TTS 引擎配置。
@@ -867,11 +1003,17 @@ fn resolve_tts_engine(
     if name_lower.contains("minimax") {
         streamix_voice::TtsEngine::MiniMax {
             api_key: provider.api_key.clone(),
-            voice_id: if provider.model.is_empty() {
+            voice_id: if !config.tts_voice.is_empty() {
+                config.tts_voice.clone()
+            } else {
                 "zh_female_wanwanxiaohe_moon_bigtts".to_string()
+            },
+            model: if provider.model.is_empty() {
+                "speech-2.8-turbo".to_string()
             } else {
                 provider.model.clone()
             },
+            ws_url: normalize_minimax_ws_url(&provider.api_url),
         }
     } else if name_lower.contains("火山")
         || name_lower.contains("volcengine")
@@ -918,6 +1060,20 @@ fn resolve_tts_engine(
         }
         streamix_voice::TtsEngine::Edge
     }
+}
+
+fn normalize_minimax_ws_url(url: &str) -> String {
+    let trimmed = url.trim();
+    if trimmed.is_empty() {
+        return "wss://api.minimaxi.com/ws/v1/t2a_v2".to_string();
+    }
+    let mut out = trimmed
+        .replace("https://", "wss://")
+        .replace("http://", "ws://");
+    if !out.contains("/ws/v1/t2a_v2") && out.ends_with("/v1/t2a_v2") {
+        out = out.replace("/v1/t2a_v2", "/ws/v1/t2a_v2");
+    }
+    out
 }
 
 /// 尝试将 provider 名称映射到本地 TTS 引擎。失败时返回 None（调用方回退到 Edge）。

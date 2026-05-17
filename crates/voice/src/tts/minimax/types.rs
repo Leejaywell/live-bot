@@ -257,7 +257,7 @@ pub enum WebSocketResponse {
 /// 任务继续响应中的数据
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct TaskContinuedData {
-    /// base64 编码的音频数据
+    /// hex 编码的音频数据
     pub audio: String,
 }
 

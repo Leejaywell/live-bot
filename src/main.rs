@@ -36,6 +36,8 @@ struct SharedState {
         >,
     >,
     #[cfg(feature = "tauri")]
+    preview_tts_playback: Arc<tokio::sync::Mutex<()>>,
+    #[cfg(feature = "tauri")]
     model_dl_cancels: Arc<Mutex<std::collections::HashMap<String, CancellationToken>>>,
     /// 全局 AI 会话记忆（机器人 ID 隔离）
     session_memory: Arc<Mutex<bot::memory::SessionMemory>>,
@@ -1703,12 +1705,42 @@ async fn speak_text_cmd(
     text: String,
     voice: String,
     provider_id: Option<String>,
+    speed: Option<f32>,
 ) -> Result<(), String> {
-    use streamix_voice::{SessionConfig, SpeakerRouter};
+    use streamix_voice::{PRIORITY_SYSTEM, SessionConfig, SpeakRequest, SpeakerRouter};
 
     // 从 config 解析当前 TTS 引擎
     let cfg = AppConfig::load_or_default().map_err(|e| e.to_string())?;
-    let engine = resolve_tts_engine_for_preview(&cfg, &model_dir(&app), provider_id.as_deref());
+    let engine =
+        resolve_tts_engine_for_preview(&cfg, &model_dir(&app), provider_id.as_deref(), &voice);
+    let engine_name = match &engine {
+        streamix_voice::TtsEngine::Edge => "edge",
+        streamix_voice::TtsEngine::MiniMax { .. } => "minimax",
+        streamix_voice::TtsEngine::Azure { .. } => "azure",
+        streamix_voice::TtsEngine::VolcEngine { .. } => "volcengine",
+        #[cfg(feature = "local-tts")]
+        streamix_voice::TtsEngine::LocalTts { .. } => "local",
+    };
+    let engine_detail = match &engine {
+        streamix_voice::TtsEngine::MiniMax {
+            voice_id,
+            model,
+            ws_url,
+            ..
+        } => format!(" model={model} ws_url={ws_url} voice_id={voice_id}"),
+        _ => String::new(),
+    };
+    let _ = app.emit(
+        "monitor-log",
+        serde_json::json!(format!(
+            "[TTS诊断] engine={engine_name} provider={} voice={}{} text_len={} text={}",
+            provider_id.as_deref().unwrap_or(""),
+            voice,
+            engine_detail,
+            text.chars().count(),
+            text
+        )),
+    );
 
     let router = {
         let mut guard = state.preview_tts.lock().map_err(|e| e.to_string())?;
@@ -1738,7 +1770,62 @@ async fn speak_text_cmd(
         }
     };
 
-    router.speak_system(text).await.map_err(|e| e.to_string())
+    let mut req = SpeakRequest::new(text)
+        .with_engine(engine.clone())
+        .with_priority(PRIORITY_SYSTEM);
+    if let Some(speed) = speed {
+        let clamped = speed.clamp(0.5, 2.0);
+        let delta = ((clamped - 1.0) * 100.0).round() as i32;
+        req = req.with_rate(format!("{delta:+}%"));
+    }
+
+    let _playback_guard = state.preview_tts_playback.lock().await;
+    let mut audio_events = router.voice_session().subscribe();
+
+    router
+        .voice_session()
+        .speak(req)
+        .await
+        .map_err(|e| {
+            let msg = e.to_string();
+            let _ = app.emit(
+                "monitor-log",
+                serde_json::json!(format!("[TTS错误] engine={engine_name} {msg}")),
+            );
+            msg
+        })?;
+
+    let wait_secs = match engine {
+        streamix_voice::TtsEngine::MiniMax { .. } => 15,
+        _ => 6,
+    };
+    let wait_result = tokio::time::timeout(std::time::Duration::from_secs(wait_secs), async {
+        loop {
+            match audio_events.recv().await {
+                Ok(streamix_voice::SessionEvent::SpeechError { message }) => {
+                    let _ = app.emit(
+                        "monitor-log",
+                        serde_json::json!(format!("[TTS错误] engine={engine_name} {message}")),
+                    );
+                    break;
+                }
+                Ok(streamix_voice::SessionEvent::SpeechEnd)
+                | Ok(streamix_voice::SessionEvent::SpeechInterrupted)
+                | Ok(streamix_voice::SessionEvent::Closed)
+                | Err(_) => break,
+                _ => {}
+            }
+        }
+    })
+    .await;
+    if wait_result.is_err() {
+        let _ = app.emit(
+            "monitor-log",
+            serde_json::json!(format!("[TTS错误] engine={engine_name} 播放等待超时")),
+        );
+    }
+
+    Ok(())
 }
 
 /// 预览用 TTS 引擎解析（与 monitor 中的 resolve_tts_engine 逻辑一致）
@@ -1746,6 +1833,7 @@ fn resolve_tts_engine_for_preview(
     config: &AppConfig,
     model_dir: &std::path::Path,
     provider_id: Option<&str>,
+    selected_voice: &str,
 ) -> streamix_voice::TtsEngine {
     let tts_provider = provider_id
         .filter(|id| !id.is_empty())
@@ -1775,11 +1863,19 @@ fn resolve_tts_engine_for_preview(
     if name_lower.contains("minimax") {
         streamix_voice::TtsEngine::MiniMax {
             api_key: provider.api_key.clone(),
-            voice_id: if provider.model.is_empty() {
+            voice_id: if !selected_voice.is_empty() {
+                selected_voice.to_string()
+            } else if !config.tts_voice.is_empty() {
                 config.tts_voice.clone()
+            } else {
+                "zh_female_wanwanxiaohe_moon_bigtts".to_string()
+            },
+            model: if provider.model.is_empty() {
+                "speech-2.8-turbo".to_string()
             } else {
                 provider.model.clone()
             },
+            ws_url: normalize_minimax_ws_url(&provider.api_url),
         }
     } else if name_lower.contains("火山")
         || name_lower.contains("volcengine")
@@ -1824,6 +1920,20 @@ fn resolve_tts_engine_for_preview(
         }
         streamix_voice::TtsEngine::Edge
     }
+}
+
+fn normalize_minimax_ws_url(url: &str) -> String {
+    let trimmed = url.trim();
+    if trimmed.is_empty() {
+        return "wss://api.minimaxi.com/ws/v1/t2a_v2".to_string();
+    }
+    let mut out = trimmed
+        .replace("https://", "wss://")
+        .replace("http://", "ws://");
+    if !out.contains("/ws/v1/t2a_v2") && out.ends_with("/v1/t2a_v2") {
+        out = out.replace("/v1/t2a_v2", "/ws/v1/t2a_v2");
+    }
+    out
 }
 
 /// 将本地 TTS provider 名称映射到 LocalTts 引擎；失败时返回 None。
@@ -3148,6 +3258,8 @@ fn main() -> Result<()> {
         monitor_log_buffer: Arc::new(Mutex::new(Vec::new())),
         #[cfg(feature = "tauri")]
         preview_tts: Arc::new(Mutex::new(None)),
+        #[cfg(feature = "tauri")]
+        preview_tts_playback: Arc::new(tokio::sync::Mutex::new(())),
         #[cfg(feature = "tauri")]
         model_dl_cancels: Arc::new(Mutex::new(std::collections::HashMap::new())),
         session_memory: Arc::new(Mutex::new(bot::memory::SessionMemory::new())),

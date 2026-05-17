@@ -5,7 +5,7 @@ import { Input } from '../components/Input';
 import { Toggle } from '../components/Toggle';
 import { RefreshCw, ChevronDown, Radio, Plus, Pause } from 'lucide-react';
 import { api, AiProvider, AppConfig } from '../lib/api';
-import { availableProviders, detectProvider, findVoice, TtsProvider } from '../lib/voices';
+import { availableProviders, detectProvider, findVoice, getVoices, TtsProvider } from '../lib/voices';
 import { VoicePicker } from '../components/VoicePicker';
 import { toast } from 'sonner';
 import { useLogin } from '../context/LoginContext';
@@ -83,14 +83,13 @@ const HOT_THRESHOLD = 5;
 const SPEECH_DEDUP_MS = 1800;
 
 function buildDanmuSpeechText(user?: string, content?: string): string | null {
-  const safeUser = user?.replace(/\s+/g, ' ').trim();
   const safeContent = content
     ?.replace(/\s+/g, ' ')
     .replace(/[~～]+/g, '。')
     .trim();
-  if (!safeUser || !safeContent) return null;
+  if (!user?.trim() || !safeContent) return null;
   const normalized = /[。！？!?]$/.test(safeContent) ? safeContent : `${safeContent}。`;
-  return `${safeUser}说，${normalized}`;
+  return normalized;
 }
 
 export function Danmu() {
@@ -117,7 +116,9 @@ export function Danmu() {
   const [ttsProviderId, setTtsProviderId] = useState('');
   const [config, setConfig] = useState<AppConfig | null>(null);
   const [ttsVoice, setTtsVoice] = useState('');
+  const [danmuAnnounceSpeed, setDanmuAnnounceSpeed] = useState(1.0);
   const ttsVoiceRef = useRef('');
+  const danmuAnnounceSpeedRef = useRef(1.0);
   const [voiceOpen, setVoiceOpen] = useState(false);
   const spokenRef = useRef<Map<string, number>>(new Map());
 
@@ -131,6 +132,7 @@ export function Danmu() {
   }, [isPaused]);
   useEffect(() => { isTtsEnabledRef.current = isTtsEnabled; }, [isTtsEnabled]);
   useEffect(() => { ttsVoiceRef.current = ttsVoice; }, [ttsVoice]);
+  useEffect(() => { danmuAnnounceSpeedRef.current = danmuAnnounceSpeed; }, [danmuAnnounceSpeed]);
 
   // Load TTS providers from config
   useEffect(() => {
@@ -141,10 +143,23 @@ export function Danmu() {
       const saved = c.ActiveTtsProviderId && enabled.find(p => p.Id === c.ActiveTtsProviderId);
       setTtsProviderId(saved ? saved.Id : (enabled[0]?.Id ?? ''));
       if (!ttsVoice) {
-        const voice = c.TtsVoice || enabled[0]?.Model || 'zh-CN-XiaoxiaoNeural';
+        const activeProvider = saved ?? enabled[0];
+        const providerKey = activeProvider ? detectProvider(activeProvider.Name) : null;
+        const savedVoiceFits = providerKey ? Boolean(findVoice(providerKey, c.TtsVoice)) : Boolean(c.TtsVoice);
+        const providerVoiceFits = providerKey ? Boolean(findVoice(providerKey, activeProvider?.Model ?? '')) : false;
+        const voice = savedVoiceFits
+          ? c.TtsVoice
+          : providerVoiceFits
+            ? activeProvider!.Model
+            : providerKey
+              ? (getVoices(providerKey)[0]?.id ?? 'zh-CN-XiaoxiaoNeural')
+              : 'zh-CN-XiaoxiaoNeural';
         setTtsVoice(voice);
         ttsVoiceRef.current = voice;
       }
+      const speed = Math.min(2.0, Math.max(0.5, c.DanmuAnnounceSpeed ?? 1.0));
+      setDanmuAnnounceSpeed(speed);
+      danmuAnnounceSpeedRef.current = speed;
     }).catch(console.error);
   }, [ttsVoice]);
 
@@ -162,16 +177,16 @@ export function Danmu() {
     if (lastSpokenAt && now - lastSpokenAt < SPEECH_DEDUP_MS) return;
     spokenRef.current.set(dedupKey, now);
 
-    const currentProviderId = (() => {
-      if (ttsProviderId && ttsProviders.some(p => p.Id === ttsProviderId)) return ttsProviderId;
-      const matched = ttsProviders.find((p) => {
-        const provider = detectProvider(p.Name);
-        return provider ? Boolean(findVoice(provider, ttsVoiceRef.current)) : false;
-      });
-      return matched?.Id ?? '';
-    })();
+    const currentProviderId = ttsProviderId && ttsProviders.some(p => p.Id === ttsProviderId)
+      ? ttsProviderId
+      : '';
 
-    api.speakText(text, ttsVoiceRef.current, currentProviderId || undefined).catch(console.error);
+    api.speakText(
+      text,
+      ttsVoiceRef.current,
+      currentProviderId || undefined,
+      danmuAnnounceSpeedRef.current,
+    ).catch(console.error);
   }, [ttsProviderId, ttsProviders]);
 
   const pushEntry = useCallback((entry: LogEntry, announce = false) => {
@@ -391,6 +406,20 @@ export function Danmu() {
     return ttsVoice || '声音';
   })();
 
+  const updateDanmuAnnounceSpeed = async (next: number) => {
+    const speed = Math.min(2.0, Math.max(0.5, next));
+    setDanmuAnnounceSpeed(speed);
+    danmuAnnounceSpeedRef.current = speed;
+    if (!config) return;
+    const nextConfig = { ...config, DanmuAnnounceSpeed: speed };
+    setConfig(nextConfig);
+    try {
+      await api.saveConfig(nextConfig);
+    } catch (err) {
+      console.error('save danmu announce speed failed:', err);
+    }
+  };
+
   return (
     <div className="p-5 h-full flex flex-col gap-4 overflow-hidden">
       <GlassCard className={cn(
@@ -445,6 +474,21 @@ export function Danmu() {
                 <span>{ttsVoiceLabel}</span>
                 <ChevronDown className="w-3 h-3 opacity-50" />
               </button>
+            )}
+            {isTtsEnabled && (
+              <div className="flex items-center gap-2 h-[26px] px-2.5 rounded-lg bg-white/60 dark:bg-white/10 border border-gray-200 dark:border-white/20 text-gray-600 dark:text-gray-200">
+                <span className="text-[11px] whitespace-nowrap">语速</span>
+                <input
+                  type="range"
+                  min={0.5}
+                  max={2.0}
+                  step={0.1}
+                  value={danmuAnnounceSpeed}
+                  onChange={(e) => updateDanmuAnnounceSpeed(Number(e.target.value)).catch(() => {})}
+                  className="w-20 accent-[var(--primary-color)]"
+                />
+                <span className="text-[11px] font-mono w-9 text-right">{danmuAnnounceSpeed.toFixed(1)}x</span>
+              </div>
             )}
           </div>
 

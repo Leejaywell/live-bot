@@ -85,6 +85,8 @@ pub enum TtsEngine {
     MiniMax {
         api_key: String,
         voice_id: String,
+        model: String,
+        ws_url: String,
     },
     Azure {
         subscription_key: String,
@@ -116,6 +118,8 @@ pub enum SessionEvent {
     SpeechEnd,
     /// TTS 被中断
     SpeechInterrupted,
+    /// TTS 合成失败
+    SpeechError { message: String },
     /// ASR 转写结果
     Transcript { text: String, is_final: bool },
     /// Session 已关闭
@@ -274,11 +278,11 @@ impl SessionActor {
     }
 
     fn handle_speak(&mut self, req: SpeakRequest) {
-        // 优先级抢占：新请求优先级 >= 当前才允许打断
-        // 低优先级请求在当前播放期间被丢弃（避免队列堆积）
-        if self.current_generation.is_some() && req.priority < self.current_priority {
+        // 优先级抢占：只有更高优先级才允许打断。
+        // 同优先级重复请求丢弃，避免同一条弹幕从多个前端事件源重复进入时切断正文。
+        if self.current_generation.is_some() && req.priority <= self.current_priority {
             debug!(
-                "speak request priority {} < current {}, discarded",
+                "speak request priority {} <= current {}, discarded",
                 req.priority, self.current_priority
             );
             return;
@@ -305,7 +309,17 @@ impl SessionActor {
 
         let handle = self.interrupt.start(move |cancel_token| async move {
             #[cfg(feature = "tts")]
-            Self::run_tts(text, req.engine, edge_client, cancel_token, event_tx).await;
+            Self::run_tts(
+                text,
+                req.engine,
+                edge_client,
+                req.rate,
+                req.pitch,
+                req.volume,
+                cancel_token,
+                event_tx,
+            )
+            .await;
             #[cfg(not(feature = "tts"))]
             {
                 let _ = (text, req.engine, cancel_token);
@@ -345,6 +359,9 @@ impl SessionActor {
         text: String,
         engine: TtsEngine,
         edge_client: crate::tts::EdgeTtsClient,
+        rate: Option<String>,
+        pitch: Option<String>,
+        volume: Option<String>,
         cancel_token: CancellationToken,
         event_tx: tokio::sync::broadcast::Sender<SessionEvent>,
     ) {
@@ -356,18 +373,44 @@ impl SessionActor {
                 return;
             }
 
+            if matches!(engine, TtsEngine::Edge) {
+                let result = tokio::select! {
+                    _ = cancel_token.cancelled() => {
+                        debug!("tts interrupted mid-sentence");
+                        return;
+                    }
+                    result = synthesize_edge_sentence(&sentence, &edge_client, event_tx.clone()) => result,
+                };
+                if let Err(e) = result {
+                    error!("tts error: {}", e);
+                    let _ = event_tx.send(SessionEvent::SpeechError { message: e });
+                    let _ = event_tx.send(SessionEvent::SpeechEnd);
+                    return;
+                }
+                continue;
+            }
+
             tokio::select! {
                 _ = cancel_token.cancelled() => {
                     debug!("tts interrupted mid-sentence");
                     return;
                 }
-                result = synthesize_sentence(&sentence, &engine, &edge_client) => {
+                result = synthesize_sentence(
+                    &sentence,
+                    &engine,
+                    &edge_client,
+                    rate.as_deref(),
+                    pitch.as_deref(),
+                    volume.as_deref(),
+                ) => {
                     match result {
                         Ok(audio) => {
                             let _ = event_tx.send(SessionEvent::AudioReady(audio));
                         }
                         Err(e) => {
                             error!("tts error: {}", e);
+                            let _ = event_tx.send(SessionEvent::SpeechError { message: e });
+                            let _ = event_tx.send(SessionEvent::SpeechEnd);
                             return;
                         }
                     }
@@ -377,6 +420,39 @@ impl SessionActor {
 
         let _ = event_tx.send(SessionEvent::SpeechEnd);
     }
+}
+
+#[cfg(feature = "tts")]
+async fn synthesize_edge_sentence(
+    text: &str,
+    edge_client: &crate::tts::EdgeTtsClient,
+    event_tx: tokio::sync::broadcast::Sender<SessionEvent>,
+) -> Result<(), String> {
+    use futures_util::StreamExt as _;
+
+    let mut stream = edge_client
+        .synthesize(text, None)
+        .await
+        .map_err(|e| e.to_string())?;
+
+    while let Some(chunk) = stream.next().await {
+        match chunk {
+            Ok(c) => {
+                if c.is_final {
+                    break;
+                }
+                if !c.data.is_empty() {
+                    let _ = event_tx.send(SessionEvent::AudioReady(AudioFrame::new_pcm16(
+                        bytes::Bytes::from(c.data),
+                        c.sample_rate,
+                    )));
+                }
+            }
+            Err(e) => return Err(e.to_string()),
+        }
+    }
+
+    Ok(())
 }
 
 /// 按标点分句（简化实现，后续可接 text_splitter 模块）
@@ -407,12 +483,20 @@ fn split_sentences(text: &str) -> Vec<String> {
     sentences
 }
 
+fn rate_to_minimax_speed(rate: &str) -> Option<f64> {
+    let value = rate.trim().trim_end_matches('%').parse::<f64>().ok()?;
+    Some((1.0 + value / 100.0).clamp(0.5, 2.0))
+}
+
 /// 单句 TTS 合成：收集流式 PCM 块后合并为一个 AudioFrame
 #[cfg(feature = "tts")]
 async fn synthesize_sentence(
     text: &str,
     engine: &TtsEngine,
     edge_client: &crate::tts::EdgeTtsClient,
+    rate: Option<&str>,
+    _pitch: Option<&str>,
+    _volume: Option<&str>,
 ) -> Result<AudioFrame, String> {
     use futures_util::StreamExt as _;
 
@@ -441,10 +525,31 @@ async fn synthesize_sentence(
 
             Ok(AudioFrame::new_pcm16(bytes::Bytes::from(pcm), sample_rate))
         }
-        TtsEngine::MiniMax { api_key, voice_id } => {
-            let client = crate::tts::MiniMaxWsTtsClient::with_defaults();
+        TtsEngine::MiniMax {
+            api_key,
+            voice_id,
+            model,
+            ws_url,
+        } => {
+            let config = crate::tts::MiniMaxConfig::new(
+                Some(ws_url.clone()),
+                None,
+                Some(model.clone()),
+                None,
+            );
+            let client = crate::tts::MiniMaxWsTtsClient::new(config);
+            let mut voice_setting = crate::tts::VoiceSetting::default();
+            if let Some(speed) = rate.and_then(rate_to_minimax_speed) {
+                voice_setting.speed = Some(speed);
+            }
+            let audio_setting = crate::tts::AudioSetting {
+                sample_rate: Some(32000),
+                bitrate: Some(128000),
+                format: Some("mp3".to_string()),
+                channel: Some(1),
+            };
             let mut stream = client
-                .synthesize_direct(api_key, voice_id, text, None, None)
+                .synthesize_direct(api_key, voice_id, text, Some(voice_setting), Some(audio_setting))
                 .map_err(|e: crate::tts::MiniMaxError| e.to_string())?;
 
             let mut audio_bytes: Vec<u8> = Vec::new();
