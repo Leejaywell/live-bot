@@ -41,6 +41,10 @@ pub struct SherpaPipeline {
     pub audio_tx: mpsc::UnboundedSender<Vec<f32>>,
     pub events_tx: broadcast::Sender<TurnEvent>,
     cancel: CancellationToken,
+    /// ASR 是否成功加载（false = 仅 VAD，无识别文本）
+    pub has_asr: bool,
+    /// ASR 加载失败时的错误描述，供调用方展示给用户
+    pub asr_warning: Option<String>,
 }
 
 impl SherpaPipeline {
@@ -48,11 +52,17 @@ impl SherpaPipeline {
     ///
     /// - `vad_model`: silero_vad.onnx 路径
     /// - `asr_model_dir`: SenseVoice 模型目录（`None` 则跳过 ASR）
-    /// - `language`: "zh" / "en" / "auto"
+    /// - `language`: "zh" / "yue" / "en" / "ja" / "ko" / "auto"
+    /// - `vad_threshold`: 0.1（最灵敏）~ 0.9（最保守），默认 0.3
+    /// - `vad_min_speech`: 最短语音段秒数，默认 0.08
+    /// - `vad_min_silence`: 话轮结束静音秒数，默认 0.4
     pub fn spawn(
         vad_model: PathBuf,
         asr_model_dir: Option<PathBuf>,
         language: &str,
+        vad_threshold: f32,
+        vad_min_speech: f32,
+        vad_min_silence: f32,
         cancel: CancellationToken,
     ) -> Result<Self, String> {
         // Guard: validate file exists and is plausibly intact before calling C++.
@@ -92,27 +102,31 @@ impl SherpaPipeline {
         }
 
         // 可选 ASR 初始化（软失败：模型缺失时只运行 VAD，不中止整个 pipeline）
+        let mut asr_warning: Option<String> = None;
         let asr: Option<SherpaAsrBackend> = match asr_model_dir {
             Some(dir) => {
                 let lang = language.to_string();
                 match SherpaAsrBackend::new(&dir, &lang) {
                     Ok(b) => Some(b),
                     Err(e) => {
-                        warn!("本地 ASR 模型加载失败，将仅运行 VAD: {e}");
+                        let msg = format!("本地 ASR 模型加载失败，将仅运行 VAD（无识别文本）: {e}");
+                        warn!("{msg}");
+                        asr_warning = Some(msg);
                         None
                     }
                 }
             }
             None => None,
         };
+        let has_asr = asr.is_some();
 
         // VAD 初始化（sherpa-onnx 1.13+: VoiceActivityDetector::create 代替 new）
         let vad_config = VadModelConfig {
             silero_vad: sherpa_onnx::SileroVadModelConfig {
                 model: Some(vad_model.to_string_lossy().to_string()),
-                min_silence_duration: 0.5,
-                min_speech_duration: 0.1,
-                threshold: 0.5,
+                min_silence_duration: vad_min_silence,
+                min_speech_duration: vad_min_speech,
+                threshold: vad_threshold,
                 window_size: 512,
                 max_speech_duration: 20.0,
             },
@@ -134,11 +148,13 @@ impl SherpaPipeline {
             run_loop(audio_rx, vad, asr, ev_tx, cancel_bg);
         });
 
-        info!("✅ SherpaPipeline 已启动");
+        info!("✅ SherpaPipeline 已启动 (has_asr={})", has_asr);
         Ok(Self {
             audio_tx,
             events_tx,
             cancel,
+            has_asr,
+            asr_warning,
         })
     }
 
@@ -165,11 +181,22 @@ fn run_loop(
         .expect("sherpa loop runtime");
 
     rt.block_on(async move {
+        let mut chunk_count: u64 = 0;
+        // Log at 3s, 10s, then every 30s (at 16kHz / 512 samples per chunk ≈ 31 chunks/s)
+        let checkpoints: &[u64] = &[93, 310, 930, 1860, 2790];
+        let mut next_checkpoint_idx = 0;
+
         loop {
             tokio::select! {
                 _ = cancel.cancelled() => break,
                 chunk = audio_rx.recv() => {
                     let Some(samples) = chunk else { break };
+
+                    chunk_count += 1;
+                    if next_checkpoint_idx < checkpoints.len() && chunk_count == checkpoints[next_checkpoint_idx] {
+                        info!("[VAD] 已接收 {} 块音频（约 {}s），VAD 运行正常", chunk_count, chunk_count / 31);
+                        next_checkpoint_idx += 1;
+                    }
 
                     vad.accept_waveform(&samples);
 
@@ -221,6 +248,7 @@ impl SherpaMicCapture {
         pipeline: &SherpaPipeline,
         audio_tap: Option<mpsc::UnboundedSender<Vec<f32>>>,
         status_tx: Option<std::sync::mpsc::Sender<String>>,
+        mic_gain: f32,
     ) -> Result<Self, String> {
         let tx = pipeline.audio_tx.clone();
         let cancel = pipeline.cancel.clone();
@@ -230,7 +258,7 @@ impl SherpaMicCapture {
         let thread = std::thread::Builder::new()
             .name("sherpa-mic".into())
             .spawn(move || {
-                if let Err(e) = run_mic(tx, audio_tap, cancel_t, status_tx.clone(), startup_tx) {
+                if let Err(e) = run_mic(tx, audio_tap, cancel_t, status_tx.clone(), startup_tx, mic_gain) {
                     if let Some(ref status) = status_tx {
                         let _ = status.send(format!("麦克风捕获失败: {e}"));
                     }
@@ -273,6 +301,7 @@ fn run_mic(
     cancel: CancellationToken,
     status_tx: Option<std::sync::mpsc::Sender<String>>,
     startup_tx: std::sync::mpsc::Sender<Result<(), String>>,
+    mic_gain: f32,
 ) -> Result<(), String> {
     use cpal::traits::{DeviceTrait, HostTrait, StreamTrait};
     use cpal::{BufferSize, SampleFormat, StreamConfig};
@@ -330,7 +359,7 @@ fn run_mic(
                 &config,
                 move |data: &[f32], _| {
                     for &s in data {
-                        q_cb.push(s);
+                        q_cb.push((s * mic_gain).clamp(-1.0, 1.0));
                     }
                 },
                 |e| warn!("麦克风错误: {e}"),
@@ -348,7 +377,7 @@ fn run_mic(
                     &config,
                     move |data: &[i16], _| {
                         for &s in data {
-                            q.push(s as f32 / 32768.0);
+                            q.push((s as f32 / 32768.0 * mic_gain).clamp(-1.0, 1.0));
                         }
                     },
                     |e| warn!("麦克风错误: {e}"),
@@ -367,7 +396,7 @@ fn run_mic(
                     &config,
                     move |data: &[i32], _| {
                         for &s in data {
-                            q.push(s as f32 / i32::MAX as f32);
+                            q.push((s as f32 / i32::MAX as f32 * mic_gain).clamp(-1.0, 1.0));
                         }
                     },
                     |e| warn!("麦克风错误: {e}"),
@@ -402,10 +431,12 @@ fn run_mic(
     let mut interleaved_buf: Vec<f32> = Vec::new();
     let mut vad_buf: Vec<f32> = Vec::new();
 
-    // 每 3 秒打印一次音量，帮助诊断「麦克风无声」
+    // 首次 1 秒打印音量（快速诊断），此后每 5 秒一次
     let mut diag_samples: u64 = 0;
     let mut diag_peak: f32 = 0.0;
-    let diag_interval = VAD_RATE as u64 * 3; // 3 秒对应的 16kHz 样本数
+    let mut diag_report_count: u32 = 0;
+    let diag_interval_first = VAD_RATE as u64;      // 1 秒
+    let diag_interval_normal = VAD_RATE as u64 * 5; // 5 秒
 
     while !cancel.is_cancelled() {
         while let Some(s) = queue.pop() {
@@ -446,7 +477,9 @@ fn run_mic(
             diag_peak = diag_peak.max(s.abs());
         }
         diag_samples += vad_buf.len() as u64;
-        if diag_samples >= diag_interval {
+        let threshold = if diag_report_count == 0 { diag_interval_first } else { diag_interval_normal };
+        if diag_samples >= threshold {
+            diag_report_count += 1;
             if diag_peak < 1e-6 {
                 warn!(
                     "[麦克风] 音量全静音（peak≈0），请检查：① 系统隐私 > 麦克风权限 ② 系统输入音量是否为0"

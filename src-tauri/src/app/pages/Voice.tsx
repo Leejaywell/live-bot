@@ -98,6 +98,7 @@ function classifyMicLog(text: string): LogMicState {
   if (
     text.includes('[VAD] 话轮结束') ||
     text.includes('[ASR] 识别结果:') ||
+    text.includes('[ASR] 识别结果为空') ||
     text.includes('[ASR] 识别失败:') ||
     text.includes('[ASR→AI]')
   ) {
@@ -108,11 +109,18 @@ function classifyMicLog(text: string): LogMicState {
 
 function describeVoiceLog(text: string): string | null {
   if (text.includes('麦克风已就绪')) return '麦克风已开启，等待说话';
-  if (text.includes('[VAD] 开始录音') || text.includes('[VAD] 检测到语音段')) return '检测到你正在说话';
+  if (text.includes('SenseVoice ASR 已加载')) return 'ASR 模型就绪，等待说话';
+  if (text.includes('本地 ASR 模型加载失败')) return '⚠️ ASR 模型加载失败，请重新下载 SenseVoice 模型';
+  if (text.includes('[VAD] 检测到语音段，正在识别')) return '检测到你正在说话，识别中...';
+  if (text.includes('[VAD] 检测到语音段（ASR 模型未就绪')) return '⚠️ 检测到语音但 ASR 未就绪，请检查模型';
+  if (text.includes('[VAD] 开始录音')) return '检测到你正在说话';
   if (text.includes('[VAD] 话轮结束')) return '说话结束，正在识别';
   if (text.includes('[ASR] 识别结果:')) return '识别完成';
+  if (text.includes('[ASR] 识别结果为空')) return '语音过短或音量太低，请再试一次';
   if (text.includes('[ASR→AI]')) return 'AI 已收到语音内容';
   if (text.includes('[ASR] 识别失败:')) return text.replace('[ASR] ', '');
+  if (text.includes('[麦克风] 音量全静音')) return '⚠️ 麦克风无声，请检查系统麦克风权限和输入音量';
+  if (text.includes('[麦克风] 音量 peak=')) return '麦克风正常采集中';
   if (text.includes('ASR 服务不可达')) return text;
   if (text.includes('麦克风启动失败')) return text;
   if (text.includes('VAD 初始化失败')) return text;
@@ -162,6 +170,28 @@ function FullWave({ active, color, barCount = 40 }: {
             }} />
         );
       })}
+    </div>
+  );
+}
+
+// ── 专业参数滑块 ──────────────────────────────────────────────────────────────
+
+function ProSlider({ label, hint, value, min, max, step, format, onChange }: {
+  label: string; hint: string; value: number;
+  min: number; max: number; step: number;
+  format: (v: number) => string;
+  onChange: (v: number) => void;
+}) {
+  return (
+    <div className="space-y-1">
+      <div className="flex items-center justify-between">
+        <span className="text-[10px] font-semibold text-gray-600 dark:text-gray-300">{label}</span>
+        <span className="text-[10px] font-mono text-[var(--primary-color)]">{format(value)}</span>
+      </div>
+      <input type="range" min={min} max={max} step={step} value={value}
+        onChange={e => onChange(Number(e.target.value))}
+        className="w-full h-1 cursor-pointer rounded-full accent-[var(--primary-color)]" />
+      <p className="text-[9px] text-gray-400">{hint}</p>
     </div>
   );
 }
@@ -216,6 +246,7 @@ export function Voice() {
   const [latency,     setLatency]     = useState(0);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [settingsDraft, setSettingsDraft] = useState({ gender: '女AI', prompt: '' });
+  const [proMode, setProMode] = useState(false);
 
   // 模型状态
   const [modelStatus, setModelStatus] = useState<{ model_dir: string; models: Record<string, boolean> } | null>(null);
@@ -313,7 +344,9 @@ export function Voice() {
     return () => unl?.();
   }, [config?.VadEnabled]);
 
-  // ── 实时字幕 ────────────────────────────────────────────────────────────────
+  // ── 实时字幕：轮询 + 事件双保险 ────────────────────────────────────────────
+
+  const seenLogCount = useRef(0);
 
   useEffect(() => {
     const applyLog = (text: string) => {
@@ -340,11 +373,31 @@ export function Voice() {
       }, 2200);
     };
 
+    // 轮询：每 300ms 拉取一次后台日志缓冲区，只处理新增行
+    const pollLogs = async () => {
+      try {
+        const logs = await api.getMonitorLogs();
+        const newStart = seenLogCount.current;
+        if (logs.length > newStart) {
+          for (let i = newStart; i < logs.length; i++) applyLog(logs[i]);
+          seenLogCount.current = logs.length;
+        }
+        // 若后台重启（日志数量减少），重置计数器
+        if (logs.length < seenLogCount.current) {
+          seenLogCount.current = 0;
+        }
+      } catch { /* ignore */ }
+    };
+    const pollTimer = setInterval(pollLogs, 300);
+
+    // 事件监听作为辅助（部分环境可能不工作）
     let unl: (() => void) | undefined;
     let unlBatch: (() => void) | undefined;
-    api.onMonitorLog(applyLog).then(f => { unl = f; });
-    api.onMonitorLogs(lines => { for (const line of lines) applyLog(line); }).then(f => { unlBatch = f; });
+    api.onMonitorLog(applyLog).then(f => { unl = f; }).catch(() => {});
+    api.onMonitorLogs(lines => { for (const line of lines) applyLog(line); }).then(f => { unlBatch = f; }).catch(() => {});
+
     return () => {
+      clearInterval(pollTimer);
       unl?.();
       unlBatch?.();
       if (micVisualTimer.current) clearTimeout(micVisualTimer.current);
@@ -370,73 +423,37 @@ export function Voice() {
   const currentAsrProvider = findAsrProvider(config, asrId);
   const usingBuiltInSenseVoice = currentAsrProvider?.Model === 'sensevoice' || (!currentAsrProvider && !(config?.AsrUrl));
   const usingExternalAsrService = !usingBuiltInSenseVoice && (!!currentAsrProvider?.APIUrl || !!config?.AsrUrl);
-  const hasAsrProvider = asrList(config).length > 0 && !!asrId;
-  const hasAsrConfig  = usingBuiltInSenseVoice ? hasAsrProvider : usingExternalAsrService;
+  // 内置 SenseVoice 不需要额外 provider 配置，始终视为已配置
+  const hasAsrConfig  = usingBuiltInSenseVoice || usingExternalAsrService;
   const vadModelOk    = modelStatus?.models['silero-vad'] ?? false;
   const asrModelOk    = usingExternalAsrService || (modelStatus?.models['sensevoice'] ?? false);
-  const micEnabled    = hasAsrConfig && vadModelOk && asrModelOk;
+  // 模型缺失时仍允许启动（monitor 会自动下载），外部 ASR 服务不可用时才完全禁用
+  const micEnabled    = hasAsrConfig;
 
-  // 麦克风不可用的原因
+  // 提示信息（不阻止启动，在日志区展示）
   const micBlockReasons: string[] = [];
-  if (!vadModelOk) micBlockReasons.push('缺少语音检测模型，请先下载模型文件');
-  if (usingBuiltInSenseVoice && !asrModelOk) micBlockReasons.push('缺少 SenseVoice 本地模型，请先下载后再开启');
-  if (!usingBuiltInSenseVoice && hasAsrConfig) micBlockReasons.push('当前 ASR 依赖外部 WebSocket 服务，请确认对应服务已启动');
-  if (!hasAsrConfig) micBlockReasons.push('请先在「模型服务」中添加并启用语音识别服务');
+  if (!vadModelOk) micBlockReasons.push('VAD 模型未就绪，启动时将自动下载');
+  if (usingBuiltInSenseVoice && !asrModelOk) micBlockReasons.push('SenseVoice 模型未就绪，启动时将自动下载');
+  if (!usingBuiltInSenseVoice && hasAsrConfig) micBlockReasons.push('当前 ASR 依赖外部 WebSocket 服务，请确认服务已启动');
+  if (!hasAsrConfig) micBlockReasons.push('请先在「设置」中配置语音识别服务');
 
   const handleMicClick = async () => {
-    if (!config) {
-      setVoiceDetail('配置尚未加载，无法开启麦克风');
-      return;
-    }
-    if (!hasAsrConfig) {
-      setVoiceDetail('麦克风未启动：未配置 ASR 服务');
-      toast.error('请先在「模型服务」中配置语音识别服务');
-      return;
-    }
-    if (!vadModelOk) {
-      setVoiceDetail('麦克风未启动：缺少 VAD 语音检测模型');
-      toast.error('缺少语音检测模型', { description: '请先在「模型服务」页下载所需模型文件' });
-      return;
-    }
-    if (!asrModelOk) {
-      setVoiceDetail('麦克风未启动：缺少 ASR 模型或外部 ASR 服务不可用');
-      toast.error('缺少语音识别模型', { description: '请下载本地 SenseVoice 模型，或确认外部 ASR 服务已启动' });
-      return;
-    }
-    const nextVad = !(config.VadEnabled);
+    if (!config) return;
+    if (!hasAsrConfig) { toast.error('请先配置语音识别服务'); return; }
+    const nextVad = !config.VadEnabled;
     const updated = { ...config, VadEnabled: nextVad };
     setConfig(updated);
     monitorRestarting.current = true;
-    setVoiceStatus(nextVad ? '正在开启麦克风...' : '正在关闭麦克风...');
-    setVoiceDetail(nextVad ? '正在重启监听并申请麦克风链路' : '正在关闭监听和麦克风链路');
     try {
-      console.info('[Voice] mic toggle requested', {
-        nextVad,
-        asrId,
-        usingBuiltInSenseVoice,
-        hasAsrConfig,
-        vadModelOk,
-        asrModelOk,
-      });
-      setVoiceDetail('正在保存麦克风配置...');
       await api.saveConfig(updated);
-      setVoiceDetail('正在停止旧监听线程...');
       await api.stopMonitor().catch(() => {});
-      if (nextVad) {
-        setVoiceDetail('正在启动监听线程...');
-        await api.startMonitor();
-      }
+      if (nextVad) await api.startMonitor();
       setMicState(nextVad ? 'listening' : 'off');
-      setVoiceStatus(nextVad ? '麦克风已开启，等待说话' : '麦克风未开启');
-      setVoiceDetail(nextVad ? '监听线程已启动，等待语音链路事件' : '麦克风关闭完成');
       monitorRestarting.current = false;
       toast.success(nextVad ? '麦克风已开启' : '麦克风已关闭');
     } catch (e) {
-      console.error('[Voice] mic toggle failed', e);
       monitorRestarting.current = false;
       setMicState(config.VadEnabled ? 'listening' : 'off');
-      setVoiceStatus(config.VadEnabled ? '麦克风已开启，等待说话' : '麦克风未开启');
-      setVoiceDetail(`操作失败: ${String(e)}`);
       toast.error(`操作失败: ${e}`);
     }
   };
@@ -466,13 +483,6 @@ export function Voice() {
           </div>
         )}
 
-        <div className="px-4 py-3 rounded-2xl bg-black/5 dark:bg-white/5 border border-black/5 dark:border-white/10 shrink-0">
-          <div className="flex items-center gap-2">
-            <div className={cn("w-2.5 h-2.5 rounded-full shrink-0", micState === 'speaking' ? 'bg-emerald-500' : micState === 'listening' ? 'bg-sky-500' : 'bg-gray-300')} />
-            <span className="text-[12px] font-bold text-gray-700 dark:text-gray-200">{voiceStatus}</span>
-          </div>
-          <p className="mt-1.5 text-[11px] text-gray-500 dark:text-gray-400 break-all">{voiceDetail}</p>
-        </div>
 
 	        {/* ══ 上栏：服务配置 + 麦克风 ════════════════════════════════════════ */}
 	        <div className="flex items-center justify-between shrink-0 bg-white/40 dark:bg-white/5 border border-white/60 dark:border-white/10 rounded-[24px] px-6 py-3 shadow-xl">
@@ -542,8 +552,20 @@ export function Voice() {
             </div>
           </div>
 
-          <div className="flex items-center gap-4">
-	            <button onClick={() => setSettingsOpen(true)} className="w-9 h-9 rounded-full hover:bg-black/5 dark:hover:bg-white/5 flex items-center justify-center text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 transition-all"><SettingsIcon className="w-4 h-4" /></button>
+          <div className="flex items-center gap-3">
+            {/* 通用/专业 模式切换 */}
+            <div className="flex items-center p-0.5 rounded-xl bg-black/5 dark:bg-white/8 border border-gray-200 dark:border-white/12">
+              {(['通用', '专业'] as const).map(m => (
+                <button key={m} onClick={() => setProMode(m === '专业')}
+                  className={cn('h-6 px-3 rounded-lg text-[10px] font-bold transition-all',
+                    (m === '专业') === proMode
+                      ? 'bg-white dark:bg-white/15 text-gray-700 dark:text-gray-100 shadow-sm'
+                      : 'text-gray-400 hover:text-gray-600 dark:hover:text-gray-300')}>
+                  {m}
+                </button>
+              ))}
+            </div>
+            <button onClick={() => setSettingsOpen(true)} className="w-9 h-9 rounded-full hover:bg-black/5 dark:hover:bg-white/5 flex items-center justify-center text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 transition-all"><SettingsIcon className="w-4 h-4" /></button>
 	            {/* Mic button with pulsing rings when active */}
 	            <div className="relative">
               {micActive && (
@@ -568,52 +590,125 @@ export function Voice() {
           </div>
         </div>
 
-        {/* ══ 下栏：实时字幕 ══════════════════════════════════════════════════ */}
-        <GlassCard className="flex-1 flex flex-col overflow-hidden border-white/60 dark:border-white/10 bg-white/60 dark:bg-black/20 shadow-2xl">
-          {/* header */}
-          <div className="flex items-center justify-between px-5 py-3 border-b border-black/5 dark:border-white/8 bg-white/40 dark:bg-black/10 shrink-0">
-            <div className="flex items-center gap-2 min-w-0">
-              <div className={`w-2 h-2 rounded-full transition-colors ${micActive ? 'bg-[var(--primary-color)] animate-pulse' : 'bg-gray-300'}`} />
-              <span className="text-[12px] font-bold text-gray-600 dark:text-gray-300 shrink-0">实时字幕</span>
-              <span className="text-[11px] text-gray-400 truncate">{voiceStatus}</span>
-              {micActive && latency > 0 && (
-                <span className="text-[10px] text-gray-400 ml-2">{latency}ms</span>
+        {/* ══ 下栏：字幕 + 可选专业面板 ══════════════════════════════════════ */}
+        <div className="flex-1 flex gap-4 min-h-0">
+
+          {/* 字幕卡片 */}
+          <GlassCard className="flex-1 flex flex-col overflow-hidden border-white/60 dark:border-white/10 bg-white/60 dark:bg-black/20 shadow-2xl min-w-0">
+            <div className="flex items-center justify-between px-5 py-3 border-b border-black/5 dark:border-white/8 bg-white/40 dark:bg-black/10 shrink-0">
+              <div className="flex items-center gap-2 min-w-0">
+                <div className={`w-2 h-2 rounded-full transition-colors ${micActive ? 'bg-[var(--primary-color)] animate-pulse' : 'bg-gray-300'}`} />
+                <span className="text-[12px] font-bold text-gray-600 dark:text-gray-300 shrink-0">实时字幕</span>
+                {micActive && latency > 0 && <span className="text-[10px] text-gray-400 ml-2">{latency}ms</span>}
+              </div>
+              <button onClick={() => setSubtitles([])} className="h-7 px-3 rounded-full border border-gray-200 dark:border-white/15 text-[10px] font-bold text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 hover:bg-white/60 transition-all">清空</button>
+            </div>
+            <div ref={subRef} className="flex-1 overflow-y-auto p-5 space-y-3 scrollbar-none">
+              {subtitles.length === 0 ? (
+                <div className="h-full flex flex-col items-center justify-center gap-3 opacity-25 select-none">
+                  <MessageSquareText className="w-16 h-16 text-gray-400" />
+                  <p className="text-[13px] font-bold tracking-wide text-gray-400">开启麦克风后，实时字幕将显示在此处</p>
+                </div>
+              ) : (
+                subtitles.map(sub => (
+                  <div key={sub.id} className={`flex ${sub.role === 'user' ? 'justify-end' : 'justify-start'} ${sub.fresh ? 'animate-in slide-in-from-bottom-2 duration-300' : ''}`}>
+                    <div className={cn('max-w-[82%] px-4 py-2.5 rounded-2xl text-[13px] shadow-sm',
+                      sub.role === 'user'
+                        ? 'bg-gray-100 dark:bg-white/10 text-gray-700 dark:text-gray-200 rounded-br-sm'
+                        : 'bg-[var(--primary-color)] text-white rounded-bl-sm')}>
+                      {sub.text}
+                    </div>
+                  </div>
+                ))
               )}
             </div>
-            <button onClick={() => setSubtitles([])} className="h-7 px-3 rounded-full border border-gray-200 dark:border-white/15 text-[10px] font-bold text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 hover:bg-white/60 transition-all">
-              清空
-            </button>
-          </div>
+            <div className="px-6 pb-5 pt-2 shrink-0">
+              <FullWave active={micActive} color={micActive ? 'var(--primary-color)' : '#d1d5db'} barCount={64} />
+            </div>
+          </GlassCard>
 
-          {/* subtitle content */}
-          <div ref={subRef} className="flex-1 overflow-y-auto p-5 space-y-3 scrollbar-none">
-            {subtitles.length === 0 ? (
-              <div className="h-full flex flex-col items-center justify-center gap-3 opacity-25 select-none">
-                <MessageSquareText className="w-16 h-16 text-gray-400" />
-                <p className="text-[13px] font-bold tracking-wide text-gray-400">开启麦克风后，实时字幕将显示在此处</p>
-                <p className="text-[11px] text-gray-400">{voiceStatus}</p>
+          {/* 专业参数面板 */}
+          {proMode && config && (
+            <div className="w-56 shrink-0 flex flex-col gap-3 overflow-y-auto scrollbar-none">
+
+              {/* VAD */}
+              <div className="rounded-2xl border border-white/50 dark:border-white/10 bg-white/60 dark:bg-white/5 p-4 space-y-4">
+                <p className="text-[10px] font-black tracking-widest text-gray-400 uppercase">VAD 检测</p>
+                <ProSlider label="麦克风增益" hint="放大麦克风输入（1.0 = 原始）"
+                  value={config.VoiceMicGain ?? 1.0} min={0.5} max={4.0} step={0.1}
+                  format={v => v.toFixed(1) + '×'}
+                  onChange={v => scheduleSave({ VoiceMicGain: v })} />
+                <ProSlider label="灵敏度" hint="越低越灵敏"
+                  value={config.VadThreshold} min={0.1} max={0.9} step={0.05}
+                  format={v => v.toFixed(2)}
+                  onChange={v => scheduleSave({ VadThreshold: v })} />
+                <ProSlider label="最短语音" hint="秒"
+                  value={config.VadMinSpeechDuration} min={0.04} max={0.5} step={0.01}
+                  format={v => v.toFixed(2) + 's'}
+                  onChange={v => scheduleSave({ VadMinSpeechDuration: v })} />
+                <ProSlider label="静音判停" hint="秒"
+                  value={config.VadMinSilenceDuration} min={0.2} max={1.5} step={0.05}
+                  format={v => v.toFixed(2) + 's'}
+                  onChange={v => scheduleSave({ VadMinSilenceDuration: v })} />
               </div>
-            ) : (
-              subtitles.map(sub => (
-                <div key={sub.id} className={`flex ${sub.role === 'user' ? 'justify-end' : 'justify-start'} ${sub.fresh ? 'animate-in slide-in-from-bottom-2 duration-300' : ''}`}>
-                  <div className={cn(
-                    "max-w-[82%] px-4 py-2.5 rounded-2xl text-[13px] shadow-sm",
-                    sub.role === 'user'
-                      ? "bg-gray-100 dark:bg-white/10 text-gray-700 dark:text-gray-200 rounded-br-sm"
-                      : "bg-[var(--primary-color)] text-white rounded-bl-sm"
-                  )}>
-                    {sub.text}
-                  </div>
-                </div>
-              ))
-            )}
-          </div>
 
-          {/* wave at bottom */}
-          <div className="px-6 pb-5 pt-2 shrink-0">
-            <FullWave active={micActive} color={micActive ? 'var(--primary-color)' : '#d1d5db'} barCount={64} />
-          </div>
-        </GlassCard>
+              {/* ASR */}
+              <div className="rounded-2xl border border-white/50 dark:border-white/10 bg-white/60 dark:bg-white/5 p-4 space-y-3">
+                <p className="text-[10px] font-black tracking-widest text-gray-400 uppercase">ASR 识别</p>
+                <div>
+                  <p className="text-[10px] text-gray-500 mb-1.5">识别语言</p>
+                  <select value={config.AsrLanguage ?? 'zh'} onChange={e => scheduleSave({ AsrLanguage: e.target.value })}
+                    className="w-full h-8 rounded-xl text-[11px] px-2.5 bg-white/60 dark:bg-white/8 border border-gray-200 dark:border-white/15 text-gray-700 dark:text-gray-100 focus:outline-none">
+                    <option value="zh">普通话</option>
+                    <option value="yue">粤语</option>
+                    <option value="en">English</option>
+                    <option value="ja">日語</option>
+                    <option value="ko">한국어</option>
+                    <option value="auto">自动检测（易误判）</option>
+                  </select>
+                </div>
+              </div>
+
+              {/* AI 回复 */}
+              <div className="rounded-2xl border border-white/50 dark:border-white/10 bg-white/60 dark:bg-white/5 p-4 space-y-4">
+                <p className="text-[10px] font-black tracking-widest text-gray-400 uppercase">AI 回复</p>
+                <ProSlider label="Temperature" hint="越高越随机创意"
+                  value={config.VoiceTemperature ?? 0.7} min={0.0} max={2.0} step={0.05}
+                  format={v => v.toFixed(2)}
+                  onChange={v => scheduleSave({ VoiceTemperature: v })} />
+                <div className="space-y-1">
+                  <div className="flex items-center justify-between">
+                    <span className="text-[10px] font-semibold text-gray-600 dark:text-gray-300">最大字数</span>
+                    <span className="text-[10px] font-mono text-[var(--primary-color)]">
+                      {(config.VoiceReplyMaxChars ?? 120) === 0 ? '不限' : `${config.VoiceReplyMaxChars ?? 120}字`}
+                    </span>
+                  </div>
+                  <input type="range" min={0} max={300} step={10}
+                    value={config.VoiceReplyMaxChars ?? 120}
+                    onChange={e => scheduleSave({ VoiceReplyMaxChars: Number(e.target.value) })}
+                    className="w-full h-1 cursor-pointer rounded-full accent-[var(--primary-color)]" />
+                  <p className="text-[9px] text-gray-400">0 = 不限制，防止长篇回复拖慢 TTS</p>
+                </div>
+              </div>
+
+              {/* TTS */}
+              <div className="rounded-2xl border border-white/50 dark:border-white/10 bg-white/60 dark:bg-white/5 p-4 space-y-4">
+                <p className="text-[10px] font-black tracking-widest text-gray-400 uppercase">TTS 播报</p>
+                <ProSlider label="语速" hint="倍率"
+                  value={ttsSpeed} min={0.5} max={2.0} step={0.1}
+                  format={v => v.toFixed(1) + '×'}
+                  onChange={v => onSpeedChange(v)} />
+                <ProSlider label="音调" hint="-1 ~ +1"
+                  value={config.TtsPitch ?? 0} min={-1} max={1} step={0.1}
+                  format={v => (v >= 0 ? '+' : '') + v.toFixed(1)}
+                  onChange={v => scheduleSave({ TtsPitch: v })} />
+              </div>
+
+            </div>
+          )}
+
+        </div>
+
       </div>
 
       <VoicePicker

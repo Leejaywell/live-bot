@@ -249,59 +249,20 @@ async fn auto_download_models(
 
     let hub = ModelHub::new(model_dir);
 
-    // ── VAD (silero_vad.onnx, ~1.8 MB) ───────────────────────────────────────
-    let vad_path = model_dir.join("silero_vad.onnx");
-    if !vad_path.exists() && !cancel.is_cancelled() {
-        let _ = app.emit("monitor-log", serde_json::json!("正在自动下载 VAD 模型…"));
-        let is_china = detect_china_ip().await;
-        let hf_base = if is_china {
-            "https://hf-mirror.com"
-        } else {
-            "https://huggingface.co"
-        };
-        let url = format!("{hf_base}/snakers4/silero-vad/resolve/main/files/silero_vad.onnx");
-        let url = url.as_str();
-
-        let (tx, mut rx) = tokio::sync::mpsc::channel::<streamix_voice::DownloadProgress>(64);
-        let app_c = app.clone();
-        tokio::spawn(async move {
-            while let Some(p) = rx.recv().await {
-                if p.stage == DownloadStage::Done {
-                    break;
-                }
-                let pct = p
-                    .total
-                    .map(|t| (p.downloaded as f64 / t as f64 * 99.0) as u32)
-                    .unwrap_or(0);
-                let mut payload = serde_json::json!({
-                    "model_id": "silero-vad", "stage": "downloading", "pct": pct,
-                    "downloaded_mb": format!("{:.1}", p.downloaded as f64 / 1_048_576.0),
-                });
-                if let Some(t) = p.total {
-                    payload["total_mb"] = format!("{:.1}", t as f64 / 1_048_576.0).into();
-                }
-                let _ = app_c.emit("model-dl-progress", payload);
-            }
-        });
-
-        let result = tokio::select! {
-            _ = cancel.cancelled() => return,
-            r = hub.ensure(ModelSource::url(url, "silero_vad.onnx"), Some(tx)) => r,
-        };
-        match result {
-            Ok(_) => {
-                let _ = app.emit(
-                    "model-dl-progress",
-                    serde_json::json!({"model_id": "silero-vad", "stage": "done", "pct": 100u32}),
-                );
-                let _ = app.emit("monitor-log", serde_json::json!("VAD 模型就绪"));
-            }
-            Err(e) => {
-                let _ = app.emit(
-                    "monitor-log",
-                    serde_json::json!(format!("VAD 模型下载失败: {e}")),
-                );
-            }
+    // ── VAD (silero_vad.onnx，缺失或损坏时自动下载) ──────────────────────────
+    let vad_out = model_dir.join("silero_vad.onnx");
+    let vad_exists = vad_out.exists();
+    let vad_valid = onnx_file_valid(&vad_out);
+    let vad_size = std::fs::metadata(&vad_out).map(|m| m.len()).unwrap_or(0);
+    let _ = app.emit("monitor-log", serde_json::json!(format!(
+        "[诊断] VAD 模型路径: {} | 存在: {} | 有效: {} | 大小: {} bytes",
+        vad_out.display(), vad_exists, vad_valid, vad_size
+    )));
+    if !vad_valid && !cancel.is_cancelled() {
+        let _ = app.emit("monitor-log", serde_json::json!("正在自动下载 VAD 模型（silero_vad.onnx）…"));
+        match dl_silero_vad(app.clone(), cancel.clone()).await {
+            Ok(msg) => { let _ = app.emit("monitor-log", serde_json::json!(msg)); }
+            Err(e)  => { let _ = app.emit("monitor-log", serde_json::json!(format!("VAD 模型下载失败: {e}"))); }
         }
     }
 
@@ -413,6 +374,8 @@ async fn start_monitor(
 
     let session_memory = state.session_memory.clone();
     let error_app = app.clone();
+
+    let _ = app.emit("monitor-log", serde_json::json!("[start_monitor] 指令已收到，正在启动监听任务..."));
 
     tokio::spawn(async move {
         // 自动补全缺失模型后再启动引擎
@@ -2198,13 +2161,22 @@ async fn stream_to_file(
     Ok(written)
 }
 
+/// ONNX/protobuf files always start with 0x08 (ir_version field tag).
+/// A file that starts with anything else was not downloaded correctly.
+fn onnx_file_valid(path: &std::path::Path) -> bool {
+    use std::io::Read;
+    let Ok(mut f) = std::fs::File::open(path) else { return false };
+    let Ok(meta) = f.metadata() else { return false };
+    if meta.len() < 65_536 { return false; }
+    let mut hdr = [0u8; 1];
+    f.read_exact(&mut hdr).is_ok() && hdr[0] == 0x08
+}
+
 #[cfg(feature = "tauri")]
 #[tauri::command]
 fn check_models(app: AppHandle) -> Result<serde_json::Value, String> {
     let base = model_dir(&app);
-    let _ = std::fs::create_dir_all(&base);
-
-    let vad_ok = base.join("silero_vad.onnx").exists();
+    let vad_ok = onnx_file_valid(&base.join("silero_vad.onnx"));
     let sv_dir = base.join("sherpa-onnx-sense-voice-zh-en-ja-ko-yue-int8-2024-07-17");
     let sensevoice_ok =
         sv_dir.join("model.int8.onnx").exists() && sv_dir.join("tokens.txt").exists();
@@ -2600,7 +2572,7 @@ async fn dl_silero_vad(app: AppHandle, cancel: CancellationToken) -> Result<Stri
     let mid = "silero-vad";
     let base = model_dir(&app);
     let out = base.join("silero_vad.onnx");
-    if out.exists() {
+    if onnx_file_valid(&out) {
         return Ok("VAD 模型已存在".to_string());
     }
 

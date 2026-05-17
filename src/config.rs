@@ -157,6 +157,15 @@ pub struct AppConfig {
     /// 是否启用麦克风 VAD（检测主播语音，驱动语音指令 / ASR）
     #[serde(default)]
     pub vad_enabled: bool,
+    /// VAD 灵敏度（0.1 最灵敏 ~ 0.9 最保守，默认 0.3）
+    #[serde(default = "default_vad_threshold")]
+    pub vad_threshold: f32,
+    /// 最短语音段时长（秒），低于此值忽略（默认 0.08）
+    #[serde(default = "default_vad_min_speech_duration")]
+    pub vad_min_speech_duration: f32,
+    /// 静音多久判定为话轮结束（秒，默认 0.4）
+    #[serde(default = "default_vad_min_silence_duration")]
+    pub vad_min_silence_duration: f32,
     /// WhisperLive ASR WebSocket 地址（留空则禁用 ASR，仅做 VAD）
     /// 示例：ws://localhost:9090
     #[serde(default)]
@@ -200,6 +209,15 @@ pub struct AppConfig {
     /// 特定欢迎语列表（按 UID 精准匹配）
     #[serde(default)]
     pub special_welcome_list: Vec<SpecialWelcomeEntry>,
+    /// 麦克风软增益（1.0 = 原始，>1.0 放大，默认 1.0）
+    #[serde(default = "default_voice_mic_gain")]
+    pub voice_mic_gain: f32,
+    /// 语音回复最大字数（0 = 不限，默认 120）
+    #[serde(default = "default_voice_reply_max_chars")]
+    pub voice_reply_max_chars: u32,
+    /// 语音 AI 温度（0.0 – 2.0，默认 0.7）
+    #[serde(default = "default_voice_temperature")]
+    pub voice_temperature: f32,
 }
 
 /// 特定用户欢迎语配置（按 UID 精准匹配）
@@ -397,6 +415,9 @@ impl Default for AppConfig {
             obs_port: default_obs_port(),
             obs_password: String::new(),
             vad_enabled: false,
+            vad_threshold: default_vad_threshold(),
+            vad_min_speech_duration: default_vad_min_speech_duration(),
+            vad_min_silence_duration: default_vad_min_silence_duration(),
             asr_url: String::new(),
             asr_engine: default_asr_engine(),
             asr_language: default_asr_language(),
@@ -413,6 +434,9 @@ impl Default for AppConfig {
             special_welcome_list: Vec::new(),
             my_room_ids: Vec::new(),
             record_enabled: true,
+            voice_mic_gain: default_voice_mic_gain(),
+            voice_reply_max_chars: default_voice_reply_max_chars(),
+            voice_temperature: default_voice_temperature(),
         }
     }
 }
@@ -423,6 +447,9 @@ fn default_asr_engine() -> String {
 fn default_true() -> bool {
     true
 }
+fn default_vad_threshold() -> f32 { 0.3 }
+fn default_vad_min_speech_duration() -> f32 { 0.08 }
+fn default_vad_min_silence_duration() -> f32 { 0.4 }
 fn default_asr_language() -> String {
     "zh".to_string()
 }
@@ -641,4 +668,16 @@ fn default_ws_url() -> String {
 
 fn default_danmu_len() -> i32 {
     20
+}
+
+fn default_voice_mic_gain() -> f32 {
+    1.0
+}
+
+fn default_voice_reply_max_chars() -> u32 {
+    120
+}
+
+fn default_voice_temperature() -> f32 {
+    0.7
 }

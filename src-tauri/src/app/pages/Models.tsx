@@ -28,15 +28,18 @@ const LLM_PROVIDERS = [
 
 const ASR_PROVIDERS = [
   { value: 'funasr',         label: 'FunASR（外部服务）',        wsUrl: 'ws://localhost:10095', desc: '需单独启动 FunASR WebSocket 服务后接入' },
-  { value: 'sensevoice',     label: 'SenseVoice（内置本地）',    wsUrl: '',                     desc: '应用内置本地识别链路，下载模型后可直接使用' },
+  { value: 'sensevoice',     label: 'SenseVoice（内置本地）',    wsUrl: '',                     desc: '内置本地识别，支持普通话 / 粤语 / 英语 / 日语 / 韩语；其他方言（闽南语、四川话等）需接云端 ASR' },
   { value: 'faster-whisper', label: 'Faster-Whisper（外部服务）',wsUrl: 'ws://localhost:9090',  desc: '需单独启动 Faster-Whisper / WhisperLive 服务后接入' },
   { value: 'volcengine-asr', label: '火山 ASR（云端）',          wsUrl: '',                     desc: '云端流式识别，超低延迟' },
 ];
 
 const ASR_LANGUAGES = [
-  { value: 'zh',   label: '中文'    },
+  { value: 'zh',   label: '普通话' },
+  { value: 'yue',  label: '粤语'   },
   { value: 'en',   label: 'English' },
-  { value: 'auto', label: '自动检测' },
+  { value: 'ja',   label: '日語'   },
+  { value: 'ko',   label: '한국어'  },
+  { value: 'auto', label: '自动检测（易误判）' },
 ];
 
 const TTS_PROVIDERS = [
@@ -221,6 +224,7 @@ function AsrFields({ p, set, usedEngines, errors }: { p: AiProvider; set: (patch
         <label className="text-[11px] text-gray-500 mb-1.5 block">识别引擎</label>
         <GSelect value={currentEngine.value} onChange={updateEngine}
           options={ASR_PROVIDERS.filter(ap => !usedEngines.includes(ap.value))} />
+        <p className="text-[10px] text-gray-400 mt-1">{currentEngine.desc}</p>
       </div>
 
       {/* SenseVoice 模型下载 */}

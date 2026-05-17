@@ -505,6 +505,16 @@ impl BiliApi {
         messages: &[serde_json::Value],
         tools: Option<&[serde_json::Value]>,
     ) -> anyhow::Result<serde_json::Value> {
+        self.chat_completions_raw_with_opts(provider, messages, tools, None).await
+    }
+
+    pub async fn chat_completions_raw_with_opts(
+        &self,
+        provider: &crate::config::AiProvider,
+        messages: &[serde_json::Value],
+        tools: Option<&[serde_json::Value]>,
+        temperature: Option<f32>,
+    ) -> anyhow::Result<serde_json::Value> {
         let url = if provider.api_url.ends_with("/chat/completions") {
             provider.api_url.clone()
         } else {
@@ -517,6 +527,9 @@ impl BiliApi {
             "model": provider.model,
             "messages": messages,
         });
+        if let Some(t) = temperature {
+            body["temperature"] = serde_json::json!(t);
+        }
         if let Some(tools) = tools {
             body["tools"] = serde_json::json!(tools);
             body["tool_choice"] = serde_json::json!("auto");

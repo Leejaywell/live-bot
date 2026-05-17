@@ -94,6 +94,12 @@ export interface AppConfig {
   ObsPort: number;
   ObsPassword: string;
   VadEnabled: boolean;
+  VadThreshold: number;
+  VadMinSpeechDuration: number;
+  VadMinSilenceDuration: number;
+  VoiceMicGain: number;
+  VoiceReplyMaxChars: number;
+  VoiceTemperature: number;
   AsrUrl: string;
   AsrEngine: string;
   AsrLanguage: string;

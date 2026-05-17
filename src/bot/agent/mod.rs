@@ -146,13 +146,23 @@ pub async fn call_ai_voice(
         let mem = memory.lock().unwrap_or_else(|e| e.into_inner());
         (mem.history_pairs(bot_id), prompt.to_string())
     };
+    let temperature = if config.voice_temperature > 0.0 {
+        Some(config.voice_temperature)
+    } else {
+        None
+    };
     let reply = agent
-        .run_with_provider(http, provider, &sys, &history, &enriched_prompt)
+        .run_with_provider_opts(http, provider, &sys, &history, &enriched_prompt, temperature)
         .await
         .unwrap_or_else(|e| {
             eprintln!("[AI] 调用失败: {e}");
             String::new()
         });
+    let reply = if config.voice_reply_max_chars > 0 {
+        reply.chars().take(config.voice_reply_max_chars as usize).collect::<String>()
+    } else {
+        reply
+    };
     {
         let mut mem = memory.lock().unwrap_or_else(|e| e.into_inner());
         mem.push_turn(bot_id, prompt.to_string(), reply.clone());

@@ -148,20 +148,38 @@ pub async fn run_monitor_loop<E: EventEmitter + Send + Sync + 'static>(
     #[cfg(feature = "vad")]
     let _mic_capture: Option<streamix_voice::SherpaMicCapture> = if config.vad_enabled {
         let vad_model = model_dir.join("silero_vad.onnx");
+        let vad_exists = vad_model.exists();
+        let vad_size = std::fs::metadata(&vad_model).map(|m| m.len()).unwrap_or(0);
+        let _ = sender_app.emit("monitor-log", serde_json::json!(format!(
+            "[诊断] VAD 启动检查 | 路径: {} | 存在: {} | 大小: {} bytes",
+            vad_model.display(), vad_exists, vad_size
+        )));
+
         let (asr_url, asr_model_dir, asr_startup_notice) =
             resolve_vad_asr_source(&config, &model_dir).await;
 
         match streamix_voice::SherpaPipeline::spawn(
             vad_model,
             asr_model_dir,
-            "auto",
+            &config.asr_language,
+            config.vad_threshold,
+            config.vad_min_speech_duration,
+            config.vad_min_silence_duration,
             cancel.clone(),
         ) {
             Ok(pipeline) => {
+                let has_asr = pipeline.has_asr;
                 let _ = sender_app.emit(
                     "monitor-log",
-                    serde_json::json!("语音检测（VAD）已就绪，正在启动麦克风..."),
+                    serde_json::json!(if has_asr {
+                        "语音检测（VAD）已就绪，SenseVoice ASR 已加载，正在启动麦克风..."
+                    } else {
+                        "语音检测（VAD）已就绪，正在启动麦克风..."
+                    }),
                 );
+                if let Some(warn) = &pipeline.asr_warning {
+                    let _ = sender_app.emit("monitor-log", serde_json::json!(warn));
+                }
                 if let Some(notice) = asr_startup_notice {
                     let _ = sender_app.emit("monitor-log", serde_json::json!(notice));
                 }
@@ -175,6 +193,8 @@ pub async fn run_monitor_loop<E: EventEmitter + Send + Sync + 'static>(
                 let vad_agent = agent_runtime.clone();
                 let vad_http = http.clone();
                 let vad_tx = send_tx.clone();
+                // TTS router：供 ASR 循环播报 AI 回复 + 用户说话时打断
+                let vad_router = tts_router.clone();
 
                 // WhisperLive：需要音频 tap；本地 sherpa ASR：事件里直接携带文本
                 let audio_tap = if !asr_url.is_empty() {
@@ -188,11 +208,12 @@ pub async fn run_monitor_loop<E: EventEmitter + Send + Sync + 'static>(
                     let asr_http = http.clone();
                     let asr_tx = send_tx.clone();
                     let asr_url_c = asr_url.clone();
+                    let asr_router = vad_router.clone();
                     tokio::spawn(async move {
                         #[cfg(feature = "asr")]
                         run_asr_loop(
-                            rx, events2, asr_url_c, asr_http, asr_config, asr_memory, asr_agent,
-                            asr_tx, asr_app, asr_cancel,
+                            rx, events2, asr_url_c, asr_router, asr_http, asr_config,
+                            asr_memory, asr_agent, asr_tx, asr_app, asr_cancel,
                         )
                         .await;
                     });
@@ -200,8 +221,8 @@ pub async fn run_monitor_loop<E: EventEmitter + Send + Sync + 'static>(
                 } else {
                     // 本地 sherpa ASR：SpeechEnd 事件里带文本，直接触发 AI
                     tokio::spawn(run_sherpa_asr_event_loop(
-                        events, vad_http, vad_config, vad_memory, vad_agent, vad_tx, vad_app,
-                        vad_cancel,
+                        events, has_asr, vad_router, vad_http, vad_config, vad_memory,
+                        vad_agent, vad_tx, vad_app, vad_cancel,
                     ));
                     None
                 };
@@ -230,6 +251,7 @@ pub async fn run_monitor_loop<E: EventEmitter + Send + Sync + 'static>(
                     &pipeline,
                     audio_tap,
                     Some(mic_status_tx),
+                    config.voice_mic_gain,
                 ) {
                     Ok(mic) => {
                         let _ = sender_app.emit(
@@ -644,6 +666,7 @@ async fn run_asr_loop<E: crate::bot::EventEmitter + Send + Sync + 'static>(
     mut audio_rx: tokio::sync::mpsc::UnboundedReceiver<Vec<f32>>,
     mut events: tokio::sync::broadcast::Receiver<streamix_voice::TurnEvent>,
     asr_url: String,
+    tts_router: Option<streamix_voice::SpeakerRouter>,
     http: crate::api::BiliApi,
     config: Arc<crate::config::AppConfig>,
     memory: Arc<std::sync::Mutex<crate::bot::memory::SessionMemory>>,
@@ -669,6 +692,10 @@ async fn run_asr_loop<E: crate::bot::EventEmitter + Send + Sync + 'static>(
 
             ev = events.recv() => match ev {
                 Ok(streamix_voice::TurnEvent::SpeechStart) => {
+                    // 用户开口 → 立即打断正在播放的 AI TTS
+                    if let Some(ref router) = tts_router {
+                        let _ = router.voice_session().interrupt().await;
+                    }
                     recording = true;
                     speech_buf.clear();
                     asr.reset_streaming();
@@ -676,8 +703,6 @@ async fn run_asr_loop<E: crate::bot::EventEmitter + Send + Sync + 'static>(
                 }
                 Ok(streamix_voice::TurnEvent::TurnEnd { samples }) => {
                     recording = false;
-                    // sherpa-onnx 已完成端点检测，samples 就是完整语音段；
-                    // speech_buf 是外部采集的冗余路径，直接用 samples。
                     let audio = if !samples.is_empty() { samples } else { std::mem::take(&mut speech_buf) };
                     if audio.len() < 1600 {
                         speech_buf.clear();
@@ -691,7 +716,6 @@ async fn run_asr_loop<E: crate::bot::EventEmitter + Send + Sync + 'static>(
                             if text.is_empty() { continue; }
                             let _ = app.emit("monitor-log", serde_json::json!(format!("[ASR] 识别结果: {}", text)));
 
-                            // 语音识别结果 → 使用语音专属系统提示词（含性别）调用 AI
                             if let Some(bot) = config.ai_bots.iter().find(|b| b.enabled) {
                                 let bot_id   = bot.id.clone();
                                 let bot_nick = bot.nickname.clone();
@@ -701,9 +725,15 @@ async fn run_asr_loop<E: crate::bot::EventEmitter + Send + Sync + 'static>(
                                 let ag = agent.clone();
                                 let tx = danmu_tx.clone();
                                 let ap = app.clone();
+                                let router = tts_router.clone();
                                 tokio::spawn(async move {
                                     let reply = agent::call_ai_voice(&h, &c, &bot_id, &text, &m, &ag).await;
                                     let _ = ap.emit("monitor-log", serde_json::json!(format!("[ASR→AI] {}", reply)));
+                                    // AI 回复 → TTS 语音播报
+                                    if let Some(ref r) = router {
+                                        let _ = r.speak_ai(reply.clone()).await;
+                                    }
+                                    // 同时发弹幕
                                     let _ = tx.send(format!("[{}]{}", bot_nick, reply)).await;
                                 });
                             }
@@ -751,6 +781,8 @@ fn extract_cookie_value(cookie: &str, name: &str) -> Option<String> {
 #[allow(clippy::too_many_arguments)]
 async fn run_sherpa_asr_event_loop<E: crate::bot::EventEmitter + Send + Sync + 'static>(
     mut events: tokio::sync::broadcast::Receiver<streamix_voice::TurnEvent>,
+    has_asr: bool,
+    tts_router: Option<streamix_voice::SpeakerRouter>,
     http: crate::api::BiliApi,
     config: Arc<crate::config::AppConfig>,
     memory: Arc<std::sync::Mutex<crate::bot::memory::SessionMemory>>,
@@ -764,7 +796,16 @@ async fn run_sherpa_asr_event_loop<E: crate::bot::EventEmitter + Send + Sync + '
             _ = cancel.cancelled() => break,
             ev = events.recv() => match ev {
                 Ok(streamix_voice::TurnEvent::SpeechStart) => {
-                    let _ = app.emit("monitor-log", serde_json::json!("[VAD] 检测到语音段，正在识别..."));
+                    // 用户开口 → 立即打断正在播放的 AI TTS
+                    if let Some(ref router) = tts_router {
+                        let _ = router.voice_session().interrupt().await;
+                    }
+                    let msg = if has_asr {
+                        "[VAD] 检测到语音段，正在识别..."
+                    } else {
+                        "[VAD] 检测到语音段（ASR 模型未就绪，无法识别）"
+                    };
+                    let _ = app.emit("monitor-log", serde_json::json!(msg));
                 }
                 Ok(streamix_voice::TurnEvent::TurnEnd { .. }) => {}
                 Ok(streamix_voice::TurnEvent::SpeechEnd { text: Some(text), .. }) => {
@@ -777,14 +818,24 @@ async fn run_sherpa_asr_event_loop<E: crate::bot::EventEmitter + Send + Sync + '
                         let h = http.clone(); let c = Arc::clone(&config);
                         let m = memory.clone(); let ag = agent.clone();
                         let tx = danmu_tx.clone(); let ap = app.clone();
+                        let router = tts_router.clone();
                         tokio::spawn(async move {
                             let reply = agent::call_ai_voice(&h, &c, &bot_id, &text, &m, &ag).await;
                             let _ = ap.emit("monitor-log", serde_json::json!(format!("[ASR→AI] {}", reply)));
+                            // AI 回复 → TTS 语音播报（优先级 AI=5，会被下一次用户说话打断）
+                            if let Some(ref r) = router {
+                                let _ = r.speak_ai(reply.clone()).await;
+                            }
+                            // 同时发弹幕（供直播间观众看到）
                             let _ = tx.send(format!("[{}]{}", bot_nick, reply)).await;
                         });
                     }
                 }
-                Ok(streamix_voice::TurnEvent::SpeechEnd { text: None, .. }) => {}
+                Ok(streamix_voice::TurnEvent::SpeechEnd { text: None, .. }) => {
+                    if has_asr {
+                        let _ = app.emit("monitor-log", serde_json::json!("[ASR] 识别结果为空（语音过短或音量过低）"));
+                    }
+                }
                 Err(tokio::sync::broadcast::error::RecvError::Lagged(_)) => continue,
                 Err(_) => break,
             }

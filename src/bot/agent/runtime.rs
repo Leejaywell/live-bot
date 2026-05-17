@@ -47,6 +47,18 @@ impl AgentRuntime {
         history: &[(String, String)],
         user_prompt: &str,
     ) -> Result<String> {
+        self.run_with_provider_opts(http, provider, system_prompt, history, user_prompt, None).await
+    }
+
+    pub async fn run_with_provider_opts(
+        &self,
+        http: &BiliApi,
+        provider: &AiProvider,
+        system_prompt: &str,
+        history: &[(String, String)],
+        user_prompt: &str,
+        temperature: Option<f32>,
+    ) -> Result<String> {
         let tool_defs: Vec<Value> = self
             .tools
             .iter()
@@ -67,7 +79,7 @@ impl AgentRuntime {
 
         for _ in 0..MAX_TOOL_ROUNDS {
             let response = http
-                .chat_completions_raw(provider, &messages, tools_opt)
+                .chat_completions_raw_with_opts(provider, &messages, tools_opt, temperature)
                 .await?;
             let msg = &response["choices"][0]["message"];
 
