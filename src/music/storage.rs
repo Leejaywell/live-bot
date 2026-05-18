@@ -14,7 +14,7 @@ pub struct NewSongCredit {
     pub credit_value: i64,
     pub tier: String,
     pub source_type: String,
-    pub source_event_id: i64,
+    pub source_event_id: Option<i64>,
     pub expires_at: String,
 }
 
@@ -107,7 +107,7 @@ pub fn ensure_schema(conn: &Connection) -> Result<()> {
             credit_value integer not null,
             tier text not null,
             source_type text not null,
-            source_event_id integer not null,
+            source_event_id integer,
             expires_at text not null,
             used_request_id integer,
             created_at text not null,
@@ -538,7 +538,7 @@ mod tests {
             credit_value: 233,
             tier: "jump_queue".to_string(),
             source_type: "gift".to_string(),
-            source_event_id: 9001,
+            source_event_id: Some(9001),
             expires_at: "2099-01-01T00:00:00+08:00".to_string(),
         };
 
@@ -573,7 +573,7 @@ mod tests {
                 credit_value: 233,
                 tier: "jump_queue".to_string(),
                 source_type: "gift".to_string(),
-                source_event_id: 9001,
+                source_event_id: Some(9001),
                 expires_at,
             },
         )
@@ -600,7 +600,7 @@ mod tests {
                 credit_value: 233,
                 tier: "jump_queue".to_string(),
                 source_type: "gift".to_string(),
-                source_event_id: 9001,
+                source_event_id: Some(9001),
                 expires_at: "2000-01-01T00:00:00+08:00".to_string(),
             },
         )
@@ -653,7 +653,7 @@ mod tests {
                 credit_value: 66,
                 tier: "priority".to_string(),
                 source_type: "gift".to_string(),
-                source_event_id: 9001,
+                source_event_id: Some(9001),
                 expires_at: "2099-01-01T00:00:00+08:00".to_string(),
             },
         )
@@ -688,7 +688,7 @@ mod tests {
                 credit_value: 66,
                 tier: "priority".to_string(),
                 source_type: "gift".to_string(),
-                source_event_id: 9001,
+                source_event_id: Some(9001),
                 expires_at: "2099-01-01T00:00:00+08:00".to_string(),
             },
         )
@@ -707,7 +707,7 @@ mod tests {
                 credit_value: 66,
                 tier: "priority".to_string(),
                 source_type: "gift".to_string(),
-                source_event_id: 9002,
+                source_event_id: Some(9002),
                 expires_at: "2000-01-01T00:00:00+08:00".to_string(),
             },
         )
@@ -729,7 +729,7 @@ mod tests {
                 credit_value: 66,
                 tier: "priority".to_string(),
                 source_type: "gift".to_string(),
-                source_event_id: 9001,
+                source_event_id: Some(9001),
                 expires_at: "2099-01-01T00:00:00+08:00".to_string(),
             },
         )
@@ -756,7 +756,7 @@ mod tests {
                 credit_value: 66,
                 tier: "priority".to_string(),
                 source_type: "gift".to_string(),
-                source_event_id: 9001,
+                source_event_id: Some(9001),
                 expires_at: "2099-01-01T00:00:00+08:00".to_string(),
             },
         )
@@ -796,7 +796,7 @@ mod tests {
                     credit_value,
                     tier: tier.to_string(),
                     source_type: "gift".to_string(),
-                    source_event_id: 9001,
+                    source_event_id: Some(9001),
                     expires_at: "2099-01-01T00:00:00+08:00".to_string(),
                 },
             )
@@ -835,7 +835,7 @@ mod tests {
                 credit_value: 233,
                 tier: "jump_queue".to_string(),
                 source_type: "gift".to_string(),
-                source_event_id: 9001,
+                source_event_id: Some(9001),
                 expires_at: "not-a-date".to_string(),
             },
         )
