@@ -49,6 +49,23 @@ function candidateKey(candidate: SearchCandidate): string {
   return `${candidate.track.source}-${candidate.track.song_id}`;
 }
 
+type NumericMusicSetting = 'Width' | 'Height' | 'FontScale';
+
+const numericBounds: Record<NumericMusicSetting, { min: number; max: number; step?: number }> = {
+  Width: { min: 240, max: 1200, step: 1 },
+  Height: { min: 120, max: 800, step: 1 },
+  FontScale: { min: 0.75, max: 1.5 },
+};
+
+function clampSettingValue(key: NumericMusicSetting, raw: string): number | null {
+  if (raw.trim() === '') return null;
+  const parsed = Number(raw);
+  if (!Number.isFinite(parsed)) return null;
+  const { min, max, step } = numericBounds[key];
+  const clamped = Math.min(max, Math.max(min, parsed));
+  return step ? Math.round(clamped / step) * step : clamped;
+}
+
 export function MusicInteraction() {
   const [config, setConfig] = useState<PluginSettings>(initialConfig);
   const [loaded, setLoaded] = useState(false);
@@ -59,14 +76,33 @@ export function MusicInteraction() {
   const [confirmedCandidate, setConfirmedCandidate] = useState<SearchCandidate | null>(null);
   const [searching, setSearching] = useState(false);
   const [refreshingUrl, setRefreshingUrl] = useState(false);
+  const [numberDrafts, setNumberDrafts] = useState<Partial<Record<NumericMusicSetting, string>>>({});
   const saveTimer = useRef<number | null>(null);
   const searchInFlight = useRef(false);
   const searchRequestId = useRef(0);
+  const activeSearchQuery = useRef('');
+  const queuedSearchQuery = useRef<string | null>(null);
   const latestQuery = useRef('');
   const music = config.MusicInteraction;
 
   const updateMusic = (patch: Partial<MusicInteractionSettings>) => {
     setConfig(prev => ({ ...prev, MusicInteraction: { ...prev.MusicInteraction, ...patch } }));
+  };
+
+  const updateNumberDraft = (key: NumericMusicSetting, value: string) => {
+    setNumberDrafts(prev => ({ ...prev, [key]: value }));
+  };
+
+  const commitNumberDraft = (key: NumericMusicSetting) => {
+    const raw = numberDrafts[key];
+    if (raw === undefined) return;
+    const next = clampSettingValue(key, raw);
+    setNumberDrafts(prev => {
+      const rest = { ...prev };
+      delete rest[key];
+      return rest;
+    });
+    if (next !== null) updateMusic({ [key]: next } as Partial<MusicInteractionSettings>);
   };
 
   const refreshUrl = async () => {
@@ -89,27 +125,42 @@ export function MusicInteraction() {
     }
   };
 
-  const searchCandidates = async () => {
-    const keyword = query.trim();
+  const searchCandidates = async (requestedKeyword = query.trim()) => {
+    const keyword = requestedKeyword.trim();
     if (!keyword) {
+      queuedSearchQuery.current = null;
       setCandidates([]);
       setSelectedCandidate(null);
       return;
     }
-    if (searchInFlight.current) return;
+    if (searchInFlight.current) {
+      queuedSearchQuery.current = keyword;
+      return;
+    }
     searchInFlight.current = true;
     const requestId = searchRequestId.current + 1;
     searchRequestId.current = requestId;
+    activeSearchQuery.current = keyword;
     setSearching(true);
     setCandidates([]);
     setSelectedCandidate(null);
     try {
       const next = await api.searchMusicCandidates(keyword);
-      if (searchRequestId.current === requestId && latestQuery.current.trim() === keyword) {
+      if (
+        searchRequestId.current === requestId
+        && activeSearchQuery.current === keyword
+        && latestQuery.current.trim() === keyword
+        && queuedSearchQuery.current === null
+      ) {
         setCandidates(next);
       }
     } catch (err) {
-      if (searchRequestId.current === requestId && latestQuery.current.trim() === keyword) {
+      if (
+        searchRequestId.current === requestId
+        && activeSearchQuery.current === keyword
+        && latestQuery.current.trim() === keyword
+        && queuedSearchQuery.current === null
+      ) {
         setCandidates([]);
         toast.error(`搜索失败: ${err}`);
       }
@@ -117,6 +168,11 @@ export function MusicInteraction() {
       if (searchRequestId.current === requestId) {
         searchInFlight.current = false;
         setSearching(false);
+        const nextKeyword = queuedSearchQuery.current;
+        queuedSearchQuery.current = null;
+        if (nextKeyword && nextKeyword !== keyword) {
+          void searchCandidates(nextKeyword);
+        }
       }
     }
   };
@@ -127,6 +183,8 @@ export function MusicInteraction() {
       setLoaded(true);
     }).catch(err => {
       toast.error(`读取插件配置失败: ${err}`);
+      setConfig(initialConfig);
+      setLoaded(true);
     });
     refreshUrl();
   }, []);
@@ -196,11 +254,29 @@ export function MusicInteraction() {
             </label>
             <label className="space-y-1.5">
               <span className="text-[11px] font-bold text-[var(--muted-text)]">宽度</span>
-              <Input type="number" min={240} max={1200} value={music.Width} onChange={e => updateMusic({ Width: Number(e.target.value) })} disabled={!loaded} />
+              <Input
+                type="number"
+                min={numericBounds.Width.min}
+                max={numericBounds.Width.max}
+                value={numberDrafts.Width ?? String(music.Width)}
+                onChange={e => updateNumberDraft('Width', e.target.value)}
+                onBlur={() => commitNumberDraft('Width')}
+                onKeyDown={e => { if (e.key === 'Enter') (e.currentTarget as HTMLInputElement).blur(); }}
+                disabled={!loaded}
+              />
             </label>
             <label className="space-y-1.5">
               <span className="text-[11px] font-bold text-[var(--muted-text)]">高度</span>
-              <Input type="number" min={120} max={800} value={music.Height} onChange={e => updateMusic({ Height: Number(e.target.value) })} disabled={!loaded} />
+              <Input
+                type="number"
+                min={numericBounds.Height.min}
+                max={numericBounds.Height.max}
+                value={numberDrafts.Height ?? String(music.Height)}
+                onChange={e => updateNumberDraft('Height', e.target.value)}
+                onBlur={() => commitNumberDraft('Height')}
+                onKeyDown={e => { if (e.key === 'Enter') (e.currentTarget as HTMLInputElement).blur(); }}
+                disabled={!loaded}
+              />
             </label>
             <label className="space-y-1.5">
               <span className="text-[11px] font-bold text-[var(--muted-text)]">主色</span>
@@ -211,7 +287,17 @@ export function MusicInteraction() {
             </label>
             <label className="space-y-1.5">
               <span className="text-[11px] font-bold text-[var(--muted-text)]">字号倍率</span>
-              <Input type="number" min={0.75} max={1.5} step={0.05} value={music.FontScale} onChange={e => updateMusic({ FontScale: Number(e.target.value) })} disabled={!loaded} />
+              <Input
+                type="number"
+                min={numericBounds.FontScale.min}
+                max={numericBounds.FontScale.max}
+                step={0.05}
+                value={numberDrafts.FontScale ?? String(music.FontScale)}
+                onChange={e => updateNumberDraft('FontScale', e.target.value)}
+                onBlur={() => commitNumberDraft('FontScale')}
+                onKeyDown={e => { if (e.key === 'Enter') (e.currentTarget as HTMLInputElement).blur(); }}
+                disabled={!loaded}
+              />
             </label>
             </div>
             <div className="mt-4 grid grid-cols-2 gap-3">
@@ -260,7 +346,7 @@ export function MusicInteraction() {
               placeholder="搜索歌曲"
               className="flex-1"
             />
-            <Button variant="primary" onClick={searchCandidates} disabled={searching}>
+            <Button variant="primary" onClick={searchCandidates}>
               <Search className="h-3.5 w-3.5" />{searching ? '搜索中' : '搜索'}
             </Button>
           </div>
