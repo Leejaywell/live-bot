@@ -85,7 +85,9 @@ fn valid_single_path_song_id(path: &str) -> bool {
 
 fn has_path_traversal_marker(url: &str) -> bool {
     let lower = url.to_ascii_lowercase();
-    lower.contains("/..") || lower.contains("%2e%2e") || lower.contains("%2e.")
+    lower.contains("/..")
+        || lower.contains("%2e%2e")
+        || lower.contains("%2e.")
         || lower.contains(".%2e")
 }
 
@@ -98,7 +100,9 @@ pub mod tests {
         assert!(is_allowed_open_url("orpheus://song/123"));
         assert!(is_allowed_open_url("qqmusic://song/123"));
         assert!(is_allowed_open_url("https://music.163.com/#/song?id=123"));
-        assert!(is_allowed_open_url("https://music.163.com:443/#/song?id=123"));
+        assert!(is_allowed_open_url(
+            "https://music.163.com:443/#/song?id=123"
+        ));
         assert!(is_allowed_open_url("HTTPS://MUSIC.163.com/#/song?id=123"));
         assert!(is_allowed_open_url(
             "https://y.qq.com/n/ryqq/songDetail/123"
@@ -120,7 +124,9 @@ pub mod tests {
         assert!(!is_allowed_open_url("https://y.qq.com.evil/song?id=123"));
         assert!(!is_allowed_open_url("orpheus://settings/privacy"));
         assert!(!is_allowed_open_url("orpheus://song/../123"));
-        assert!(!is_allowed_open_url("qqmusic://qq.com/media/playSonglist?p=../123"));
+        assert!(!is_allowed_open_url(
+            "qqmusic://qq.com/media/playSonglist?p=../123"
+        ));
         assert!(!is_allowed_open_url("qqmusic://qq.com/media/delete?p=123"));
     }
 
