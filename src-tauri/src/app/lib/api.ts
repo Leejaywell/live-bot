@@ -226,6 +226,41 @@ export interface PluginSettings {
   GiftEffect: GiftEffectSettings;
   RecentGifts: RecentGiftsSettings;
   GiftRank: GiftRankSettings;
+  MusicInteraction: MusicInteractionSettings;
+}
+
+export interface MusicInteractionSettings {
+  Enabled: boolean;
+  Skin: string;
+  StatsRange: string;
+  Transparent: boolean;
+  Width: number;
+  Height: number;
+  ShowCover: boolean;
+  ShowRequester: boolean;
+  ShowGiftTier: boolean;
+  ShowQueue: boolean;
+  ShowTodayValue: boolean;
+  PrimaryColor: string;
+  FontScale: number;
+}
+
+export interface MusicTrack {
+  source: 'netease' | 'tencent' | 'kugou' | 'baidu' | 'kuwo';
+  song_id: string;
+  name: string;
+  artists: string[];
+  album: string;
+  pic_id: string;
+  url_id: string;
+  lyric_id: string;
+  duration_ms: number | null;
+}
+
+export interface SearchCandidate {
+  track: MusicTrack;
+  score: number;
+  reason: string;
 }
 
 export interface WishGoalSettings {
@@ -459,6 +494,8 @@ export const api = {
   getGiftEffectUrl: () => invoke<string>('get_gift_effect_url'),
   getRecentGiftsUrl: () => invoke<string>('get_recent_gifts_url'),
   getGiftRankUrl: () => invoke<string>('get_gift_rank_url'),
+  getMusicInteractionUrl: () => invoke<string>('get_music_interaction_url'),
+  searchMusicCandidates: (query: string) => invoke<SearchCandidate[]>('search_music_candidates', { query }),
   pickPluginResource: (kind: 'sound') => invoke<string | null>('pick_plugin_resource', { kind }),
   getGiftCatalog: () => invoke<GiftCatalogItem[]>('get_gift_catalog'),
   refreshGiftCatalog: () => invoke<GiftCatalogItem[]>('refresh_gift_catalog'),

@@ -3496,6 +3496,8 @@ fn main() -> Result<()> {
             get_gift_effect_url,
             get_recent_gifts_url,
             get_gift_rank_url,
+            get_music_interaction_url,
+            search_music_candidates,
             load_overlay_config,
             save_overlay_config,
             load_plugin_settings,
@@ -3554,6 +3556,38 @@ async fn get_recent_gifts_url(_state: tauri::State<'_, SharedState>) -> Result<S
 async fn get_gift_rank_url(_state: tauri::State<'_, SharedState>) -> Result<String, String> {
     let cfg = overlay_config::OverlayConfig::load_or_default().map_err(|e| e.to_string())?;
     Ok(format!("http://127.0.0.1:{}/gift-rank", cfg.port))
+}
+
+#[cfg(feature = "tauri")]
+#[tauri::command]
+async fn get_music_interaction_url() -> Result<String, String> {
+    let cfg = overlay_config::OverlayConfig::load_or_default().map_err(|e| e.to_string())?;
+    Ok(format!(
+        "http://127.0.0.1:{}/song-request/playlist",
+        cfg.port
+    ))
+}
+
+#[cfg(feature = "tauri")]
+#[tauri::command]
+async fn search_music_candidates(
+    query: String,
+) -> Result<Vec<music::types::SearchCandidate>, String> {
+    let query = query.trim();
+    if query.is_empty() {
+        return Ok(Vec::new());
+    }
+
+    let provider = music::providers::netease::NeteaseProvider::new(reqwest::Client::new());
+    let service = music::service::MusicInteractionService::new(vec![Box::new(provider)]);
+    match service
+        .handle_danmu(0, "preview", &format!("点歌 {query}"))
+        .await
+        .map_err(|e| e.to_string())?
+    {
+        music::service::SongServiceReply::Candidates { candidates } => Ok(candidates),
+        _ => Ok(Vec::new()),
+    }
 }
 
 #[cfg(feature = "tauri")]
