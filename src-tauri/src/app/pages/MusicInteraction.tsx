@@ -67,7 +67,7 @@ function sanitizeMusicInteraction(next: MusicInteractionSettings | undefined | n
     ShowGiftTier: sanitizeBoolean(source.ShowGiftTier, fallbackMusicInteraction.ShowGiftTier),
     ShowQueue: sanitizeBoolean(source.ShowQueue, fallbackMusicInteraction.ShowQueue),
     ShowTodayValue: sanitizeBoolean(source.ShowTodayValue, fallbackMusicInteraction.ShowTodayValue),
-    PrimaryColor: isHexColor(source.PrimaryColor) ? source.PrimaryColor : fallbackMusicInteraction.PrimaryColor,
+    PrimaryColor: isHexColor(source.PrimaryColor) ? source.PrimaryColor.trim() : fallbackMusicInteraction.PrimaryColor,
     FontScale: sanitizeNumber('FontScale', source.FontScale, fallbackMusicInteraction.FontScale),
   };
 }
