@@ -15,6 +15,8 @@ use crate::bot::EventEmitter;
 use crate::bot::engine::BotEngine;
 use crate::bot::{self, agent};
 use crate::config::AppConfig;
+use crate::music::providers::netease::NeteaseProvider;
+use crate::music::service::MusicInteractionService;
 use crate::storage::Storage;
 use crate::token;
 
@@ -497,11 +499,15 @@ pub async fn run_monitor_loop<E: EventEmitter + Send + Sync + 'static>(
             .ok()
             .map(|s| s.cookie)
             .unwrap_or_default();
+        let music_service = Arc::new(MusicInteractionService::new(vec![Box::new(
+            NeteaseProvider::new(reqwest::Client::new()),
+        )]));
 
         loop {
             let bot_config = bot_config.clone();
             let session_memory = session_memory.clone();
             let my_room_ids = my_room_ids.clone();
+            let music_service = music_service.clone();
             let result = async {
                 let room = ws_http.room_init(room_id).await?;
                 let session_id = {
@@ -567,6 +573,7 @@ pub async fn run_monitor_loop<E: EventEmitter + Send + Sync + 'static>(
                 let session_id_inner = session_id.clone();
                 let event_tts_router = tts_router.clone();
                 let event_agent = agent_runtime.clone();
+                let event_music_service = music_service.clone();
 
                 let danmaku_buf_cb = ws_danmaku.clone();
 
@@ -630,6 +637,24 @@ pub async fn run_monitor_loop<E: EventEmitter + Send + Sync + 'static>(
 
                     if matches!(event, bilibili_live_protocol::LiveEvent::Gift { .. }) {
                         let _ = event_gift_tx.try_send(event.clone());
+                    }
+                    if matches!(
+                        event,
+                        bilibili_live_protocol::LiveEvent::Danmu { .. }
+                            | bilibili_live_protocol::LiveEvent::Gift { .. }
+                            | bilibili_live_protocol::LiveEvent::SuperChat { .. }
+                    ) {
+                        let music_service = event_music_service.clone();
+                        let tx = event_tx.clone();
+                        let event = event.clone();
+                        tokio::spawn(async move {
+                            if let Ok(reply) = music_service.handle_live_event(&event).await {
+                                let text = reply.to_danmu_text();
+                                if !text.is_empty() {
+                                    let _ = tx.send(text).await;
+                                }
+                            }
+                        });
                     }
                     if let bilibili_live_protocol::LiveEvent::Popularity { value } = event {
                         let _ = event_app.emit("room-online", json!({ "count": value }));

@@ -114,6 +114,22 @@ impl MusicInteractionService {
             )),
         }
     }
+
+    pub async fn handle_live_event(
+        &self,
+        event: &bilibili_live_protocol::LiveEvent,
+    ) -> Result<SongServiceReply> {
+        match event {
+            bilibili_live_protocol::LiveEvent::Danmu {
+                user_id,
+                user,
+                text,
+            } => self.handle_danmu(*user_id, user, text).await,
+            bilibili_live_protocol::LiveEvent::Gift { .. }
+            | bilibili_live_protocol::LiveEvent::SuperChat { .. } => Ok(SongServiceReply::Ignored),
+            _ => Ok(SongServiceReply::Ignored),
+        }
+    }
 }
 
 fn artists_text(artists: &[String]) -> String {
@@ -300,5 +316,61 @@ mod tests {
                 .to_string()
                 .contains("music search failed for all providers: tencent: provider unavailable")
         );
+    }
+
+    #[tokio::test]
+    async fn live_event_danmu_command_returns_candidates() {
+        let service = MusicInteractionService::new_for_tests(vec![Box::new(
+            FakeProvider::with_tracks(vec![track("晴天", &["周杰伦"], "186016")]),
+        )]);
+        let event = bilibili_live_protocol::LiveEvent::Danmu {
+            user_id: 42,
+            user: "alice".to_string(),
+            text: "点歌 晴天".to_string(),
+        };
+
+        let reply = service.handle_live_event(&event).await.expect("reply");
+
+        assert!(matches!(reply, SongServiceReply::Candidates { .. }));
+        assert!(reply.to_danmu_text().contains("晴天 - 周杰伦"));
+    }
+
+    #[tokio::test]
+    async fn live_event_gift_is_ignored() {
+        let service = MusicInteractionService::new_for_tests(vec![Box::new(
+            FakeProvider::with_tracks(vec![track("晴天", &["周杰伦"], "186016")]),
+        )]);
+        let event = bilibili_live_protocol::LiveEvent::Gift {
+            user_id: 42,
+            user: "alice".to_string(),
+            gift: "辣条".to_string(),
+            count: 1,
+            price: 100,
+            original_gift_name: None,
+            original_gift_price: 100,
+        };
+
+        let reply = service.handle_live_event(&event).await.expect("reply");
+
+        assert!(matches!(reply, SongServiceReply::Ignored));
+        assert_eq!(reply.to_danmu_text(), "");
+    }
+
+    #[tokio::test]
+    async fn live_event_super_chat_is_ignored() {
+        let service = MusicInteractionService::new_for_tests(vec![Box::new(
+            FakeProvider::with_tracks(vec![track("晴天", &["周杰伦"], "186016")]),
+        )]);
+        let event = bilibili_live_protocol::LiveEvent::SuperChat {
+            user_id: 42,
+            user: "alice".to_string(),
+            text: "主播加油".to_string(),
+            price: 30,
+        };
+
+        let reply = service.handle_live_event(&event).await.expect("reply");
+
+        assert!(matches!(reply, SongServiceReply::Ignored));
+        assert_eq!(reply.to_danmu_text(), "");
     }
 }
