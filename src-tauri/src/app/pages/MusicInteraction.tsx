@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { Copy, Link2, Music2, RefreshCw, Search } from 'lucide-react';
+import { Check, Copy, Link2, Music2, RefreshCw, Search } from 'lucide-react';
 import { toast } from 'sonner';
 import { GlassCard } from '../components/GlassCard';
 import { Button } from '../components/Button';
@@ -45,12 +45,18 @@ function formatScore(score: number): string {
   return score.toFixed(score >= 10 ? 0 : 1);
 }
 
+function candidateKey(candidate: SearchCandidate): string {
+  return `${candidate.track.source}-${candidate.track.song_id}`;
+}
+
 export function MusicInteraction() {
   const [config, setConfig] = useState<PluginSettings>(initialConfig);
   const [loaded, setLoaded] = useState(false);
   const [url, setUrl] = useState('');
   const [query, setQuery] = useState('');
   const [candidates, setCandidates] = useState<SearchCandidate[]>([]);
+  const [selectedCandidate, setSelectedCandidate] = useState<SearchCandidate | null>(null);
+  const [confirmedCandidate, setConfirmedCandidate] = useState<SearchCandidate | null>(null);
   const [searching, setSearching] = useState(false);
   const [refreshingUrl, setRefreshingUrl] = useState(false);
   const saveTimer = useRef<number | null>(null);
@@ -87,6 +93,7 @@ export function MusicInteraction() {
     const keyword = query.trim();
     if (!keyword) {
       setCandidates([]);
+      setSelectedCandidate(null);
       return;
     }
     if (searchInFlight.current) return;
@@ -95,6 +102,7 @@ export function MusicInteraction() {
     searchRequestId.current = requestId;
     setSearching(true);
     setCandidates([]);
+    setSelectedCandidate(null);
     try {
       const next = await api.searchMusicCandidates(keyword);
       if (searchRequestId.current === requestId && latestQuery.current.trim() === keyword) {
@@ -167,6 +175,7 @@ export function MusicInteraction() {
 
           <section className="rounded-2xl border border-[var(--surface-border)] bg-[var(--control-bg)] p-4">
             <div className="mb-3 text-[12px] font-bold">显示设置</div>
+            <div className="grid grid-cols-2 gap-3">
             <label className="space-y-1.5">
               <span className="text-[11px] font-bold text-[var(--muted-text)]">皮肤</span>
               <select value={music.Skin} onChange={e => updateMusic({ Skin: e.target.value })} disabled={!loaded}
@@ -175,17 +184,77 @@ export function MusicInteraction() {
                 <option value="minimal">极简</option>
               </select>
             </label>
+            <label className="space-y-1.5">
+              <span className="text-[11px] font-bold text-[var(--muted-text)]">统计范围</span>
+              <select value={music.StatsRange} onChange={e => updateMusic({ StatsRange: e.target.value })} disabled={!loaded}
+                className="h-[32px] w-full rounded-lg border border-[var(--control-border)] bg-[var(--control-bg)] px-3 text-[12px] text-[var(--control-text)] focus:outline-none">
+                <option value="today">今日</option>
+                <option value="week">本周</option>
+                <option value="month">本月</option>
+                <option value="all">全部</option>
+              </select>
+            </label>
+            <label className="space-y-1.5">
+              <span className="text-[11px] font-bold text-[var(--muted-text)]">宽度</span>
+              <Input type="number" min={240} max={1200} value={music.Width} onChange={e => updateMusic({ Width: Number(e.target.value) })} disabled={!loaded} />
+            </label>
+            <label className="space-y-1.5">
+              <span className="text-[11px] font-bold text-[var(--muted-text)]">高度</span>
+              <Input type="number" min={120} max={800} value={music.Height} onChange={e => updateMusic({ Height: Number(e.target.value) })} disabled={!loaded} />
+            </label>
+            <label className="space-y-1.5">
+              <span className="text-[11px] font-bold text-[var(--muted-text)]">主色</span>
+              <div className="flex gap-2">
+                <Input type="color" value={music.PrimaryColor} onChange={e => updateMusic({ PrimaryColor: e.target.value })} disabled={!loaded} className="w-[44px] px-1" />
+                <Input value={music.PrimaryColor} onChange={e => updateMusic({ PrimaryColor: e.target.value })} disabled={!loaded} className="min-w-0 flex-1" />
+              </div>
+            </label>
+            <label className="space-y-1.5">
+              <span className="text-[11px] font-bold text-[var(--muted-text)]">字号倍率</span>
+              <Input type="number" min={0.75} max={1.5} step={0.05} value={music.FontScale} onChange={e => updateMusic({ FontScale: Number(e.target.value) })} disabled={!loaded} />
+            </label>
+            </div>
+            <div className="mt-4 grid grid-cols-2 gap-3">
+              {[
+                ['透明背景', 'Transparent'],
+                ['显示封面', 'ShowCover'],
+                ['显示点歌人', 'ShowRequester'],
+                ['显示礼物档位', 'ShowGiftTier'],
+                ['显示队列', 'ShowQueue'],
+                ['显示今日数值', 'ShowTodayValue'],
+              ].map(([label, key]) => (
+                <div key={key} className="flex items-center justify-between gap-2 rounded-xl border border-[var(--surface-border)] bg-[var(--surface-bg)] px-3 py-2">
+                  <span className="text-[11px] font-bold text-[var(--muted-text)]">{label}</span>
+                  <Toggle checked={Boolean(music[key as keyof MusicInteractionSettings])} onChange={v => updateMusic({ [key]: v } as Partial<MusicInteractionSettings>)} disabled={!loaded} />
+                </div>
+              ))}
+            </div>
           </section>
         </div>
 
         <div className="flex min-w-0 flex-1 flex-col p-5">
+          {confirmedCandidate && (
+            <div className="mb-4 rounded-2xl border border-[var(--primary-color)]/30 bg-[var(--primary-color)]/10 p-4">
+              <div className="mb-2 flex items-center gap-2 text-[12px] font-black text-[var(--primary-color)]">
+                <Check className="h-3.5 w-3.5" />
+                已确认候选歌曲
+              </div>
+              <div className="truncate text-[14px] font-black text-[var(--foreground)]">{confirmedCandidate.track.name}</div>
+              <div className="mt-1 truncate text-[11px] font-semibold text-[var(--muted-text)]">
+                {confirmedCandidate.track.artists.join(' / ') || '未知歌手'} · {confirmedCandidate.track.album || '未知专辑'}
+              </div>
+            </div>
+          )}
           <div className="mb-4 flex gap-2">
             <Input
               value={query}
               onChange={e => {
                 latestQuery.current = e.target.value;
                 setQuery(e.target.value);
-                if (searchInFlight.current) setCandidates([]);
+                if (searchInFlight.current) {
+                  setCandidates([]);
+                  setSelectedCandidate(null);
+                }
               }}
               onKeyDown={e => { if (e.key === 'Enter') searchCandidates(); }}
               placeholder="搜索歌曲"
@@ -203,8 +272,12 @@ export function MusicInteraction() {
               </div>
             ) : (
               <div className="divide-y divide-[var(--surface-border)]">
-                {candidates.map((candidate) => (
-                  <div key={`${candidate.track.source}-${candidate.track.song_id}`} className="grid grid-cols-[1fr_auto] gap-3 px-4 py-3">
+                {candidates.map((candidate) => {
+                  const key = candidateKey(candidate);
+                  const selected = selectedCandidate ? candidateKey(selectedCandidate) === key : false;
+                  const confirmed = confirmedCandidate ? candidateKey(confirmedCandidate) === key : false;
+                  return (
+                  <div key={key} className="grid grid-cols-[1fr_auto] gap-3 px-4 py-3">
                     <div className="min-w-0">
                       <div className="truncate text-[13px] font-black text-[var(--foreground)]">{candidate.track.name}</div>
                       <div className="mt-1 truncate text-[11px] font-semibold text-[var(--muted-text)]">
@@ -212,14 +285,36 @@ export function MusicInteraction() {
                       </div>
                       <div className="mt-2 line-clamp-2 text-[11px] text-[var(--muted-text)]">{candidate.reason}</div>
                     </div>
-                    <div className="flex h-8 min-w-[52px] items-center justify-center rounded-lg bg-[var(--primary-color)]/10 px-2 text-[12px] font-black text-[var(--primary-color)]">
-                      {formatScore(candidate.score)}
+                    <div className="flex items-center gap-2">
+                      <div className="flex h-8 min-w-[52px] items-center justify-center rounded-lg bg-[var(--primary-color)]/10 px-2 text-[12px] font-black text-[var(--primary-color)]">
+                        {formatScore(candidate.score)}
+                      </div>
+                      <Button size="sm" variant={selected ? 'primary' : 'default'} onClick={() => setSelectedCandidate(candidate)}>
+                        {selected ? '已选' : '选择'}
+                      </Button>
+                      <Button size="sm" variant={confirmed ? 'primary' : 'default'} onClick={() => { setSelectedCandidate(candidate); setConfirmedCandidate(candidate); }}>
+                        {confirmed ? '已确认' : '确认'}
+                      </Button>
                     </div>
                   </div>
-                ))}
+                );})}
               </div>
             )}
           </div>
+          {selectedCandidate && (
+            <div className="mt-4 grid grid-cols-[1fr_auto] gap-3 rounded-2xl border border-[var(--surface-border)] bg-[var(--control-bg)] p-4">
+              <div className="min-w-0">
+                <div className="text-[11px] font-bold text-[var(--muted-text)]">待确认候选</div>
+                <div className="mt-1 truncate text-[13px] font-black text-[var(--foreground)]">{selectedCandidate.track.name}</div>
+                <div className="mt-1 truncate text-[11px] font-semibold text-[var(--muted-text)]">
+                  {selectedCandidate.track.artists.join(' / ') || '未知歌手'} · {selectedCandidate.track.album || '未知专辑'}
+                </div>
+              </div>
+              <Button variant="primary" onClick={() => setConfirmedCandidate(selectedCandidate)}>
+                <Check className="h-3.5 w-3.5" />确认候选
+              </Button>
+            </div>
+          )}
         </div>
       </GlassCard>
     </div>
