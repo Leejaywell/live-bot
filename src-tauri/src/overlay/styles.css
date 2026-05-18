@@ -90,6 +90,10 @@ body {
   align-items: center;
 }
 
+.song-main {
+  min-width: 0;
+}
+
 .song-kicker {
   color: var(--overlay-primary);
   font-size: 12px;
