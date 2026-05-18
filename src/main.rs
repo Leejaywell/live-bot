@@ -2173,6 +2173,38 @@ async fn open_url(app: AppHandle, url: String) -> Result<(), String> {
 
 #[cfg(feature = "tauri")]
 #[tauri::command]
+async fn open_music_request(
+    app: AppHandle,
+    state: tauri::State<'_, SharedState>,
+    request_id: i64,
+) -> Result<(), String> {
+    use tauri_plugin_opener::OpenerExt;
+
+    if request_id <= 0 {
+        return Err("点歌请求 ID 必须大于 0".to_string());
+    }
+
+    let request = state
+        .storage
+        .with_connection(|conn| music::storage::openable_song_request(conn, request_id))
+        .map_err(|e| e.to_string())?
+        .ok_or_else(|| "未找到可打开的点歌请求，只有排队中或播放中的歌曲可以打开".to_string())?;
+
+    let template = match request.source.as_str() {
+        "netease" => "orpheus://song/{song_id}",
+        "tencent" => "qqmusic://song/{song_id}",
+        _ => "https://music.163.com/#/song?id={song_id}",
+    };
+    let url = music::opener::build_open_url(template, &request.url_id)
+        .map_err(|_| "点歌播放链接无效，无法安全打开".to_string())?;
+
+    app.opener()
+        .open_url(url, None::<&str>)
+        .map_err(|e| format!("打开播放器失败: {e}"))
+}
+
+#[cfg(feature = "tauri")]
+#[tauri::command]
 async fn open_config_dir(app: AppHandle) -> Result<(), String> {
     use tauri_plugin_opener::OpenerExt;
     let path = std::env::current_dir()
@@ -3621,6 +3653,7 @@ fn main() -> Result<()> {
             update_room_news_cmd,
             send_ai_message,
             open_url,
+            open_music_request,
             open_config_dir,
             check_update_cmd,
             install_update,

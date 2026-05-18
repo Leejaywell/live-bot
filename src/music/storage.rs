@@ -65,6 +65,15 @@ pub struct QueueItem {
     pub created_at: String,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+#[allow(dead_code)]
+pub struct OpenableSongRequest {
+    pub request_id: i64,
+    pub source: String,
+    pub song_id: String,
+    pub url_id: String,
+}
+
 pub fn ensure_schema(conn: &Connection) -> Result<()> {
     conn.execute_batch(
         "
@@ -508,6 +517,29 @@ pub fn list_queue(conn: &Connection, session_id: &str, room_id: i64) -> Result<V
     Ok(rows.collect::<rusqlite::Result<Vec<_>>>()?)
 }
 
+#[allow(dead_code)]
+pub fn openable_song_request(
+    conn: &Connection,
+    request_id: i64,
+) -> Result<Option<OpenableSongRequest>> {
+    conn.query_row(
+        "select id, source, song_id, url_id
+         from song_requests
+         where id = ?1 and status in ('queued', 'playing')",
+        params![request_id],
+        |row| {
+            Ok(OpenableSongRequest {
+                request_id: row.get(0)?,
+                source: row.get(1)?,
+                song_id: row.get(2)?,
+                url_id: row.get(3)?,
+            })
+        },
+    )
+    .optional()
+    .map_err(Into::into)
+}
+
 #[cfg(test)]
 mod tests {
     use chrono::{Duration, FixedOffset, Local};
@@ -520,7 +552,8 @@ mod tests {
     use super::{
         NewSongCredit, NewSongRequest, insert_credit, insert_song_request,
         insert_song_request_and_consume_credit, list_queue, mark_credit_used,
-        oldest_pending_credit, pending_credit_value, save_search_context, session_pending_value,
+        oldest_pending_credit, openable_song_request, pending_credit_value, save_search_context,
+        session_pending_value,
     };
 
     fn song_request() -> NewSongRequest {
@@ -807,6 +840,48 @@ mod tests {
         assert_eq!(
             pending_credit_value(&conn, "session-1", 42).expect("pending"),
             0
+        );
+    }
+
+    #[test]
+    fn openable_song_request_only_returns_queued_or_playing_rows() {
+        let conn = Connection::open_in_memory().expect("db opens");
+        ensure_schema(&conn).expect("schema");
+
+        let queued_id = insert_song_request(&conn, &song_request()).expect("queued request");
+        let playing_id = insert_song_request(&conn, &song_request()).expect("playing request");
+        let finished_id = insert_song_request(&conn, &song_request()).expect("finished request");
+        conn.execute(
+            "update song_requests set status = 'playing' where id = ?1",
+            [playing_id],
+        )
+        .expect("mark playing");
+        conn.execute(
+            "update song_requests set status = 'finished' where id = ?1",
+            [finished_id],
+        )
+        .expect("mark finished");
+
+        let queued = openable_song_request(&conn, queued_id)
+            .expect("queued lookup")
+            .expect("queued openable");
+        assert_eq!(queued.request_id, queued_id);
+        assert_eq!(queued.source, "netease");
+        assert_eq!(queued.song_id, "186016");
+        assert_eq!(queued.url_id, "186016");
+
+        let playing = openable_song_request(&conn, playing_id)
+            .expect("playing lookup")
+            .expect("playing openable");
+        assert_eq!(playing.request_id, playing_id);
+
+        assert_eq!(
+            openable_song_request(&conn, finished_id).expect("finished lookup"),
+            None
+        );
+        assert_eq!(
+            openable_song_request(&conn, 999).expect("missing lookup"),
+            None
         );
     }
 

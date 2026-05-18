@@ -513,6 +513,7 @@ export const api = {
   searchMusicCandidates: (query: string, uid?: number, uname?: string) =>
     invoke<SearchCandidate[]>('search_music_candidates', { query, uid: uid ?? null, uname: uname ?? null }),
   getMusicQueue: () => invoke<MusicQueueItem[]>('get_music_queue'),
+  openMusicRequest: (requestId: number) => invoke<void>('open_music_request', { requestId }),
   confirmMusicCandidate: (uid: number, uname: string, index: number) =>
     invoke<string>('confirm_music_candidate', { uid, uname, index }),
   pickPluginResource: (kind: 'sound') => invoke<string | null>('pick_plugin_resource', { kind }),

@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { Check, Copy, Link2, Music2, RefreshCw, Search } from 'lucide-react';
+import { Check, Copy, Link2, Music2, Play, RefreshCw, Search } from 'lucide-react';
 import { toast } from 'sonner';
 import { GlassCard } from '../components/GlassCard';
 import { Button } from '../components/Button';
@@ -123,6 +123,7 @@ export function MusicInteraction() {
   const [searching, setSearching] = useState(false);
   const [queueLoading, setQueueLoading] = useState(false);
   const [confirmingIndex, setConfirmingIndex] = useState<number | null>(null);
+  const [openingRequestId, setOpeningRequestId] = useState<number | null>(null);
   const [refreshingUrl, setRefreshingUrl] = useState(false);
   const [numberDrafts, setNumberDrafts] = useState<Partial<Record<NumericMusicSetting, string>>>({});
   const [colorDraft, setColorDraft] = useState<string | null>(null);
@@ -254,6 +255,19 @@ export function MusicInteraction() {
       toast.success('地址已复制');
     } catch (err) {
       toast.error(`复制失败: ${err}`);
+    }
+  };
+
+  const openQueueItem = async (requestId: number) => {
+    if (openingRequestId === requestId) return;
+    setOpeningRequestId(requestId);
+    try {
+      await api.openMusicRequest(requestId);
+      toast.success('已打开播放器');
+    } catch (err) {
+      toast.error(`打开失败: ${err}`);
+    } finally {
+      setOpeningRequestId(current => current === requestId ? null : current);
     }
   };
 
@@ -664,9 +678,21 @@ export function MusicInteraction() {
                         {item.artistNames || '未知歌手'} · {item.uname || '未知用户'}
                       </div>
                     </div>
-                    <div className="text-right text-[11px] font-bold text-[var(--muted-text)]">
-                      <div>{item.tier}</div>
-                      <div>{item.status}</div>
+                    <div className="flex items-center gap-2">
+                      <div className="text-right text-[11px] font-bold text-[var(--muted-text)]">
+                        <div>{item.tier}</div>
+                        <div>{item.status}</div>
+                      </div>
+                      <Button
+                        size="sm"
+                        variant={item.status === 'playing' ? 'primary' : 'default'}
+                        onClick={() => openQueueItem(item.requestId)}
+                        disabled={openingRequestId === item.requestId}
+                        className="px-3"
+                      >
+                        <Play className="h-3.5 w-3.5" />
+                        {openingRequestId === item.requestId ? '打开中' : '播放'}
+                      </Button>
                     </div>
                   </div>
                 ))}
