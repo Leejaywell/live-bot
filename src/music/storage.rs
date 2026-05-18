@@ -1,5 +1,5 @@
-use anyhow::Result;
-use chrono::Local;
+use anyhow::{Result, anyhow};
+use chrono::{DateTime, Local};
 use rusqlite::{Connection, OptionalExtension, params};
 
 use crate::music::types::SearchCandidate;
@@ -160,6 +160,12 @@ fn now_text() -> String {
 }
 
 #[allow(dead_code)]
+fn is_future_expires_at(expires_at: &str, now: DateTime<Local>) -> Result<bool> {
+    let expires_at = DateTime::parse_from_rfc3339(expires_at)?;
+    Ok(expires_at.timestamp_millis() > now.timestamp_millis())
+}
+
+#[allow(dead_code)]
 pub fn insert_credit(conn: &Connection, credit: &NewSongCredit) -> Result<i64> {
     let now = now_text();
     conn.execute(
@@ -184,24 +190,44 @@ pub fn insert_credit(conn: &Connection, credit: &NewSongCredit) -> Result<i64> {
 
 #[allow(dead_code)]
 pub fn pending_credit_value(conn: &Connection, session_id: &str, uid: i64) -> Result<i64> {
-    Ok(conn.query_row(
-        "select coalesce(sum(credit_value), 0)
+    let now = Local::now();
+    let mut stmt = conn.prepare(
+        "select credit_value, expires_at
          from song_request_credits
-         where session_id = ?1 and uid = ?2 and used_at is null and expires_at > ?3",
-        params![session_id, uid, now_text()],
-        |row| row.get(0),
-    )?)
+         where session_id = ?1 and uid = ?2 and used_at is null",
+    )?;
+    let rows = stmt.query_map(params![session_id, uid], |row| {
+        Ok((row.get::<_, i64>(0)?, row.get::<_, String>(1)?))
+    })?;
+    let mut total = 0;
+    for row in rows {
+        let (credit_value, expires_at) = row?;
+        if is_future_expires_at(&expires_at, now)? {
+            total += credit_value;
+        }
+    }
+    Ok(total)
 }
 
 #[allow(dead_code)]
 pub fn session_pending_value(conn: &Connection, session_id: &str, room_id: i64) -> Result<i64> {
-    Ok(conn.query_row(
-        "select coalesce(sum(credit_value), 0)
+    let now = Local::now();
+    let mut stmt = conn.prepare(
+        "select credit_value, expires_at
          from song_request_credits
-         where session_id = ?1 and room_id = ?2 and used_at is null and expires_at > ?3",
-        params![session_id, room_id, now_text()],
-        |row| row.get(0),
-    )?)
+         where session_id = ?1 and room_id = ?2 and used_at is null",
+    )?;
+    let rows = stmt.query_map(params![session_id, room_id], |row| {
+        Ok((row.get::<_, i64>(0)?, row.get::<_, String>(1)?))
+    })?;
+    let mut total = 0;
+    for row in rows {
+        let (credit_value, expires_at) = row?;
+        if is_future_expires_at(&expires_at, now)? {
+            total += credit_value;
+        }
+    }
+    Ok(total)
 }
 
 #[allow(dead_code)]
@@ -228,29 +254,33 @@ pub fn latest_search_context(
     session_id: &str,
     uid: i64,
 ) -> Result<Option<StoredSearchContext>> {
-    let row = conn
-        .query_row(
-            "select id, query, candidates_json
+    let now = Local::now();
+    let mut stmt = conn.prepare(
+        "select id, query, candidates_json, expires_at
              from song_search_contexts
-             where session_id = ?1 and uid = ?2 and expires_at > ?3
-             order by id desc
-             limit 1",
-            params![session_id, uid, now_text()],
-            |row| {
-                let json: String = row.get(2)?;
-                Ok((row.get::<_, i64>(0)?, row.get::<_, String>(1)?, json))
-            },
-        )
-        .optional()?;
-    row.map(|(id, query, json)| {
-        let candidates = serde_json::from_str(&json)?;
-        Ok(StoredSearchContext {
-            id,
-            query,
-            candidates,
-        })
-    })
-    .transpose()
+             where session_id = ?1 and uid = ?2
+             order by id desc",
+    )?;
+    let rows = stmt.query_map(params![session_id, uid], |row| {
+        Ok((
+            row.get::<_, i64>(0)?,
+            row.get::<_, String>(1)?,
+            row.get::<_, String>(2)?,
+            row.get::<_, String>(3)?,
+        ))
+    })?;
+    for row in rows {
+        let (id, query, json, expires_at) = row?;
+        if is_future_expires_at(&expires_at, now)? {
+            let candidates = serde_json::from_str(&json)?;
+            return Ok(Some(StoredSearchContext {
+                id,
+                query,
+                candidates,
+            }));
+        }
+    }
+    Ok(None)
 }
 
 #[allow(dead_code)]
@@ -293,28 +323,70 @@ pub fn oldest_pending_credit(
     session_id: &str,
     uid: i64,
 ) -> Result<Option<(i64, i64, String)>> {
-    Ok(conn
-        .query_row(
-            "select id, credit_value, tier
+    let now = Local::now();
+    let mut stmt = conn.prepare(
+        "select id, credit_value, tier, expires_at
              from song_request_credits
-             where session_id = ?1 and uid = ?2 and used_at is null and expires_at > ?3
+             where session_id = ?1 and uid = ?2 and used_at is null
              order by credit_value desc, id asc
-             limit 1",
-            params![session_id, uid, now_text()],
-            |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
-        )
-        .optional()?)
+            ",
+    )?;
+    let rows = stmt.query_map(params![session_id, uid], |row| {
+        Ok((
+            row.get::<_, i64>(0)?,
+            row.get::<_, i64>(1)?,
+            row.get::<_, String>(2)?,
+            row.get::<_, String>(3)?,
+        ))
+    })?;
+    for row in rows {
+        let (id, credit_value, tier, expires_at) = row?;
+        if is_future_expires_at(&expires_at, now)? {
+            return Ok(Some((id, credit_value, tier)));
+        }
+    }
+    Ok(None)
 }
 
 #[allow(dead_code)]
 pub fn mark_credit_used(conn: &Connection, credit_id: i64, request_id: i64) -> Result<()> {
-    conn.execute(
+    let expires_at = conn
+        .query_row(
+            "select expires_at
+             from song_request_credits
+             where id = ?1 and used_at is null",
+            params![credit_id],
+            |row| row.get::<_, String>(0),
+        )
+        .optional()?
+        .ok_or_else(|| anyhow!("song request credit is missing or already used: {credit_id}"))?;
+    if !is_future_expires_at(&expires_at, Local::now())? {
+        return Err(anyhow!("song request credit is expired: {credit_id}"));
+    }
+
+    let rows_affected = conn.execute(
         "update song_request_credits
          set used_request_id = ?1, used_at = ?2
          where id = ?3 and used_at is null",
         params![request_id, now_text(), credit_id],
     )?;
+    if rows_affected != 1 {
+        return Err(anyhow!("song request credit was not consumed: {credit_id}"));
+    }
     Ok(())
+}
+
+#[allow(dead_code)]
+pub fn insert_song_request_and_consume_credit(
+    conn: &mut Connection,
+    credit_id: i64,
+    request: &NewSongRequest,
+) -> Result<i64> {
+    let tx = conn.transaction()?;
+    let request_id = insert_song_request(&tx, request)?;
+    mark_credit_used(&tx, credit_id, request_id)?;
+    tx.commit()?;
+    Ok(request_id)
 }
 
 #[allow(dead_code)]
@@ -344,6 +416,7 @@ pub fn list_queue(conn: &Connection, session_id: &str, room_id: i64) -> Result<V
 
 #[cfg(test)]
 mod tests {
+    use chrono::{Duration, FixedOffset, Local};
     use rusqlite::Connection;
 
     use crate::music::types::{MusicSource, MusicTrack, SearchCandidate};
@@ -351,9 +424,33 @@ mod tests {
     use super::ensure_schema;
     use super::latest_search_context;
     use super::{
-        NewSongCredit, NewSongRequest, insert_credit, insert_song_request, list_queue,
-        mark_credit_used, pending_credit_value, save_search_context, session_pending_value,
+        NewSongCredit, NewSongRequest, insert_credit, insert_song_request,
+        insert_song_request_and_consume_credit, list_queue, mark_credit_used, pending_credit_value,
+        save_search_context, session_pending_value,
     };
+
+    fn song_request() -> NewSongRequest {
+        NewSongRequest {
+            session_id: "session-1".to_string(),
+            room_id: 100,
+            uid: 42,
+            uname: "alice".to_string(),
+            source: "netease".to_string(),
+            song_id: "186016".to_string(),
+            song_name: "晴天".to_string(),
+            artist_names: "周杰伦".to_string(),
+            album_name: Some("叶惠美".to_string()),
+            pic_url: None,
+            lyric_id: "186016".to_string(),
+            url_id: "186016".to_string(),
+            duration_ms: Some(269000),
+            requested_text: "点歌 晴天".to_string(),
+            tier: "priority".to_string(),
+            credit_value: 66,
+            priority_score: 3066,
+            source_event_id: None,
+        }
+    }
 
     #[test]
     fn creates_music_tables() {
@@ -394,6 +491,68 @@ mod tests {
         assert_eq!(
             session_pending_value(&conn, "session-1", 100).expect("session pending"),
             233
+        );
+    }
+
+    #[test]
+    fn mixed_timezone_future_credit_counts_as_pending() {
+        let conn = Connection::open_in_memory().expect("db opens");
+        ensure_schema(&conn).expect("schema");
+        let west_ten = FixedOffset::west_opt(10 * 60 * 60).expect("offset");
+        let expires_at = (Local::now() + Duration::minutes(30))
+            .with_timezone(&west_ten)
+            .to_rfc3339();
+
+        insert_credit(
+            &conn,
+            &NewSongCredit {
+                session_id: "session-1".to_string(),
+                room_id: 100,
+                uid: 42,
+                uname: "alice".to_string(),
+                credit_value: 233,
+                tier: "jump_queue".to_string(),
+                source_type: "gift".to_string(),
+                source_event_id: 9001,
+                expires_at,
+            },
+        )
+        .expect("insert credit");
+
+        assert_eq!(
+            pending_credit_value(&conn, "session-1", 42).expect("pending"),
+            233
+        );
+    }
+
+    #[test]
+    fn expired_credits_are_ignored() {
+        let conn = Connection::open_in_memory().expect("db opens");
+        ensure_schema(&conn).expect("schema");
+
+        insert_credit(
+            &conn,
+            &NewSongCredit {
+                session_id: "session-1".to_string(),
+                room_id: 100,
+                uid: 42,
+                uname: "alice".to_string(),
+                credit_value: 233,
+                tier: "jump_queue".to_string(),
+                source_type: "gift".to_string(),
+                source_event_id: 9001,
+                expires_at: "2000-01-01T00:00:00+08:00".to_string(),
+            },
+        )
+        .expect("insert credit");
+
+        assert_eq!(
+            pending_credit_value(&conn, "session-1", 42).expect("pending"),
+            0
+        );
+        assert_eq!(
+            session_pending_value(&conn, "session-1", 100).expect("session pending"),
+            0
         );
     }
 
@@ -454,31 +613,84 @@ mod tests {
         )
         .expect("credit");
 
-        let request_id = insert_song_request(
+        let request_id = insert_song_request(&conn, &song_request()).expect("request");
+        mark_credit_used(&conn, credit_id, request_id).expect("consume");
+
+        let queue = list_queue(&conn, "session-1", 100).expect("queue");
+        assert_eq!(queue.len(), 1);
+        assert_eq!(queue[0].request_id, request_id);
+        assert_eq!(
+            pending_credit_value(&conn, "session-1", 42).expect("pending"),
+            0
+        );
+    }
+
+    #[test]
+    fn mark_credit_used_errors_for_invalid_credit_states() {
+        let conn = Connection::open_in_memory().expect("db opens");
+        ensure_schema(&conn).expect("schema");
+
+        assert!(mark_credit_used(&conn, 999, 1).is_err());
+
+        let used_credit_id = insert_credit(
             &conn,
-            &NewSongRequest {
+            &NewSongCredit {
                 session_id: "session-1".to_string(),
                 room_id: 100,
                 uid: 42,
                 uname: "alice".to_string(),
-                source: "netease".to_string(),
-                song_id: "186016".to_string(),
-                song_name: "晴天".to_string(),
-                artist_names: "周杰伦".to_string(),
-                album_name: Some("叶惠美".to_string()),
-                pic_url: None,
-                lyric_id: "186016".to_string(),
-                url_id: "186016".to_string(),
-                duration_ms: Some(269000),
-                requested_text: "点歌 晴天".to_string(),
-                tier: "priority".to_string(),
                 credit_value: 66,
-                priority_score: 3066,
-                source_event_id: None,
+                tier: "priority".to_string(),
+                source_type: "gift".to_string(),
+                source_event_id: 9001,
+                expires_at: "2099-01-01T00:00:00+08:00".to_string(),
             },
         )
-        .expect("request");
-        mark_credit_used(&conn, credit_id, request_id).expect("consume");
+        .expect("used credit");
+        mark_credit_used(&conn, used_credit_id, 1).expect("first consume");
+        assert!(mark_credit_used(&conn, used_credit_id, 2).is_err());
+
+        let expired_credit_id = insert_credit(
+            &conn,
+            &NewSongCredit {
+                session_id: "session-1".to_string(),
+                room_id: 100,
+                uid: 42,
+                uname: "alice".to_string(),
+                credit_value: 66,
+                tier: "priority".to_string(),
+                source_type: "gift".to_string(),
+                source_event_id: 9002,
+                expires_at: "2000-01-01T00:00:00+08:00".to_string(),
+            },
+        )
+        .expect("expired credit");
+        assert!(mark_credit_used(&conn, expired_credit_id, 3).is_err());
+    }
+
+    #[test]
+    fn atomic_helper_queues_request_and_consumes_credit() {
+        let mut conn = Connection::open_in_memory().expect("db opens");
+        ensure_schema(&conn).expect("schema");
+        let credit_id = insert_credit(
+            &conn,
+            &NewSongCredit {
+                session_id: "session-1".to_string(),
+                room_id: 100,
+                uid: 42,
+                uname: "alice".to_string(),
+                credit_value: 66,
+                tier: "priority".to_string(),
+                source_type: "gift".to_string(),
+                source_event_id: 9001,
+                expires_at: "2099-01-01T00:00:00+08:00".to_string(),
+            },
+        )
+        .expect("credit");
+
+        let request_id =
+            insert_song_request_and_consume_credit(&mut conn, credit_id, &song_request())
+                .expect("request and consume");
 
         let queue = list_queue(&conn, "session-1", 100).expect("queue");
         assert_eq!(queue.len(), 1);

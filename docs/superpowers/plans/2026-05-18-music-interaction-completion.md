@@ -614,7 +614,7 @@ SongCommand::Confirm { index } => {
     let Some(session_id) = self.current_session_id() else {
         return Ok(SongServiceReply::Message("当前没有直播场次，暂不能确认点歌".to_string()));
     };
-    let request_id = storage.with_connection(|conn| {
+    let request_id = storage.with_connection_mut(|conn| {
         let context = crate::music::storage::latest_search_context(conn, &session_id, _uid)?
             .ok_or_else(|| anyhow!("没有可确认的候选，请先发送 点歌 歌名"))?;
         let candidate = context.candidates.get(index.saturating_sub(1))
@@ -624,7 +624,7 @@ SongCommand::Confirm { index } => {
         let tier_enum = crate::music::credits::tier_for_credit(credit_value)
             .unwrap_or(crate::music::credits::SongRequestTier::Ordinary);
         let score = crate::music::queue::priority_score(tier_enum, credit_value, 0, 0);
-        let request_id = crate::music::storage::insert_song_request(conn, &crate::music::storage::NewSongRequest {
+        crate::music::storage::insert_song_request_and_consume_credit(conn, credit_id, &crate::music::storage::NewSongRequest {
             session_id: session_id.clone(),
             room_id: self.room_id,
             uid: _uid,
@@ -643,9 +643,7 @@ SongCommand::Confirm { index } => {
             credit_value,
             priority_score: score,
             source_event_id: None,
-        })?;
-        crate::music::storage::mark_credit_used(conn, credit_id, request_id)?;
-        Ok::<_, anyhow::Error>(request_id)
+        })
     })?;
     Ok(SongServiceReply::Message(format!("已加入点歌队列 #{request_id}")))
 }

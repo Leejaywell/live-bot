@@ -279,6 +279,20 @@ impl Storage {
         f(&conn)
     }
 
+    /// Runs a closure with mutable access to the underlying SQLite connection.
+    ///
+    /// Use this for transaction-scoped helpers only. Do not call other `Storage`
+    /// methods from inside the closure because they will try to lock the same
+    /// mutex again.
+    #[allow(dead_code)]
+    pub fn with_connection_mut<T, F>(&self, f: F) -> Result<T>
+    where
+        F: FnOnce(&mut Connection) -> Result<T>,
+    {
+        let mut conn = self.conn.lock().expect("storage mutex poisoned");
+        f(&mut conn)
+    }
+
     pub fn replace_gift_catalog(&self, gifts: &[GiftCatalogItem]) -> Result<()> {
         let mut conn = self.conn.lock().expect("storage mutex poisoned");
         let tx = conn.transaction()?;
