@@ -97,6 +97,10 @@ mod tests {
             parse_song_command("取消点歌"),
             Some(SongCommand::CancelMine)
         );
+        assert_eq!(
+            parse_song_command("换一批"),
+            Some(SongCommand::MoreCandidates)
+        );
     }
 
     #[test]
