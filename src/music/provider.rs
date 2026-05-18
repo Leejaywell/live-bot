@@ -21,8 +21,8 @@ impl Default for SearchOptions {
 pub trait MusicProvider: Send + Sync {
     fn source(&self) -> MusicSource;
     async fn search(&self, keyword: &str, options: SearchOptions) -> Result<Vec<MusicTrack>>;
-    async fn song(&self, id: &str) -> Result<Option<MusicTrack>>;
-    async fn url(&self, id: &str, bitrate: u32) -> Result<Option<String>>;
-    async fn lyric(&self, id: &str) -> Result<Option<String>>;
-    async fn pic(&self, id: &str, size: u32) -> Result<Option<String>>;
+    async fn song(&self, song_id: &str) -> Result<Option<MusicTrack>>;
+    async fn url(&self, song_id: &str, bitrate: u32) -> Result<Option<String>>;
+    async fn lyric(&self, song_id: &str) -> Result<Option<String>>;
+    async fn pic(&self, pic_id: &str, size: u32) -> Result<Option<String>>;
 }

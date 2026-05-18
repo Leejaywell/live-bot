@@ -37,7 +37,7 @@ impl MusicProvider for NeteaseProvider {
     }
 
     async fn search(&self, keyword: &str, options: SearchOptions) -> Result<Vec<MusicTrack>> {
-        let offset = options.page.saturating_sub(1) * options.limit;
+        let offset = options.page.saturating_sub(1).saturating_mul(options.limit);
         let raw = self
             .client
             .post(format!("{}/api/search/get/web", self.base_url))
@@ -59,25 +59,36 @@ impl MusicProvider for NeteaseProvider {
         map_search_response(&raw)
     }
 
-    async fn song(&self, id: &str) -> Result<Option<MusicTrack>> {
-        let tracks = self.search(id, SearchOptions { page: 1, limit: 1 }).await?;
+    async fn song(&self, song_id: &str) -> Result<Option<MusicTrack>> {
+        let raw = self
+            .client
+            .get(format!("{}/api/song/detail/", self.base_url))
+            .query(&[("ids", format!("[{song_id}]"))])
+            .send()
+            .await
+            .context("failed to send netease song detail request")?
+            .error_for_status()
+            .context("netease song detail request failed")?
+            .text()
+            .await
+            .context("failed to read netease song detail response")?;
 
-        Ok(tracks.into_iter().find(|track| track.song_id == id))
+        Ok(map_song_detail_response(&raw)?.into_iter().next())
     }
 
-    async fn url(&self, id: &str, _bitrate: u32) -> Result<Option<String>> {
-        Ok(Some(format!("https://music.163.com/#/song?id={id}")))
+    async fn url(&self, song_id: &str, _bitrate: u32) -> Result<Option<String>> {
+        Ok(Some(format!("https://music.163.com/#/song?id={song_id}")))
     }
 
-    async fn lyric(&self, id: &str) -> Result<Option<String>> {
+    async fn lyric(&self, song_id: &str) -> Result<Option<String>> {
         Ok(Some(format!(
-            "https://music.163.com/api/song/lyric?id={id}&lv=1&kv=1&tv=-1"
+            "https://music.163.com/api/song/lyric?id={song_id}&lv=1&kv=1&tv=-1"
         )))
     }
 
-    async fn pic(&self, id: &str, size: u32) -> Result<Option<String>> {
+    async fn pic(&self, pic_id: &str, size: u32) -> Result<Option<String>> {
         Ok(Some(format!(
-            "https://p1.music.126.net/{id}.jpg?param={size}y{size}"
+            "https://p1.music.126.net/{pic_id}.jpg?param={size}y{size}"
         )))
     }
 }
@@ -94,13 +105,21 @@ struct SearchResult {
 }
 
 #[derive(Debug, Deserialize)]
+struct SongDetailResponse {
+    #[serde(default)]
+    songs: Vec<NeteaseSong>,
+}
+
+#[derive(Debug, Deserialize)]
 struct NeteaseSong {
-    id: serde_json::Value,
+    #[serde(default)]
+    id: Option<serde_json::Value>,
     name: String,
-    #[serde(default)]
+    #[serde(default, alias = "dt")]
     duration: Option<i64>,
-    #[serde(default)]
+    #[serde(default, alias = "ar")]
     artists: Vec<NeteaseArtist>,
+    #[serde(alias = "al")]
     album: Option<NeteaseAlbum>,
 }
 
@@ -112,7 +131,7 @@ struct NeteaseArtist {
 #[derive(Debug, Deserialize)]
 struct NeteaseAlbum {
     name: String,
-    #[serde(rename = "picId")]
+    #[serde(default, rename = "picId", alias = "pic")]
     pic_id: Option<serde_json::Value>,
 }
 
@@ -125,22 +144,30 @@ pub fn map_search_response(raw: &str) -> Result<Vec<MusicTrack>> {
         .map(|result| result.songs)
         .unwrap_or_default()
         .into_iter()
-        .map(map_song)
+        .filter_map(map_song)
         .collect();
 
     Ok(tracks)
 }
 
-fn map_song(song: NeteaseSong) -> MusicTrack {
-    let song_id = json_value_to_string(&song.id);
+pub fn map_song_detail_response(raw: &str) -> Result<Vec<MusicTrack>> {
+    let response: SongDetailResponse =
+        serde_json::from_str(raw).context("failed to parse netease song detail response")?;
+
+    Ok(response.songs.into_iter().filter_map(map_song).collect())
+}
+
+fn map_song(song: NeteaseSong) -> Option<MusicTrack> {
+    let song_id = song.id.as_ref().and_then(json_value_to_string)?;
     let album = song.album;
     let pic_id = album
         .as_ref()
         .and_then(|album| album.pic_id.as_ref())
         .map(json_value_to_string)
+        .flatten()
         .unwrap_or_default();
 
-    MusicTrack {
+    Some(MusicTrack {
         source: MusicSource::Netease,
         song_id: song_id.clone(),
         name: song.name,
@@ -150,20 +177,20 @@ fn map_song(song: NeteaseSong) -> MusicTrack {
         url_id: song_id.clone(),
         lyric_id: song_id,
         duration_ms: song.duration,
-    }
+    })
 }
 
-fn json_value_to_string(value: &serde_json::Value) -> String {
+fn json_value_to_string(value: &serde_json::Value) -> Option<String> {
     match value {
-        serde_json::Value::String(value) => value.clone(),
-        serde_json::Value::Number(value) => value.to_string(),
-        _ => String::new(),
+        serde_json::Value::String(value) if !value.is_empty() => Some(value.clone()),
+        serde_json::Value::Number(value) => Some(value.to_string()),
+        _ => None,
     }
 }
 
 #[cfg(test)]
 mod tests {
-    use super::map_search_response;
+    use super::{map_search_response, map_song_detail_response};
     use crate::music::types::MusicSource;
 
     #[test]
@@ -179,5 +206,50 @@ mod tests {
         assert_eq!(tracks[0].url_id, "186016");
         assert_eq!(tracks[0].lyric_id, "186016");
         assert_eq!(tracks[0].duration_ms, Some(269000));
+    }
+
+    #[test]
+    fn maps_netease_song_detail_response_to_standard_tracks() {
+        let raw = include_str!("../tests/fixtures/netease_song_detail.json");
+        let tracks = map_song_detail_response(raw).expect("fixture maps");
+        assert_eq!(tracks.len(), 1);
+        assert_eq!(tracks[0].source, MusicSource::Netease);
+        assert_eq!(tracks[0].song_id, "186016");
+        assert_eq!(tracks[0].name, "晴天");
+        assert_eq!(tracks[0].artists, vec!["周杰伦"]);
+        assert_eq!(tracks[0].album, "叶惠美");
+        assert_eq!(tracks[0].pic_id, "109951165611629000");
+        assert_eq!(tracks[0].duration_ms, Some(269000));
+    }
+
+    #[test]
+    fn skips_search_items_with_invalid_required_ids() {
+        let raw = r#"{
+          "result": {
+            "songs": [
+              {
+                "id": null,
+                "name": "bad",
+                "artists": [{ "name": "artist" }],
+                "album": { "name": "album" }
+              },
+              {
+                "name": "missing",
+                "artists": [{ "name": "artist" }],
+                "album": { "name": "album" }
+              },
+              {
+                "id": 186016,
+                "name": "晴天",
+                "artists": [{ "name": "周杰伦" }],
+                "album": { "name": "叶惠美" }
+              }
+            ]
+          }
+        }"#;
+
+        let tracks = map_search_response(raw).expect("response maps");
+        assert_eq!(tracks.len(), 1);
+        assert_eq!(tracks[0].song_id, "186016");
     }
 }
