@@ -8,6 +8,9 @@
 //! GET /recent-gifts → 最近礼物浮层页面
 //! GET /gift-rank → 礼物排行浮层页面
 //! GET /song-request → 音乐互动浮层页面
+//! GET /song-request/api/queue → 音乐互动队列（JSON）
+//! GET /song-request/api/now-playing → 当前播放歌曲（JSON）
+//! GET /song-request/api/rank → 音乐互动排行（JSON）
 //! GET /plugin-settings → 插件配置（JSON）
 //! GET /ws      → WebSocket，推送 live-event 事件流 + 配置变更通知
 //! GET /proxy   → 图片代理，绕过 B站 CDN CORS 限制
@@ -23,13 +26,16 @@ use axum::{
     response::{Html, IntoResponse, Json},
     routing::get,
 };
-use serde::Deserialize;
+use rusqlite::OptionalExtension;
+use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::sync::Arc;
 use tokio::sync::broadcast;
 
+use crate::music::storage::QueueItem;
 use crate::overlay_config::OverlayConfig;
 use crate::plugin_settings::PluginSettings;
+use crate::storage::Storage;
 
 const HTML: &str = include_str!("overlay.html");
 const WISH_GOAL_HTML: &str = include_str!("wish_goal.html");
@@ -70,6 +76,12 @@ pub async fn start(port: u16, tx: OverlayTx) {
         .route("/song-request/playlist", get(music_interaction_handler))
         .route("/song-request/now-playing", get(music_interaction_handler))
         .route("/song-request/rank", get(music_interaction_handler))
+        .route("/song-request/api/queue", get(song_queue_handler))
+        .route(
+            "/song-request/api/now-playing",
+            get(song_now_playing_handler),
+        )
+        .route("/song-request/api/rank", get(song_rank_handler))
         .route("/plugin-settings", get(plugin_settings_handler))
         .route("/local-resource", get(local_resource_handler))
         .route("/ws", get(ws_handler))
@@ -128,6 +140,70 @@ async fn cfg_handler() -> impl IntoResponse {
 async fn plugin_settings_handler() -> impl IntoResponse {
     let cfg = PluginSettings::load_or_default().unwrap_or_default();
     Json(cfg)
+}
+
+#[derive(Serialize)]
+struct QueueResponse {
+    items: Vec<QueueItem>,
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct NowPlayingResponse {
+    item: Option<QueueItem>,
+}
+
+#[derive(Serialize)]
+struct RankResponse {
+    items: Vec<Value>,
+}
+
+async fn song_queue_handler() -> impl IntoResponse {
+    Json(QueueResponse {
+        items: observed_music_queue(),
+    })
+}
+
+async fn song_now_playing_handler() -> impl IntoResponse {
+    let item = observed_music_queue()
+        .into_iter()
+        .find(|item| item.status == "playing");
+    Json(NowPlayingResponse { item })
+}
+
+async fn song_rank_handler() -> impl IntoResponse {
+    Json(RankResponse { items: Vec::new() })
+}
+
+fn observed_music_queue() -> Vec<QueueItem> {
+    let path = crate::config::db_path();
+    let result = Storage::open(&path.to_string_lossy()).and_then(|storage| {
+        storage.with_connection(|conn| {
+            let session = conn
+                .query_row(
+                    "select id, room_id
+                     from live_sessions
+                     where start_source = 'observed' and ended_at is null
+                     order by started_at desc
+                     limit 1",
+                    [],
+                    |row| Ok((row.get::<_, String>(0)?, row.get::<_, i64>(1)?)),
+                )
+                .optional()?;
+            let Some((session_id, room_id)) = session else {
+                return Ok(Vec::new());
+            };
+            crate::music::storage::list_queue(conn, &session_id, room_id)
+        })
+    });
+
+    match result {
+        Ok(items) => items,
+        Err(e) => {
+            eprintln!("音乐互动浮层读取队列失败: {e}");
+            Vec::new()
+        }
+    }
 }
 
 async fn local_resource_handler(Query(q): Query<ProxyQuery>) -> Response<Body> {
