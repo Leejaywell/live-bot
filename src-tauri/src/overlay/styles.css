@@ -255,6 +255,23 @@ body {
   align-items: center;
 }
 
+@media (max-width: 360px) {
+  .song-theme-neon.song-playlist,
+  .song-theme-idol-stage.song-playlist,
+  .song-theme-vinyl.song-playlist {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .song-playlist .song-disc {
+    display: none;
+  }
+
+  .song-playlist .song-main,
+  .song-playlist .song-queue {
+    min-width: 0;
+  }
+}
+
 .song-theme-neon.song-rank,
 .song-theme-idol-stage.song-rank,
 .song-theme-vinyl.song-rank {
