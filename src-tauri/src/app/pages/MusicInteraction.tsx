@@ -393,7 +393,7 @@ export function MusicInteraction() {
               placeholder="搜索歌曲"
               className="flex-1"
             />
-            <Button variant="primary" onClick={searchCandidates}>
+            <Button variant="primary" onClick={() => searchCandidates()}>
               <Search className="h-3.5 w-3.5" />{searching ? '搜索中' : '搜索'}
             </Button>
           </div>
