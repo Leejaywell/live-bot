@@ -292,6 +292,7 @@ export function MusicInteraction() {
               <span className="text-[11px] font-bold text-[var(--muted-text)]">统计范围</span>
               <select value={music.StatsRange} onChange={e => updateMusic({ StatsRange: e.target.value })} disabled={!loaded}
                 className="h-[32px] w-full rounded-lg border border-[var(--control-border)] bg-[var(--control-bg)] px-3 text-[12px] text-[var(--control-text)] focus:outline-none">
+                <option value="session">本场</option>
                 <option value="today">今日</option>
                 <option value="week">本周</option>
                 <option value="month">本月</option>
