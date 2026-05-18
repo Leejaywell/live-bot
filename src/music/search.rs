@@ -9,12 +9,18 @@ pub fn score_track(query: &str, track: &MusicTrack) -> SearchCandidate {
         .iter()
         .map(|artist| normalize(artist))
         .collect::<Vec<_>>();
-    let query_tokens = normalized_query
-        .split_whitespace()
-        .collect::<Vec<_>>();
+    let query_tokens = normalized_query.split_whitespace().collect::<Vec<_>>();
 
     let mut score = 0;
     let mut reasons = Vec::new();
+
+    if normalized_query.is_empty() {
+        return SearchCandidate {
+            track: track.clone(),
+            score,
+            reason: "弱匹配".to_string(),
+        };
+    }
 
     if normalized_query.contains(&song_name)
         || song_name.contains(&normalized_query)
@@ -37,7 +43,8 @@ pub fn score_track(query: &str, track: &MusicTrack) -> SearchCandidate {
         reasons.push("关键词完整");
     }
     for marker in ["live", "dj", "伴奏", "翻唱", "cover"] {
-        if song_name.contains(marker) && !normalized_query.contains(marker) {
+        if has_version_marker(&song_name, marker) && !has_version_marker(&normalized_query, marker)
+        {
             score -= 12;
         }
     }
@@ -62,6 +69,16 @@ fn normalize(value: &str) -> String {
         .split_whitespace()
         .collect::<Vec<_>>()
         .join(" ")
+}
+
+#[allow(dead_code)]
+fn has_version_marker(value: &str, marker: &str) -> bool {
+    match marker {
+        "live" | "dj" | "cover" => value
+            .split(|character: char| !character.is_ascii_alphanumeric())
+            .any(|part| part == marker),
+        _ => value.contains(marker),
+    }
 }
 
 #[cfg(test)]
@@ -98,5 +115,23 @@ mod tests {
         let dj = score_track("晴天", &track("晴天 DJ版", &["周杰伦"]));
         assert!(normal.score > live.score);
         assert!(normal.score > dj.score);
+    }
+
+    #[test]
+    fn empty_query_is_weak_match() {
+        let candidate = score_track("  　 ", &track("晴天", &["周杰伦"]));
+        assert_eq!(candidate.score, 0);
+        assert_eq!(candidate.reason, "弱匹配");
+    }
+
+    #[test]
+    fn english_title_and_artist_tokens_score_highly() {
+        let candidate = score_track(
+            "Shape of You Ed Sheeran",
+            &track("Shape of You", &["Ed Sheeran"]),
+        );
+        assert!(candidate.score >= 80);
+        assert!(candidate.reason.contains("歌名匹配"));
+        assert!(candidate.reason.contains("歌手匹配"));
     }
 }
