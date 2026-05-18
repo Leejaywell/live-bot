@@ -81,7 +81,9 @@ export function MusicInteraction() {
   const latestConfig = useRef(config);
   const loadedRef = useRef(false);
   const saveHydrated = useRef(false);
+  const canSaveSettings = useRef(false);
   const pendingSave = useRef(false);
+  const warnedUnsavedEdits = useRef(false);
   const searchInFlight = useRef(false);
   const searchRequestId = useRef(0);
   const activeSearchQuery = useRef('');
@@ -90,6 +92,10 @@ export function MusicInteraction() {
   const music = config.MusicInteraction;
 
   const updateMusic = (patch: Partial<MusicInteractionSettings>) => {
+    if (loadedRef.current && !canSaveSettings.current && !warnedUnsavedEdits.current) {
+      warnedUnsavedEdits.current = true;
+      toast.warning('插件配置读取失败，本页修改不会保存');
+    }
     setConfig(prev => {
       const next = { ...prev, MusicInteraction: { ...prev.MusicInteraction, ...patch } };
       latestConfig.current = next;
@@ -142,7 +148,10 @@ export function MusicInteraction() {
       return;
     }
     if (searchInFlight.current) {
-      if (keyword === activeSearchQuery.current) return;
+      if (keyword === activeSearchQuery.current) {
+        queuedSearchQuery.current = null;
+        return;
+      }
       queuedSearchQuery.current = keyword;
       return;
     }
@@ -188,10 +197,12 @@ export function MusicInteraction() {
 
   useEffect(() => {
     api.loadPluginSettings().then(next => {
+      canSaveSettings.current = true;
       setConfig(mergeConfig(next));
       setLoaded(true);
     }).catch(err => {
-      toast.error(`读取插件配置失败: ${err}`);
+      canSaveSettings.current = false;
+      toast.error(`读取插件配置失败: ${err}。已使用默认值，修改不会保存`);
       setConfig(initialConfig);
       setLoaded(true);
     });
@@ -210,7 +221,7 @@ export function MusicInteraction() {
     if (saveTimer.current) {
       window.clearTimeout(saveTimer.current);
       saveTimer.current = null;
-      if (loadedRef.current && pendingSave.current) {
+      if (loadedRef.current && canSaveSettings.current && pendingSave.current) {
         pendingSave.current = false;
         api.savePluginSettings(latestConfig.current).catch(err => toast.error(`保存失败: ${err}`));
       }
@@ -218,7 +229,7 @@ export function MusicInteraction() {
   }, []);
 
   useEffect(() => {
-    if (!loaded) return;
+    if (!loaded || !canSaveSettings.current) return;
     if (!saveHydrated.current) {
       saveHydrated.current = true;
       return;
