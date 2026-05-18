@@ -45,14 +45,14 @@ jobs:
           - name: macos-arm64
             platform: macos-latest
             rust_targets: aarch64-apple-darwin
-            args: --target aarch64-apple-darwin
+            args: --target aarch64-apple-darwin --bundles app,dmg
             sherpa_archive_suffix: osx-arm64-shared-lib
 
           # Windows x86_64
           - name: windows-x64
             platform: windows-latest
             rust_targets: x86_64-pc-windows-msvc
-            args: --target x86_64-pc-windows-msvc
+            args: --target x86_64-pc-windows-msvc --bundles nsis
             sherpa_archive_suffix: win-x64-shared-MT-Release-lib
 
     name: Build ${{ matrix.name }}
