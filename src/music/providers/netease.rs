@@ -163,8 +163,7 @@ fn map_song(song: NeteaseSong) -> Option<MusicTrack> {
     let pic_id = album
         .as_ref()
         .and_then(|album| album.pic_id.as_ref())
-        .map(json_value_to_string)
-        .flatten()
+        .and_then(json_value_to_string)
         .unwrap_or_default();
 
     Some(MusicTrack {
