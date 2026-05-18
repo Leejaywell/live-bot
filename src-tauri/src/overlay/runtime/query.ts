@@ -1,4 +1,4 @@
-import { OverlayRuntimeConfig, OverlayRoute } from './types';
+import { MusicInteractionSettings, OverlayRuntimeConfig, OverlayRoute, PluginSettings } from './types';
 import { resolveMotion } from './motion';
 
 const HEX = /^#[0-9a-fA-F]{6}$/;
@@ -14,6 +14,23 @@ function parseScale(value: string | null): number {
   return Math.min(2, Math.max(0.5, parsed));
 }
 
+function normalizeMusicSkin(skin: string | undefined | null): string {
+  switch (skin) {
+    case 'idol-stage':
+    case 'vinyl':
+    case 'neon':
+      return skin;
+    default:
+      return 'neon';
+  }
+}
+
+function settingsScale(settings: MusicInteractionSettings | undefined): number {
+  const scale = Number(settings?.FontScale);
+  if (!Number.isFinite(scale)) return 1;
+  return Math.min(2, Math.max(0.5, scale));
+}
+
 export function parseOverlayConfig(search = window.location.search): OverlayRuntimeConfig {
   const params = new URLSearchParams(search);
   const primaryColor = params.get('primaryColor');
@@ -23,6 +40,32 @@ export function parseOverlayConfig(search = window.location.search): OverlayRunt
     scale: parseScale(params.get('scale')),
     motion: resolveMotion(params.get('motion')),
     primaryColor: primaryColor && HEX.test(primaryColor) ? primaryColor : null,
+  };
+}
+
+export function resolveOverlayConfig(
+  route: OverlayRoute,
+  settings: PluginSettings,
+  search = window.location.search,
+): OverlayRuntimeConfig {
+  const config = parseOverlayConfig(search);
+  if (route.plugin !== 'song-request') {
+    return config;
+  }
+
+  const params = new URLSearchParams(search);
+  const music = settings.MusicInteraction;
+  const settingsPrimaryColor = music?.PrimaryColor;
+  return {
+    ...config,
+    skin: params.has('skin') ? normalizeMusicSkin(config.skin) : normalizeMusicSkin(music?.Skin),
+    transparent: params.has('transparent') ? config.transparent : music?.Transparent ?? config.transparent,
+    scale: params.has('scale') ? config.scale : settingsScale(music),
+    primaryColor: params.has('primaryColor')
+      ? config.primaryColor
+      : settingsPrimaryColor && HEX.test(settingsPrimaryColor)
+        ? settingsPrimaryColor
+        : config.primaryColor,
   };
 }
 

@@ -1,6 +1,5 @@
 import { EmptyState } from '../../components/EmptyState';
-import { parseOverlayConfig } from '../../runtime/query';
-import { OverlayRoute } from '../../runtime/types';
+import { OverlayRoute, OverlayRuntimeConfig } from '../../runtime/types';
 import { SongRequestTheme } from './SongRequestThemes';
 import { useSongRequestData } from './useSongRequestData';
 
@@ -17,8 +16,7 @@ function resolveSongSkin(skin: string) {
   }
 }
 
-export function SongRequestOverlay({ route }: { route: OverlayRoute }) {
-  const config = parseOverlayConfig();
+export function SongRequestOverlay({ route, config }: { route: OverlayRoute; config: OverlayRuntimeConfig }) {
   const view = route.view as SongRequestView;
   const { queue, nowPlaying, rank, visual } = useSongRequestData(view);
   const skin = resolveSongSkin(config.skin);

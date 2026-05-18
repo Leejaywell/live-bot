@@ -7,11 +7,15 @@ import { LotteryOverlay } from './plugins/lottery/LotteryOverlay';
 import { RecentGiftsOverlay } from './plugins/recent-gifts/RecentGiftsOverlay';
 import { SongRequestOverlay } from './plugins/song-request/SongRequestOverlay';
 import { WishGoalOverlay } from './plugins/wish-goal/WishGoalOverlay';
-import { parseOverlayConfig, resolveOverlayRoute } from './runtime/query';
-import { OverlayRoute, PluginSettings } from './runtime/types';
+import { resolveOverlayConfig, resolveOverlayRoute } from './runtime/query';
+import { OverlayRoute, OverlayRuntimeConfig, PluginSettings } from './runtime/types';
 import { usePluginSettings } from './runtime/usePluginSettings';
 
-function renderOverlayContent(route: OverlayRoute, settings: PluginSettings): ReactNode {
+function renderOverlayContent(
+  route: OverlayRoute,
+  settings: PluginSettings,
+  config: OverlayRuntimeConfig,
+): ReactNode {
   switch (route.plugin) {
     case 'danmaku':
       return <DanmakuOverlay />;
@@ -26,18 +30,18 @@ function renderOverlayContent(route: OverlayRoute, settings: PluginSettings): Re
     case 'gift-rank':
       return <GiftRankOverlay settings={settings} />;
     case 'song-request':
-      return <SongRequestOverlay route={route} />;
+      return <SongRequestOverlay route={route} config={config} />;
   }
 }
 
 export function OverlayRouter() {
-  const config = parseOverlayConfig();
   const route = resolveOverlayRoute();
   const settings = usePluginSettings();
+  const config = resolveOverlayConfig(route, settings);
 
   return (
     <OverlayFrame config={config} plugin={route.plugin} view={route.view}>
-      {renderOverlayContent(route, settings)}
+      {renderOverlayContent(route, settings, config)}
     </OverlayFrame>
   );
 }

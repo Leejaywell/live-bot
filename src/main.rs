@@ -3609,8 +3609,9 @@ fn main() -> Result<()> {
                 .map(|c| c.port)
                 .unwrap_or(12450);
             let srv_tx = overlay_tx.clone();
+            let resource_dir = app.path().resource_dir().ok();
             tauri::async_runtime::spawn(async move {
-                overlay_server::start(port, srv_tx).await;
+                overlay_server::start(port, srv_tx, resource_dir).await;
             });
 
             let handle_for_update = app.handle().clone();

@@ -19,6 +19,23 @@ export interface PluginSettings {
   GiftEffect?: GiftEffectSettings;
   RecentGifts?: RecentGiftsSettings;
   GiftRank?: GiftRankSettings;
+  MusicInteraction?: MusicInteractionSettings;
+}
+
+export interface MusicInteractionSettings {
+  Enabled?: boolean;
+  Skin?: string;
+  StatsRange?: string;
+  Transparent?: boolean;
+  Width?: number;
+  Height?: number;
+  ShowCover?: boolean;
+  ShowRequester?: boolean;
+  ShowGiftTier?: boolean;
+  ShowQueue?: boolean;
+  ShowTodayValue?: boolean;
+  PrimaryColor?: string;
+  FontScale?: number;
 }
 
 export interface WishGoalSettings {
