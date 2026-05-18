@@ -11,7 +11,7 @@ import { fallbackConfig } from './WishGoal';
 const fallbackMusicInteraction: MusicInteractionSettings = {
   Enabled: true,
   Skin: 'compact',
-  StatsRange: 'today',
+  StatsRange: 'session',
   Transparent: true,
   Width: 420,
   Height: 180,
@@ -66,6 +66,10 @@ function clampSettingValue(key: NumericMusicSetting, raw: string): number | null
   return step ? Math.round(clamped / step) * step : clamped;
 }
 
+function isHexColor(value: string): boolean {
+  return /^#[0-9a-fA-F]{6}$/.test(value.trim());
+}
+
 export function MusicInteraction() {
   const [config, setConfig] = useState<PluginSettings>(initialConfig);
   const [loaded, setLoaded] = useState(false);
@@ -77,6 +81,7 @@ export function MusicInteraction() {
   const [searching, setSearching] = useState(false);
   const [refreshingUrl, setRefreshingUrl] = useState(false);
   const [numberDrafts, setNumberDrafts] = useState<Partial<Record<NumericMusicSetting, string>>>({});
+  const [colorDraft, setColorDraft] = useState<string | null>(null);
   const saveTimer = useRef<number | null>(null);
   const latestConfig = useRef(config);
   const loadedRef = useRef(false);
@@ -105,6 +110,17 @@ export function MusicInteraction() {
 
   const updateNumberDraft = (key: NumericMusicSetting, value: string) => {
     setNumberDrafts(prev => ({ ...prev, [key]: value }));
+  };
+
+  const commitColorDraft = () => {
+    if (colorDraft === null) return;
+    const next = colorDraft.trim();
+    setColorDraft(null);
+    if (isHexColor(next)) {
+      updateMusic({ PrimaryColor: next });
+    } else {
+      toast.error('主色必须是 #RRGGBB 格式');
+    }
   };
 
   const commitNumberDraft = (key: NumericMusicSetting) => {
@@ -328,8 +344,15 @@ export function MusicInteraction() {
             <label className="space-y-1.5">
               <span className="text-[11px] font-bold text-[var(--muted-text)]">主色</span>
               <div className="flex gap-2">
-                <Input type="color" value={music.PrimaryColor} onChange={e => updateMusic({ PrimaryColor: e.target.value })} disabled={!loaded} className="w-[44px] px-1" />
-                <Input value={music.PrimaryColor} onChange={e => updateMusic({ PrimaryColor: e.target.value })} disabled={!loaded} className="min-w-0 flex-1" />
+                <Input type="color" value={music.PrimaryColor} onChange={e => { setColorDraft(null); updateMusic({ PrimaryColor: e.target.value }); }} disabled={!loaded} className="w-[44px] px-1" />
+                <Input
+                  value={colorDraft ?? music.PrimaryColor}
+                  onChange={e => setColorDraft(e.target.value)}
+                  onBlur={commitColorDraft}
+                  onKeyDown={e => { if (e.key === 'Enter') (e.currentTarget as HTMLInputElement).blur(); }}
+                  disabled={!loaded}
+                  className="min-w-0 flex-1"
+                />
               </div>
             </label>
             <label className="space-y-1.5">
