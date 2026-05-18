@@ -165,12 +165,9 @@ async fn song_queue_handler() -> impl IntoResponse {
 }
 
 async fn song_now_playing_handler() -> impl IntoResponse {
-    let queue = observed_music_queue();
-    let item = queue
-        .iter()
-        .find(|item| item.status == "playing")
-        .cloned()
-        .or_else(|| queue.into_iter().next());
+    let item = observed_music_queue()
+        .into_iter()
+        .find(|item| item.status == "playing");
     Json(NowPlayingResponse { item })
 }
 
