@@ -524,3 +524,136 @@ body {
   flex-direction: column;
   align-items: stretch;
 }
+
+.lottery-card {
+  min-width: 360px;
+  border: 2px solid rgba(216, 180, 254, 0.9);
+  border-radius: 24px;
+  padding: 18px;
+  background: linear-gradient(180deg, rgba(82, 42, 166, 0.92), rgba(38, 20, 87, 0.92));
+  box-shadow: 0 22px 60px rgba(40, 20, 80, 0.38);
+  text-align: center;
+}
+
+.lottery-title {
+  font-size: 24px;
+  font-weight: 950;
+}
+
+.lottery-wheel {
+  position: relative;
+  width: 240px;
+  height: 240px;
+  margin: 16px auto 14px;
+  border: 10px solid #7c3aed;
+  border-radius: 999px;
+  background: conic-gradient(#facc15 0 25%, #fb7185 0 50%, #60a5fa 0 75%, #a78bfa 0);
+}
+
+.lottery-wheel::after {
+  content: "抽";
+  position: absolute;
+  inset: 72px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 999px;
+  background: #fff;
+  color: #7c3aed;
+  font-size: 42px;
+  font-weight: 950;
+}
+
+.lottery-pointer {
+  position: absolute;
+  top: -2px;
+  left: 50%;
+  width: 0;
+  height: 0;
+  transform: translateX(-50%);
+  border-right: 16px solid transparent;
+  border-left: 16px solid transparent;
+  border-top: 32px solid #fff;
+}
+
+.lottery-result {
+  min-height: 58px;
+  border-radius: 14px;
+  padding: 10px 14px;
+  background: rgba(20, 12, 42, 0.72);
+  font-weight: 900;
+}
+
+.lottery-prize {
+  margin-top: 4px;
+  color: #fde68a;
+  font-size: 24px;
+}
+
+.gift-effect-stage {
+  position: relative;
+  width: 360px;
+  height: 360px;
+}
+
+.gift-effect-cup {
+  position: absolute;
+  bottom: 0;
+  left: 50%;
+  width: 220px;
+  height: 190px;
+  transform: translateX(-50%);
+  border: 4px solid rgba(55, 65, 81, 0.75);
+  border-radius: 18px 18px 38px 38px;
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.68), rgba(219, 234, 254, 0.42));
+}
+
+.gift-effect-bubbles span {
+  position: absolute;
+  top: 20px;
+  animation: giftBubble 1.15s ease-in forwards;
+  font-size: 24px;
+}
+
+.gift-effect-caption {
+  position: absolute;
+  bottom: 10px;
+  left: 50%;
+  min-width: 280px;
+  transform: translateX(-50%);
+  border-radius: 999px;
+  padding: 8px 14px;
+  background: rgba(88, 28, 135, 0.88);
+  color: #fef3c7;
+  font-weight: 950;
+  text-align: center;
+}
+
+@keyframes giftBubble {
+  from { opacity: 0; transform: translateY(-140px) rotate(0); }
+  to { opacity: 1; transform: translateY(72px) rotate(280deg); }
+}
+
+.danmaku-list {
+  display: flex;
+  height: 100%;
+  flex-direction: column;
+  gap: 3px;
+  overflow: hidden;
+  padding: 4px 6px 8px;
+}
+
+.danmaku-spacer {
+  flex: 1 0 0;
+}
+
+.danmaku-item {
+  flex-shrink: 0;
+  border-radius: 6px;
+  padding: 5px 8px;
+  background: rgba(0, 0, 0, 0.72);
+  font-size: 13px;
+  font-weight: 700;
+  line-height: 1.5;
+  word-break: break-all;
+}

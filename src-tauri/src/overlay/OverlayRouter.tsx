@@ -20,7 +20,7 @@ function renderOverlayContent(route: OverlayRoute, settings: PluginSettings): Re
     case 'lottery':
       return <LotteryOverlay settings={settings} />;
     case 'gift-effect':
-      return <GiftEffectOverlay />;
+      return <GiftEffectOverlay settings={settings} />;
     case 'recent-gifts':
       return <RecentGiftsOverlay settings={settings} />;
     case 'gift-rank':
