@@ -7,6 +7,7 @@
 //! GET /gift-effect → 礼物特效浮层页面
 //! GET /recent-gifts → 最近礼物浮层页面
 //! GET /gift-rank → 礼物排行浮层页面
+//! GET /song-request → 音乐互动浮层页面
 //! GET /plugin-settings → 插件配置（JSON）
 //! GET /ws      → WebSocket，推送 live-event 事件流 + 配置变更通知
 //! GET /proxy   → 图片代理，绕过 B站 CDN CORS 限制
@@ -36,6 +37,7 @@ const LOTTERY_HTML: &str = include_str!("lottery.html");
 const GIFT_EFFECT_HTML: &str = include_str!("gift_effect.html");
 const RECENT_GIFTS_HTML: &str = include_str!("recent_gifts.html");
 const GIFT_RANK_HTML: &str = include_str!("gift_rank.html");
+const MUSIC_INTERACTION_HTML: &str = include_str!("music_interaction.html");
 
 pub type OverlayTx = Arc<broadcast::Sender<Value>>;
 
@@ -64,6 +66,10 @@ pub async fn start(port: u16, tx: OverlayTx) {
         .route("/gift-effect", get(gift_effect_handler))
         .route("/recent-gifts", get(recent_gifts_handler))
         .route("/gift-rank", get(gift_rank_handler))
+        .route("/song-request", get(music_interaction_handler))
+        .route("/song-request/playlist", get(music_interaction_handler))
+        .route("/song-request/now-playing", get(music_interaction_handler))
+        .route("/song-request/rank", get(music_interaction_handler))
         .route("/plugin-settings", get(plugin_settings_handler))
         .route("/local-resource", get(local_resource_handler))
         .route("/ws", get(ws_handler))
@@ -108,6 +114,10 @@ async fn recent_gifts_handler() -> Html<&'static str> {
 
 async fn gift_rank_handler() -> Html<&'static str> {
     Html(GIFT_RANK_HTML)
+}
+
+async fn music_interaction_handler() -> Html<&'static str> {
+    Html(MUSIC_INTERACTION_HTML)
 }
 
 async fn cfg_handler() -> impl IntoResponse {

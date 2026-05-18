@@ -28,6 +28,8 @@ pub struct PluginSettings {
     pub recent_gifts: RecentGiftsSettings,
     #[serde(default)]
     pub gift_rank: GiftRankSettings,
+    #[serde(default)]
+    pub music_interaction: MusicInteractionSettings,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -207,6 +209,37 @@ pub struct GiftRankItem {
     pub count: i64,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "PascalCase")]
+pub struct MusicInteractionSettings {
+    #[serde(default = "df_true")]
+    pub enabled: bool,
+    #[serde(default = "df_music_skin")]
+    pub skin: String,
+    #[serde(default = "df_music_stats_range")]
+    pub stats_range: String,
+    #[serde(default = "df_true")]
+    pub transparent: bool,
+    #[serde(default = "df_music_width")]
+    pub width: u32,
+    #[serde(default = "df_music_height")]
+    pub height: u32,
+    #[serde(default = "df_true")]
+    pub show_cover: bool,
+    #[serde(default = "df_true")]
+    pub show_requester: bool,
+    #[serde(default = "df_true")]
+    pub show_gift_tier: bool,
+    #[serde(default = "df_true")]
+    pub show_queue: bool,
+    #[serde(default)]
+    pub show_today_value: bool,
+    #[serde(default = "df_music_primary_color")]
+    pub primary_color: String,
+    #[serde(default = "df_font_scale")]
+    pub font_scale: f32,
+}
+
 impl Default for PluginSettings {
     fn default() -> Self {
         Self {
@@ -215,6 +248,7 @@ impl Default for PluginSettings {
             gift_effect: GiftEffectSettings::default(),
             recent_gifts: RecentGiftsSettings::default(),
             gift_rank: GiftRankSettings::default(),
+            music_interaction: MusicInteractionSettings::default(),
         }
     }
 }
@@ -300,6 +334,26 @@ impl Default for GiftRankSettings {
             skin: df_gift_rank_skin(),
             date: Local::now().format("%Y-%m-%d").to_string(),
             items: Vec::new(),
+        }
+    }
+}
+
+impl Default for MusicInteractionSettings {
+    fn default() -> Self {
+        Self {
+            enabled: true,
+            skin: df_music_skin(),
+            stats_range: df_music_stats_range(),
+            transparent: true,
+            width: df_music_width(),
+            height: df_music_height(),
+            show_cover: true,
+            show_requester: true,
+            show_gift_tier: true,
+            show_queue: true,
+            show_today_value: false,
+            primary_color: df_music_primary_color(),
+            font_scale: df_font_scale(),
         }
     }
 }
@@ -657,6 +711,24 @@ fn df_gift_rank_max_items() -> usize {
 fn df_gift_rank_skin() -> String {
     "podium".to_string()
 }
+fn df_music_skin() -> String {
+    "compact".to_string()
+}
+fn df_music_stats_range() -> String {
+    "session".to_string()
+}
+fn df_music_width() -> u32 {
+    720
+}
+fn df_music_height() -> u32 {
+    120
+}
+fn df_music_primary_color() -> String {
+    "#8b5cf6".to_string()
+}
+fn df_font_scale() -> f32 {
+    1.0
+}
 fn df_lottery_gift_count() -> i64 {
     1
 }
@@ -753,4 +825,17 @@ fn df_wish_goals() -> Vec<WishGoalItem> {
             increment: 1,
         },
     ]
+}
+
+#[cfg(test)]
+mod music_interaction_tests {
+    use super::PluginSettings;
+
+    #[test]
+    fn music_interaction_defaults_are_enabled_and_compact() {
+        let settings = PluginSettings::default();
+        assert!(settings.music_interaction.enabled);
+        assert_eq!(settings.music_interaction.skin, "compact");
+        assert_eq!(settings.music_interaction.stats_range, "session");
+    }
 }
