@@ -1,3 +1,4 @@
+#[allow(dead_code)]
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum SongCommand {
     Search { query: String },
@@ -7,6 +8,7 @@ pub enum SongCommand {
     CancelMine,
 }
 
+#[allow(dead_code)]
 pub fn parse_song_command(text: &str) -> Option<SongCommand> {
     let value = text.trim();
     if value == "我的点歌" {
