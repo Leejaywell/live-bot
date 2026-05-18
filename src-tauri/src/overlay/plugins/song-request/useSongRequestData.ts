@@ -43,14 +43,15 @@ export function useSongRequestData(view: 'playlist' | 'now-playing' | 'rank') {
       if (view === 'now-playing') {
         const data = await fetchJson<NowPlayingResponse>('/song-request/api/now-playing', { item: null });
         if (disposed) return;
-        const nextPlayingId = data.item?.requestId ?? null;
+        const item = isObjectLike(data) && isQueueItem(data.item) ? data.item : null;
+        const nextPlayingId = item?.requestId ?? null;
         setVisual({
           newRequestIds: new Set<number>(),
           playingChanged: previousPlaying.current !== null && previousPlaying.current !== nextPlayingId,
-          highTierRequestId: highTier(data.item) ? data.item!.requestId : null,
+          highTierRequestId: highTier(item) ? item.requestId : null,
         });
         previousPlaying.current = nextPlayingId;
-        setNowPlaying(data.item || null);
+        setNowPlaying(item);
         return;
       }
 
