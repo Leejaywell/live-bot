@@ -9,6 +9,7 @@ members = ["crates/bilibili-live-protocol", "crates/voice"]
 
 [dependencies]
 anyhow = "1.0.100"
+async-trait = "0.1"
 dirs = "5"
 base64 = "0.22"
 bilibili-live-protocol = { path = "crates/bilibili-live-protocol" }
