@@ -91,6 +91,7 @@ function candidateKey(candidate: SearchCandidate): string {
 
 type NumericMusicSetting = 'Width' | 'Height' | 'FontScale';
 type PendingSearchRequest = { keyword: string; userSig: string };
+type SearchUserIdentity = { uid: number; uname: string } | null;
 
 const numericBounds: Record<NumericMusicSetting, { min: number; max: number; step?: number }> = {
   Width: { min: 240, max: 1200, step: 1 },
@@ -118,6 +119,7 @@ export function MusicInteraction() {
   const [queue, setQueue] = useState<MusicQueueItem[]>([]);
   const [selectedCandidate, setSelectedCandidate] = useState<SearchCandidate | null>(null);
   const [confirmedCandidate, setConfirmedCandidate] = useState<SearchCandidate | null>(null);
+  const [candidateSearchUser, setCandidateSearchUser] = useState<SearchUserIdentity>(null);
   const [searching, setSearching] = useState(false);
   const [queueLoading, setQueueLoading] = useState(false);
   const [confirmingIndex, setConfirmingIndex] = useState<number | null>(null);
@@ -137,13 +139,42 @@ export function MusicInteraction() {
   const activeSearchKey = useRef('');
   const queuedSearchRequest = useRef<PendingSearchRequest | null>(null);
   const latestQuery = useRef('');
+  const latestUserSig = useRef('preview');
   const music = config.MusicInteraction;
 
-  const manualUser = () => {
-    const uid = Number(manualUid.trim());
-    const uname = manualUname.trim();
+  const manualUserFrom = (uidValue: string, unameValue: string): SearchUserIdentity => {
+    const uid = Number(uidValue.trim());
+    const uname = unameValue.trim();
     if (!Number.isInteger(uid) || uid <= 0 || !uname) return null;
     return { uid, uname };
+  };
+
+  const manualUser = () => manualUserFrom(manualUid, manualUname);
+  const userSig = (user: SearchUserIdentity) => user ? `${user.uid}:${user.uname}` : 'preview';
+
+  const clearCandidateState = () => {
+    queuedSearchRequest.current = null;
+    setCandidates([]);
+    setSelectedCandidate(null);
+    setConfirmedCandidate(null);
+    setCandidateSearchUser(null);
+  };
+
+  const updateManualUid = (value: string) => {
+    latestUserSig.current = userSig(manualUserFrom(value, manualUname));
+    setManualUid(value);
+    clearCandidateState();
+  };
+
+  const updateManualUname = (value: string) => {
+    latestUserSig.current = userSig(manualUserFrom(manualUid, value));
+    setManualUname(value);
+    clearCandidateState();
+  };
+
+  const candidateUserMatchesCurrent = () => {
+    const user = manualUser();
+    return Boolean(user && candidateSearchUser && user.uid === candidateSearchUser.uid && user.uname === candidateSearchUser.uname);
   };
 
   const updateMusic = (patch: Partial<MusicInteractionSettings>) => {
@@ -228,8 +259,16 @@ export function MusicInteraction() {
 
   const confirmCandidate = async (candidate: SearchCandidate, index: number) => {
     const user = manualUser();
+    if (!candidateSearchUser) {
+      toast.warning('请先填写点歌用户并重新搜索');
+      return;
+    }
     if (!user) {
       toast.warning('请先填写有效的用户 UID 和昵称');
+      return;
+    }
+    if (user.uid !== candidateSearchUser.uid || user.uname !== candidateSearchUser.uname) {
+      toast.warning('点歌用户已变更，请重新搜索后再确认');
       return;
     }
     setConfirmingIndex(index);
@@ -254,19 +293,19 @@ export function MusicInteraction() {
     const keyword = requestedKeyword.trim();
     if (!keyword) {
       queuedSearchRequest.current = null;
-      setCandidates([]);
-      setSelectedCandidate(null);
+      clearCandidateState();
       return;
     }
     const user = manualUser();
-    const userSig = user ? `${user.uid}:${user.uname}` : 'preview';
-    const searchKey = `${keyword}|${userSig}`;
+    const searchUserSig = userSig(user);
+    latestUserSig.current = searchUserSig;
+    const searchKey = `${keyword}|${searchUserSig}`;
     if (searchInFlight.current) {
       if (searchKey === activeSearchKey.current) {
         queuedSearchRequest.current = null;
         return;
       }
-      queuedSearchRequest.current = { keyword, userSig };
+      queuedSearchRequest.current = { keyword, userSig: searchUserSig };
       return;
     }
     searchInFlight.current = true;
@@ -276,24 +315,29 @@ export function MusicInteraction() {
     setSearching(true);
     setCandidates([]);
     setSelectedCandidate(null);
+    setConfirmedCandidate(null);
+    setCandidateSearchUser(null);
     try {
       const next = await api.searchMusicCandidates(keyword, user?.uid, user?.uname);
       if (
         searchRequestId.current === requestId
         && activeSearchKey.current === searchKey
         && latestQuery.current.trim() === keyword
+        && latestUserSig.current === searchUserSig
         && queuedSearchRequest.current === null
       ) {
         setCandidates(next);
+        setCandidateSearchUser(user);
       }
     } catch (err) {
       if (
         searchRequestId.current === requestId
         && activeSearchKey.current === searchKey
         && latestQuery.current.trim() === keyword
+        && latestUserSig.current === searchUserSig
         && queuedSearchRequest.current === null
       ) {
-        setCandidates([]);
+        clearCandidateState();
         toast.error(`搜索失败: ${err}`);
       }
     } finally {
@@ -302,7 +346,7 @@ export function MusicInteraction() {
         setSearching(false);
         const nextRequest = queuedSearchRequest.current;
         queuedSearchRequest.current = null;
-        if (nextRequest && (nextRequest.keyword !== keyword || nextRequest.userSig !== userSig)) {
+        if (nextRequest && (nextRequest.keyword !== keyword || nextRequest.userSig !== searchUserSig)) {
           void searchCandidates(nextRequest.keyword);
         }
       }
@@ -503,12 +547,12 @@ export function MusicInteraction() {
             <div className="grid grid-cols-[minmax(120px,160px)_1fr] gap-2">
               <Input
                 value={manualUid}
-                onChange={e => setManualUid(e.target.value)}
+                onChange={e => updateManualUid(e.target.value)}
                 placeholder="用户 UID"
               />
               <Input
                 value={manualUname}
-                onChange={e => setManualUname(e.target.value)}
+                onChange={e => updateManualUname(e.target.value)}
                 placeholder="用户昵称"
               />
             </div>
@@ -519,8 +563,7 @@ export function MusicInteraction() {
                   latestQuery.current = e.target.value;
                   setQuery(e.target.value);
                   if (searchInFlight.current) {
-                    setCandidates([]);
-                    setSelectedCandidate(null);
+                    clearCandidateState();
                   }
                 }}
                 onKeyDown={e => { if (e.key === 'Enter') searchCandidates(); }}
@@ -545,6 +588,7 @@ export function MusicInteraction() {
                   const candidateIndex = index + 1;
                   const selected = selectedCandidate ? candidateKey(selectedCandidate) === key : false;
                   const confirmed = confirmedCandidate ? candidateKey(confirmedCandidate) === key : false;
+                  const canConfirmCandidate = confirmingIndex === null && candidateUserMatchesCurrent();
                   return (
                   <div key={key} className="grid grid-cols-[1fr_auto] gap-3 px-4 py-3">
                     <div className="min-w-0">
@@ -565,7 +609,7 @@ export function MusicInteraction() {
                         size="sm"
                         variant={confirmed ? 'primary' : 'default'}
                         onClick={() => confirmCandidate(candidate, candidateIndex)}
-                        disabled={confirmingIndex !== null}
+                        disabled={!canConfirmCandidate}
                       >
                         {confirmingIndex === candidateIndex ? '确认中' : confirmed ? '已确认' : '确认'}
                       </Button>
@@ -590,7 +634,7 @@ export function MusicInteraction() {
                   const selectedIndex = candidates.findIndex(candidate => candidateKey(candidate) === candidateKey(selectedCandidate));
                   if (selectedIndex >= 0) void confirmCandidate(selectedCandidate, selectedIndex + 1);
                 }}
-                disabled={confirmingIndex !== null}
+                disabled={confirmingIndex !== null || !candidateUserMatchesCurrent()}
               >
                 <Check className="h-3.5 w-3.5" />确认候选
               </Button>
