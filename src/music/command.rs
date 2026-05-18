@@ -27,10 +27,17 @@ pub fn parse_song_command(text: &str) -> Option<SongCommand> {
         if rest.is_empty() {
             return None;
         }
-        let index_text = rest.strip_prefix('#').unwrap_or(rest).trim();
-        if let Ok(index) = index_text.parse::<usize>() {
-            if index > 0 {
-                return Some(SongCommand::Confirm { index });
+        if let Some(index_text) = rest.strip_prefix('#') {
+            if let Ok(index) = index_text.trim().parse::<usize>() {
+                if index > 0 {
+                    return Some(SongCommand::Confirm { index });
+                }
+            }
+        } else if prefix != "点歌" {
+            if let Ok(index) = rest.parse::<usize>() {
+                if index > 0 {
+                    return Some(SongCommand::Confirm { index });
+                }
             }
         }
         if prefix == "点歌" {
@@ -74,6 +81,12 @@ mod tests {
         assert_eq!(
             parse_song_command("选 #2"),
             Some(SongCommand::Confirm { index: 2 })
+        );
+        assert_eq!(
+            parse_song_command("点歌 2002"),
+            Some(SongCommand::Search {
+                query: "2002".to_string()
+            })
         );
     }
 
