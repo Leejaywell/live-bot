@@ -8,8 +8,8 @@ export async function fetchJson<T>(path: string, fallback: T): Promise<T> {
   }
 }
 
-export function proxyImage(url: string | undefined): string | undefined {
-  if (!url) return undefined;
+export function proxyImage(url: unknown): string | undefined {
+  if (typeof url !== 'string' || !url.trim()) return undefined;
   return url.includes('hdslb.com') ? `/proxy?url=${encodeURIComponent(url)}` : url;
 }
 

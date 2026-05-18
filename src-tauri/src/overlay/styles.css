@@ -404,6 +404,17 @@ body {
   font-weight: 900;
 }
 
+.wish-line strong {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.wish-line span {
+  flex-shrink: 0;
+}
+
 .wish-bar {
   height: 8px;
   margin-top: 5px;
