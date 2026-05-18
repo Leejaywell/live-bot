@@ -30,10 +30,8 @@ pub fn parse_song_command(text: &str) -> Option<SongCommand> {
             return None;
         }
         if let Some(index_text) = rest.strip_prefix('#') {
-            if let Ok(index) = index_text.trim().parse::<usize>() {
-                if index > 0 {
-                    return Some(SongCommand::Confirm { index });
-                }
+            if let Some(index) = parse_hash_confirmation_index(index_text) {
+                return Some(SongCommand::Confirm { index });
             }
         } else if prefix != "点歌" {
             if let Ok(index) = rest.parse::<usize>() {
@@ -50,6 +48,22 @@ pub fn parse_song_command(text: &str) -> Option<SongCommand> {
     }
 
     None
+}
+
+fn parse_hash_confirmation_index(text: &str) -> Option<usize> {
+    let text = text.trim();
+    let digit_end = text
+        .char_indices()
+        .take_while(|(_, ch)| ch.is_ascii_digit())
+        .map(|(index, ch)| index + ch.len_utf8())
+        .last()?;
+    let (index_text, suffix) = text.split_at(digit_end);
+    let suffix = suffix.trim();
+    if !suffix.is_empty() && suffix != "确认" && suffix != "确定" {
+        return None;
+    }
+    let index = index_text.parse::<usize>().ok()?;
+    (index > 0).then_some(index)
 }
 
 #[cfg(test)]
@@ -70,6 +84,18 @@ mod tests {
     fn parses_number_confirmation() {
         assert_eq!(
             parse_song_command("点歌 #2"),
+            Some(SongCommand::Confirm { index: 2 })
+        );
+        assert_eq!(
+            parse_song_command("点歌 #1 确认"),
+            Some(SongCommand::Confirm { index: 1 })
+        );
+        assert_eq!(
+            parse_song_command("点歌 #2确认"),
+            Some(SongCommand::Confirm { index: 2 })
+        );
+        assert_eq!(
+            parse_song_command("点歌 #2 确定"),
             Some(SongCommand::Confirm { index: 2 })
         );
         assert_eq!(
