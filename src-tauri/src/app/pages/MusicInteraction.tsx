@@ -29,14 +29,29 @@ const initialConfig: PluginSettings = {
   MusicInteraction: fallbackMusicInteraction,
 };
 
+const statsRangeOptions = new Set(['session', 'today', 'week', 'month', 'all']);
+
+function isHexColor(value: string): boolean {
+  return /^#[0-9a-fA-F]{6}$/.test(value.trim());
+}
+
+function sanitizeMusicInteraction(next: MusicInteractionSettings | undefined): MusicInteractionSettings {
+  const merged = {
+    ...fallbackMusicInteraction,
+    ...next,
+  };
+  return {
+    ...merged,
+    StatsRange: statsRangeOptions.has(merged.StatsRange) ? merged.StatsRange : fallbackMusicInteraction.StatsRange,
+    PrimaryColor: isHexColor(merged.PrimaryColor) ? merged.PrimaryColor : fallbackMusicInteraction.PrimaryColor,
+  };
+}
+
 function mergeConfig(next: PluginSettings): PluginSettings {
   return {
     ...initialConfig,
     ...next,
-    MusicInteraction: {
-      ...fallbackMusicInteraction,
-      ...next.MusicInteraction,
-    },
+    MusicInteraction: sanitizeMusicInteraction(next.MusicInteraction),
   };
 }
 
@@ -64,10 +79,6 @@ function clampSettingValue(key: NumericMusicSetting, raw: string): number | null
   const { min, max, step } = numericBounds[key];
   const clamped = Math.min(max, Math.max(min, parsed));
   return step ? Math.round(clamped / step) * step : clamped;
-}
-
-function isHexColor(value: string): boolean {
-  return /^#[0-9a-fA-F]{6}$/.test(value.trim());
 }
 
 export function MusicInteraction() {
