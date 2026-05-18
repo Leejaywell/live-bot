@@ -23,6 +23,7 @@ import { toast } from 'sonner';
 import { cn } from '../lib/utils';
 import { useConfig, DlState } from '../context/ConfigContext';
 import { Toggle } from './Toggle';
+import { SPLASH_REPLAY_EVENT } from './Splash';
 
 interface SettingsPanelProps {
   onClose: () => void;
@@ -403,6 +404,22 @@ export function SettingsPanel({ onClose }: SettingsPanelProps) {
                     checked={config?.DisableCursorEffects ?? false}
                     onChange={(val) => updateConfig({ DisableCursorEffects: val })}
                   />
+                </div>
+                <div className="flex items-center justify-between gap-3">
+                  <div className="space-y-0.5">
+                    <div className="text-[12px] font-medium text-gray-800 dark:text-gray-200">启动页</div>
+                    <div className="text-[10px] text-gray-400">重新播放一次启动动画</div>
+                  </div>
+                  <Button
+                    variant="default"
+                    size="sm"
+                    onClick={() => {
+                      window.dispatchEvent(new CustomEvent(SPLASH_REPLAY_EVENT));
+                      onClose();
+                    }}
+                  >
+                    查看启动页
+                  </Button>
                 </div>
               </div>
             </div>

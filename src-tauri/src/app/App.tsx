@@ -39,6 +39,7 @@ import QRCode from 'react-qr-code';
 import { toast } from 'sonner';
 import { RefreshCw, X, QrCode } from 'lucide-react';
 import { Modal, ModalCloseButton } from './components/Modal';
+import { Splash, SPLASH_REPLAY_EVENT, type SplashMode } from './components/Splash';
 
 export interface AppNotif {
   id: string;
@@ -90,6 +91,14 @@ function AppContent() {
   const [autoRoom, setAutoRoom] = useState<{ roomId: string; liveStatus: number; liveTime: string } | null>(null);
   const [showRoomModal, setShowRoomModal] = useState(false);
   const [showLoginModal, setShowLoginModal] = useState(false);
+  const [splash, setSplash] = useState<{ visible: boolean; mode: SplashMode }>({ visible: true, mode: 'boot' });
+
+  // 监听"重新进入启动页"事件（来自设置面板）
+  useEffect(() => {
+    const onReplay = () => setSplash({ visible: true, mode: 'replay' });
+    window.addEventListener(SPLASH_REPLAY_EVENT, onReplay);
+    return () => window.removeEventListener(SPLASH_REPLAY_EVENT, onReplay);
+  }, []);
 
   // 注册到 RoomContext，让 requireRoom 弹窗可以直接打开连接对话框
   useEffect(() => {
@@ -309,6 +318,13 @@ function AppContent() {
           },
         }}
       />
+      {splash.visible && (
+        <Splash
+          mode={splash.mode}
+          ready={splash.mode === 'replay' ? true : loginChecked}
+          onDismiss={() => setSplash(s => ({ ...s, visible: false }))}
+        />
+      )}
       <LoginContext.Provider value={{
         isLoggedIn, setIsLoggedIn, userInfo, setUserInfo, loginChecked,
         refreshUserInfo, openLoginModal: () => setShowLoginModal(true)
