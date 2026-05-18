@@ -3730,64 +3730,120 @@ async fn get_music_interaction_url() -> Result<String, String> {
 #[tauri::command]
 async fn search_music_candidates(
     query: String,
+    uid: Option<i64>,
+    uname: Option<String>,
+    state: tauri::State<'_, SharedState>,
 ) -> Result<Vec<music::types::SearchCandidate>, String> {
     let query = query.trim();
     if query.is_empty() {
         return Ok(Vec::new());
     }
 
-    let config = AppConfig::load_or_default().map_err(|e| e.to_string())?;
-    let session_id = manual_music_session_id(config.room_id);
+    let user = validate_optional_music_user(uid, uname)?;
     let provider = music::providers::netease::NeteaseProvider::new(reqwest::Client::new());
-    let db_path = config::db_path();
-    let storage =
-        Arc::new(storage::Storage::open(&db_path.to_string_lossy()).map_err(|e| e.to_string())?);
-    let service = music::service::MusicInteractionService::new_with_storage(
-        vec![Box::new(provider)],
-        storage,
-        config.room_id,
-        Arc::new(Mutex::new(Some(session_id))),
-    );
-    match service
-        .handle_danmu(0, "preview", &format!("点歌 {query}"))
+
+    let service = if let Some((uid, uname)) = user.as_ref() {
+        let (session_id, room_id) = active_music_session(&state)?
+            .ok_or_else(|| "当前没有直播场次，暂不能为用户保存点歌搜索".to_string())?;
+        music::service::MusicInteractionService::new_with_storage(
+            vec![Box::new(provider)],
+            state.storage.clone(),
+            room_id,
+            Arc::new(Mutex::new(Some(session_id))),
+        )
+        .handle_danmu(*uid, uname, &format!("点歌 {query}"))
         .await
         .map_err(|e| e.to_string())?
-    {
+    } else {
+        music::service::MusicInteractionService::new(vec![Box::new(provider)])
+            .handle_danmu(0, "preview", &format!("点歌 {query}"))
+            .await
+            .map_err(|e| e.to_string())?
+    };
+
+    match service {
         music::service::SongServiceReply::Candidates { candidates } => Ok(candidates),
         _ => Ok(Vec::new()),
     }
 }
 
 #[cfg(feature = "tauri")]
-fn manual_music_session_id(room_id: i64) -> String {
-    format!("manual-room-{room_id}")
+fn validate_optional_music_user(
+    uid: Option<i64>,
+    uname: Option<String>,
+) -> Result<Option<(i64, String)>, String> {
+    match (uid, uname) {
+        (None, None) => Ok(None),
+        (Some(uid), Some(uname)) => {
+            let uname = uname.trim().to_string();
+            if uid <= 0 || uname.is_empty() {
+                return Err("请填写有效的用户 UID 和昵称".to_string());
+            }
+            Ok(Some((uid, uname)))
+        }
+        _ => Err("请填写完整的用户 UID 和昵称".to_string()),
+    }
+}
+
+#[cfg(feature = "tauri")]
+fn active_music_session(
+    state: &tauri::State<'_, SharedState>,
+) -> Result<Option<(String, i64)>, String> {
+    let monitor = state.monitor.lock().map_err(|e| e.to_string())?;
+    let Some(handle) = monitor.as_ref() else {
+        return Ok(None);
+    };
+    let session_id = handle.session_id.lock().map_err(|e| e.to_string())?.clone();
+    let Some(session_id) = session_id else {
+        return Ok(None);
+    };
+    let room_id = session_id
+        .split_once(':')
+        .and_then(|(room_id, _)| room_id.parse::<i64>().ok())
+        .ok_or_else(|| "当前直播场次格式无效，暂不能处理点歌互动".to_string())?;
+    Ok(Some((session_id, room_id)))
 }
 
 #[cfg(feature = "tauri")]
 #[tauri::command]
-async fn get_music_queue() -> Result<Vec<music::storage::QueueItem>, String> {
-    let config = AppConfig::load_or_default().map_err(|e| e.to_string())?;
-    let db_path = config::db_path();
-    let storage = storage::Storage::open(&db_path.to_string_lossy()).map_err(|e| e.to_string())?;
-    let session_id = manual_music_session_id(config.room_id);
-    storage
-        .with_connection(|conn| music::storage::list_queue(conn, &session_id, config.room_id))
+async fn get_music_queue(
+    state: tauri::State<'_, SharedState>,
+) -> Result<Vec<music::storage::QueueItem>, String> {
+    let Some((session_id, room_id)) = active_music_session(&state)? else {
+        return Ok(Vec::new());
+    };
+    state
+        .storage
+        .with_connection(|conn| music::storage::list_queue(conn, &session_id, room_id))
         .map_err(|e| e.to_string())
 }
 
 #[cfg(feature = "tauri")]
 #[tauri::command]
-async fn confirm_music_candidate(uid: i64, uname: String, index: usize) -> Result<String, String> {
-    let config = AppConfig::load_or_default().map_err(|e| e.to_string())?;
-    let session_id = manual_music_session_id(config.room_id);
-    let db_path = config::db_path();
-    let storage =
-        Arc::new(storage::Storage::open(&db_path.to_string_lossy()).map_err(|e| e.to_string())?);
+async fn confirm_music_candidate(
+    state: tauri::State<'_, SharedState>,
+    uid: i64,
+    uname: String,
+    index: usize,
+) -> Result<String, String> {
+    let uname = uname.trim().to_string();
+    if uid <= 0 {
+        return Err("请填写有效的用户 UID".to_string());
+    }
+    if uname.is_empty() {
+        return Err("请填写用户昵称".to_string());
+    }
+    if index == 0 {
+        return Err("候选编号必须大于 0".to_string());
+    }
+
+    let (session_id, room_id) = active_music_session(&state)?
+        .ok_or_else(|| "当前没有直播场次，暂不能确认点歌".to_string())?;
     let provider = music::providers::netease::NeteaseProvider::new(reqwest::Client::new());
     let service = music::service::MusicInteractionService::new_with_storage(
         vec![Box::new(provider)],
-        storage,
-        config.room_id,
+        state.storage.clone(),
+        room_id,
         Arc::new(Mutex::new(Some(session_id))),
     );
     let reply = service

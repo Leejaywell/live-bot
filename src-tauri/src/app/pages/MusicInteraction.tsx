@@ -90,6 +90,7 @@ function candidateKey(candidate: SearchCandidate): string {
 }
 
 type NumericMusicSetting = 'Width' | 'Height' | 'FontScale';
+type PendingSearchRequest = { keyword: string; userSig: string };
 
 const numericBounds: Record<NumericMusicSetting, { min: number; max: number; step?: number }> = {
   Width: { min: 240, max: 1200, step: 1 },
@@ -111,6 +112,8 @@ export function MusicInteraction() {
   const [loaded, setLoaded] = useState(false);
   const [url, setUrl] = useState('');
   const [query, setQuery] = useState('');
+  const [manualUid, setManualUid] = useState('');
+  const [manualUname, setManualUname] = useState('');
   const [candidates, setCandidates] = useState<SearchCandidate[]>([]);
   const [queue, setQueue] = useState<MusicQueueItem[]>([]);
   const [selectedCandidate, setSelectedCandidate] = useState<SearchCandidate | null>(null);
@@ -130,10 +133,18 @@ export function MusicInteraction() {
   const warnedUnsavedEdits = useRef(false);
   const searchInFlight = useRef(false);
   const searchRequestId = useRef(0);
-  const activeSearchQuery = useRef('');
-  const queuedSearchQuery = useRef<string | null>(null);
+  const queueRequestId = useRef(0);
+  const activeSearchKey = useRef('');
+  const queuedSearchRequest = useRef<PendingSearchRequest | null>(null);
   const latestQuery = useRef('');
   const music = config.MusicInteraction;
+
+  const manualUser = () => {
+    const uid = Number(manualUid.trim());
+    const uname = manualUname.trim();
+    if (!Number.isInteger(uid) || uid <= 0 || !uname) return null;
+    return { uid, uname };
+  };
 
   const updateMusic = (patch: Partial<MusicInteractionSettings>) => {
     if (loadedRef.current && !canSaveSettings.current && !warnedUnsavedEdits.current) {
@@ -186,14 +197,23 @@ export function MusicInteraction() {
   };
 
   const loadQueue = async () => {
+    const requestId = queueRequestId.current + 1;
+    queueRequestId.current = requestId;
     setQueueLoading(true);
     try {
-      setQueue(await api.getMusicQueue());
+      const next = await api.getMusicQueue();
+      if (queueRequestId.current === requestId) {
+        setQueue(next);
+      }
     } catch (err) {
-      setQueue([]);
-      toast.error(`读取点歌队列失败: ${err}`);
+      if (queueRequestId.current === requestId) {
+        setQueue([]);
+        toast.error(`读取点歌队列失败: ${err}`);
+      }
     } finally {
-      setQueueLoading(false);
+      if (queueRequestId.current === requestId) {
+        setQueueLoading(false);
+      }
     }
   };
 
@@ -207,9 +227,14 @@ export function MusicInteraction() {
   };
 
   const confirmCandidate = async (candidate: SearchCandidate, index: number) => {
+    const user = manualUser();
+    if (!user) {
+      toast.warning('请先填写有效的用户 UID 和昵称');
+      return;
+    }
     setConfirmingIndex(index);
     try {
-      const reply = await api.confirmMusicCandidate(0, '主播预览', index);
+      const reply = await api.confirmMusicCandidate(user.uid, user.uname, index);
       if (reply.includes('已加入点歌队列')) {
         setSelectedCandidate(candidate);
         setConfirmedCandidate(candidate);
@@ -228,42 +253,45 @@ export function MusicInteraction() {
   const searchCandidates = async (requestedKeyword = query.trim()) => {
     const keyword = requestedKeyword.trim();
     if (!keyword) {
-      queuedSearchQuery.current = null;
+      queuedSearchRequest.current = null;
       setCandidates([]);
       setSelectedCandidate(null);
       return;
     }
+    const user = manualUser();
+    const userSig = user ? `${user.uid}:${user.uname}` : 'preview';
+    const searchKey = `${keyword}|${userSig}`;
     if (searchInFlight.current) {
-      if (keyword === activeSearchQuery.current) {
-        queuedSearchQuery.current = null;
+      if (searchKey === activeSearchKey.current) {
+        queuedSearchRequest.current = null;
         return;
       }
-      queuedSearchQuery.current = keyword;
+      queuedSearchRequest.current = { keyword, userSig };
       return;
     }
     searchInFlight.current = true;
     const requestId = searchRequestId.current + 1;
     searchRequestId.current = requestId;
-    activeSearchQuery.current = keyword;
+    activeSearchKey.current = searchKey;
     setSearching(true);
     setCandidates([]);
     setSelectedCandidate(null);
     try {
-      const next = await api.searchMusicCandidates(keyword);
+      const next = await api.searchMusicCandidates(keyword, user?.uid, user?.uname);
       if (
         searchRequestId.current === requestId
-        && activeSearchQuery.current === keyword
+        && activeSearchKey.current === searchKey
         && latestQuery.current.trim() === keyword
-        && queuedSearchQuery.current === null
+        && queuedSearchRequest.current === null
       ) {
         setCandidates(next);
       }
     } catch (err) {
       if (
         searchRequestId.current === requestId
-        && activeSearchQuery.current === keyword
+        && activeSearchKey.current === searchKey
         && latestQuery.current.trim() === keyword
-        && queuedSearchQuery.current === null
+        && queuedSearchRequest.current === null
       ) {
         setCandidates([]);
         toast.error(`搜索失败: ${err}`);
@@ -272,10 +300,10 @@ export function MusicInteraction() {
       if (searchRequestId.current === requestId) {
         searchInFlight.current = false;
         setSearching(false);
-        const nextKeyword = queuedSearchQuery.current;
-        queuedSearchQuery.current = null;
-        if (nextKeyword && nextKeyword !== keyword) {
-          void searchCandidates(nextKeyword);
+        const nextRequest = queuedSearchRequest.current;
+        queuedSearchRequest.current = null;
+        if (nextRequest && (nextRequest.keyword !== keyword || nextRequest.userSig !== userSig)) {
+          void searchCandidates(nextRequest.keyword);
         }
       }
     }
@@ -471,24 +499,38 @@ export function MusicInteraction() {
               </div>
             </div>
           )}
-          <div className="mb-4 flex gap-2">
-            <Input
-              value={query}
-              onChange={e => {
-                latestQuery.current = e.target.value;
-                setQuery(e.target.value);
-                if (searchInFlight.current) {
-                  setCandidates([]);
-                  setSelectedCandidate(null);
-                }
-              }}
-              onKeyDown={e => { if (e.key === 'Enter') searchCandidates(); }}
-              placeholder="搜索歌曲"
-              className="flex-1"
-            />
-            <Button variant="primary" onClick={() => searchCandidates()}>
-              <Search className="h-3.5 w-3.5" />{searching ? '搜索中' : '搜索'}
-            </Button>
+          <div className="mb-4 space-y-3">
+            <div className="grid grid-cols-[minmax(120px,160px)_1fr] gap-2">
+              <Input
+                value={manualUid}
+                onChange={e => setManualUid(e.target.value)}
+                placeholder="用户 UID"
+              />
+              <Input
+                value={manualUname}
+                onChange={e => setManualUname(e.target.value)}
+                placeholder="用户昵称"
+              />
+            </div>
+            <div className="flex gap-2">
+              <Input
+                value={query}
+                onChange={e => {
+                  latestQuery.current = e.target.value;
+                  setQuery(e.target.value);
+                  if (searchInFlight.current) {
+                    setCandidates([]);
+                    setSelectedCandidate(null);
+                  }
+                }}
+                onKeyDown={e => { if (e.key === 'Enter') searchCandidates(); }}
+                placeholder="搜索歌曲"
+                className="flex-1"
+              />
+              <Button variant="primary" onClick={() => searchCandidates()}>
+                <Search className="h-3.5 w-3.5" />{searching ? '搜索中' : '搜索'}
+              </Button>
+            </div>
           </div>
 
           <div className="min-h-0 flex-1 overflow-y-auto rounded-2xl border border-[var(--surface-border)] bg-[var(--control-bg)] [scrollbar-width:thin]">

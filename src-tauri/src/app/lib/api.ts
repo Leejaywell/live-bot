@@ -510,7 +510,8 @@ export const api = {
   getRecentGiftsUrl: () => invoke<string>('get_recent_gifts_url'),
   getGiftRankUrl: () => invoke<string>('get_gift_rank_url'),
   getMusicInteractionUrl: () => invoke<string>('get_music_interaction_url'),
-  searchMusicCandidates: (query: string) => invoke<SearchCandidate[]>('search_music_candidates', { query }),
+  searchMusicCandidates: (query: string, uid?: number, uname?: string) =>
+    invoke<SearchCandidate[]>('search_music_candidates', { query, uid: uid ?? null, uname: uname ?? null }),
   getMusicQueue: () => invoke<MusicQueueItem[]>('get_music_queue'),
   confirmMusicCandidate: (uid: number, uname: string, index: number) =>
     invoke<string>('confirm_music_candidate', { uid, uname, index }),
