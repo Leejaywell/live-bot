@@ -1,7 +1,9 @@
 //! 弹幕浮层 HTTP 服务
 //!
-//! GET /        → 独立弹幕浮层页面（供 OBS 浏览器源使用）
+//! GET /        → 独立弹幕浮层页面
 //! GET /cfg     → 当前 OverlayConfig（JSON）
+//! GET /wish-goal → 心愿目标浮层页面
+//! GET /plugin-settings → 插件配置（JSON）
 //! GET /ws      → WebSocket，推送 live-event 事件流 + 配置变更通知
 //! GET /proxy   → 图片代理，绕过 B站 CDN CORS 限制
 
@@ -22,8 +24,10 @@ use std::sync::Arc;
 use tokio::sync::broadcast;
 
 use crate::overlay_config::OverlayConfig;
+use crate::plugin_settings::PluginSettings;
 
 const HTML: &str = include_str!("overlay.html");
+const WISH_GOAL_HTML: &str = include_str!("wish_goal.html");
 
 pub type OverlayTx = Arc<broadcast::Sender<Value>>;
 
@@ -38,11 +42,19 @@ pub fn broadcast_cfg_update(tx: &OverlayTx) {
     let _ = tx.send(msg);
 }
 
+pub fn broadcast_plugin_settings_update(tx: &OverlayTx) {
+    let msg = serde_json::json!({ "_plugin_settings_update": true });
+    let _ = tx.send(msg);
+}
+
 pub async fn start(port: u16, tx: OverlayTx) {
     let app = Router::new()
-        .route("/",      get(index_handler))
-        .route("/cfg",   get(cfg_handler))
-        .route("/ws",    get(ws_handler))
+        .route("/", get(index_handler))
+        .route("/cfg", get(cfg_handler))
+        .route("/wish-goal", get(wish_goal_handler))
+        .route("/plugin-settings", get(plugin_settings_handler))
+        .route("/local-resource", get(local_resource_handler))
+        .route("/ws", get(ws_handler))
         .route("/proxy", get(proxy_handler))
         .with_state(tx);
 
@@ -66,15 +78,62 @@ async fn index_handler() -> Html<&'static str> {
     Html(HTML)
 }
 
+async fn wish_goal_handler() -> Html<&'static str> {
+    Html(WISH_GOAL_HTML)
+}
+
 async fn cfg_handler() -> impl IntoResponse {
     let cfg = OverlayConfig::load_or_default().unwrap_or_default();
     Json(cfg)
 }
 
-async fn ws_handler(
-    ws: WebSocketUpgrade,
-    State(tx): State<OverlayTx>,
-) -> impl IntoResponse {
+async fn plugin_settings_handler() -> impl IntoResponse {
+    let cfg = PluginSettings::load_or_default().unwrap_or_default();
+    Json(cfg)
+}
+
+async fn local_resource_handler(Query(q): Query<ProxyQuery>) -> Response<Body> {
+    let Ok(cfg) = PluginSettings::load_or_default() else {
+        return empty_response(StatusCode::NOT_FOUND);
+    };
+    let allowed = [
+        cfg.wish_goal.custom_font_path,
+        cfg.wish_goal.custom_sound_path,
+    ];
+    if !allowed.iter().any(|path| !path.is_empty() && path == &q.url) {
+        return empty_response(StatusCode::FORBIDDEN);
+    }
+    let path = std::path::PathBuf::from(&q.url);
+    if !path.is_file() {
+        return empty_response(StatusCode::NOT_FOUND);
+    }
+    let bytes = match std::fs::read(&path) {
+        Ok(bytes) => bytes,
+        Err(_) => return empty_response(StatusCode::NOT_FOUND),
+    };
+    let ct = match path.extension().and_then(|ext| ext.to_str()).unwrap_or("").to_ascii_lowercase().as_str() {
+        "ttf" => "font/ttf",
+        "otf" => "font/otf",
+        "woff" => "font/woff",
+        "woff2" => "font/woff2",
+        "mp3" => "audio/mpeg",
+        "wav" => "audio/wav",
+        "ogg" => "audio/ogg",
+        _ => "application/octet-stream",
+    };
+    Response::builder()
+        .status(StatusCode::OK)
+        .header(header::CONTENT_TYPE, ct)
+        .header(header::ACCESS_CONTROL_ALLOW_ORIGIN, "*")
+        .body(Body::from(bytes))
+        .unwrap()
+}
+
+fn empty_response(status: StatusCode) -> Response<Body> {
+    Response::builder().status(status).body(Body::empty()).unwrap()
+}
+
+async fn ws_handler(ws: WebSocketUpgrade, State(tx): State<OverlayTx>) -> impl IntoResponse {
     let rx = tx.subscribe();
     ws.on_upgrade(|socket| handle_ws(socket, rx))
 }

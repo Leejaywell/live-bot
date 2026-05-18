@@ -4,10 +4,12 @@ mod config;
 mod obs;
 mod overlay_config;
 mod overlay_server;
+mod plugin_settings;
 mod storage;
 mod token;
 
 use anyhow::Result;
+use chrono::Local;
 use config::AppConfig;
 #[cfg(feature = "tauri")]
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -24,6 +26,12 @@ const MENU_FORCE_QUIT_ID: &str = "force_quit";
 const MENU_CLOSE_MAIN_ID: &str = "close_main";
 #[cfg(feature = "tauri")]
 static MAIN_CLOSE_PROMPT_OPEN: AtomicBool = AtomicBool::new(false);
+
+#[cfg(feature = "tauri")]
+const GIFT_CATALOG_MAX_AGE_SECS: i64 = 60 * 60;
+#[cfg(feature = "tauri")]
+const FALLBACK_GUARD_ICON: &str =
+    "https://i0.hdslb.com/bfs/live/f1be2a2d5b227ce72641de1ad64bcc7f9e4111c3.png";
 
 #[derive(Clone)]
 struct SharedState {
@@ -87,6 +95,7 @@ struct BufferedEmitter {
     log_buffer: Arc<Mutex<Vec<String>>>,
     batch_tx: tokio::sync::mpsc::UnboundedSender<String>,
     overlay_tx: overlay_server::OverlayTx,
+    storage: Arc<storage::Storage>,
 }
 
 #[cfg(feature = "tauri")]
@@ -106,6 +115,13 @@ impl bot::EventEmitter for BufferedEmitter {
                 // Fallthrough to emit singular event (needed for notifications in App.tsx)
             }
         } else if event == "live-event" {
+            if let Ok(mut settings) = plugin_settings::PluginSettings::load_or_default() {
+                let live_event = payload.get("event").unwrap_or(&payload);
+                if settings.apply_wish_goal_event(live_event) && settings.save().is_ok() {
+                    overlay_server::broadcast_plugin_settings_update(&self.overlay_tx);
+                }
+            }
+            cache_guard_gift_from_event(&self.storage, &payload);
             // 同步推送到 HTTP 弹幕浮层 WebSocket 客户端
             let _ = self.overlay_tx.send(payload.clone());
         }
@@ -378,6 +394,7 @@ async fn start_monitor(
         log_buffer: state.monitor_log_buffer.clone(),
         batch_tx,
         overlay_tx: state.overlay_tx.clone(),
+        storage: state.storage.clone(),
     };
 
     let models = model_dir(&app);
@@ -3292,6 +3309,8 @@ fn main() -> Result<()> {
 
     println!("Starting Tauri builder...");
     let storage_for_cleanup = state.storage.clone();
+    let gift_storage_for_refresh = state.storage.clone();
+    let gift_room_for_refresh = state.connected_room.clone();
     tauri::Builder::default()
         .plugin(tauri_plugin_shell::init())
         .plugin(tauri_plugin_opener::init())
@@ -3381,6 +3400,11 @@ fn main() -> Result<()> {
 
             tauri::async_runtime::spawn(db_cleanup_loop(storage_for_cleanup));
 
+            tauri::async_runtime::spawn(gift_catalog_refresh_loop(
+                gift_storage_for_refresh,
+                gift_room_for_refresh,
+            ));
+
             // 每次启动强制关闭话筒，避免异常退出后残留开启状态
             if let Ok(mut cfg) = AppConfig::load_or_default() {
                 if cfg.vad_enabled {
@@ -3444,11 +3468,17 @@ fn main() -> Result<()> {
             open_folder,
             force_quit,
             convert_rvc_pth_to_onnx,
-            open_overlay_window,
-            close_overlay_window,
+            get_gift_catalog,
+            refresh_gift_catalog,
             get_overlay_url,
+            get_wish_goal_url,
             load_overlay_config,
-            save_overlay_config
+            save_overlay_config,
+            load_plugin_settings,
+            save_plugin_settings,
+            pick_plugin_resource,
+            reset_wish_goal,
+            simulate_wish_goal
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
@@ -3461,6 +3491,201 @@ fn main() -> Result<()> {
 async fn get_overlay_url(_state: tauri::State<'_, SharedState>) -> Result<String, String> {
     let cfg = overlay_config::OverlayConfig::load_or_default().map_err(|e| e.to_string())?;
     Ok(format!("http://127.0.0.1:{}", cfg.port))
+}
+
+#[cfg(feature = "tauri")]
+#[tauri::command]
+async fn get_wish_goal_url(_state: tauri::State<'_, SharedState>) -> Result<String, String> {
+    let cfg = overlay_config::OverlayConfig::load_or_default().map_err(|e| e.to_string())?;
+    Ok(format!("http://127.0.0.1:{}/wish-goal", cfg.port))
+}
+
+#[cfg(feature = "tauri")]
+#[tauri::command]
+async fn get_gift_catalog(state: tauri::State<'_, SharedState>) -> Result<Vec<storage::GiftCatalogItem>, String> {
+    state.storage.gift_catalog().map_err(|e| e.to_string())
+}
+
+#[cfg(feature = "tauri")]
+#[tauri::command]
+async fn refresh_gift_catalog(state: tauri::State<'_, SharedState>) -> Result<Vec<storage::GiftCatalogItem>, String> {
+    refresh_gift_catalog_inner(&state).await?;
+    state.storage.gift_catalog().map_err(|e| e.to_string())
+}
+
+#[cfg(feature = "tauri")]
+async fn refresh_gift_catalog_inner(state: &tauri::State<'_, SharedState>) -> Result<(), String> {
+    let room_id = state
+        .connected_room
+        .lock()
+        .ok()
+        .and_then(|r| *r)
+        .or_else(|| AppConfig::load_or_default().ok().map(|c| c.room_id))
+        .filter(|id| *id > 0)
+        .unwrap_or(23174842);
+    let gifts = fetch_gift_catalog(room_id).await?;
+    state.storage.replace_gift_catalog(&gifts).map_err(|e| e.to_string())
+}
+
+#[cfg(feature = "tauri")]
+async fn gift_catalog_refresh_loop(
+    storage: Arc<storage::Storage>,
+    connected_room: Arc<Mutex<Option<i64>>>,
+) {
+    loop {
+        let stale = storage
+            .gift_catalog_stale(GIFT_CATALOG_MAX_AGE_SECS)
+            .unwrap_or(true);
+        if stale {
+            let room_id = connected_room
+                .lock()
+                .ok()
+                .and_then(|r| *r)
+                .or_else(|| AppConfig::load_or_default().ok().map(|c| c.room_id))
+                .filter(|id| *id > 0)
+                .unwrap_or(23174842);
+            if let Ok(gifts) = fetch_gift_catalog(room_id).await {
+                let _ = storage.replace_gift_catalog(&gifts);
+            }
+        }
+        tokio::time::sleep(std::time::Duration::from_secs(GIFT_CATALOG_MAX_AGE_SECS as u64)).await;
+    }
+}
+
+#[cfg(feature = "tauri")]
+fn guard_catalog_items(now: String) -> Vec<storage::GiftCatalogItem> {
+    vec![
+        storage::GiftCatalogItem {
+            gift_id: 10001,
+            name: "总督".to_string(),
+            price: 19_998_000,
+            image: FALLBACK_GUARD_ICON.to_string(),
+            updated_at: now.clone(),
+        },
+        storage::GiftCatalogItem {
+            gift_id: 10002,
+            name: "提督".to_string(),
+            price: 1_998_000,
+            image: FALLBACK_GUARD_ICON.to_string(),
+            updated_at: now.clone(),
+        },
+        storage::GiftCatalogItem {
+            gift_id: 10003,
+            name: "舰长".to_string(),
+            price: 198_000,
+            image: FALLBACK_GUARD_ICON.to_string(),
+            updated_at: now,
+        },
+    ]
+}
+
+#[cfg(feature = "tauri")]
+fn cache_guard_gift_from_event(storage: &storage::Storage, payload: &serde_json::Value) {
+    let live_event = payload.get("event").unwrap_or(payload);
+    if live_event.get("type").and_then(serde_json::Value::as_str) != Some("GuardBuy") {
+        return;
+    }
+    let raw = payload.get("raw").unwrap_or(payload);
+    let gift_name = live_event
+        .get("gift")
+        .and_then(serde_json::Value::as_str)
+        .or_else(|| raw.pointer("/data/gift_name").and_then(serde_json::Value::as_str))
+        .unwrap_or("舰长");
+    let guard_level = raw
+        .pointer("/data/guard_level")
+        .and_then(serde_json::Value::as_i64)
+        .unwrap_or_else(|| match gift_name {
+            "总督" => 3,
+            "提督" => 2,
+            _ => 1,
+        });
+    let image = raw
+        .pointer("/data/guard_icon")
+        .or_else(|| raw.pointer("/data/gift_img"))
+        .or_else(|| raw.pointer("/data/gift_info/img_basic"))
+        .and_then(serde_json::Value::as_str)
+        .filter(|s| !s.is_empty())
+        .unwrap_or(FALLBACK_GUARD_ICON);
+    let (gift_id, name, price) = match guard_level {
+        3 => (10001, "总督", 19_998_000),
+        2 => (10002, "提督", 1_998_000),
+        _ => (10003, "舰长", 198_000),
+    };
+    let item = storage::GiftCatalogItem {
+        gift_id,
+        name: name.to_string(),
+        price,
+        image: image.to_string(),
+        updated_at: Local::now().to_rfc3339(),
+    };
+    let _ = storage.upsert_gift_catalog_items(&[item]);
+}
+
+#[cfg(feature = "tauri")]
+async fn fetch_gift_catalog(room_id: i64) -> Result<Vec<storage::GiftCatalogItem>, String> {
+    let url = format!(
+        "https://api.live.bilibili.com/xlive/web-room/v1/giftPanel/roomGiftList?platform=pc&room_id={room_id}"
+    );
+    let value: serde_json::Value = reqwest::Client::new()
+        .get(url)
+        .header(reqwest::header::USER_AGENT, "Mozilla/5.0")
+        .send()
+        .await
+        .map_err(|e| e.to_string())?
+        .json()
+        .await
+        .map_err(|e| e.to_string())?;
+    if value.get("code").and_then(serde_json::Value::as_i64) != Some(0) {
+        return Err(value
+            .get("message")
+            .and_then(serde_json::Value::as_str)
+            .unwrap_or("获取礼物列表失败")
+            .to_string());
+    }
+    let now = Local::now().to_rfc3339();
+    let mut gifts = value
+        .pointer("/data/gift_config/base_config/list")
+        .and_then(serde_json::Value::as_array)
+        .ok_or_else(|| "礼物列表格式异常".to_string())?
+        .iter()
+        .filter_map(|item| {
+            let gift_id = item.get("id").or_else(|| item.get("gift_id")).and_then(serde_json::Value::as_i64)?;
+            let name = item.get("name").and_then(serde_json::Value::as_str)?.trim().to_string();
+            let price = item.get("price").and_then(serde_json::Value::as_i64).unwrap_or(0);
+            let image = item
+                .get("img_basic")
+                .or_else(|| item.get("img_dynamic"))
+                .and_then(serde_json::Value::as_str)
+                .unwrap_or("")
+                .trim()
+                .to_string();
+            if !valid_gift_catalog_item(&name, &image, price) {
+                return None;
+            }
+            Some(storage::GiftCatalogItem {
+                gift_id,
+                name,
+                price,
+                image,
+                updated_at: now.clone(),
+            })
+        })
+        .collect::<Vec<_>>();
+    gifts.extend(guard_catalog_items(now));
+    gifts.sort_by(|a, b| a.price.cmp(&b.price).then_with(|| a.name.cmp(&b.name)));
+    gifts.dedup_by_key(|gift| gift.gift_id);
+    Ok(gifts)
+}
+
+#[cfg(feature = "tauri")]
+fn valid_gift_catalog_item(name: &str, image: &str, price: i64) -> bool {
+    if name.is_empty() || image.is_empty() || price < 0 {
+        return false;
+    }
+    let lower = name.to_ascii_lowercase();
+    !["测试", "test", "过期", "下架", "废弃", "失效", "debug"]
+        .iter()
+        .any(|needle| lower.contains(needle) || name.contains(needle))
 }
 
 #[cfg(feature = "tauri")]
@@ -3483,44 +3708,76 @@ async fn save_overlay_config(
 
 #[cfg(feature = "tauri")]
 #[tauri::command]
-async fn open_overlay_window(app: tauri::AppHandle) -> Result<(), String> {
-    if let Some(win) = app.get_webview_window("danmu-overlay") {
-        let _ = win.show();
-        let _ = win.set_focus();
-        return Ok(());
-    }
-    let win = tauri::WebviewWindowBuilder::new(
-        &app,
-        "danmu-overlay",
-        tauri::WebviewUrl::App(std::path::PathBuf::from("index.html#overlay")),
-    )
-    .title("")
-    .inner_size(1280.0, 780.0)
-    .min_inner_size(900.0, 600.0)
-    .decorations(false)
-    .transparent(true)
-    .visible(false)
-    .resizable(true)
-    .always_on_top(false)
-    .accept_first_mouse(true)
-    .build()
-    .map_err(|e| e.to_string())?;
-    let show_win = win.clone();
-    tauri::async_runtime::spawn(async move {
-        tokio::time::sleep(std::time::Duration::from_millis(180)).await;
-        let _ = show_win.show();
-        let _ = show_win.set_focus();
-    });
+async fn load_plugin_settings() -> Result<plugin_settings::PluginSettings, String> {
+    plugin_settings::PluginSettings::load_or_default().map_err(|e| e.to_string())
+}
+
+#[cfg(feature = "tauri")]
+#[tauri::command]
+async fn save_plugin_settings(
+    config: plugin_settings::PluginSettings,
+    state: tauri::State<'_, SharedState>,
+) -> Result<(), String> {
+    config.save().map_err(|e| e.to_string())?;
+    overlay_server::broadcast_plugin_settings_update(&state.overlay_tx);
     Ok(())
 }
 
 #[cfg(feature = "tauri")]
 #[tauri::command]
-async fn close_overlay_window(app: tauri::AppHandle) -> Result<(), String> {
-    if let Some(win) = app.get_webview_window("danmu-overlay") {
-        win.close().map_err(|e| e.to_string())?;
+async fn pick_plugin_resource(app: AppHandle, kind: String) -> Result<Option<String>, String> {
+    use tauri_plugin_dialog::DialogExt;
+
+    let (title, filter, extensions): (&str, &str, &[&str]) = match kind.as_str() {
+        "font" => ("选择字体文件", "字体文件", &["ttf", "otf", "woff", "woff2"]),
+        "sound" => ("选择音效文件", "音频文件", &["mp3", "wav", "ogg"]),
+        _ => return Err("不支持的资源类型".to_string()),
+    };
+
+    let file = app
+        .dialog()
+        .file()
+        .set_title(title)
+        .add_filter(filter, extensions)
+        .blocking_pick_file();
+
+    match file {
+        Some(path) => {
+            let path = path
+                .into_path()
+                .map_err(|_| "无法读取所选文件路径".to_string())?;
+            let ext = path
+                .extension()
+                .and_then(|ext| ext.to_str())
+                .unwrap_or_default()
+                .to_ascii_lowercase();
+            if !extensions.iter().any(|allowed| *allowed == ext) {
+                return Err(format!("请选择 {} 文件", extensions.join("/")));
+            }
+            Ok(Some(path.to_string_lossy().to_string()))
+        }
+        None => Ok(None),
     }
-    Ok(())
+}
+
+#[cfg(feature = "tauri")]
+#[tauri::command]
+async fn reset_wish_goal(state: tauri::State<'_, SharedState>) -> Result<plugin_settings::PluginSettings, String> {
+    let mut config = plugin_settings::PluginSettings::load_or_default().map_err(|e| e.to_string())?;
+    config.reset_wish_goal();
+    config.save().map_err(|e| e.to_string())?;
+    overlay_server::broadcast_plugin_settings_update(&state.overlay_tx);
+    Ok(config)
+}
+
+#[cfg(feature = "tauri")]
+#[tauri::command]
+async fn simulate_wish_goal(state: tauri::State<'_, SharedState>) -> Result<plugin_settings::PluginSettings, String> {
+    let mut config = plugin_settings::PluginSettings::load_or_default().map_err(|e| e.to_string())?;
+    config.simulate_wish_goal();
+    config.save().map_err(|e| e.to_string())?;
+    overlay_server::broadcast_plugin_settings_update(&state.overlay_tx);
+    Ok(config)
 }
 
 #[cfg(not(feature = "tauri"))]

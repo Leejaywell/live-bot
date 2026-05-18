@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
-import { HashRouter, Routes, Route, useLocation } from 'react-router-dom';
+import { HashRouter, Routes, Route, Navigate, useLocation } from 'react-router-dom';
 import { LogIn, Home, Radio } from 'lucide-react';
 import { Toaster } from 'sonner';
 import { ThemeProvider } from './context/ThemeContext';
@@ -24,6 +24,8 @@ import { Voice } from './pages/Voice';
 import { VoiceChanger } from './pages/VoiceChanger';
 import { Models } from './pages/Models';
 import { Stats } from './pages/Stats';
+import { ChatOverlay } from './pages/ChatOverlay';
+import { WishGoal } from './pages/WishGoal';
 import { api, UserInfo, RoomInfo, AnchorInfo } from './lib/api';
 import { invoke } from '@tauri-apps/api/core';
 import QRCode from 'react-qr-code';
@@ -309,7 +311,6 @@ function AppContent() {
         <DanmuOverlay />
         {loginChecked && <div
           className="w-full h-screen overflow-hidden flex relative z-[1]"
-          onContextMenu={(e) => e.preventDefault()}
         >
           <Sidebar
             mode={sidebarMode}
@@ -430,6 +431,9 @@ function AnimatedRoutes() {
         <Route path="/voice-changer" element={<VoiceChanger />} />
         <Route path="/models" element={<Models />} />
         <Route path="/stats" element={<Stats />} />
+        <Route path="/plugins" element={<Navigate to="/plugins/chat-overlay" replace />} />
+        <Route path="/plugins/chat-overlay" element={<ChatOverlay />} />
+        <Route path="/plugins/wish-goal" element={<WishGoal />} />
       </Routes>
     </div>
   );

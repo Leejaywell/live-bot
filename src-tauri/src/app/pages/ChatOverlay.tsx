@@ -1,6 +1,4 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { getCurrentWindow } from '@tauri-apps/api/window';
-import { emit } from '@tauri-apps/api/event';
 import { api, OverlayConfig } from '../lib/api';
 import { hexToRgb, visualThemes, type VisualThemeId } from '../context/ThemeContext';
 
@@ -813,7 +811,6 @@ export function ChatOverlay() {
   const [activeSettingsTab, setActiveSettingsTab] = useState<SettingsTab>('base');
   const [animKey, setAnimKey] = useState(0);
 
-  const dragRef = useRef<HTMLDivElement>(null);
   const saveTimer = useRef<number | null>(null);
 
   // ── Theme + keyframes ────────────────────────────────────────────────────
@@ -844,20 +841,6 @@ export function ChatOverlay() {
     };
   }, []);
 
-  useEffect(() => {
-    if (!loaded) return;
-    let cancelled = false;
-    requestAnimationFrame(() => {
-      requestAnimationFrame(() => {
-        if (cancelled) return;
-        const win = getCurrentWindow();
-        win.show().catch(() => {});
-        win.setFocus().catch(() => {});
-      });
-    });
-    return () => { cancelled = true; };
-  }, [loaded]);
-
   // ── Initial load ─────────────────────────────────────────────────────────
   useEffect(() => {
     api.loadOverlayConfig().then(c => {
@@ -881,49 +864,6 @@ export function ChatOverlay() {
   useEffect(() => {
     setAnimKey(k => k + 1);
   }, [cfg.AnimateIn, cfg.FadeInTime, cfg.Slide, cfg.ReverseSlide]);
-
-  // ── Notify main window on close so Danmu.tsx syncs button state ──────────
-  const closeOverlay = () => {
-    emit('overlay-closed').catch(() => {});
-    getCurrentWindow().close().catch(() => {});
-  };
-  // Fallback for Cmd+W / external close
-  useEffect(() => {
-    const onUnload = () => { emit('overlay-closed').catch(() => {}); };
-    window.addEventListener('beforeunload', onUnload);
-    return () => window.removeEventListener('beforeunload', onUnload);
-  }, []);
-
-  useEffect(() => {
-    const onKeyDown = (e: KeyboardEvent) => {
-      const target = e.target as HTMLElement | null;
-      const isEditing = target?.closest('input, textarea, select, [contenteditable="true"]');
-      const isCloseShortcut = e.key === 'Escape' || ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'w');
-      if (!isCloseShortcut) return;
-      if (isEditing && e.key !== 'Escape') return;
-      e.preventDefault();
-      closeOverlay();
-    };
-    window.addEventListener('keydown', onKeyDown);
-    return () => window.removeEventListener('keydown', onKeyDown);
-  }, []);
-
-  // ── Native drag ───────────────────────────────────────────────────────────
-  useEffect(() => {
-    const el = dragRef.current;
-    if (!el) return;
-    const onDown = (e: MouseEvent) => {
-      if (e.button !== 0) return;
-      const target = e.target as HTMLElement;
-      if (target.closest('button, input, a, select, textarea')) return;
-      e.preventDefault();
-      getCurrentWindow().startDragging().catch(err =>
-        console.error('[overlay] startDragging failed:', err),
-      );
-    };
-    el.addEventListener('mousedown', onDown);
-    return () => el.removeEventListener('mousedown', onDown);
-  }, []);
 
   // ── Helpers ───────────────────────────────────────────────────────────────
   const u = <K extends keyof OverlayConfig>(k: K, v: OverlayConfig[K]) =>
@@ -1154,31 +1094,14 @@ export function ChatOverlay() {
 
   // ── Render ───────────────────────────────────────────────────────────────
   return (
-    <div className="fixed inset-0 overflow-hidden bg-transparent p-2 text-[var(--foreground)]">
-      <div className="glass-card relative flex h-full min-h-[584px] min-w-[884px] flex-col overflow-hidden rounded-[28px] [clip-path:inset(0_round_28px)]">
-
-      {/* Title bar (drag) */}
-      <div ref={dragRef}
-        className="relative z-10 flex items-center shrink-0 h-10 px-4 gap-2 cursor-move border-b border-[var(--topbar-border)] bg-[var(--topbar-bg)] select-none">
-        <div className="h-2 w-2 rounded-full bg-[var(--primary-color)] opacity-80 pointer-events-none" />
-        <span className="text-[12px] font-semibold flex-1 text-[var(--muted-text)] pointer-events-none">
-          弹幕浮层 · 样式设置
-        </span>
-        <button
-          onClick={closeOverlay}
-          aria-label="关闭弹幕设置"
-          title="关闭弹幕设置"
-          className="h-7 rounded-full border border-red-400/35 bg-red-500/10 px-3 text-[12px] font-semibold text-red-600 shadow-sm transition-colors hover:border-red-400/65 hover:bg-red-500 hover:text-white dark:text-red-300"
-        >
-          关闭
-        </button>
-      </div>
+    <div className="h-full overflow-hidden bg-transparent p-5 text-[var(--foreground)]">
+      <div className="glass-card relative flex h-full min-h-[584px] flex-col overflow-hidden rounded-[24px]">
 
       {/* Body */}
       <div className="relative z-10 flex flex-1 overflow-hidden max-[1040px]:flex-col">
 
         {/* Left: settings panel */}
-        <div className="w-[clamp(440px,48vw,620px)] shrink-0 flex flex-col border-r border-[var(--sidebar-border)] bg-[var(--sidebar-bg)] max-[1040px]:h-[52%] max-[1040px]:w-full max-[1040px]:border-b max-[1040px]:border-r-0">
+        <div className="w-[clamp(400px,42vw,540px)] shrink-0 flex flex-col border-r border-[var(--sidebar-border)] bg-[var(--sidebar-bg)] max-[1040px]:h-[52%] max-[1040px]:w-full max-[1040px]:border-b max-[1040px]:border-r-0">
           <div className="shrink-0 p-4">
             <div className="glass-card rounded-[18px] px-5 py-4">
             <div>

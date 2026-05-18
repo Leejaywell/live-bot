@@ -10,6 +10,7 @@ import {
   BarChart3,
   Users2,
   Settings as SettingsIcon,
+  Plug,
   Moon,
   Sun,
   Sparkles,
@@ -39,6 +40,16 @@ const navItems = [
   { path: '/voice', label: '语音陪伴', icon: Mic },
   { path: '/voice-changer', label: '语音变声', icon: Sparkles },
   { path: '/models', label: '模型管理', icon: Cpu },
+  {
+    path: '/plugins/chat-overlay',
+    pathPrefix: '/plugins',
+    label: '插件中心',
+    icon: Plug,
+    children: [
+      { path: '/plugins/chat-overlay', label: '弹幕浮层' },
+      { path: '/plugins/wish-goal', label: '心愿目标' },
+    ],
+  },
 ];
 
 export function Sidebar({ mode = 'expanded', onToggleThemePanel, onToggleSidebar, onToggleSettings }: SidebarProps) {
@@ -117,35 +128,57 @@ export function Sidebar({ mode = 'expanded', onToggleThemePanel, onToggleSidebar
 
           {navItems.map((item) => {
             const Icon = item.icon;
-            const isActive = location.pathname === item.path;
+            const isActive = item.pathPrefix ? location.pathname.startsWith(item.pathPrefix) : location.pathname === item.path;
             const disabled = !connected && !!item.requiresRoom;
 
             return (
-              <Link
-                key={item.path}
-                to={item.path}
-                data-active={String(isActive)}
-                onClick={(e) => handleNavClick(e, item.requiresRoom)}
-                title={iconOnly ? item.label : undefined}
-                className={cn(
-                  'flex items-center h-[42px] rounded-[12px] relative z-10 group',
-                  'transition-colors duration-200',
-                  iconOnly ? 'justify-center px-0' : 'gap-3 px-3',
-                  isActive
-                    ? 'text-white'
-                    : disabled
-                    ? 'text-gray-400 dark:text-gray-600 opacity-50 cursor-not-allowed'
-                    : 'text-gray-800 dark:text-gray-100 hover:text-gray-900 dark:hover:text-white hover:bg-[var(--button-ghost-hover)]',
+              <div key={item.path} className="relative z-10">
+                <Link
+                  to={item.path}
+                  data-active={String(isActive)}
+                  onClick={(e) => handleNavClick(e, item.requiresRoom)}
+                  title={iconOnly ? item.label : undefined}
+                  className={cn(
+                    'flex items-center h-[42px] rounded-[12px] group',
+                    'transition-colors duration-200',
+                    iconOnly ? 'justify-center px-0' : 'gap-3 px-3',
+                    isActive
+                      ? 'text-white'
+                      : disabled
+                      ? 'text-gray-400 dark:text-gray-600 opacity-50 cursor-not-allowed'
+                      : 'text-gray-800 dark:text-gray-100 hover:text-gray-900 dark:hover:text-white hover:bg-[var(--button-ghost-hover)]',
+                  )}
+                >
+                  <Icon className={cn(
+                    'w-[15px] h-[15px] transition-transform duration-300 shrink-0',
+                    !isActive && !disabled && 'group-hover:scale-110',
+                  )} />
+                  {!iconOnly && (
+                    <span className="text-[13px] font-black flex-1 tracking-tight whitespace-nowrap">{item.label}</span>
+                  )}
+                </Link>
+                {!iconOnly && item.children && isActive && (
+                  <div className="mt-1 ml-[27px] flex flex-col gap-1 border-l border-white/10 pl-2">
+                    {item.children.map((child) => {
+                      const childActive = location.pathname === child.path;
+                      return (
+                        <Link
+                          key={child.path}
+                          to={child.path}
+                          className={cn(
+                            'h-[28px] rounded-lg px-2 flex items-center text-[11px] font-bold transition-colors',
+                            childActive
+                              ? 'bg-[var(--button-ghost-hover)] text-[var(--primary-color)]'
+                              : 'text-gray-500 dark:text-gray-400 hover:bg-[var(--button-ghost-hover)] hover:text-gray-800 dark:hover:text-gray-100',
+                          )}
+                        >
+                          {child.label}
+                        </Link>
+                      );
+                    })}
+                  </div>
                 )}
-              >
-                <Icon className={cn(
-                  'w-[15px] h-[15px] transition-transform duration-300 shrink-0',
-                  !isActive && !disabled && 'group-hover:scale-110',
-                )} />
-                {!iconOnly && (
-                  <span className="text-[13px] font-black flex-1 tracking-tight whitespace-nowrap">{item.label}</span>
-                )}
-              </Link>
+              </div>
             );
           })}
         </nav>

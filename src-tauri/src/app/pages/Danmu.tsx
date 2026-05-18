@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { invoke } from '@tauri-apps/api/core';
-import { listen } from '@tauri-apps/api/event';
+import { useNavigate } from 'react-router-dom';
 import { GlassCard } from '../components/GlassCard';
 import { Input } from '../components/Input';
 import { Toggle } from '../components/Toggle';
@@ -96,6 +96,7 @@ function buildDanmuSpeechText(user?: string, content?: string): string | null {
 }
 
 export function Danmu() {
+  const navigate = useNavigate();
   const { isLoggedIn: loggedIn } = useLogin();
   const { backgroundEffect } = useTheme();
   const [filter, setFilter] = useState('all');
@@ -106,8 +107,6 @@ export function Danmu() {
   const bufferRef = useRef<LogEntry[]>([]);
   // content → 最近出现时间戳列表
   const freqMap = useRef<Map<string, number[]>>(new Map());
-
-  const [isOverlayOpen, setIsOverlayOpen] = useState(false);
 
   // Pause state: frontend stops polling, backend continues
   const [isPaused, setIsPaused] = useState(false);
@@ -139,12 +138,6 @@ export function Danmu() {
   useEffect(() => { isTtsEnabledRef.current = isTtsEnabled; }, [isTtsEnabled]);
   useEffect(() => { ttsVoiceRef.current = ttsVoice; }, [ttsVoice]);
   useEffect(() => { danmuAnnounceSpeedRef.current = danmuAnnounceSpeed; }, [danmuAnnounceSpeed]);
-
-  // 监听弹幕浮层窗口关闭事件，同步按钮状态
-  useEffect(() => {
-    const p = listen('overlay-closed', () => setIsOverlayOpen(false));
-    return () => { p.then(fn => fn()).catch(() => {}); };
-  }, []);
 
   // Load TTS providers from config
   useEffect(() => {
@@ -369,20 +362,6 @@ export function Danmu() {
     isPausedRef.current = next;
   };
 
-  const toggleOverlay = async () => {
-    try {
-      if (isOverlayOpen) {
-        await api.closeOverlayWindow();
-        setIsOverlayOpen(false);
-      } else {
-        await api.openOverlayWindow();
-        setIsOverlayOpen(true);
-      }
-    } catch (err) {
-      toast.error(`浮层操作失败: ${err}`);
-    }
-  };
-
   const toggleTts = () => {
     if (!isTtsEnabled && ttsProviders.length === 0) {
       toast.error('请先添加TTS服务');
@@ -520,14 +499,9 @@ export function Danmu() {
               ))}
             </div>
             <button
-              onClick={toggleOverlay}
-              title={isOverlayOpen ? '关闭弹幕浮层' : '打开弹幕浮层设置'}
-              className={cn(
-                'h-[32px] w-[32px] rounded-full flex items-center justify-center border transition-all ml-2 active:scale-95',
-                isOverlayOpen
-                  ? 'bg-[var(--primary-color)]/15 border-[var(--primary-color)]/40 text-[var(--primary-color)]'
-                  : 'border-gray-200 dark:border-white/20 text-gray-400 hover:bg-white/60 hover:text-gray-600 dark:hover:text-gray-300'
-              )}
+              onClick={() => navigate('/plugins/chat-overlay')}
+              title="打开弹幕浮层设置"
+              className="h-[32px] w-[32px] rounded-full flex items-center justify-center border border-gray-200 dark:border-white/20 text-gray-400 hover:bg-white/60 hover:text-gray-600 dark:hover:text-gray-300 transition-all ml-2 active:scale-95"
             >
               <Settings2 className="w-3.5 h-3.5" />
             </button>

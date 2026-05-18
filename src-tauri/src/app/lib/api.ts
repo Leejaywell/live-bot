@@ -220,6 +220,49 @@ export interface OverlayConfig {
   BlurryOutline: boolean;
 }
 
+export interface PluginSettings {
+  WishGoal: WishGoalSettings;
+}
+
+export interface WishGoalSettings {
+  Enabled: boolean;
+  Title: string;
+  Goals: WishGoalItem[];
+  NumberColor: string;
+  BackgroundColor: string;
+  AccentColor: string;
+  TextColor: string;
+  DisplaySize: 'small' | 'normal' | 'large' | string;
+  ShowIcons: boolean;
+  FontMode: string;
+  FontFamily: string;
+  CompleteAnimation: string;
+  CompleteSound: string;
+  SoundVolume: number;
+  SoundRepeat: string;
+  CustomFontPath: string;
+  CustomSoundPath: string;
+}
+
+export interface WishGoalItem {
+  Id: string;
+  Name: string;
+  Current: number;
+  Target: number;
+  Icon: string;
+  MatchKind: 'gift' | 'manual' | string;
+  GiftName: string;
+  Increment: number;
+}
+
+export interface GiftCatalogItem {
+  GiftId: number;
+  Name: string;
+  Price: number;
+  Image: string;
+  UpdatedAt: string;
+}
+
 export interface UserInfo {
   uid: number;
   uname: string;
@@ -340,9 +383,11 @@ export const api = {
   onMonitorStatus: (callback: (status: string) => void) => listen<string>('monitor-status', (event) => callback(event.payload)),
   onMonitorLog: (callback: (log: string) => void) => listen<string>('monitor-log', (event) => callback(event.payload)),
   onMonitorLogs: (callback: (logs: string[]) => void) => listen<string[]>('monitor-logs', (event) => callback(event.payload)),
-  openOverlayWindow: () => invoke<void>('open_overlay_window'),
-  closeOverlayWindow: () => invoke<void>('close_overlay_window'),
   getOverlayUrl: () => invoke<string>('get_overlay_url'),
+  getWishGoalUrl: () => invoke<string>('get_wish_goal_url'),
+  pickPluginResource: (kind: 'font' | 'sound') => invoke<string | null>('pick_plugin_resource', { kind }),
+  getGiftCatalog: () => invoke<GiftCatalogItem[]>('get_gift_catalog'),
+  refreshGiftCatalog: () => invoke<GiftCatalogItem[]>('refresh_gift_catalog'),
   onLiveEvent: (callback: (event: any) => void) => listen<any>('live-event', (event) => callback(event.payload)),
   onLiveEvents: (callback: (events: any[]) => void) => listen<any[]>('live-events', (event) => callback(event.payload)),
   onRoomStatus: (callback: (data: { live_status: number; online: number; live_time: string }) => void) =>
@@ -374,6 +419,10 @@ export const api = {
   // Overlay config (独立存储，etc/overlay.toml)
   loadOverlayConfig: () => invoke<OverlayConfig>('load_overlay_config'),
   saveOverlayConfig: (config: OverlayConfig) => invoke<void>('save_overlay_config', { config }),
+  loadPluginSettings: () => invoke<PluginSettings>('load_plugin_settings'),
+  savePluginSettings: (config: PluginSettings) => invoke<void>('save_plugin_settings', { config }),
+  resetWishGoal: () => invoke<PluginSettings>('reset_wish_goal'),
+  simulateWishGoal: () => invoke<PluginSettings>('simulate_wish_goal'),
 
   // Persistent room connection
   setConnectedRoom: (roomId: number | null) => invoke<void>('set_connected_room', { roomId }),

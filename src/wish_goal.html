@@ -1,0 +1,126 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<style>
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+html,body{height:100%;overflow:hidden;background:transparent;font-family:"PingFang SC","Microsoft YaHei","Noto Sans SC",sans-serif}
+body{display:flex;align-items:center;justify-content:center}
+#card{min-width:260px;max-width:460px;padding:10px;border:2px solid var(--accent,#22d3ee);border-radius:12px;background:var(--bg,rgba(30,34,40,.72));box-shadow:0 14px 36px rgba(0,0,0,.18);backdrop-filter:blur(8px)}
+#title{margin-bottom:8px;padding:4px 10px;border:1px solid color-mix(in srgb,var(--accent,#22d3ee),white 35%);border-radius:8px;background:rgba(255,255,255,.58);color:var(--text,#111827);font-weight:900;text-align:center}
+#items{display:flex;flex-direction:column;gap:6px}
+.goal{padding:7px 8px;border:1px solid color-mix(in srgb,var(--accent,#22d3ee),white 25%);border-radius:9px;background:rgba(255,255,255,.56);color:var(--text,#111827)}
+.line{display:flex;align-items:center;gap:8px;margin-bottom:5px}
+.icon{display:flex;align-items:center;justify-content:center;width:26px;height:26px;border-radius:999px;background:var(--accent,#22d3ee);color:white;font-size:12px;font-weight:900;box-shadow:0 2px 6px rgba(0,0,0,.22)}
+.name{flex:1;font-weight:900;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.num{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-weight:900;color:var(--num,#fff);text-shadow:0 1px 2px rgba(0,0,0,.75)}
+.bar{height:8px;border-radius:999px;background:rgba(255,255,255,.5);overflow:hidden}
+.fill{height:100%;border-radius:inherit;background:var(--accent,#22d3ee);transition:width .25s ease}
+@keyframes completePulse{0%,100%{transform:scale(1)}50%{transform:scale(1.035);filter:brightness(1.12)}}
+@keyframes completeBounce{0%,100%{transform:translateY(0)}35%{transform:translateY(-8px)}65%{transform:translateY(2px)}}
+@keyframes completeSpark{0%{box-shadow:0 0 0 rgba(255,255,255,0)}50%{box-shadow:0 0 0 5px rgba(255,255,255,.28),0 0 28px var(--accent,#22d3ee)}100%{box-shadow:0 0 0 rgba(255,255,255,0)}}
+.complete.anim-pulse{animation:completePulse .8s ease}
+.complete.anim-bounce{animation:completeBounce .7s ease}
+.complete.anim-spark{animation:completeSpark .9s ease}
+body.size-small #card{transform:scale(.86)}
+body.size-large #card{transform:scale(1.18)}
+body.no-icons .icon{display:none}
+</style>
+<style id="custom-font-style"></style>
+</head>
+<body>
+<div id="card">
+  <div id="title"></div>
+  <div id="items"></div>
+</div>
+<script>
+var cfg=null;
+var completed={};
+var audioCtx=null;
+var customFontPath='';
+function esc(s){return String(s||'').replace(/[&<>"']/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]})}
+function localResource(path){return '/local-resource?url='+encodeURIComponent(path||'')}
+function fontFamily(name){
+  if(name==='rounded') return '"PingFang SC","Microsoft YaHei",sans-serif';
+  if(name==='serif') return 'Songti SC, SimSun, serif';
+  if(name==='mono') return 'ui-monospace,SFMono-Regular,Menlo,Consolas,monospace';
+  return '"PingFang SC","Microsoft YaHei","Noto Sans SC",sans-serif';
+}
+function applyFont(){
+  if(cfg.FontMode==='custom' && cfg.CustomFontPath){
+    if(customFontPath!==cfg.CustomFontPath){
+      customFontPath=cfg.CustomFontPath;
+      document.getElementById('custom-font-style').textContent='@font-face{font-family:"WishGoalCustomFont";src:url("'+localResource(customFontPath)+'");font-display:swap}';
+    }
+    document.body.style.fontFamily='"WishGoalCustomFont","PingFang SC","Microsoft YaHei","Noto Sans SC",sans-serif';
+    return;
+  }
+  customFontPath='';
+  document.getElementById('custom-font-style').textContent='';
+  document.body.style.fontFamily=fontFamily(cfg.FontFamily);
+}
+function playBuiltinSound(kind, volume){
+  if(!kind || kind==='mute') return;
+  try{
+    audioCtx=audioCtx||new (window.AudioContext||window.webkitAudioContext)();
+    var osc=audioCtx.createOscillator(), gain=audioCtx.createGain();
+    var freq=kind==='coin'?880:kind==='success'?660:520;
+    osc.frequency.value=freq; osc.type='sine';
+    gain.gain.value=Math.max(0,Math.min(1,Number(volume||60)/100))*0.18;
+    osc.connect(gain); gain.connect(audioCtx.destination);
+    osc.start(); gain.gain.exponentialRampToValueAtTime(0.0001,audioCtx.currentTime+0.28); osc.stop(audioCtx.currentTime+0.3);
+  }catch(e){}
+}
+function playSound(kind, volume){
+  if(kind==='custom' && cfg.CustomSoundPath){
+    try{
+      var audio=new Audio(localResource(cfg.CustomSoundPath));
+      audio.volume=Math.max(0,Math.min(1,Number(volume||60)/100));
+      audio.onerror=function(){playBuiltinSound('chime',volume)};
+      var p=audio.play();
+      if(p&&p.catch) p.catch(function(){playBuiltinSound('chime',volume)});
+      return;
+    }catch(e){playBuiltinSound('chime',volume);return}
+  }
+  playBuiltinSound(kind,volume);
+}
+function apply(next){
+  cfg=(next&&next.WishGoal)||next||{};
+  document.body.className='';
+  if(cfg.DisplaySize) document.body.classList.add('size-'+cfg.DisplaySize);
+  if(cfg.ShowIcons===false) document.body.classList.add('no-icons');
+  applyFont();
+  document.documentElement.style.setProperty('--accent',cfg.AccentColor||'#22d3ee');
+  document.documentElement.style.setProperty('--bg',cfg.BackgroundColor||'rgba(30,34,40,.72)');
+  document.documentElement.style.setProperty('--text',cfg.TextColor||'#111827');
+  document.documentElement.style.setProperty('--num',cfg.NumberColor||'#fff');
+  document.getElementById('title').textContent=cfg.Title||'今日心愿目标';
+  var items=document.getElementById('items');
+  items.innerHTML=(cfg.Goals||[]).map(function(g){
+    var target=Math.max(1,Number(g.Target||1));
+    var current=Math.max(0,Number(g.Current||0));
+    var pct=Math.min(100,(current/target)*100);
+    var done=current>=target;
+    var id=String(g.Id||g.Name||'');
+    var cls=done?' goal complete':' goal';
+    if(done && (!completed[id] || cfg.SoundRepeat==='always')) {
+      setTimeout(function(){playSound(cfg.CompleteSound,cfg.SoundVolume)},0);
+    }
+    if(done) completed[id]=true; else completed[id]=false;
+    var anim=done&&cfg.CompleteAnimation&&cfg.CompleteAnimation!=='none'?' anim-'+cfg.CompleteAnimation:'';
+    return '<div class="'+cls+anim+'"><div class="line"><span class="name">'+esc(g.Name)+'</span><span class="num">'+current+'/'+target+'</span></div><div class="bar"><div class="fill" style="width:'+pct+'%"></div></div></div>';
+  }).join('');
+}
+function load(){fetch('/plugin-settings').then(function(r){return r.json()}).then(apply).catch(function(){})}
+load();
+var ws=new WebSocket((location.protocol==='https:'?'wss://':'ws://')+location.host+'/ws');
+ws.onmessage=function(ev){
+  try{
+    var data=JSON.parse(ev.data);
+    if(data._plugin_settings_update) load();
+  }catch(e){}
+};
+</script>
+</body>
+</html>

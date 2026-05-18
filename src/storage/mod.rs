@@ -1,7 +1,7 @@
 use anyhow::Result;
 use bilibili_live_protocol::{InteractKind, LiveEvent, ParsedLiveEvent, PkEventKind};
 use chrono::{DateTime, Datelike, Local};
-use rusqlite::{Connection, OptionalExtension, params};
+use rusqlite::{params, Connection, OptionalExtension};
 use std::sync::Mutex;
 
 #[derive(Debug)]
@@ -101,6 +101,16 @@ pub struct PkSessionSummary {
     pub win_count: i64,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
+#[serde(rename_all = "PascalCase")]
+pub struct GiftCatalogItem {
+    pub gift_id: i64,
+    pub name: String,
+    pub price: i64,
+    pub image: String,
+    pub updated_at: String,
+}
+
 impl Storage {
     pub fn open(path: &str) -> Result<Self> {
         std::fs::create_dir_all(
@@ -180,6 +190,14 @@ impl Storage {
                 updated_at text not null
             );
             create index if not exists idx_tracked_users_status on tracked_users(status);
+            create table if not exists live_gift_catalog (
+                gift_id integer primary key,
+                name text not null,
+                price integer not null,
+                image text not null,
+                updated_at text not null
+            );
+            create index if not exists idx_live_gift_catalog_name on live_gift_catalog(name);
             ",
         )?;
         // 一次性迁移：将 interaction_records 里满足条件的历史用户播种到 tracked_users
@@ -208,6 +226,89 @@ impl Storage {
         Ok(Self {
             conn: Mutex::new(conn),
         })
+    }
+
+    pub fn replace_gift_catalog(&self, gifts: &[GiftCatalogItem]) -> Result<()> {
+        let mut conn = self.conn.lock().expect("storage mutex poisoned");
+        let tx = conn.transaction()?;
+        tx.execute("delete from live_gift_catalog", [])?;
+        {
+            let mut stmt = tx.prepare(
+                "insert into live_gift_catalog (gift_id, name, price, image, updated_at)
+                 values (?1, ?2, ?3, ?4, ?5)",
+            )?;
+            for gift in gifts {
+                stmt.execute(params![
+                    gift.gift_id,
+                    gift.name,
+                    gift.price,
+                    gift.image,
+                    gift.updated_at
+                ])?;
+            }
+        }
+        tx.commit()?;
+        Ok(())
+    }
+
+    pub fn upsert_gift_catalog_items(&self, gifts: &[GiftCatalogItem]) -> Result<()> {
+        let conn = self.conn.lock().expect("storage mutex poisoned");
+        let mut stmt = conn.prepare(
+            "insert into live_gift_catalog (gift_id, name, price, image, updated_at)
+             values (?1, ?2, ?3, ?4, ?5)
+             on conflict(gift_id) do update set
+                name = excluded.name,
+                price = excluded.price,
+                image = excluded.image,
+                updated_at = excluded.updated_at",
+        )?;
+        for gift in gifts {
+            stmt.execute(params![
+                gift.gift_id,
+                gift.name,
+                gift.price,
+                gift.image,
+                gift.updated_at
+            ])?;
+        }
+        Ok(())
+    }
+
+    pub fn gift_catalog(&self) -> Result<Vec<GiftCatalogItem>> {
+        let conn = self.conn.lock().expect("storage mutex poisoned");
+        let mut stmt = conn.prepare(
+            "select gift_id, name, price, image, updated_at
+             from live_gift_catalog
+             order by price asc, name asc",
+        )?;
+        let rows = stmt.query_map([], |row| {
+            Ok(GiftCatalogItem {
+                gift_id: row.get(0)?,
+                name: row.get(1)?,
+                price: row.get(2)?,
+                image: row.get(3)?,
+                updated_at: row.get(4)?,
+            })
+        })?;
+        rows.collect::<rusqlite::Result<Vec<_>>>()
+            .map_err(Into::into)
+    }
+
+    pub fn gift_catalog_stale(&self, max_age_secs: i64) -> Result<bool> {
+        let conn = self.conn.lock().expect("storage mutex poisoned");
+        let latest: Option<String> = conn
+            .query_row("select max(updated_at) from live_gift_catalog", [], |row| {
+                row.get(0)
+            })
+            .optional()?
+            .flatten();
+        let Some(latest) = latest else {
+            return Ok(true);
+        };
+        let Ok(updated_at) = chrono::DateTime::parse_from_rfc3339(&latest) else {
+            return Ok(true);
+        };
+        Ok((Local::now() - updated_at.with_timezone(&Local)).num_seconds() >= max_age_secs)
     }
 
     pub fn start_observed_live_session(
