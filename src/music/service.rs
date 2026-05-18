@@ -125,8 +125,16 @@ impl MusicInteractionService {
                 user,
                 text,
             } => self.handle_danmu(*user_id, user, text).await,
-            bilibili_live_protocol::LiveEvent::Gift { .. }
-            | bilibili_live_protocol::LiveEvent::SuperChat { .. } => Ok(SongServiceReply::Ignored),
+            bilibili_live_protocol::LiveEvent::Gift {
+                user, gift, count, ..
+            } => Ok(SongServiceReply::Message(format!(
+                "感谢 {user} 赠送 {gift} x{count}，点歌积分将在接入存储后生效"
+            ))),
+            bilibili_live_protocol::LiveEvent::SuperChat { user, price, .. } => {
+                Ok(SongServiceReply::Message(format!(
+                    "感谢 {user} 的醒目留言，点歌积分将在接入存储后生效（{price}元）"
+                )))
+            }
             _ => Ok(SongServiceReply::Ignored),
         }
     }
@@ -336,7 +344,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn live_event_gift_is_ignored() {
+    async fn live_event_gift_returns_credit_status_message() {
         let service = MusicInteractionService::new_for_tests(vec![Box::new(
             FakeProvider::with_tracks(vec![track("晴天", &["周杰伦"], "186016")]),
         )]);
@@ -352,12 +360,15 @@ mod tests {
 
         let reply = service.handle_live_event(&event).await.expect("reply");
 
-        assert!(matches!(reply, SongServiceReply::Ignored));
-        assert_eq!(reply.to_danmu_text(), "");
+        assert!(matches!(reply, SongServiceReply::Message(_)));
+        let text = reply.to_danmu_text();
+        assert!(!text.is_empty());
+        assert!(text.contains("点歌积分将在接入存储后生效"));
+        assert!(text.contains("辣条 x1"));
     }
 
     #[tokio::test]
-    async fn live_event_super_chat_is_ignored() {
+    async fn live_event_super_chat_returns_credit_status_message() {
         let service = MusicInteractionService::new_for_tests(vec![Box::new(
             FakeProvider::with_tracks(vec![track("晴天", &["周杰伦"], "186016")]),
         )]);
@@ -370,7 +381,10 @@ mod tests {
 
         let reply = service.handle_live_event(&event).await.expect("reply");
 
-        assert!(matches!(reply, SongServiceReply::Ignored));
-        assert_eq!(reply.to_danmu_text(), "");
+        assert!(matches!(reply, SongServiceReply::Message(_)));
+        let text = reply.to_danmu_text();
+        assert!(!text.is_empty());
+        assert!(text.contains("点歌积分将在接入存储后生效"));
+        assert!(text.contains("30元"));
     }
 }

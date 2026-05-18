@@ -6,7 +6,7 @@ use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::Instant;
 use tokio::net::TcpStream;
-use tokio::sync::mpsc;
+use tokio::sync::{Semaphore, mpsc};
 use tokio::time::{Duration, sleep, timeout};
 use tokio_util::sync::CancellationToken;
 
@@ -17,6 +17,7 @@ use crate::bot::{self, agent};
 use crate::config::AppConfig;
 use crate::music::providers::netease::NeteaseProvider;
 use crate::music::service::MusicInteractionService;
+use crate::plugin_settings::PluginSettings;
 use crate::storage::Storage;
 use crate::token;
 
@@ -499,15 +500,29 @@ pub async fn run_monitor_loop<E: EventEmitter + Send + Sync + 'static>(
             .ok()
             .map(|s| s.cookie)
             .unwrap_or_default();
-        let music_service = Arc::new(MusicInteractionService::new(vec![Box::new(
-            NeteaseProvider::new(reqwest::Client::new()),
-        )]));
+        let music_interaction_enabled = PluginSettings::load_or_default()
+            .map(|settings| settings.music_interaction.enabled)
+            .unwrap_or_else(|err| {
+                let _ = ws_app.emit(
+                    "monitor-log",
+                    json!(format!("读取点歌互动设置失败，已跳过点歌处理: {err}")),
+                );
+                false
+            });
+        let music_service = music_interaction_enabled.then(|| {
+            Arc::new(MusicInteractionService::new(vec![Box::new(
+                NeteaseProvider::new(reqwest::Client::new()),
+            )]))
+        });
+        let music_task_limit = Arc::new(Semaphore::new(8));
 
         loop {
             let bot_config = bot_config.clone();
             let session_memory = session_memory.clone();
             let my_room_ids = my_room_ids.clone();
             let music_service = music_service.clone();
+            let music_task_limit = music_task_limit.clone();
+            let music_cancel = ws_cancel.child_token();
             let result = async {
                 let room = ws_http.room_init(room_id).await?;
                 let session_id = {
@@ -574,6 +589,8 @@ pub async fn run_monitor_loop<E: EventEmitter + Send + Sync + 'static>(
                 let event_tts_router = tts_router.clone();
                 let event_agent = agent_runtime.clone();
                 let event_music_service = music_service.clone();
+                let event_music_task_limit = music_task_limit.clone();
+                let event_music_cancel = music_cancel.clone();
 
                 let danmaku_buf_cb = ws_danmaku.clone();
 
@@ -644,17 +661,44 @@ pub async fn run_monitor_loop<E: EventEmitter + Send + Sync + 'static>(
                             | bilibili_live_protocol::LiveEvent::Gift { .. }
                             | bilibili_live_protocol::LiveEvent::SuperChat { .. }
                     ) {
-                        let music_service = event_music_service.clone();
-                        let tx = event_tx.clone();
-                        let event = event.clone();
-                        tokio::spawn(async move {
-                            if let Ok(reply) = music_service.handle_live_event(&event).await {
-                                let text = reply.to_danmu_text();
-                                if !text.is_empty() {
-                                    let _ = tx.send(text).await;
+                        if let Some(music_service) = event_music_service.clone() {
+                            match event_music_task_limit.clone().try_acquire_owned() {
+                                Ok(permit) => {
+                                    let tx = event_tx.clone();
+                                    let app = event_app.clone();
+                                    let event = event.clone();
+                                    let cancel = event_music_cancel.clone();
+                                    tokio::spawn(async move {
+                                        let _permit = permit;
+                                        tokio::select! {
+                                            _ = cancel.cancelled() => {}
+                                            result = music_service.handle_live_event(&event) => {
+                                                match result {
+                                                    Ok(reply) => {
+                                                        let text = reply.to_danmu_text();
+                                                        if !text.is_empty() {
+                                                            let _ = tx.send(text).await;
+                                                        }
+                                                    }
+                                                    Err(err) => {
+                                                        let _ = app.emit(
+                                                            "monitor-log",
+                                                            json!(format!("点歌处理失败: {err}")),
+                                                        );
+                                                    }
+                                                }
+                                            }
+                                        }
+                                    });
+                                }
+                                Err(_) => {
+                                    let _ = event_app.emit(
+                                        "monitor-log",
+                                        json!("点歌处理繁忙，已跳过本次事件"),
+                                    );
                                 }
                             }
-                        });
+                        }
                     }
                     if let bilibili_live_protocol::LiveEvent::Popularity { value } = event {
                         let _ = event_app.emit("room-online", json!({ "count": value }));
@@ -721,6 +765,7 @@ pub async fn run_monitor_loop<E: EventEmitter + Send + Sync + 'static>(
                 .await
             }
             .await;
+            music_cancel.cancel();
             if let Err(err) = result {
                 let _ = ws_app.emit("monitor-log", json!(format!("弹幕流连接结束: {err}")));
             }
