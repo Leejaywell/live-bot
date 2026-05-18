@@ -223,6 +223,7 @@ impl Storage {
         ensure_column(&conn, "interaction_records", "pk_match_room_id", "integer")?;
         ensure_column(&conn, "interaction_records", "pk_winner_room_id", "integer")?;
         ensure_column(&conn, "interaction_records", "popularity_value", "integer")?;
+        crate::music::storage::ensure_schema(&conn)?;
         Ok(Self {
             conn: Mutex::new(conn),
         })
