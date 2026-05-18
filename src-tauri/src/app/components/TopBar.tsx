@@ -61,7 +61,7 @@ export function TopBar({ onToggleNotifications, isLoggedIn, userInfo, userRoom, 
     return elapsed > 0 ? elapsed : 0;
   };
 
-  // 自动连接房间
+  // 自动连接房间（不再在此 toast：启动恢复时静默，用户主动连接由 handleRoomConnected 自己提示）
   useEffect(() => {
     if (autoRoom && isLoggedIn) {
       const live = autoRoom.liveStatus === 1;
@@ -71,7 +71,6 @@ export function TopBar({ onToggleNotifications, isLoggedIn, userInfo, userRoom, 
       setRoomCategory(live ? '直播中' : '未开播');
       setLiveDuration(live ? calcElapsed(autoRoom.liveTime) : 0);
       onAutoRoomConsumed?.();
-      toast.success(`已连接到直播间 ${autoRoom.roomId}`);
     }
   }, [autoRoom, isLoggedIn]);
 

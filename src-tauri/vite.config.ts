@@ -34,7 +34,46 @@ export default defineConfig({
 
   // File types to support raw imports. Never add .css, .tsx, or .ts files to this.
   assetsInclude: ['**/*.svg', '**/*.csv'],
+  server: {
+    host: '127.0.0.1',
+    port: 5173,
+    strictPort: true,
+    clearScreen: false,
+    watch: {
+      ignored: [
+        '**/target/**',
+        '**/dist/**',
+        '**/.git/**',
+        '**/.idea/**',
+        '**/.vscode/**',
+        '**/docs/**',
+        '**/etc/**',
+        '**/*.db',
+        '**/*.sqlite',
+        '**/*.sqlite3',
+        '../src/**',
+        '../docs/**',
+        '../target/**',
+        '../etc/**',
+      ],
+    },
+  },
   build: {
     chunkSizeWarningLimit: 800,
+    rollupOptions: {
+      input: {
+        index: path.resolve(__dirname, 'index.html'),
+        'danmaku-chat': path.resolve(__dirname, 'src/danmaku-chat/main.tsx'),
+      },
+      output: {
+        entryFileNames: 'assets/[name].js',
+        chunkFileNames: 'assets/[name]-[hash].js',
+        assetFileNames: assetInfo => {
+          const name = assetInfo.name || '';
+          if (name.endsWith('.css')) return 'assets/[name][extname]';
+          return 'assets/[name]-[hash][extname]';
+        },
+      },
+    },
   },
 })

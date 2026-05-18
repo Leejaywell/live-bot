@@ -1,7 +1,7 @@
 use anyhow::Result;
 use bilibili_live_protocol::{InteractKind, LiveEvent, ParsedLiveEvent, PkEventKind};
-use chrono::{DateTime, Datelike, Local};
-use rusqlite::{params, Connection, OptionalExtension};
+use chrono::{DateTime, Datelike, Local, Timelike};
+use rusqlite::{Connection, OptionalExtension, params};
 use std::sync::Mutex;
 
 #[derive(Debug)]
@@ -84,6 +84,28 @@ pub struct KnownUser {
     pub last_seen: String,
 }
 
+#[derive(Debug, Clone, serde::Serialize)]
+pub struct UserProfile {
+    pub uid: i64,
+    pub first_seen_at: String,
+    pub last_seen_at: String,
+    pub total_danmu_count: i64,
+    pub total_gift_value: i64,
+    pub total_sc_value: i64,
+    pub enter_count: i64,
+    /// JSON 字符串：{"0": 3, "14": 12, ...} 24 小时活跃直方图
+    pub active_hours: String,
+    pub fan_level: i64,
+    pub is_guard: i64,
+    pub ai_summary: String,
+    /// JSON 字符串数组
+    pub ai_tags: String,
+    /// JSON 字符串数组
+    pub ai_topics: String,
+    pub ai_summary_updated_at: Option<String>,
+    pub ai_summary_version: i64,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
 pub struct PkHistoryRecord {
     pub event_subtype: Option<String>,
@@ -131,7 +153,6 @@ impl Storage {
             "
             PRAGMA journal_mode = WAL;
             PRAGMA synchronous = NORMAL;
-            drop table if exists danmu_count;
 
             create table if not exists blind_box_stat (
                 id integer primary key autoincrement,
@@ -198,6 +219,25 @@ impl Storage {
                 updated_at text not null
             );
             create index if not exists idx_live_gift_catalog_name on live_gift_catalog(name);
+            create table if not exists user_profiles (
+                uid integer primary key,
+                first_seen_at text not null,
+                last_seen_at text not null,
+                total_danmu_count integer not null default 0,
+                total_gift_value integer not null default 0,
+                total_sc_value integer not null default 0,
+                enter_count integer not null default 0,
+                active_hours text not null default '',
+                fan_level integer not null default 0,
+                is_guard integer not null default 0,
+                ai_summary text not null default '',
+                ai_tags text not null default '',
+                ai_topics text not null default '',
+                ai_summary_updated_at text,
+                ai_summary_version integer not null default 0
+            );
+            create index if not exists idx_user_profiles_last_seen on user_profiles(last_seen_at);
+            create index if not exists idx_user_profiles_ai_updated on user_profiles(ai_summary_updated_at);
             ",
         )?;
         // 一次性迁移：将 interaction_records 里满足条件的历史用户播种到 tracked_users
@@ -223,9 +263,33 @@ impl Storage {
         ensure_column(&conn, "interaction_records", "pk_match_room_id", "integer")?;
         ensure_column(&conn, "interaction_records", "pk_winner_room_id", "integer")?;
         ensure_column(&conn, "interaction_records", "popularity_value", "integer")?;
+        crate::music::storage::ensure_schema(&conn)?;
         Ok(Self {
             conn: Mutex::new(conn),
         })
+    }
+
+    #[allow(dead_code)]
+    pub fn with_connection<T, F>(&self, f: F) -> Result<T>
+    where
+        F: FnOnce(&Connection) -> Result<T>,
+    {
+        let conn = self.conn.lock().expect("storage mutex poisoned");
+        f(&conn)
+    }
+
+    /// Runs a closure with mutable access to the underlying SQLite connection.
+    ///
+    /// Use this for transaction-scoped helpers only. Do not call other `Storage`
+    /// methods from inside the closure because they will try to lock the same
+    /// mutex again.
+    #[allow(dead_code)]
+    pub fn with_connection_mut<T, F>(&self, f: F) -> Result<T>
+    where
+        F: FnOnce(&mut Connection) -> Result<T>,
+    {
+        let mut conn = self.conn.lock().expect("storage mutex poisoned");
+        f(&mut conn)
     }
 
     pub fn replace_gift_catalog(&self, gifts: &[GiftCatalogItem]) -> Result<()> {
@@ -594,6 +658,32 @@ impl Storage {
                 occurred_at
             ],
         )?;
+
+        // 增量更新粉丝档案统计 (uid > 0 才记录)
+        if let Some(uid_val) = uid {
+            if uid_val > 0 {
+                let now = Local::now();
+                let is_guard_event = matches!(parsed.event, LiveEvent::GuardBuy { .. });
+                let sc_price = match &parsed.event {
+                    LiveEvent::SuperChat { price, .. } => Some(*price),
+                    _ => None,
+                };
+                upsert_user_profile_stats(
+                    &conn,
+                    uid_val,
+                    event_type,
+                    event_subtype,
+                    gift_count,
+                    gift_price,
+                    sc_price,
+                    medal_level,
+                    is_guard_event,
+                    &occurred_at,
+                    now.hour(),
+                )?;
+            }
+        }
+
         Ok(())
     }
 
@@ -1284,6 +1374,114 @@ impl Storage {
         Ok(())
     }
 
+    // ── 粉丝档案 (user_profiles) ────────────────────────────────────
+
+    pub fn get_user_profile(&self, uid: i64) -> Result<Option<UserProfile>> {
+        let conn = self.conn.lock().expect("storage mutex poisoned");
+        Ok(conn
+            .query_row(
+                "select uid, first_seen_at, last_seen_at,
+                        total_danmu_count, total_gift_value, total_sc_value, enter_count,
+                        active_hours, fan_level, is_guard,
+                        ai_summary, ai_tags, ai_topics,
+                        ai_summary_updated_at, ai_summary_version
+                 from user_profiles where uid = ?1",
+                params![uid],
+                map_user_profile,
+            )
+            .optional()?)
+    }
+
+    /// 按最近活跃排序的分页列表
+    #[allow(dead_code)] // 前端 UI 用，暂未接入
+    pub fn list_user_profiles(&self, offset: i64, limit: i64) -> Result<Vec<UserProfile>> {
+        let conn = self.conn.lock().expect("storage mutex poisoned");
+        let mut stmt = conn.prepare(
+            "select uid, first_seen_at, last_seen_at,
+                    total_danmu_count, total_gift_value, total_sc_value, enter_count,
+                    active_hours, fan_level, is_guard,
+                    ai_summary, ai_tags, ai_topics,
+                    ai_summary_updated_at, ai_summary_version
+             from user_profiles
+             order by last_seen_at desc
+             limit ?1 offset ?2",
+        )?;
+        let rows = stmt.query_map(params![limit, offset], map_user_profile)?;
+        let mut out = Vec::new();
+        for r in rows {
+            out.push(r?);
+        }
+        Ok(out)
+    }
+
+    /// 写回 LLM 分析结果。tags / topics 已经是 JSON 字符串。
+    pub fn update_profile_ai_fields(
+        &self,
+        uid: i64,
+        summary: &str,
+        tags_json: &str,
+        topics_json: &str,
+        version: i64,
+    ) -> Result<()> {
+        let conn = self.conn.lock().expect("storage mutex poisoned");
+        let now = Local::now().to_rfc3339();
+        conn.execute(
+            "update user_profiles
+             set ai_summary = ?2,
+                 ai_tags = ?3,
+                 ai_topics = ?4,
+                 ai_summary_updated_at = ?5,
+                 ai_summary_version = ?6
+             where uid = ?1",
+            params![uid, summary, tags_json, topics_json, now, version],
+        )?;
+        Ok(())
+    }
+
+    /// 查找需要 LLM 分析的 uid：
+    ///   - 满足 total_danmu_count >= min_danmu
+    ///   - ai_summary_updated_at 为 NULL 或距今超过 stale_after_days
+    #[allow(dead_code)] // 启动 sweep 用，暂未接入
+    pub fn fetch_uids_needing_ai_summary(
+        &self,
+        min_danmu: i64,
+        stale_after_days: i64,
+        limit: i64,
+    ) -> Result<Vec<i64>> {
+        let conn = self.conn.lock().expect("storage mutex poisoned");
+        let cutoff = (Local::now() - chrono::Duration::days(stale_after_days)).to_rfc3339();
+        let mut stmt = conn.prepare(
+            "select uid from user_profiles
+             where total_danmu_count >= ?1
+               and (ai_summary_updated_at is null or ai_summary_updated_at < ?2)
+             order by last_seen_at desc
+             limit ?3",
+        )?;
+        let rows = stmt.query_map(params![min_danmu, cutoff, limit], |r| r.get::<_, i64>(0))?;
+        let mut out = Vec::new();
+        for r in rows {
+            out.push(r?);
+        }
+        Ok(out)
+    }
+
+    /// 取该 uid 最近 N 条弹幕文本（仅 danmu 事件），按时间倒序。LLM 输入用。
+    pub fn recent_danmu_for_uid(&self, uid: i64, limit: i64) -> Result<Vec<String>> {
+        let conn = self.conn.lock().expect("storage mutex poisoned");
+        let mut stmt = conn.prepare(
+            "select text from interaction_records
+             where uid = ?1 and event_type = 'danmu' and text is not null
+             order by id desc
+             limit ?2",
+        )?;
+        let rows = stmt.query_map(params![uid, limit], |r| r.get::<_, String>(0))?;
+        let mut out = Vec::new();
+        for r in rows {
+            out.push(r?);
+        }
+        Ok(out)
+    }
+
     pub fn cleanup_old_records(&self, days: i64) -> Result<usize> {
         let conn = self.conn.lock().expect("storage mutex poisoned");
         let cutoff = (Local::now() - chrono::Duration::days(days)).to_rfc3339();
@@ -1406,6 +1604,107 @@ fn extract_pk_winner_room_id(raw: &serde_json::Value) -> Option<i64> {
         .or_else(|| raw.pointer("/data/winner_info/room_id"))
         .or_else(|| raw.pointer("/data/winner_room_id"))
         .and_then(serde_json::Value::as_i64)
+}
+
+fn map_user_profile(row: &rusqlite::Row<'_>) -> rusqlite::Result<UserProfile> {
+    Ok(UserProfile {
+        uid: row.get(0)?,
+        first_seen_at: row.get(1)?,
+        last_seen_at: row.get(2)?,
+        total_danmu_count: row.get(3)?,
+        total_gift_value: row.get(4)?,
+        total_sc_value: row.get(5)?,
+        enter_count: row.get(6)?,
+        active_hours: row.get(7)?,
+        fan_level: row.get(8)?,
+        is_guard: row.get(9)?,
+        ai_summary: row.get(10)?,
+        ai_tags: row.get(11)?,
+        ai_topics: row.get(12)?,
+        ai_summary_updated_at: row.get(13)?,
+        ai_summary_version: row.get(14)?,
+    })
+}
+
+/// 增量更新 user_profiles 统计字段（与 record_interaction 在同事务/同连接下调用）
+/// 使用 SQLite JSON1 扩展更新 active_hours 直方图。
+#[allow(clippy::too_many_arguments)]
+fn upsert_user_profile_stats(
+    conn: &Connection,
+    uid: i64,
+    event_type: &str,
+    event_subtype: Option<&str>,
+    gift_count: Option<i64>,
+    gift_price: Option<i64>,
+    sc_price: Option<i64>,
+    medal_level: Option<i64>,
+    is_guard_event: bool,
+    occurred_at: &str,
+    hour: u32,
+) -> Result<()> {
+    let danmu_delta: i64 = if event_type == "danmu" { 1 } else { 0 };
+    let gift_value_delta: i64 = if event_type == "gift" {
+        gift_count
+            .unwrap_or(0)
+            .saturating_mul(gift_price.unwrap_or(0))
+    } else {
+        0
+    };
+    let sc_value_delta: i64 = if event_type == "super_chat" {
+        sc_price.unwrap_or(0)
+    } else {
+        0
+    };
+    let enter_delta: i64 = if event_type == "interact" && event_subtype == Some("entry") {
+        1
+    } else {
+        0
+    };
+    let is_guard_flag: i64 = if is_guard_event { 1 } else { 0 };
+    let fan_level_val: i64 = medal_level.unwrap_or(0);
+    let hour_path = format!("$.\"{hour}\"");
+
+    conn.execute(
+        "
+        insert into user_profiles (
+            uid, first_seen_at, last_seen_at,
+            total_danmu_count, total_gift_value, total_sc_value, enter_count,
+            active_hours, fan_level, is_guard
+        )
+        values (?1, ?2, ?2, ?3, ?4, ?5, ?6, json_set('{}', ?7, 1), ?8, ?9)
+        on conflict(uid) do update set
+            last_seen_at = excluded.last_seen_at,
+            total_danmu_count = total_danmu_count + ?3,
+            total_gift_value  = total_gift_value  + ?4,
+            total_sc_value    = total_sc_value    + ?5,
+            enter_count       = enter_count       + ?6,
+            active_hours = json_set(
+                case when json_valid(active_hours) then active_hours else '{}' end,
+                ?7,
+                coalesce(
+                    json_extract(
+                        case when json_valid(active_hours) then active_hours else '{}' end,
+                        ?7
+                    ),
+                    0
+                ) + 1
+            ),
+            fan_level = case when ?8 > 0 then ?8 else fan_level end,
+            is_guard  = case when ?9 = 1 then 1 else is_guard end
+        ",
+        params![
+            uid,
+            occurred_at,
+            danmu_delta,
+            gift_value_delta,
+            sc_value_delta,
+            enter_delta,
+            hour_path,
+            fan_level_val,
+            is_guard_flag,
+        ],
+    )?;
+    Ok(())
 }
 
 fn opponent_room_id(record: &PkHistoryRecord, home_room_id: i64) -> Option<i64> {

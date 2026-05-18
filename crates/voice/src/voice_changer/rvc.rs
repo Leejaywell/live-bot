@@ -170,7 +170,8 @@ impl RvcEngine {
         if audio.is_empty() {
             bail!("RVC 模型输出为空，无法推断输出采样率");
         }
-        let sample_rate = ((audio.len() as f32 / RVC_TARGET_FRAMES as f32) * 100.0).round() as usize;
+        let sample_rate =
+            ((audio.len() as f32 / RVC_TARGET_FRAMES as f32) * 100.0).round() as usize;
         if sample_rate == 0 {
             bail!("RVC 模型输出长度无效，无法推断输出采样率");
         }
@@ -305,7 +306,8 @@ fn resample_to_len(input: &[f32], target_len: usize) -> Vec<f32> {
     }
 
     let mut out = Vec::with_capacity(target_len);
-    let ratio = (input.len().saturating_sub(1)) as f32 / (target_len.saturating_sub(1).max(1)) as f32;
+    let ratio =
+        (input.len().saturating_sub(1)) as f32 / (target_len.saturating_sub(1).max(1)) as f32;
     for i in 0..target_len {
         let pos = i as f32 * ratio;
         let lo = pos.floor() as usize;

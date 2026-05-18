@@ -39,6 +39,8 @@ pub struct AppConfig {
     pub launch_at_startup: bool,
     #[serde(default)]
     pub disable_background_effects: bool,
+    #[serde(default)]
+    pub disable_cursor_effects: bool,
     #[serde(default = "default_room_id")]
     pub room_id: i64,
     /// 主播自己的直播间列表，空表示不限制
@@ -142,6 +144,15 @@ pub struct AppConfig {
     /// Edge TTS 声音名称（默认小晓）
     #[serde(default = "default_tts_voice")]
     pub tts_voice: String,
+    /// 是否启用实时弹幕播报（前端播报弹幕内容，与语音陪伴播报互斥）
+    #[serde(default)]
+    pub danmu_announce: bool,
+    /// 实时弹幕播报的 TTS 供应商 ID（与语音陪伴独立）
+    #[serde(default)]
+    pub danmu_announce_tts_provider_id: String,
+    /// 实时弹幕播报的 TTS 音色（与语音陪伴独立）
+    #[serde(default = "default_tts_voice")]
+    pub danmu_announce_tts_voice: String,
     /// 是否启用 OBS WebSocket 场景感知
     #[serde(default)]
     pub obs_enabled: bool,
@@ -221,50 +232,6 @@ pub struct AppConfig {
     /// 语音 AI 温度（0.0 – 2.0，默认 0.7）
     #[serde(default = "default_voice_temperature")]
     pub voice_temperature: f32,
-
-    // ── 弹幕浮层 ────────────────────────────────────────────────────────────
-    #[serde(default = "default_overlay_port")]
-    pub overlay_port: u16,
-    #[serde(default = "default_overlay_font_size")]
-    pub overlay_font_size: u8,
-    #[serde(default = "default_overlay_bg_opacity")]
-    pub overlay_bg_opacity: f32,
-    #[serde(default = "default_overlay_show_avatar")]
-    pub overlay_show_avatar: bool,
-    #[serde(default = "default_overlay_avatar_size")]
-    pub overlay_avatar_size: u8,
-    #[serde(default = "default_overlay_max_msgs")]
-    pub overlay_max_msgs: u8,
-    #[serde(default)]
-    pub overlay_custom_css: String,
-    #[serde(default = "default_overlay_msg_gap")]
-    pub overlay_msg_gap: u8,
-    #[serde(default = "default_true")]
-    pub overlay_show_gift: bool,
-    #[serde(default = "default_true")]
-    pub overlay_show_guard: bool,
-    #[serde(default = "default_true")]
-    pub overlay_show_sc: bool,
-    #[serde(default)]
-    pub overlay_gift_min_cost: u32,
-    #[serde(default = "default_overlay_danmu_color")]
-    pub overlay_danmu_color: String,
-    #[serde(default = "default_overlay_font_weight")]
-    pub overlay_font_weight: u16,
-    #[serde(default = "default_true")]
-    pub overlay_show_username: bool,
-    #[serde(default = "default_true")]
-    pub overlay_animate_in: bool,
-    #[serde(default = "default_overlay_animate_in_ms")]
-    pub overlay_animate_in_ms: u16,
-    #[serde(default)]
-    pub overlay_animate_out: bool,
-    #[serde(default = "default_overlay_animate_out_ms")]
-    pub overlay_animate_out_ms: u16,
-    #[serde(default = "default_overlay_animate_out_wait")]
-    pub overlay_animate_out_wait: u16,
-    #[serde(default)]
-    pub overlay_sc_min_cost: u32,
 }
 
 /// 特定用户欢迎语配置（按 UID 精准匹配）
@@ -382,6 +349,7 @@ impl Default for AppConfig {
             minimize_to_tray: true,
             launch_at_startup: false,
             disable_background_effects: false,
+            disable_cursor_effects: false,
             room_id: 3,
             ws_server_url: "wss://broadcastlv.chat.bilibili.com:2245/sub".to_string(),
             danmu_len: 20,
@@ -457,6 +425,9 @@ impl Default for AppConfig {
             ai_assistant_prompt: default_ai_assistant_prompt(),
             tts_enabled: false,
             tts_voice: default_tts_voice(),
+            danmu_announce: false,
+            danmu_announce_tts_provider_id: String::new(),
+            danmu_announce_tts_voice: default_tts_voice(),
             obs_enabled: false,
             obs_host: default_obs_host(),
             obs_port: default_obs_port(),
@@ -485,27 +456,6 @@ impl Default for AppConfig {
             voice_mic_gain: default_voice_mic_gain(),
             voice_reply_max_chars: default_voice_reply_max_chars(),
             voice_temperature: default_voice_temperature(),
-            overlay_port: default_overlay_port(),
-            overlay_font_size: default_overlay_font_size(),
-            overlay_bg_opacity: default_overlay_bg_opacity(),
-            overlay_show_avatar: default_overlay_show_avatar(),
-            overlay_avatar_size: default_overlay_avatar_size(),
-            overlay_max_msgs: default_overlay_max_msgs(),
-            overlay_custom_css: String::new(),
-            overlay_msg_gap: default_overlay_msg_gap(),
-            overlay_show_gift: true,
-            overlay_show_guard: true,
-            overlay_show_sc: true,
-            overlay_gift_min_cost: 0,
-            overlay_danmu_color: default_overlay_danmu_color(),
-            overlay_font_weight: default_overlay_font_weight(),
-            overlay_show_username: true,
-            overlay_animate_in: true,
-            overlay_animate_in_ms: default_overlay_animate_in_ms(),
-            overlay_animate_out: false,
-            overlay_animate_out_ms: default_overlay_animate_out_ms(),
-            overlay_animate_out_wait: default_overlay_animate_out_wait(),
-            overlay_sc_min_cost: 0,
         }
     }
 }
@@ -516,9 +466,15 @@ fn default_asr_engine() -> String {
 fn default_true() -> bool {
     true
 }
-fn default_vad_threshold() -> f32 { 0.3 }
-fn default_vad_min_speech_duration() -> f32 { 0.08 }
-fn default_vad_min_silence_duration() -> f32 { 0.3 }
+fn default_vad_threshold() -> f32 {
+    0.3
+}
+fn default_vad_min_speech_duration() -> f32 {
+    0.08
+}
+fn default_vad_min_silence_duration() -> f32 {
+    0.3
+}
 fn default_asr_language() -> String {
     "zh".to_string()
 }
@@ -753,16 +709,3 @@ fn default_voice_reply_max_chars() -> u32 {
 fn default_voice_temperature() -> f32 {
     0.7
 }
-
-fn default_overlay_port() -> u16 { 12450 }
-fn default_overlay_font_size() -> u8 { 13 }
-fn default_overlay_bg_opacity() -> f32 { 0.72 }
-fn default_overlay_show_avatar() -> bool { true }
-fn default_overlay_avatar_size() -> u8 { 24 }
-fn default_overlay_max_msgs() -> u8 { 50 }
-fn default_overlay_msg_gap() -> u8 { 3 }
-fn default_overlay_danmu_color() -> String { "#e8e8e8".to_string() }
-fn default_overlay_font_weight() -> u16 { 400 }
-fn default_overlay_animate_in_ms() -> u16 { 200 }
-fn default_overlay_animate_out_ms() -> u16 { 400 }
-fn default_overlay_animate_out_wait() -> u16 { 30 }

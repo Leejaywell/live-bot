@@ -353,6 +353,10 @@ export function Voice() {
     await api.startMonitor();
     monitorRestarting.current = false;
   }, []);
+  const refreshMonitorTtsIfRunning = useCallback(async () => {
+    const running = await api.getMonitorStatus().catch(() => false);
+    if (running) await api.reloadMonitorTts();
+  }, []);
 
   const onTtsChange    = async (id: string) => {
     if (!config) return;
@@ -361,7 +365,7 @@ export function Voice() {
     setConfig(updated);
     try {
       await api.saveConfig(updated);
-      if (ttsEnabled) await restartMonitorIfRunning();
+      await refreshMonitorTtsIfRunning();
     } catch (e) {
       toast.error(`语音播报服务切换失败: ${e}`);
     }
@@ -369,16 +373,16 @@ export function Voice() {
   const onTtsToggle    = async (v: boolean) => {
     if (!config) return;
     setTtsEnabled(v);
-    const updated = { ...config, TtsEnabled: v };
+    const updated = { ...config, TtsEnabled: v, DanmuAnnounce: v ? false : config.DanmuAnnounce };
     setConfig(updated);
     try {
       await api.saveConfig(updated);
-      await restartMonitorIfRunning();
-      toast.success(v ? '语音播报已开启' : '语音播报已关闭');
+      await refreshMonitorTtsIfRunning();
+      if (v) sessionStorage.setItem('danmuAnnounce', 'false');
     } catch (e) {
       setTtsEnabled(config.TtsEnabled);
       setConfig(config);
-      toast.error(`语音播报切换失败: ${e}`);
+      console.error('voice tts toggle failed:', e);
     }
   };
   const onVoiceChange  = async (v: string)  => {
@@ -388,7 +392,7 @@ export function Voice() {
     setConfig(updated);
     try {
       await api.saveConfig(updated);
-      if (ttsEnabled) await restartMonitorIfRunning();
+      await refreshMonitorTtsIfRunning();
     } catch (e) {
       toast.error(`音色切换失败: ${e}`);
     }
@@ -541,14 +545,14 @@ export function Voice() {
     try {
       await api.saveConfig(updated);
       if (wasRunning) {
-        await api.stopMonitor().catch(() => {});
-        await new Promise(resolve => setTimeout(resolve, 250));
+        await api.reloadMonitorVoice();
       }
-      if (nextVad || wasRunning) await api.startMonitor();
       setMicState(nextVad ? 'listening' : 'off');
       if (!nextVad) setVoiceLevel(0);
       monitorRestarting.current = false;
-      toast.success(nextVad ? '麦克风已开启' : '麦克风已关闭');
+      toast.success(nextVad
+        ? (wasRunning ? '麦克风已开启' : '麦克风配置已开启，不会启动弹幕监听')
+        : '麦克风已关闭');
     } catch (e) {
       monitorRestarting.current = false;
       setMicState(config.VadEnabled ? 'listening' : 'off');

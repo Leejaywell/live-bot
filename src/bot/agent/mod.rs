@@ -153,14 +153,24 @@ pub async fn call_ai_voice(
         None
     };
     let reply = agent
-        .run_with_provider_opts(http, provider, &sys, &history, &enriched_prompt, temperature)
+        .run_with_provider_opts(
+            http,
+            provider,
+            &sys,
+            &history,
+            &enriched_prompt,
+            temperature,
+        )
         .await
         .unwrap_or_else(|e| {
             eprintln!("[AI] 调用失败: {e}");
             String::new()
         });
     let reply = if config.voice_reply_max_chars > 0 {
-        reply.chars().take(config.voice_reply_max_chars as usize).collect::<String>()
+        reply
+            .chars()
+            .take(config.voice_reply_max_chars as usize)
+            .collect::<String>()
     } else {
         reply
     };
@@ -289,10 +299,7 @@ fn should_flush_voice_chunk(text: &str, total_chars: usize) -> bool {
         return true;
     }
 
-    let soft_boundary = trimmed
-        .chars()
-        .last()
-        .is_some_and(is_voice_soft_boundary);
+    let soft_boundary = trimmed.chars().last().is_some_and(is_voice_soft_boundary);
     let threshold = if total_chars <= 28 { 22 } else { 28 };
     char_count >= threshold && (soft_boundary || char_count >= threshold + 8)
 }

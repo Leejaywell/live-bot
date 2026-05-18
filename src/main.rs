@@ -1,9 +1,10 @@
+mod ai_client;
 mod api;
 mod bot;
 mod config;
+mod danmaku_chat_server;
+mod music;
 mod obs;
-mod overlay_config;
-mod overlay_server;
 mod plugin_settings;
 mod storage;
 mod token;
@@ -60,8 +61,8 @@ struct SharedState {
     model_dl_cancels: Arc<Mutex<std::collections::HashMap<String, CancellationToken>>>,
     /// 全局 AI 会话记忆（机器人 ID 隔离）
     session_memory: Arc<Mutex<bot::memory::SessionMemory>>,
-    /// 弹幕浮层 HTTP 服务广播通道
-    overlay_tx: overlay_server::OverlayTx,
+    /// 弹幕聊天 HTTP 服务广播通道
+    danmaku_chat_tx: danmaku_chat_server::DanmakuChatTx,
     /// 基础 AI Agent 运行时
     agent_runtime: Arc<bot::agent::AgentRuntime>,
     /// 实时变声器状态
@@ -71,6 +72,9 @@ struct SharedState {
 
 struct MonitorHandle {
     cancel: CancellationToken,
+    tts_cancel: Arc<Mutex<CancellationToken>>,
+    tts_router: bot::monitor::SharedTtsRouter,
+    command_tx: tokio::sync::mpsc::UnboundedSender<bot::monitor::MonitorCommand>,
     session_id: Arc<Mutex<Option<String>>>,
     danmaku_buffer: Arc<Mutex<Vec<String>>>,
 }
@@ -94,7 +98,7 @@ struct BufferedEmitter {
     handle: AppHandle,
     log_buffer: Arc<Mutex<Vec<String>>>,
     batch_tx: tokio::sync::mpsc::UnboundedSender<String>,
-    overlay_tx: overlay_server::OverlayTx,
+    danmaku_chat_tx: danmaku_chat_server::DanmakuChatTx,
     storage: Arc<storage::Storage>,
 }
 
@@ -128,12 +132,12 @@ impl bot::EventEmitter for BufferedEmitter {
                     || recent_gifts_changed
                     || gift_rank_changed;
                 if changed && settings.save().is_ok() {
-                    overlay_server::broadcast_plugin_settings_update(&self.overlay_tx);
+                    danmaku_chat_server::broadcast_plugin_settings_update(&self.danmaku_chat_tx);
                 }
             }
             cache_guard_gift_from_event(&self.storage, &payload);
-            // 同步推送到 HTTP 弹幕浮层 WebSocket 客户端
-            let _ = self.overlay_tx.send(payload.clone());
+            // 同步推送到 HTTP 弹幕聊天 WebSocket 客户端
+            let _ = self.danmaku_chat_tx.send(payload.clone());
         }
 
         tauri::Emitter::emit(&self.handle, event, payload)
@@ -293,15 +297,31 @@ async fn auto_download_models(
     let vad_exists = vad_out.exists();
     let vad_valid = onnx_file_valid(&vad_out);
     let vad_size = std::fs::metadata(&vad_out).map(|m| m.len()).unwrap_or(0);
-    let _ = app.emit("monitor-log", serde_json::json!(format!(
-        "[诊断] VAD 模型路径: {} | 存在: {} | 有效: {} | 大小: {} bytes",
-        vad_out.display(), vad_exists, vad_valid, vad_size
-    )));
+    let _ = app.emit(
+        "monitor-log",
+        serde_json::json!(format!(
+            "[诊断] VAD 模型路径: {} | 存在: {} | 有效: {} | 大小: {} bytes",
+            vad_out.display(),
+            vad_exists,
+            vad_valid,
+            vad_size
+        )),
+    );
     if !vad_valid && !cancel.is_cancelled() {
-        let _ = app.emit("monitor-log", serde_json::json!("正在自动下载 VAD 模型（silero_vad.onnx）…"));
+        let _ = app.emit(
+            "monitor-log",
+            serde_json::json!("正在自动下载 VAD 模型（silero_vad.onnx）…"),
+        );
         match dl_silero_vad(app.clone(), cancel.clone()).await {
-            Ok(msg) => { let _ = app.emit("monitor-log", serde_json::json!(msg)); }
-            Err(e)  => { let _ = app.emit("monitor-log", serde_json::json!(format!("VAD 模型下载失败: {e}"))); }
+            Ok(msg) => {
+                let _ = app.emit("monitor-log", serde_json::json!(msg));
+            }
+            Err(e) => {
+                let _ = app.emit(
+                    "monitor-log",
+                    serde_json::json!(format!("VAD 模型下载失败: {e}")),
+                );
+            }
         }
     }
 
@@ -348,9 +368,15 @@ async fn start_monitor(
 
     let danmaku_buf: Arc<Mutex<Vec<String>>> = Arc::new(Mutex::new(Vec::new()));
     let cancel = CancellationToken::new();
+    let tts_cancel = Arc::new(Mutex::new(cancel.child_token()));
+    let tts_router = Arc::new(Mutex::new(None));
+    let (command_tx, command_rx) = tokio::sync::mpsc::unbounded_channel();
     let session_id = Arc::new(Mutex::new(None));
     let handle = MonitorHandle {
         cancel: cancel.clone(),
+        tts_cancel: tts_cancel.clone(),
+        tts_router: tts_router.clone(),
+        command_tx,
         session_id: session_id.clone(),
         danmaku_buffer: danmaku_buf.clone(),
     };
@@ -403,7 +429,7 @@ async fn start_monitor(
         handle: app.clone(),
         log_buffer: state.monitor_log_buffer.clone(),
         batch_tx,
-        overlay_tx: state.overlay_tx.clone(),
+        danmaku_chat_tx: state.danmaku_chat_tx.clone(),
         storage: state.storage.clone(),
     };
 
@@ -416,7 +442,10 @@ async fn start_monitor(
     let session_memory = state.session_memory.clone();
     let error_app = app.clone();
 
-    let _ = app.emit("monitor-log", serde_json::json!("[start_monitor] 指令已收到，正在启动监听任务..."));
+    let _ = app.emit(
+        "monitor-log",
+        serde_json::json!("[start_monitor] 指令已收到，正在启动监听任务..."),
+    );
 
     tokio::spawn(async move {
         // 自动补全缺失模型后再启动引擎
@@ -430,6 +459,9 @@ async fn start_monitor(
             http,
             room_id,
             cancel,
+            tts_router,
+            tts_cancel,
+            command_rx,
             session_id,
             danmaku_buf,
             models,
@@ -456,10 +488,69 @@ async fn stop_monitor(state: tauri::State<'_, SharedState>) -> Result<(), String
     let mut monitor = state.monitor.lock().map_err(|e| e.to_string())?;
     if let Some(handle) = monitor.take() {
         handle.cancel.cancel();
+        handle
+            .tts_cancel
+            .lock()
+            .map_err(|e| e.to_string())?
+            .cancel();
         Ok(())
     } else {
         Err("Monitor is not running".to_string())
     }
+}
+
+#[cfg(feature = "tauri")]
+#[tauri::command]
+async fn reload_monitor_tts(
+    app: AppHandle,
+    state: tauri::State<'_, SharedState>,
+) -> Result<(), String> {
+    let (monitor_cancel, tts_cancel, tts_router) = {
+        let monitor = state.monitor.lock().map_err(|e| e.to_string())?;
+        let Some(handle) = monitor.as_ref() else {
+            return Ok(());
+        };
+        (
+            handle.cancel.clone(),
+            handle.tts_cancel.clone(),
+            handle.tts_router.clone(),
+        )
+    };
+
+    let config = AppConfig::load_or_default().map_err(|e| e.to_string())?;
+    let next_cancel = monitor_cancel.child_token();
+    let old_cancel = {
+        let mut guard = tts_cancel.lock().map_err(|e| e.to_string())?;
+        let old = guard.clone();
+        *guard = next_cancel.clone();
+        old
+    };
+    old_cancel.cancel();
+    bot::monitor::replace_tts_router(&tts_router, &config, &model_dir(&app), next_cancel);
+    let _ = app.emit(
+        "monitor-log",
+        serde_json::json!(if config.tts_enabled {
+            "语音播报已刷新，弹幕监听保持连接"
+        } else {
+            "语音播报已关闭，弹幕监听保持连接"
+        }),
+    );
+    Ok(())
+}
+
+#[cfg(feature = "tauri")]
+#[tauri::command]
+async fn reload_monitor_voice(state: tauri::State<'_, SharedState>) -> Result<(), String> {
+    let command_tx = {
+        let monitor = state.monitor.lock().map_err(|e| e.to_string())?;
+        let Some(handle) = monitor.as_ref() else {
+            return Ok(());
+        };
+        handle.command_tx.clone()
+    };
+    command_tx
+        .send(bot::monitor::MonitorCommand::ReloadVoice)
+        .map_err(|e| e.to_string())
 }
 
 #[cfg(feature = "tauri")]
@@ -682,6 +773,127 @@ async fn query_user_detail(
         .storage
         .user_detail(uid_i64)
         .map_err(|e| e.to_string())
+}
+
+// ── 直播管理 (My Live Control) ─────────────────────────────────────────
+// 用当前连接的 room_id；如未连接则用 config.room_id。所有命令均需登录后的 cookie。
+
+#[cfg(feature = "tauri")]
+fn current_my_room_id(state: &tauri::State<'_, SharedState>) -> Result<i64, String> {
+    let room = state.connected_room.lock().map_err(|e| e.to_string())?;
+    let room_id = match *room {
+        Some(id) => id,
+        None => {
+            AppConfig::load_or_default()
+                .map_err(|e| e.to_string())?
+                .room_id
+        }
+    };
+    if room_id == 0 {
+        return Err("未连接直播间".to_string());
+    }
+    Ok(room_id)
+}
+
+#[cfg(feature = "tauri")]
+#[tauri::command]
+async fn start_live_cmd(
+    state: tauri::State<'_, SharedState>,
+    area_v2: i64,
+) -> Result<api::StartLiveData, String> {
+    let room_id = current_my_room_id(&state)?;
+    let session = token::read_session().map_err(|e| e.to_string())?;
+    state
+        .http
+        .start_live(room_id, area_v2, &session.cookie)
+        .await
+        .map_err(|e| e.to_string())
+}
+
+#[cfg(feature = "tauri")]
+#[tauri::command]
+async fn stop_live_cmd(state: tauri::State<'_, SharedState>) -> Result<(), String> {
+    let room_id = current_my_room_id(&state)?;
+    let session = token::read_session().map_err(|e| e.to_string())?;
+    state
+        .http
+        .stop_live(room_id, &session.cookie)
+        .await
+        .map_err(|e| e.to_string())
+}
+
+#[cfg(feature = "tauri")]
+#[tauri::command]
+async fn update_room_info_cmd(
+    state: tauri::State<'_, SharedState>,
+    title: Option<String>,
+    area_id: Option<i64>,
+    description: Option<String>,
+) -> Result<(), String> {
+    let room_id = current_my_room_id(&state)?;
+    let session = token::read_session().map_err(|e| e.to_string())?;
+    state
+        .http
+        .update_room_info(
+            room_id,
+            title.as_deref(),
+            area_id,
+            description.as_deref(),
+            &session.cookie,
+        )
+        .await
+        .map_err(|e| e.to_string())
+}
+
+#[cfg(feature = "tauri")]
+#[tauri::command]
+async fn get_live_areas(
+    state: tauri::State<'_, SharedState>,
+) -> Result<Vec<api::AreaCategory>, String> {
+    state
+        .http
+        .get_web_area_list()
+        .await
+        .map_err(|e| e.to_string())
+}
+
+#[cfg(feature = "tauri")]
+#[tauri::command]
+async fn get_stream_addr(state: tauri::State<'_, SharedState>) -> Result<api::StreamAddr, String> {
+    let session = token::read_session().map_err(|e| e.to_string())?;
+    state
+        .http
+        .fetch_stream_addr(&session.cookie)
+        .await
+        .map_err(|e| e.to_string())
+}
+
+#[cfg(feature = "tauri")]
+#[tauri::command]
+async fn update_room_news_cmd(
+    state: tauri::State<'_, SharedState>,
+    content: String,
+) -> Result<(), String> {
+    let room_id = current_my_room_id(&state)?;
+    let session = token::read_session().map_err(|e| e.to_string())?;
+    // 公告接口需要主播 uid。从 session 的 cookie 里取 DedeUserID。
+    let uid = api_extract_cookie(&session.cookie, "DedeUserID")
+        .and_then(|s| s.parse::<i64>().ok())
+        .ok_or_else(|| "未能从 cookie 解析 DedeUserID".to_string())?;
+    state
+        .http
+        .update_room_news(room_id, uid, &content, &session.cookie)
+        .await
+        .map_err(|e| e.to_string())
+}
+
+#[cfg(feature = "tauri")]
+fn api_extract_cookie(cookie: &str, name: &str) -> Option<String> {
+    cookie.split(';').find_map(|s| {
+        let s = s.trim();
+        let prefix = format!("{}=", name);
+        s.strip_prefix(&prefix).map(|v| v.to_string())
+    })
 }
 
 #[cfg(feature = "tauri")]
@@ -1821,18 +2033,14 @@ async fn speak_text_cmd(
     let _playback_guard = state.preview_tts_playback.lock().await;
     let mut audio_events = router.voice_session().subscribe();
 
-    router
-        .voice_session()
-        .speak(req)
-        .await
-        .map_err(|e| {
-            let msg = e.to_string();
-            let _ = app.emit(
-                "monitor-log",
-                serde_json::json!(format!("[TTS错误] engine={engine_name} {msg}")),
-            );
-            msg
-        })?;
+    router.voice_session().speak(req).await.map_err(|e| {
+        let msg = e.to_string();
+        let _ = app.emit(
+            "monitor-log",
+            serde_json::json!(format!("[TTS错误] engine={engine_name} {msg}")),
+        );
+        msg
+    })?;
 
     let wait_secs = match engine {
         streamix_voice::TtsEngine::MiniMax { .. } => 15,
@@ -2032,6 +2240,180 @@ async fn open_url(app: AppHandle, url: String) -> Result<(), String> {
     app.opener()
         .open_url(url, None::<&str>)
         .map_err(|e| e.to_string())
+}
+
+#[cfg(feature = "tauri")]
+#[tauri::command]
+async fn open_music_request(
+    app: AppHandle,
+    state: tauri::State<'_, SharedState>,
+    request_id: i64,
+) -> Result<(), String> {
+    if request_id <= 0 {
+        return Err("点歌请求 ID 必须大于 0".to_string());
+    }
+
+    let (session_id, room_id) = active_music_session(&state)?
+        .ok_or_else(|| "当前没有直播场次，暂不能打开点歌".to_string())?;
+    open_music_request_by_id(app, state.storage.clone(), &session_id, room_id, request_id).await
+}
+
+#[cfg(feature = "tauri")]
+async fn open_music_request_by_id(
+    app: AppHandle,
+    storage: Arc<storage::Storage>,
+    session_id: &str,
+    room_id: i64,
+    request_id: i64,
+) -> Result<(), String> {
+    use tauri_plugin_opener::OpenerExt;
+
+    let request = storage
+        .with_connection(|conn| {
+            music::storage::openable_song_request(conn, request_id, session_id, room_id)
+        })
+        .map_err(|e| e.to_string())?
+        .ok_or_else(|| "未找到可打开的点歌请求，只有排队中或播放中的歌曲可以打开".to_string())?;
+
+    let player = plugin_settings::PluginSettings::load_or_default()
+        .map(|settings| settings.music_interaction.player)
+        .unwrap_or_else(|_| "auto".to_string());
+    if let Some(source) = music_player_source(&player) {
+        if request.source != source {
+            return Err(format!(
+                "当前播放方式限制为{}，不能打开{}来源的点歌",
+                music_source_label(source),
+                music_source_label(&request.source)
+            ));
+        }
+    }
+    let template = music_open_template(&player, &request.source);
+    let url = music::opener::build_open_url(template, &request.url_id)
+        .map_err(|_| "点歌播放链接无效，无法安全打开".to_string())?;
+
+    app.opener()
+        .open_url(url, None::<&str>)
+        .map_err(|e| format!("打开播放器失败: {e}"))?;
+
+    storage
+        .with_connection_mut(|conn| {
+            music::storage::mark_song_request_playing(conn, request.request_id, session_id, room_id)
+        })
+        .map_err(|e| e.to_string())
+}
+
+#[cfg(feature = "tauri")]
+#[tauri::command]
+async fn finish_music_request(
+    app: AppHandle,
+    state: tauri::State<'_, SharedState>,
+    request_id: i64,
+) -> Result<(), String> {
+    mark_music_request_terminal(app, state, request_id, "finished").await
+}
+
+#[cfg(feature = "tauri")]
+#[tauri::command]
+async fn skip_music_request(
+    app: AppHandle,
+    state: tauri::State<'_, SharedState>,
+    request_id: i64,
+) -> Result<(), String> {
+    mark_music_request_terminal(app, state, request_id, "skipped").await
+}
+
+#[cfg(feature = "tauri")]
+#[tauri::command]
+async fn fail_music_request(
+    app: AppHandle,
+    state: tauri::State<'_, SharedState>,
+    request_id: i64,
+) -> Result<(), String> {
+    mark_music_request_terminal(app, state, request_id, "failed").await
+}
+
+#[cfg(feature = "tauri")]
+async fn mark_music_request_terminal(
+    app: AppHandle,
+    state: tauri::State<'_, SharedState>,
+    request_id: i64,
+    status: &str,
+) -> Result<(), String> {
+    if request_id <= 0 {
+        return Err("点歌请求 ID 必须大于 0".to_string());
+    }
+    let (session_id, room_id) = active_music_session(&state)?
+        .ok_or_else(|| "当前没有直播场次，暂不能更新点歌状态".to_string())?;
+    state
+        .storage
+        .with_connection(|conn| {
+            music::storage::mark_song_request_terminal(
+                conn,
+                request_id,
+                &session_id,
+                room_id,
+                status,
+            )
+        })
+        .map_err(|e| e.to_string())?;
+
+    let auto_next = plugin_settings::PluginSettings::load_or_default()
+        .map(|settings| settings.music_interaction.playback_mode == "auto_next")
+        .unwrap_or(false);
+    if status == "finished" && auto_next {
+        if let Some(next) = state
+            .storage
+            .with_connection(|conn| {
+                music::storage::next_queued_song_request(conn, &session_id, room_id)
+            })
+            .map_err(|e| e.to_string())?
+        {
+            open_music_request_by_id(
+                app,
+                state.storage.clone(),
+                &session_id,
+                room_id,
+                next.request_id,
+            )
+            .await?;
+        }
+    }
+    Ok(())
+}
+
+#[cfg(feature = "tauri")]
+fn music_open_template(player: &str, source: &str) -> &'static str {
+    match player {
+        "netease" => "orpheus://song/{song_id}",
+        "tencent" => "qqmusic://song/{song_id}",
+        "browser" => "https://music.163.com/#/song?id={song_id}",
+        _ => match source {
+            "netease" => "orpheus://song/{song_id}",
+            "tencent" => "qqmusic://song/{song_id}",
+            _ => "https://music.163.com/#/song?id={song_id}",
+        },
+    }
+}
+
+#[cfg(feature = "tauri")]
+fn music_player_source(player: &str) -> Option<&'static str> {
+    match player {
+        "netease" => Some("netease"),
+        "tencent" => Some("tencent"),
+        _ => None,
+    }
+}
+
+#[cfg(feature = "tauri")]
+fn music_source_label(source: &str) -> &'static str {
+    match source {
+        "netease" => "网易云",
+        "tencent" => "QQ 音乐",
+        "kugou" => "酷狗",
+        "baidu" => "百度音乐",
+        "kuwo" => "酷我",
+        _ => "未知平台",
+    }
 }
 
 #[cfg(feature = "tauri")]
@@ -2321,9 +2703,13 @@ async fn stream_to_file(
 /// A file that starts with anything else was not downloaded correctly.
 fn onnx_file_valid(path: &std::path::Path) -> bool {
     use std::io::Read;
-    let Ok(mut f) = std::fs::File::open(path) else { return false };
+    let Ok(mut f) = std::fs::File::open(path) else {
+        return false;
+    };
     let Ok(meta) = f.metadata() else { return false };
-    if meta.len() < 65_536 { return false; }
+    if meta.len() < 65_536 {
+        return false;
+    }
     let mut hdr = [0u8; 1];
     f.read_exact(&mut hdr).is_ok() && hdr[0] == 0x08
 }
@@ -2423,6 +2809,39 @@ async fn delete_model(app: AppHandle, model_id: String) -> Result<String, String
                 std::fs::remove_dir_all(d).map_err(|e| e.to_string())?;
             }
             Ok("Kokoro TTS 模型已删除".to_string())
+        }
+        "kokoro-sherpa" => {
+            let d = base.join("sherpa-onnx-kokoro-multi-lang-v1.1-ONNX");
+            if d.exists() {
+                std::fs::remove_dir_all(d).map_err(|e| e.to_string())?;
+            }
+            let tmp = base.join("_kokoro_sherpa_dl.tar.bz2");
+            if tmp.exists() {
+                let _ = std::fs::remove_file(tmp);
+            }
+            Ok("Kokoro Sherpa 模型已删除".to_string())
+        }
+        "melo-tts" => {
+            let d = base.join("sherpa-onnx-melo-tts-zh_en");
+            if d.exists() {
+                std::fs::remove_dir_all(d).map_err(|e| e.to_string())?;
+            }
+            let tmp = base.join("_melo_tts_dl.tar.bz2");
+            if tmp.exists() {
+                let _ = std::fs::remove_file(tmp);
+            }
+            Ok("MeloTTS 模型已删除".to_string())
+        }
+        "piper-zh" => {
+            let d = base.join("vits-piper-zh_CN-huayan-medium");
+            if d.exists() {
+                std::fs::remove_dir_all(d).map_err(|e| e.to_string())?;
+            }
+            let tmp = base.join("_piper_zh_dl.tar.bz2");
+            if tmp.exists() {
+                let _ = std::fs::remove_file(tmp);
+            }
+            Ok("Piper ZH 模型已删除".to_string())
         }
         _ => Err(format!("未知模型: {}", model_id)),
     }
@@ -3295,7 +3714,7 @@ fn main() -> Result<()> {
 
     let saved_room = token::read_connected_room();
 
-    let (overlay_tx, _) = overlay_server::new_channel();
+    let (danmaku_chat_tx, _) = danmaku_chat_server::new_channel();
 
     let state = SharedState {
         runtime: Arc::new(Runtime::new()?),
@@ -3304,7 +3723,7 @@ fn main() -> Result<()> {
         storage: Arc::new(storage),
         connected_room: Arc::new(Mutex::new(saved_room)),
         monitor_log_buffer: Arc::new(Mutex::new(Vec::new())),
-        overlay_tx: overlay_tx.clone(),
+        danmaku_chat_tx: danmaku_chat_tx.clone(),
         #[cfg(feature = "tauri")]
         preview_tts: Arc::new(Mutex::new(None)),
         #[cfg(feature = "tauri")]
@@ -3316,6 +3735,13 @@ fn main() -> Result<()> {
         #[cfg(feature = "tauri")]
         voice_changer: Arc::new(Mutex::new(None)),
     };
+
+    // 启动粉丝档案 LLM 分析 worker（全局单例，record_and_handle_event 会通过 try_enqueue 触发）
+    {
+        let worker =
+            bot::profile_worker::spawn(state.storage.clone(), state.http.clone(), &state.runtime);
+        bot::profile_worker::install(worker);
+    }
 
     println!("Starting Tauri builder...");
     let storage_for_cleanup = state.storage.clone();
@@ -3359,7 +3785,10 @@ fn main() -> Result<()> {
                 .item(&PredefinedMenuItem::paste(app, Some("粘贴"))?)
                 .item(&PredefinedMenuItem::select_all(app, Some("全选"))?)
                 .build()?;
-            MenuBuilder::new(app).item(&app_menu).item(&edit_menu).build()
+            MenuBuilder::new(app)
+                .item(&app_menu)
+                .item(&edit_menu)
+                .build()
         })
         .on_menu_event(|app, event| {
             if event.id().0 == MENU_FORCE_QUIT_ID {
@@ -3405,13 +3834,14 @@ fn main() -> Result<()> {
             }
         })
         .setup(move |app| {
-            // 启动弹幕浮层 HTTP 服务（使用独立的 overlay.toml 配置）
-            let port = overlay_config::OverlayConfig::load_or_default()
-                .map(|c| c.port)
+            // 启动弹幕聊天 HTTP 服务（配置存放在 plugin-settings.toml）
+            let port = plugin_settings::PluginSettings::load_or_default()
+                .map(|settings| settings.danmaku_chat.port)
                 .unwrap_or(12450);
-            let srv_tx = overlay_tx.clone();
+            let server_tx = danmaku_chat_tx.clone();
+            let resource_dir = app.path().resource_dir().ok();
             tauri::async_runtime::spawn(async move {
-                overlay_server::start(port, srv_tx).await;
+                danmaku_chat_server::start(port, server_tx, resource_dir).await;
             });
 
             let handle_for_update = app.handle().clone();
@@ -3446,6 +3876,8 @@ fn main() -> Result<()> {
             get_system_info,
             start_monitor,
             stop_monitor,
+            reload_monitor_tts,
+            reload_monitor_voice,
             get_monitor_status,
             get_stats,
             get_gift_stats,
@@ -3462,8 +3894,18 @@ fn main() -> Result<()> {
             get_pk_history,
             send_danmu,
             query_user_detail,
+            start_live_cmd,
+            stop_live_cmd,
+            update_room_info_cmd,
+            get_live_areas,
+            get_stream_addr,
+            update_room_news_cmd,
             send_ai_message,
             open_url,
+            open_music_request,
+            finish_music_request,
+            skip_music_request,
+            fail_music_request,
             open_config_dir,
             check_update_cmd,
             install_update,
@@ -3489,14 +3931,18 @@ fn main() -> Result<()> {
             convert_rvc_pth_to_onnx,
             get_gift_catalog,
             refresh_gift_catalog,
-            get_overlay_url,
+            get_danmaku_chat_url,
             get_wish_goal_url,
             get_lottery_url,
             get_gift_effect_url,
             get_recent_gifts_url,
             get_gift_rank_url,
-            load_overlay_config,
-            save_overlay_config,
+            get_music_interaction_url,
+            search_music_candidates,
+            get_music_queue,
+            confirm_music_candidate,
+            load_danmaku_chat_config,
+            save_danmaku_chat_config,
             load_plugin_settings,
             save_plugin_settings,
             pick_plugin_resource,
@@ -3515,55 +3961,197 @@ fn main() -> Result<()> {
 
 #[cfg(feature = "tauri")]
 #[tauri::command]
-async fn get_overlay_url(_state: tauri::State<'_, SharedState>) -> Result<String, String> {
-    let cfg = overlay_config::OverlayConfig::load_or_default().map_err(|e| e.to_string())?;
+async fn get_danmaku_chat_url(_state: tauri::State<'_, SharedState>) -> Result<String, String> {
+    let cfg = load_danmaku_chat_settings()?;
     Ok(format!("http://127.0.0.1:{}", cfg.port))
 }
 
 #[cfg(feature = "tauri")]
 #[tauri::command]
 async fn get_wish_goal_url(_state: tauri::State<'_, SharedState>) -> Result<String, String> {
-    let cfg = overlay_config::OverlayConfig::load_or_default().map_err(|e| e.to_string())?;
+    let cfg = load_danmaku_chat_settings()?;
     Ok(format!("http://127.0.0.1:{}/wish-goal", cfg.port))
 }
 
 #[cfg(feature = "tauri")]
 #[tauri::command]
 async fn get_lottery_url(_state: tauri::State<'_, SharedState>) -> Result<String, String> {
-    let cfg = overlay_config::OverlayConfig::load_or_default().map_err(|e| e.to_string())?;
+    let cfg = load_danmaku_chat_settings()?;
     Ok(format!("http://127.0.0.1:{}/lottery", cfg.port))
 }
 
 #[cfg(feature = "tauri")]
 #[tauri::command]
 async fn get_gift_effect_url(_state: tauri::State<'_, SharedState>) -> Result<String, String> {
-    let cfg = overlay_config::OverlayConfig::load_or_default().map_err(|e| e.to_string())?;
+    let cfg = load_danmaku_chat_settings()?;
     Ok(format!("http://127.0.0.1:{}/gift-effect", cfg.port))
 }
 
 #[cfg(feature = "tauri")]
 #[tauri::command]
 async fn get_recent_gifts_url(_state: tauri::State<'_, SharedState>) -> Result<String, String> {
-    let cfg = overlay_config::OverlayConfig::load_or_default().map_err(|e| e.to_string())?;
+    let cfg = load_danmaku_chat_settings()?;
     Ok(format!("http://127.0.0.1:{}/recent-gifts", cfg.port))
 }
 
 #[cfg(feature = "tauri")]
 #[tauri::command]
 async fn get_gift_rank_url(_state: tauri::State<'_, SharedState>) -> Result<String, String> {
-    let cfg = overlay_config::OverlayConfig::load_or_default().map_err(|e| e.to_string())?;
+    let cfg = load_danmaku_chat_settings()?;
     Ok(format!("http://127.0.0.1:{}/gift-rank", cfg.port))
 }
 
 #[cfg(feature = "tauri")]
 #[tauri::command]
-async fn get_gift_catalog(state: tauri::State<'_, SharedState>) -> Result<Vec<storage::GiftCatalogItem>, String> {
+async fn get_music_interaction_url() -> Result<String, String> {
+    let cfg = load_danmaku_chat_settings()?;
+    Ok(format!(
+        "http://127.0.0.1:{}/song-request/playlist",
+        cfg.port
+    ))
+}
+
+#[cfg(feature = "tauri")]
+#[tauri::command]
+async fn search_music_candidates(
+    query: String,
+    uid: Option<i64>,
+    uname: Option<String>,
+    state: tauri::State<'_, SharedState>,
+) -> Result<Vec<music::types::SearchCandidate>, String> {
+    let query = query.trim();
+    if query.is_empty() {
+        return Ok(Vec::new());
+    }
+
+    let user = validate_optional_music_user(uid, uname)?;
+    let provider = music::providers::netease::NeteaseProvider::new(reqwest::Client::new());
+
+    let service = if let Some((uid, uname)) = user.as_ref() {
+        let (session_id, room_id) = active_music_session(&state)?
+            .ok_or_else(|| "当前没有直播场次，暂不能为用户保存点歌搜索".to_string())?;
+        music::service::MusicInteractionService::new_with_storage(
+            vec![Box::new(provider)],
+            state.storage.clone(),
+            room_id,
+            Arc::new(Mutex::new(Some(session_id))),
+        )
+        .handle_danmu(*uid, uname, &format!("点歌 {query}"))
+        .await
+        .map_err(|e| e.to_string())?
+    } else {
+        music::service::MusicInteractionService::new(vec![Box::new(provider)])
+            .handle_danmu(0, "preview", &format!("点歌 {query}"))
+            .await
+            .map_err(|e| e.to_string())?
+    };
+
+    match service {
+        music::service::SongServiceReply::Candidates { candidates } => Ok(candidates),
+        music::service::SongServiceReply::Message(message) => Err(message),
+        _ => Ok(Vec::new()),
+    }
+}
+
+#[cfg(feature = "tauri")]
+fn validate_optional_music_user(
+    uid: Option<i64>,
+    uname: Option<String>,
+) -> Result<Option<(i64, String)>, String> {
+    match (uid, uname) {
+        (None, None) => Ok(None),
+        (Some(uid), Some(uname)) => {
+            let uname = uname.trim().to_string();
+            if uid <= 0 || uname.is_empty() {
+                return Err("请填写有效的用户 UID 和昵称".to_string());
+            }
+            Ok(Some((uid, uname)))
+        }
+        _ => Err("请填写完整的用户 UID 和昵称".to_string()),
+    }
+}
+
+#[cfg(feature = "tauri")]
+fn active_music_session(
+    state: &tauri::State<'_, SharedState>,
+) -> Result<Option<(String, i64)>, String> {
+    let monitor = state.monitor.lock().map_err(|e| e.to_string())?;
+    let Some(handle) = monitor.as_ref() else {
+        return Ok(None);
+    };
+    let session_id = handle.session_id.lock().map_err(|e| e.to_string())?.clone();
+    let Some(session_id) = session_id else {
+        return Ok(None);
+    };
+    let room_id = session_id
+        .split_once(':')
+        .and_then(|(room_id, _)| room_id.parse::<i64>().ok())
+        .ok_or_else(|| "当前直播场次格式无效，暂不能处理点歌互动".to_string())?;
+    Ok(Some((session_id, room_id)))
+}
+
+#[cfg(feature = "tauri")]
+#[tauri::command]
+async fn get_music_queue(
+    state: tauri::State<'_, SharedState>,
+) -> Result<Vec<music::storage::QueueItem>, String> {
+    let Some((session_id, room_id)) = active_music_session(&state)? else {
+        return Ok(Vec::new());
+    };
+    state
+        .storage
+        .with_connection(|conn| music::storage::list_queue(conn, &session_id, room_id))
+        .map_err(|e| e.to_string())
+}
+
+#[cfg(feature = "tauri")]
+#[tauri::command]
+async fn confirm_music_candidate(
+    state: tauri::State<'_, SharedState>,
+    uid: i64,
+    uname: String,
+    index: usize,
+) -> Result<String, String> {
+    let uname = uname.trim().to_string();
+    if uid <= 0 {
+        return Err("请填写有效的用户 UID".to_string());
+    }
+    if uname.is_empty() {
+        return Err("请填写用户昵称".to_string());
+    }
+    if index == 0 {
+        return Err("候选编号必须大于 0".to_string());
+    }
+
+    let (session_id, room_id) = active_music_session(&state)?
+        .ok_or_else(|| "当前没有直播场次，暂不能确认点歌".to_string())?;
+    let provider = music::providers::netease::NeteaseProvider::new(reqwest::Client::new());
+    let service = music::service::MusicInteractionService::new_with_storage(
+        vec![Box::new(provider)],
+        state.storage.clone(),
+        room_id,
+        Arc::new(Mutex::new(Some(session_id))),
+    );
+    let reply = service
+        .handle_danmu(uid, &uname, &format!("确认 #{index}"))
+        .await
+        .map_err(|e| e.to_string())?;
+    Ok(reply.to_danmu_text())
+}
+
+#[cfg(feature = "tauri")]
+#[tauri::command]
+async fn get_gift_catalog(
+    state: tauri::State<'_, SharedState>,
+) -> Result<Vec<storage::GiftCatalogItem>, String> {
     state.storage.gift_catalog().map_err(|e| e.to_string())
 }
 
 #[cfg(feature = "tauri")]
 #[tauri::command]
-async fn refresh_gift_catalog(state: tauri::State<'_, SharedState>) -> Result<Vec<storage::GiftCatalogItem>, String> {
+async fn refresh_gift_catalog(
+    state: tauri::State<'_, SharedState>,
+) -> Result<Vec<storage::GiftCatalogItem>, String> {
     refresh_gift_catalog_inner(&state).await?;
     state.storage.gift_catalog().map_err(|e| e.to_string())
 }
@@ -3579,7 +4167,10 @@ async fn refresh_gift_catalog_inner(state: &tauri::State<'_, SharedState>) -> Re
         .filter(|id| *id > 0)
         .unwrap_or(23174842);
     let gifts = fetch_gift_catalog(room_id).await?;
-    state.storage.replace_gift_catalog(&gifts).map_err(|e| e.to_string())
+    state
+        .storage
+        .replace_gift_catalog(&gifts)
+        .map_err(|e| e.to_string())
 }
 
 #[cfg(feature = "tauri")]
@@ -3603,7 +4194,10 @@ async fn gift_catalog_refresh_loop(
                 let _ = storage.replace_gift_catalog(&gifts);
             }
         }
-        tokio::time::sleep(std::time::Duration::from_secs(GIFT_CATALOG_MAX_AGE_SECS as u64)).await;
+        tokio::time::sleep(std::time::Duration::from_secs(
+            GIFT_CATALOG_MAX_AGE_SECS as u64,
+        ))
+        .await;
     }
 }
 
@@ -3644,7 +4238,10 @@ fn cache_guard_gift_from_event(storage: &storage::Storage, payload: &serde_json:
     let gift_name = live_event
         .get("gift")
         .and_then(serde_json::Value::as_str)
-        .or_else(|| raw.pointer("/data/gift_name").and_then(serde_json::Value::as_str))
+        .or_else(|| {
+            raw.pointer("/data/gift_name")
+                .and_then(serde_json::Value::as_str)
+        })
         .unwrap_or("舰长");
     let guard_level = raw
         .pointer("/data/guard_level")
@@ -3704,9 +4301,19 @@ async fn fetch_gift_catalog(room_id: i64) -> Result<Vec<storage::GiftCatalogItem
         .ok_or_else(|| "礼物列表格式异常".to_string())?
         .iter()
         .filter_map(|item| {
-            let gift_id = item.get("id").or_else(|| item.get("gift_id")).and_then(serde_json::Value::as_i64)?;
-            let name = item.get("name").and_then(serde_json::Value::as_str)?.trim().to_string();
-            let price = item.get("price").and_then(serde_json::Value::as_i64).unwrap_or(0);
+            let gift_id = item
+                .get("id")
+                .or_else(|| item.get("gift_id"))
+                .and_then(serde_json::Value::as_i64)?;
+            let name = item
+                .get("name")
+                .and_then(serde_json::Value::as_str)?
+                .trim()
+                .to_string();
+            let price = item
+                .get("price")
+                .and_then(serde_json::Value::as_i64)
+                .unwrap_or(0);
             let image = item
                 .get("img_basic")
                 .or_else(|| item.get("img_dynamic"))
@@ -3745,20 +4352,30 @@ fn valid_gift_catalog_item(name: &str, image: &str, price: i64) -> bool {
 
 #[cfg(feature = "tauri")]
 #[tauri::command]
-async fn load_overlay_config() -> Result<overlay_config::OverlayConfig, String> {
-    overlay_config::OverlayConfig::load_or_default().map_err(|e| e.to_string())
+async fn load_danmaku_chat_config() -> Result<plugin_settings::DanmakuChatSettings, String> {
+    Ok(load_danmaku_chat_settings()?)
 }
 
 #[cfg(feature = "tauri")]
 #[tauri::command]
-async fn save_overlay_config(
-    config: overlay_config::OverlayConfig,
+async fn save_danmaku_chat_config(
+    config: plugin_settings::DanmakuChatSettings,
     state: tauri::State<'_, SharedState>,
 ) -> Result<(), String> {
-    config.save().map_err(|e| e.to_string())?;
-    // 通知所有 overlay 网页客户端重新拉取配置
-    overlay_server::broadcast_cfg_update(&state.overlay_tx);
+    let mut settings =
+        plugin_settings::PluginSettings::load_or_default().map_err(|e| e.to_string())?;
+    settings.danmaku_chat = config;
+    settings.save().map_err(|e| e.to_string())?;
+    // 通知所有弹幕聊天网页客户端重新拉取配置
+    danmaku_chat_server::broadcast_cfg_update(&state.danmaku_chat_tx);
     Ok(())
+}
+
+#[cfg(feature = "tauri")]
+fn load_danmaku_chat_settings() -> Result<plugin_settings::DanmakuChatSettings, String> {
+    plugin_settings::PluginSettings::load_or_default()
+        .map(|settings| settings.danmaku_chat)
+        .map_err(|e| e.to_string())
 }
 
 #[cfg(feature = "tauri")]
@@ -3774,7 +4391,7 @@ async fn save_plugin_settings(
     state: tauri::State<'_, SharedState>,
 ) -> Result<(), String> {
     config.save().map_err(|e| e.to_string())?;
-    overlay_server::broadcast_plugin_settings_update(&state.overlay_tx);
+    danmaku_chat_server::broadcast_plugin_settings_update(&state.danmaku_chat_tx);
     Ok(())
 }
 
@@ -3816,61 +4433,79 @@ async fn pick_plugin_resource(app: AppHandle, kind: String) -> Result<Option<Str
 
 #[cfg(feature = "tauri")]
 #[tauri::command]
-async fn reset_wish_goal(state: tauri::State<'_, SharedState>) -> Result<plugin_settings::PluginSettings, String> {
-    let mut config = plugin_settings::PluginSettings::load_or_default().map_err(|e| e.to_string())?;
+async fn reset_wish_goal(
+    state: tauri::State<'_, SharedState>,
+) -> Result<plugin_settings::PluginSettings, String> {
+    let mut config =
+        plugin_settings::PluginSettings::load_or_default().map_err(|e| e.to_string())?;
     config.reset_wish_goal();
     config.save().map_err(|e| e.to_string())?;
-    overlay_server::broadcast_plugin_settings_update(&state.overlay_tx);
+    danmaku_chat_server::broadcast_plugin_settings_update(&state.danmaku_chat_tx);
     Ok(config)
 }
 
 #[cfg(feature = "tauri")]
 #[tauri::command]
-async fn simulate_wish_goal(state: tauri::State<'_, SharedState>) -> Result<plugin_settings::PluginSettings, String> {
-    let mut config = plugin_settings::PluginSettings::load_or_default().map_err(|e| e.to_string())?;
+async fn simulate_wish_goal(
+    state: tauri::State<'_, SharedState>,
+) -> Result<plugin_settings::PluginSettings, String> {
+    let mut config =
+        plugin_settings::PluginSettings::load_or_default().map_err(|e| e.to_string())?;
     config.simulate_wish_goal();
     config.save().map_err(|e| e.to_string())?;
-    overlay_server::broadcast_plugin_settings_update(&state.overlay_tx);
+    danmaku_chat_server::broadcast_plugin_settings_update(&state.danmaku_chat_tx);
     Ok(config)
 }
 
 #[cfg(feature = "tauri")]
 #[tauri::command]
-async fn simulate_lottery(state: tauri::State<'_, SharedState>) -> Result<plugin_settings::PluginSettings, String> {
-    let mut config = plugin_settings::PluginSettings::load_or_default().map_err(|e| e.to_string())?;
+async fn simulate_lottery(
+    state: tauri::State<'_, SharedState>,
+) -> Result<plugin_settings::PluginSettings, String> {
+    let mut config =
+        plugin_settings::PluginSettings::load_or_default().map_err(|e| e.to_string())?;
     config.simulate_lottery();
     config.save().map_err(|e| e.to_string())?;
-    overlay_server::broadcast_plugin_settings_update(&state.overlay_tx);
+    danmaku_chat_server::broadcast_plugin_settings_update(&state.danmaku_chat_tx);
     Ok(config)
 }
 
 #[cfg(feature = "tauri")]
 #[tauri::command]
-async fn simulate_gift_effect(state: tauri::State<'_, SharedState>) -> Result<plugin_settings::PluginSettings, String> {
-    let mut config = plugin_settings::PluginSettings::load_or_default().map_err(|e| e.to_string())?;
+async fn simulate_gift_effect(
+    state: tauri::State<'_, SharedState>,
+) -> Result<plugin_settings::PluginSettings, String> {
+    let mut config =
+        plugin_settings::PluginSettings::load_or_default().map_err(|e| e.to_string())?;
     config.simulate_gift_effect();
     config.save().map_err(|e| e.to_string())?;
-    overlay_server::broadcast_plugin_settings_update(&state.overlay_tx);
+    danmaku_chat_server::broadcast_plugin_settings_update(&state.danmaku_chat_tx);
     Ok(config)
 }
 
 #[cfg(feature = "tauri")]
 #[tauri::command]
-async fn simulate_recent_gift(state: tauri::State<'_, SharedState>) -> Result<plugin_settings::PluginSettings, String> {
-    let mut config = plugin_settings::PluginSettings::load_or_default().map_err(|e| e.to_string())?;
+async fn simulate_recent_gift(
+    state: tauri::State<'_, SharedState>,
+) -> Result<plugin_settings::PluginSettings, String> {
+    let mut config =
+        plugin_settings::PluginSettings::load_or_default().map_err(|e| e.to_string())?;
     config.simulate_recent_gift();
     config.save().map_err(|e| e.to_string())?;
-    overlay_server::broadcast_plugin_settings_update(&state.overlay_tx);
+    danmaku_chat_server::broadcast_plugin_settings_update(&state.danmaku_chat_tx);
     Ok(config)
 }
 
 #[cfg(feature = "tauri")]
 #[tauri::command]
-async fn simulate_gift_rank(state: tauri::State<'_, SharedState>) -> Result<plugin_settings::PluginSettings, String> {
-    let mut config = plugin_settings::PluginSettings::load_or_default().map_err(|e| e.to_string())?;
+async fn simulate_gift_rank(
+    state: tauri::State<'_, SharedState>,
+) -> Result<plugin_settings::PluginSettings, String> {
+    let mut config =
+        plugin_settings::PluginSettings::load_or_default().map_err(|e| e.to_string())?;
     config.simulate_gift_rank();
     config.save().map_err(|e| e.to_string())?;
-    overlay_server::broadcast_plugin_settings_update(&state.overlay_tx);
+    danmaku_chat_server::broadcast_plugin_settings_update(&state.danmaku_chat_tx);
     Ok(config)
 }
 

@@ -137,7 +137,13 @@ fn run_playback_thread(
 
     // 接收帧并推入 ring buffer（含自适应延迟控制）
     while let Ok(frame) = rx.recv() {
-        push_to_buffer(&frame, &buffer, device_sample_rate, &monitor, drop_on_overflow);
+        push_to_buffer(
+            &frame,
+            &buffer,
+            device_sample_rate,
+            &monitor,
+            drop_on_overflow,
+        );
     }
 
     Ok(())

@@ -31,6 +31,7 @@ export function Button({
 
   return (
     <button
+      data-fx="btn"
       className={cn(
         baseClasses,
         sizeClasses[size],

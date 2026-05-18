@@ -25,6 +25,36 @@ export type VisualThemeId =
 export type BackgroundEffectType = VisualThemeId;
 type ColorSource = 'theme' | 'custom';
 
+// 主题家族：决定光标、点击反馈、按钮交互、页面转场的调性
+export type ThemeFamily = 'ink' | 'tech' | 'ocean' | 'default';
+
+export const THEME_FAMILY_MAP: Record<VisualThemeId, ThemeFamily> = {
+  // 水墨/国风
+  'mountain-parallax': 'ink',
+  'ink-wash-bloom':    'ink',
+  'ink-brush-trace':   'ink',
+  'misty-peaks':       'ink',
+  'river-lantern':     'ink',
+  'bamboo-breeze':     'ink',
+  'bamboo-rain':       'ink',
+  'lotus-pond':        'ink',
+  'palace-lantern':    'ink',
+  'gold-flakes':       'ink',
+  'sakura-fall':       'ink',
+  // 科技/星空
+  'particle-galaxy':   'tech',
+  'aurora-bands':      'tech',
+  'constellation':     'tech',
+  'meteor-shower':     'tech',
+  'nebula-drift':      'tech',
+  'fluid-ripple':      'tech',
+  // 海洋
+  'deep-sea-drift':    'ocean',
+  'coral-reef':        'ocean',
+  // 通用
+  'blobs':             'default',
+};
+
 interface VisualThemeDefinition {
   id: VisualThemeId;
   primary: string;
@@ -57,6 +87,7 @@ interface ThemeContextType {
   blur: number;
   visualTheme: VisualThemeId;
   backgroundEffect: BackgroundEffectType;
+  themeFamily: ThemeFamily;
   colorSource: ColorSource;
   toggleTheme: () => void;
   setPrimaryColor: (color: string) => void;
@@ -607,6 +638,7 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
     const accentRgb = hexToRgb(accentColor);
 
     root.classList.toggle('dark', isDark);
+    root.setAttribute('data-theme-family', THEME_FAMILY_MAP[visualTheme] ?? 'default');
     root.style.setProperty('--primary-color', primaryColor);
     root.style.setProperty('--accent-color', accentColor);
     root.style.setProperty('--primary-hue', hue.toString());
@@ -717,6 +749,7 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
         blur,
         visualTheme,
         backgroundEffect: visualTheme,
+        themeFamily: THEME_FAMILY_MAP[visualTheme] ?? 'default',
         colorSource,
         toggleTheme,
         setPrimaryColor,

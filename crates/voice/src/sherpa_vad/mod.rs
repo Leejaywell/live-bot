@@ -446,7 +446,7 @@ fn run_mic(
     let mut diag_samples: u64 = 0;
     let mut diag_peak: f32 = 0.0;
     let mut diag_report_count: u32 = 0;
-    let diag_interval_first = VAD_RATE as u64;      // 1 秒
+    let diag_interval_first = VAD_RATE as u64; // 1 秒
     let diag_interval_normal = VAD_RATE as u64 * 5; // 5 秒
 
     while !cancel.is_cancelled() {
@@ -488,7 +488,11 @@ fn run_mic(
             diag_peak = diag_peak.max(s.abs());
         }
         diag_samples += vad_buf.len() as u64;
-        let threshold = if diag_report_count == 0 { diag_interval_first } else { diag_interval_normal };
+        let threshold = if diag_report_count == 0 {
+            diag_interval_first
+        } else {
+            diag_interval_normal
+        };
         if diag_samples >= threshold {
             diag_report_count += 1;
             if diag_peak < 1e-6 {

@@ -30,6 +30,8 @@ export interface AppConfig {
   AutoUpdate: boolean;
   MinimizeToTray: boolean;
   LaunchAtStartup: boolean;
+  DisableBackgroundEffects: boolean;
+  DisableCursorEffects: boolean;
   RoomId: number;
   MyRoomIds: number[];
   RecordEnabled: boolean;
@@ -83,6 +85,9 @@ export interface AppConfig {
   // Voice / TTS / ASR / OBS
   TtsEnabled: boolean;
   TtsVoice: string;
+  DanmuAnnounce: boolean;
+  DanmuAnnounceTtsProviderId: string;
+  DanmuAnnounceTtsVoice: string;
   TtsSpeed: number;
   DanmuAnnounceSpeed: number;
   TtsPitch: number;
@@ -113,32 +118,10 @@ export interface AppConfig {
   SpecialWelcomeList: SpecialWelcomeEntry[];
   /** 弹幕播报开关（仅内存，不持久化） */
   DanmuAnnounce?: boolean;
-  // ── 弹幕浮层 ──
-  OverlayPort: number;
-  OverlayFontSize: number;
-  OverlayBgOpacity: number;
-  OverlayShowAvatar: boolean;
-  OverlayAvatarSize: number;
-  OverlayMaxMsgs: number;
-  OverlayCustomCss: string;
-  OverlayMsgGap: number;
-  OverlayShowGift: boolean;
-  OverlayShowGuard: boolean;
-  OverlayShowSc: boolean;
-  OverlayGiftMinCost: number;
-  OverlayDanmuColor: string;
-  OverlayFontWeight: number;
-  OverlayShowUsername: boolean;
-  OverlayAnimateIn: boolean;
-  OverlayAnimateInMs: number;
-  OverlayAnimateOut: boolean;
-  OverlayAnimateOutMs: number;
-  OverlayAnimateOutWait: number;
-  OverlayScMinCost: number;
 }
 
-/** 弹幕浮层独立配置（etc/overlay.toml） */
-export interface OverlayConfig {
+/** 弹幕聊天配置（plugin-settings.toml / DanmakuChat） */
+export interface DanmakuChatConfig {
   // 服务 / 性能
   Port: number;
   MaxMsgs: number;
@@ -221,11 +204,74 @@ export interface OverlayConfig {
 }
 
 export interface PluginSettings {
+  DanmakuChat: DanmakuChatConfig;
   WishGoal: WishGoalSettings;
   LotteryInteraction: LotteryInteractionSettings;
   GiftEffect: GiftEffectSettings;
   RecentGifts: RecentGiftsSettings;
   GiftRank: GiftRankSettings;
+  MusicInteraction: MusicInteractionSettings;
+}
+
+export interface MusicInteractionSettings {
+  Enabled: boolean;
+  Skin: string;
+  StatsRange: string;
+  Player: string;
+  PlaybackMode: string;
+  Transparent: boolean;
+  Width: number;
+  Height: number;
+  ShowCover: boolean;
+  ShowRequester: boolean;
+  ShowGiftTier: boolean;
+  ShowQueue: boolean;
+  ShowNowPlayingPanel: boolean;
+  ShowQueuePanel: boolean;
+  ShowRankPanel: boolean;
+  ShowTodayValue: boolean;
+  PrimaryColor: string;
+  FontScale: number;
+  Tiers: MusicTierSettings[];
+}
+
+export interface MusicTierSettings {
+  Id: string;
+  Name: string;
+  MinCredit: number;
+  BaseScore: number;
+  Enabled: boolean;
+}
+
+export interface MusicTrack {
+  source: 'netease' | 'tencent' | 'kugou' | 'baidu' | 'kuwo';
+  song_id: string;
+  name: string;
+  artists: string[];
+  album: string;
+  pic_id: string;
+  url_id: string;
+  lyric_id: string;
+  duration_ms: number | null;
+}
+
+export interface MusicQueueItem {
+  requestId: number;
+  uid: number;
+  uname: string;
+  songName: string;
+  artistNames: string;
+  tier: string;
+  creditValue: number;
+  priorityScore: number;
+  status: string;
+  createdAt: string;
+}
+
+export interface SearchCandidate {
+  track: MusicTrack;
+  score: number;
+  reason: string;
 }
 
 export interface WishGoalSettings {
@@ -448,17 +494,29 @@ export const api = {
   // Monitor
   startMonitor: (roomId?: number) => invoke<void>('start_monitor', { roomId: roomId ?? null }),
   stopMonitor: () => invoke<void>('stop_monitor'),
+  reloadMonitorTts: () => invoke<void>('reload_monitor_tts'),
+  reloadMonitorVoice: () => invoke<void>('reload_monitor_voice'),
   getMonitorStatus: () => invoke<boolean>('get_monitor_status'),
   getMonitorLogs: () => invoke<string[]>('get_monitor_logs'),
   onMonitorStatus: (callback: (status: string) => void) => listen<string>('monitor-status', (event) => callback(event.payload)),
   onMonitorLog: (callback: (log: string) => void) => listen<string>('monitor-log', (event) => callback(event.payload)),
   onMonitorLogs: (callback: (logs: string[]) => void) => listen<string[]>('monitor-logs', (event) => callback(event.payload)),
-  getOverlayUrl: () => invoke<string>('get_overlay_url'),
+  getDanmakuChatUrl: () => invoke<string>('get_danmaku_chat_url'),
   getWishGoalUrl: () => invoke<string>('get_wish_goal_url'),
   getLotteryUrl: () => invoke<string>('get_lottery_url'),
   getGiftEffectUrl: () => invoke<string>('get_gift_effect_url'),
   getRecentGiftsUrl: () => invoke<string>('get_recent_gifts_url'),
   getGiftRankUrl: () => invoke<string>('get_gift_rank_url'),
+  getMusicInteractionUrl: () => invoke<string>('get_music_interaction_url'),
+  searchMusicCandidates: (query: string, uid?: number, uname?: string) =>
+    invoke<SearchCandidate[]>('search_music_candidates', { query, uid: uid ?? null, uname: uname ?? null }),
+  getMusicQueue: () => invoke<MusicQueueItem[]>('get_music_queue'),
+  openMusicRequest: (requestId: number) => invoke<void>('open_music_request', { requestId }),
+  finishMusicRequest: (requestId: number) => invoke<void>('finish_music_request', { requestId }),
+  skipMusicRequest: (requestId: number) => invoke<void>('skip_music_request', { requestId }),
+  failMusicRequest: (requestId: number) => invoke<void>('fail_music_request', { requestId }),
+  confirmMusicCandidate: (uid: number, uname: string, index: number) =>
+    invoke<string>('confirm_music_candidate', { uid, uname, index }),
   pickPluginResource: (kind: 'sound') => invoke<string | null>('pick_plugin_resource', { kind }),
   getGiftCatalog: () => invoke<GiftCatalogItem[]>('get_gift_catalog'),
   refreshGiftCatalog: () => invoke<GiftCatalogItem[]>('refresh_gift_catalog'),
@@ -490,9 +548,9 @@ export const api = {
   openUrl: (url: string) => invoke<void>('open_url', { url }),
   proxyImage: (url: string) => invoke<string>('proxy_image', { url }),
 
-  // Overlay config (独立存储，etc/overlay.toml)
-  loadOverlayConfig: () => invoke<OverlayConfig>('load_overlay_config'),
-  saveOverlayConfig: (config: OverlayConfig) => invoke<void>('save_overlay_config', { config }),
+  // Danmaku chat config (stored in plugin-settings.toml)
+  loadDanmakuChatConfig: () => invoke<DanmakuChatConfig>('load_danmaku_chat_config'),
+  saveDanmakuChatConfig: (config: DanmakuChatConfig) => invoke<void>('save_danmaku_chat_config', { config }),
   loadPluginSettings: () => invoke<PluginSettings>('load_plugin_settings'),
   savePluginSettings: (config: PluginSettings) => invoke<void>('save_plugin_settings', { config }),
   resetWishGoal: () => invoke<PluginSettings>('reset_wish_goal'),

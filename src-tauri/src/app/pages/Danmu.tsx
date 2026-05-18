@@ -114,8 +114,8 @@ export function Danmu() {
   const [newMsgCount, setNewMsgCount] = useState(0);
 
   // TTS announce state
-  const [isTtsEnabled, setIsTtsEnabled] = useState(() => sessionStorage.getItem('danmuAnnounce') === 'true');
-  const isTtsEnabledRef = useRef(sessionStorage.getItem('danmuAnnounce') === 'true');
+  const [isTtsEnabled, setIsTtsEnabled] = useState(false);
+  const isTtsEnabledRef = useRef(false);
   const [ttsProviders, setTtsProviders] = useState<AiProvider[]>([]);
   const [ttsProviderId, setTtsProviderId] = useState('');
   const [config, setConfig] = useState<AppConfig | null>(null);
@@ -145,15 +145,16 @@ export function Danmu() {
       setConfig(c);
       const enabled = (c.AiProviders ?? []).filter(p => p.ProviderType === 'tts' && p.Enabled);
       setTtsProviders(enabled);
-      const saved = c.ActiveTtsProviderId && enabled.find(p => p.Id === c.ActiveTtsProviderId);
+      const saved = c.DanmuAnnounceTtsProviderId && enabled.find(p => p.Id === c.DanmuAnnounceTtsProviderId);
       setTtsProviderId(saved ? saved.Id : (enabled[0]?.Id ?? ''));
       if (!ttsVoice) {
         const activeProvider = saved ?? enabled[0];
         const providerKey = activeProvider ? detectProvider(activeProvider.Name) : null;
-        const savedVoiceFits = providerKey ? Boolean(findVoice(providerKey, c.TtsVoice)) : Boolean(c.TtsVoice);
+        const savedVoice = c.DanmuAnnounceTtsVoice || c.TtsVoice;
+        const savedVoiceFits = providerKey ? Boolean(findVoice(providerKey, savedVoice)) : Boolean(savedVoice);
         const providerVoiceFits = providerKey ? Boolean(findVoice(providerKey, activeProvider?.Model ?? '')) : false;
         const voice = savedVoiceFits
-          ? c.TtsVoice
+          ? savedVoice
           : providerVoiceFits
             ? activeProvider!.Model
             : providerKey
@@ -162,6 +163,8 @@ export function Danmu() {
         setTtsVoice(voice);
         ttsVoiceRef.current = voice;
       }
+      setIsTtsEnabled(Boolean(c.DanmuAnnounce));
+      isTtsEnabledRef.current = Boolean(c.DanmuAnnounce);
       const speed = Math.min(2.0, Math.max(0.5, c.DanmuAnnounceSpeed ?? 1.0));
       setDanmuAnnounceSpeed(speed);
       danmuAnnounceSpeedRef.current = speed;
@@ -362,7 +365,7 @@ export function Danmu() {
     isPausedRef.current = next;
   };
 
-  const toggleTts = () => {
+  const toggleTts = async () => {
     if (!isTtsEnabled && ttsProviders.length === 0) {
       toast.error('请先添加TTS服务');
       return;
@@ -371,6 +374,22 @@ export function Danmu() {
     setIsTtsEnabled(next);
     isTtsEnabledRef.current = next;
     sessionStorage.setItem('danmuAnnounce', String(next));
+    if (!config) return;
+    const nextConfig = {
+      ...config,
+      DanmuAnnounce: next,
+      TtsEnabled: next ? false : config.TtsEnabled,
+    };
+    setConfig(nextConfig);
+    try {
+      await api.saveConfig(nextConfig);
+      if (next && config.TtsEnabled) await api.reloadMonitorTts();
+    } catch (err) {
+      setIsTtsEnabled(config.DanmuAnnounce);
+      isTtsEnabledRef.current = config.DanmuAnnounce;
+      console.error('save danmu announce failed:', err);
+      toast.error(`播报切换失败: ${err}`);
+    }
   };
 
   const sendDanmu = async () => {
@@ -499,8 +518,8 @@ export function Danmu() {
               ))}
             </div>
             <button
-              onClick={() => navigate('/plugins/chat-overlay')}
-              title="打开弹幕浮层设置"
+              onClick={() => navigate('/plugins/danmaku-chat')}
+              title="打开弹幕聊天设置"
               className="h-[32px] w-[32px] rounded-full flex items-center justify-center border border-gray-200 dark:border-white/20 text-gray-400 hover:bg-white/60 hover:text-gray-600 dark:hover:text-gray-300 transition-all ml-2 active:scale-95"
             >
               <Settings2 className="w-3.5 h-3.5" />
@@ -644,8 +663,8 @@ export function Danmu() {
           });
           const next = {
             ...config,
-            TtsVoice: v,
-            ActiveTtsProviderId: matched?.Id ?? config.ActiveTtsProviderId,
+            DanmuAnnounceTtsVoice: v,
+            DanmuAnnounceTtsProviderId: matched?.Id ?? config.DanmuAnnounceTtsProviderId,
           };
           if (matched) setTtsProviderId(matched.Id);
           setConfig(next);

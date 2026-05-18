@@ -2,11 +2,13 @@ import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { HashRouter, Routes, Route, Navigate, useLocation } from 'react-router-dom';
 import { LogIn, Home, Radio } from 'lucide-react';
 import { Toaster } from 'sonner';
-import { ThemeProvider } from './context/ThemeContext';
+import { ThemeProvider, useTheme } from './context/ThemeContext';
 import { ConfigProvider, useConfig } from './context/ConfigContext';
 import { LoginContext } from './context/LoginContext';
 import { RoomProvider, useRoom } from './context/RoomContext';
 import { BackgroundManager } from './components/BackgroundEffects';
+import { CursorEffect } from './components/CursorEffect';
+import { ClickRippleEffect } from './components/ClickRippleEffect';
 import { DanmuOverlay } from './components/DanmuOverlay';
 import { TopBar } from './components/TopBar';
 import { Sidebar } from './components/Sidebar';
@@ -24,7 +26,8 @@ import { Voice } from './pages/Voice';
 import { VoiceChanger } from './pages/VoiceChanger';
 import { Models } from './pages/Models';
 import { Stats } from './pages/Stats';
-import { ChatOverlay } from './pages/ChatOverlay';
+import { DanmakuChat } from './pages/DanmakuChat';
+import { MusicInteraction } from './pages/MusicInteraction';
 import { WishGoal } from './pages/WishGoal';
 import { LotteryInteraction } from './pages/LotteryInteraction';
 import { GiftEffect } from './pages/GiftEffect';
@@ -36,6 +39,7 @@ import QRCode from 'react-qr-code';
 import { toast } from 'sonner';
 import { RefreshCw, X, QrCode } from 'lucide-react';
 import { Modal, ModalCloseButton } from './components/Modal';
+import { Splash, SPLASH_REPLAY_EVENT, type SplashMode } from './components/Splash';
 
 export interface AppNotif {
   id: string;
@@ -87,11 +91,20 @@ function AppContent() {
   const [autoRoom, setAutoRoom] = useState<{ roomId: string; liveStatus: number; liveTime: string } | null>(null);
   const [showRoomModal, setShowRoomModal] = useState(false);
   const [showLoginModal, setShowLoginModal] = useState(false);
+  const [splash, setSplash] = useState<{ visible: boolean; mode: SplashMode }>({ visible: true, mode: 'boot' });
+
+  // 监听"重新进入启动页"事件（来自设置面板）
+  useEffect(() => {
+    const onReplay = () => setSplash({ visible: true, mode: 'replay' });
+    window.addEventListener(SPLASH_REPLAY_EVENT, onReplay);
+    return () => window.removeEventListener(SPLASH_REPLAY_EVENT, onReplay);
+  }, []);
 
   // 注册到 RoomContext，让 requireRoom 弹窗可以直接打开连接对话框
   useEffect(() => {
     registerOpenRoomModal(() => setShowRoomModal(true));
   }, [registerOpenRoomModal]);
+
   const [loginUrl, setLoginUrl] = useState('');
   const [loginKey, setLoginKey] = useState('');
   const [loginStatus, setLoginStatus] = useState<'pending' | 'expired' | 'success' | 'idle'>('pending');
@@ -251,12 +264,13 @@ function AppContent() {
     window.location.reload();
   }, []);
 
-  // 连接房间成功
+  // 连接房间成功（仅用户主动连接走此路径；启动恢复不进这里，因此自动恢复时不会有 toast）
   const handleRoomConnected = useCallback((roomId: string, liveStatus: number, liveTime: string, roomUid?: number) => {
     const id = parseInt(roomId);
     setAutoRoom({ roomId, liveStatus, liveTime });
     setShowRoomModal(false);
     setConnected(true);
+    toast.success(`已连接到直播间 ${roomId}`);
     // 持久化已连接的房间
     api.setConnectedRoom(id).catch(() => {});
     // 拉取主播信息
@@ -280,31 +294,37 @@ function AppContent() {
       <Toaster
         position="top-right"
         richColors
-        gap={6}
+        gap={8}
         visibleToasts={4}
         duration={2500}
         containerStyle={{
-          right: '0px',
+          right: '4px',
           top: '64px',
         }}
         toastOptions={{
           className: 'toast-edge',
           style: {
-            fontSize: '11px',
+            fontSize: '12px',
             fontWeight: 600,
             background: 'var(--surface-bg)',
             color: 'var(--foreground)',
             backdropFilter: 'blur(var(--glass-blur))',
             border: '1px solid var(--surface-border)',
-            borderRight: 'none',
-            boxShadow: '-4px 6px 20px rgba(0, 0, 0, 0.07)',
-            borderRadius: '14px 0 0 14px',
-            padding: '7px 14px',
+            boxShadow: '0 10px 30px rgba(0, 0, 0, 0.14)',
+            borderRadius: '14px',
+            padding: '9px 14px',
             width: 'fit-content',
-            minWidth: '160px',
+            minWidth: '200px',
           },
         }}
       />
+      {splash.visible && (
+        <Splash
+          mode={splash.mode}
+          ready={splash.mode === 'replay' ? true : loginChecked}
+          onDismiss={() => setSplash(s => ({ ...s, visible: false }))}
+        />
+      )}
       <LoginContext.Provider value={{
         isLoggedIn, setIsLoggedIn, userInfo, setUserInfo, loginChecked,
         refreshUserInfo, openLoginModal: () => setShowLoginModal(true)
@@ -312,6 +332,8 @@ function AppContent() {
       <ConfigProvider>
       <HashRouter>
         <BackgroundManager />
+        <ClickRippleEffect />
+        <CursorEffect />
         <DanmuOverlay />
         {loginChecked && <div
           className="w-full h-screen overflow-hidden flex relative z-[1]"
@@ -420,11 +442,17 @@ function AppContent() {
   );
 }
 
-// 带页面过渡的路由容器
+// 带页面过渡的路由容器（按 themeFamily 选择不同转场）
 function AnimatedRoutes() {
   const location = useLocation();
+  const { themeFamily } = useTheme();
+  const animClass =
+    themeFamily === 'ink'   ? 'animate-page-in-ink'   :
+    themeFamily === 'tech'  ? 'animate-page-in-tech'  :
+    themeFamily === 'ocean' ? 'animate-page-in-ocean' :
+                              'animate-page-in';
   return (
-    <div key={location.pathname} className="animate-page-in h-full overflow-y-auto">
+    <div key={location.pathname} className={`${animClass} h-full overflow-y-auto`}>
       <Routes location={location}>
         <Route path="/" element={<Dashboard />} />
         <Route path="/audience" element={<Audience />} />
@@ -435,8 +463,9 @@ function AnimatedRoutes() {
         <Route path="/voice-changer" element={<VoiceChanger />} />
         <Route path="/models" element={<Models />} />
         <Route path="/stats" element={<Stats />} />
-        <Route path="/plugins" element={<Navigate to="/plugins/chat-overlay" replace />} />
-        <Route path="/plugins/chat-overlay" element={<ChatOverlay />} />
+        <Route path="/plugins" element={<Navigate to="/plugins/danmaku-chat" replace />} />
+        <Route path="/plugins/danmaku-chat" element={<DanmakuChat />} />
+        <Route path="/plugins/music-interaction" element={<MusicInteraction />} />
         <Route path="/plugins/wish-goal" element={<WishGoal />} />
         <Route path="/plugins/lottery" element={<LotteryInteraction />} />
         <Route path="/plugins/gift-effect" element={<GiftEffect />} />
