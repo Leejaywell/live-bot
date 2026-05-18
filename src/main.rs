@@ -2204,7 +2204,19 @@ async fn open_music_request(
 
     app.opener()
         .open_url(url, None::<&str>)
-        .map_err(|e| format!("打开播放器失败: {e}"))
+        .map_err(|e| format!("打开播放器失败: {e}"))?;
+
+    state
+        .storage
+        .with_connection_mut(|conn| {
+            music::storage::mark_song_request_playing(
+                conn,
+                request.request_id,
+                &session_id,
+                room_id,
+            )
+        })
+        .map_err(|e| e.to_string())
 }
 
 #[cfg(feature = "tauri")]

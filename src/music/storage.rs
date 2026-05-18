@@ -545,6 +545,56 @@ pub fn openable_song_request(
     .map_err(Into::into)
 }
 
+#[allow(dead_code)]
+pub fn mark_song_request_playing(
+    conn: &mut Connection,
+    request_id: i64,
+    session_id: &str,
+    room_id: i64,
+) -> Result<()> {
+    let tx = conn.transaction()?;
+    let exists = tx
+        .query_row(
+            "select 1
+             from song_requests
+             where id = ?1
+               and session_id = ?2
+               and room_id = ?3
+               and status in ('queued', 'playing')",
+            params![request_id, session_id, room_id],
+            |row| row.get::<_, i64>(0),
+        )
+        .optional()?
+        .is_some();
+    if !exists {
+        return Err(anyhow!(
+            "song request is not openable in active session: {request_id}"
+        ));
+    }
+
+    let now = now_text();
+    tx.execute(
+        "update song_requests
+         set status = 'queued', updated_at = ?1, played_at = null
+         where session_id = ?2 and room_id = ?3 and status = 'playing'",
+        params![now, session_id, room_id],
+    )?;
+    let rows_affected = tx.execute(
+        "update song_requests
+         set status = 'playing', updated_at = ?1, played_at = ?1
+         where id = ?2
+           and session_id = ?3
+           and room_id = ?4
+           and status = 'queued'",
+        params![now, request_id, session_id, room_id],
+    )?;
+    if rows_affected != 1 {
+        return Err(anyhow!("song request was not marked playing: {request_id}"));
+    }
+    tx.commit()?;
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use chrono::{Duration, FixedOffset, Local};
@@ -557,8 +607,8 @@ mod tests {
     use super::{
         NewSongCredit, NewSongRequest, insert_credit, insert_song_request,
         insert_song_request_and_consume_credit, list_queue, mark_credit_used,
-        oldest_pending_credit, openable_song_request, pending_credit_value, save_search_context,
-        session_pending_value,
+        mark_song_request_playing, oldest_pending_credit, openable_song_request,
+        pending_credit_value, save_search_context, session_pending_value,
     };
 
     fn song_request() -> NewSongRequest {
@@ -924,6 +974,56 @@ mod tests {
                 .request_id,
             active_id
         );
+    }
+
+    #[test]
+    fn mark_song_request_playing_demotes_existing_playing_in_same_session_room() {
+        let mut conn = Connection::open_in_memory().expect("db opens");
+        ensure_schema(&conn).expect("schema");
+
+        let existing_id = insert_song_request(&conn, &song_request()).expect("existing request");
+        let target_id = insert_song_request(&conn, &song_request()).expect("target request");
+        conn.execute(
+            "update song_requests set status = 'playing' where id = ?1",
+            [existing_id],
+        )
+        .expect("mark existing playing");
+
+        mark_song_request_playing(&mut conn, target_id, "session-1", 100).expect("mark playing");
+
+        let queue = list_queue(&conn, "session-1", 100).expect("queue");
+        assert_eq!(queue[0].request_id, target_id);
+        assert_eq!(queue[0].status, "playing");
+        assert!(
+            queue
+                .iter()
+                .any(|item| item.request_id == existing_id && item.status == "queued")
+        );
+    }
+
+    #[test]
+    fn mark_song_request_playing_rejects_wrong_session_room_and_finished_rows() {
+        let mut conn = Connection::open_in_memory().expect("db opens");
+        ensure_schema(&conn).expect("schema");
+
+        let active_id = insert_song_request(&conn, &song_request()).expect("active request");
+        let mut other_session_request = song_request();
+        other_session_request.session_id = "session-2".to_string();
+        let other_session_id =
+            insert_song_request(&conn, &other_session_request).expect("other session request");
+        let mut other_room_request = song_request();
+        other_room_request.room_id = 200;
+        let other_room_id =
+            insert_song_request(&conn, &other_room_request).expect("other room request");
+        conn.execute(
+            "update song_requests set status = 'finished' where id = ?1",
+            [active_id],
+        )
+        .expect("mark finished");
+
+        assert!(mark_song_request_playing(&mut conn, active_id, "session-1", 100).is_err());
+        assert!(mark_song_request_playing(&mut conn, other_session_id, "session-1", 100).is_err());
+        assert!(mark_song_request_playing(&mut conn, other_room_id, "session-1", 100).is_err());
     }
 
     #[test]

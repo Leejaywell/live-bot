@@ -179,12 +179,15 @@ async fn song_rank_handler() -> impl IntoResponse {
 }
 
 fn observed_music_queue() -> Vec<QueueItem> {
-    let app = match crate::config::AppConfig::load_or_default() {
-        Ok(app) => app,
-        Err(e) => {
-            eprintln!("音乐互动浮层读取配置失败: {e}");
-            return Vec::new();
-        }
+    let room_id = match crate::token::read_connected_room() {
+        Some(room_id) => room_id,
+        None => match crate::config::AppConfig::load_or_default() {
+            Ok(app) => app.room_id,
+            Err(e) => {
+                eprintln!("音乐互动浮层读取配置失败: {e}");
+                return Vec::new();
+            }
+        },
     };
     let storage = match overlay_storage() {
         Ok(storage) => storage,
@@ -204,7 +207,7 @@ fn observed_music_queue() -> Vec<QueueItem> {
                    and room_id = ?1
                  order by started_at desc
                  limit 1",
-                params![app.room_id],
+                params![room_id],
                 |row| Ok((row.get::<_, String>(0)?, row.get::<_, i64>(1)?)),
             )
             .optional()?;
