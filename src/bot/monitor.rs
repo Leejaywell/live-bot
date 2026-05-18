@@ -510,9 +510,12 @@ pub async fn run_monitor_loop<E: EventEmitter + Send + Sync + 'static>(
                 false
             });
         let music_service = music_interaction_enabled.then(|| {
-            Arc::new(MusicInteractionService::new(vec![Box::new(
-                NeteaseProvider::new(reqwest::Client::new()),
-            )]))
+            Arc::new(MusicInteractionService::new_with_storage(
+                vec![Box::new(NeteaseProvider::new(reqwest::Client::new()))],
+                storage.clone(),
+                room_id,
+                current_session_id.clone(),
+            ))
         });
         let music_task_limit = Arc::new(Semaphore::new(8));
 

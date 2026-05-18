@@ -1,9 +1,15 @@
 use anyhow::{Result, anyhow};
+use chrono::{Duration, Local};
+use std::sync::{Arc, Mutex};
 
 use crate::music::command::{SongCommand, parse_song_command};
+use crate::music::credits::tier_for_credit;
 use crate::music::provider::{MusicProvider, SearchOptions};
+use crate::music::queue::priority_score;
 use crate::music::search::score_track;
+use crate::music::storage::NewSongRequest;
 use crate::music::types::SearchCandidate;
+use crate::storage::Storage;
 
 #[allow(dead_code)]
 #[derive(Debug)]
@@ -43,22 +49,53 @@ impl SongServiceReply {
 #[allow(dead_code)]
 pub struct MusicInteractionService {
     providers: Vec<Box<dyn MusicProvider>>,
+    storage: Option<Arc<Storage>>,
+    room_id: i64,
+    session_id: Option<Arc<Mutex<Option<String>>>>,
 }
 
 #[allow(dead_code)]
 impl MusicInteractionService {
     pub fn new(providers: Vec<Box<dyn MusicProvider>>) -> Self {
-        Self { providers }
+        Self {
+            providers,
+            storage: None,
+            room_id: 0,
+            session_id: None,
+        }
+    }
+
+    pub fn new_with_storage(
+        providers: Vec<Box<dyn MusicProvider>>,
+        storage: Arc<Storage>,
+        room_id: i64,
+        session_id: Arc<Mutex<Option<String>>>,
+    ) -> Self {
+        Self {
+            providers,
+            storage: Some(storage),
+            room_id,
+            session_id: Some(session_id),
+        }
     }
 
     pub fn new_for_tests(providers: Vec<Box<dyn MusicProvider>>) -> Self {
         Self::new(providers)
     }
 
+    pub fn new_for_tests_with_storage(
+        providers: Vec<Box<dyn MusicProvider>>,
+        storage: Arc<Storage>,
+        room_id: i64,
+        session_id: Arc<Mutex<Option<String>>>,
+    ) -> Self {
+        Self::new_with_storage(providers, storage, room_id, session_id)
+    }
+
     pub async fn handle_danmu(
         &self,
-        _uid: i64,
-        _uname: &str,
+        uid: i64,
+        uname: &str,
         text: &str,
     ) -> Result<SongServiceReply> {
         let Some(command) = parse_song_command(text) else {
@@ -98,11 +135,12 @@ impl MusicInteractionService {
                         .then_with(|| a.track.song_id.cmp(&b.track.song_id))
                 });
                 candidates.truncate(3);
+                if !candidates.is_empty() {
+                    self.save_search_context(uid, &query, &candidates);
+                }
                 Ok(SongServiceReply::Candidates { candidates })
             }
-            SongCommand::Confirm { .. } => Ok(SongServiceReply::Message(
-                "候选确认将在接入存储后生效".to_string(),
-            )),
+            SongCommand::Confirm { index } => self.confirm_candidate(uid, uname, index),
             SongCommand::MoreCandidates => Ok(SongServiceReply::Message(
                 "换一批将在接入分页搜索后生效".to_string(),
             )),
@@ -126,17 +164,199 @@ impl MusicInteractionService {
                 text,
             } => self.handle_danmu(*user_id, user, text).await,
             bilibili_live_protocol::LiveEvent::Gift {
-                user, gift, count, ..
-            } => Ok(SongServiceReply::Message(format!(
-                "感谢 {user} 赠送 {gift} x{count}，点歌积分将在接入存储后生效"
-            ))),
-            bilibili_live_protocol::LiveEvent::SuperChat { user, price, .. } => {
-                Ok(SongServiceReply::Message(format!(
-                    "感谢 {user} 的醒目留言，点歌积分将在接入存储后生效（{price}元）"
-                )))
+                user_id,
+                user,
+                gift,
+                count,
+                price,
+                ..
+            } => {
+                let storage_ready = self.storage.is_some() && self.current_session_id().is_some();
+                let recorded = self.record_credit(
+                    *user_id,
+                    user,
+                    price.saturating_mul(*count as i64),
+                    "gift",
+                    Self::source_event_id(),
+                )?;
+                if recorded {
+                    Ok(SongServiceReply::Message(format!(
+                        "感谢 {user} 赠送 {gift} x{count}，点歌权益已记录"
+                    )))
+                } else if storage_ready {
+                    Ok(SongServiceReply::Message(format!(
+                        "感谢 {user} 赠送 {gift} x{count}"
+                    )))
+                } else {
+                    Ok(SongServiceReply::Message(format!(
+                        "感谢 {user} 赠送 {gift} x{count}，点歌积分将在接入存储后生效"
+                    )))
+                }
+            }
+            bilibili_live_protocol::LiveEvent::SuperChat {
+                user_id,
+                user,
+                price,
+                ..
+            } => {
+                let storage_ready = self.storage.is_some() && self.current_session_id().is_some();
+                let recorded = self.record_credit(
+                    *user_id,
+                    user,
+                    *price,
+                    "super_chat",
+                    Self::source_event_id(),
+                )?;
+                if recorded {
+                    Ok(SongServiceReply::Message(format!(
+                        "感谢 {user} 的醒目留言，点歌权益已记录（{price}元）"
+                    )))
+                } else if storage_ready {
+                    Ok(SongServiceReply::Message(format!(
+                        "感谢 {user} 的醒目留言（{price}元）"
+                    )))
+                } else {
+                    Ok(SongServiceReply::Message(format!(
+                        "感谢 {user} 的醒目留言，点歌积分将在接入存储后生效（{price}元）"
+                    )))
+                }
             }
             _ => Ok(SongServiceReply::Ignored),
         }
+    }
+
+    fn current_session_id(&self) -> Option<String> {
+        self.session_id
+            .as_ref()
+            .and_then(|value| value.lock().ok().and_then(|guard| guard.clone()))
+    }
+
+    fn context_expires_at() -> String {
+        (Local::now() + Duration::seconds(60)).to_rfc3339()
+    }
+
+    fn credit_expires_at() -> String {
+        (Local::now() + Duration::hours(24)).to_rfc3339()
+    }
+
+    fn source_event_id() -> i64 {
+        Local::now().timestamp_millis()
+    }
+
+    fn save_search_context(&self, uid: i64, query: &str, candidates: &[SearchCandidate]) {
+        let (Some(storage), Some(session_id)) = (&self.storage, self.current_session_id()) else {
+            return;
+        };
+        let _ = storage.with_connection(|conn| {
+            crate::music::storage::save_search_context(
+                conn,
+                &session_id,
+                uid,
+                query,
+                candidates,
+                &Self::context_expires_at(),
+            )
+        });
+    }
+
+    fn confirm_candidate(&self, uid: i64, uname: &str, index: usize) -> Result<SongServiceReply> {
+        let Some(storage) = &self.storage else {
+            return Ok(SongServiceReply::Message(
+                "候选确认将在接入存储后生效".to_string(),
+            ));
+        };
+        let Some(session_id) = self.current_session_id() else {
+            return Ok(SongServiceReply::Message(
+                "当前没有直播场次，暂不能确认点歌".to_string(),
+            ));
+        };
+
+        let request_id = storage.with_connection_mut(|conn| {
+            let Some(context) =
+                crate::music::storage::latest_search_context(conn, &session_id, uid)?
+            else {
+                return Ok(Err("没有可确认的候选，请先发送 点歌 歌名".to_string()));
+            };
+            let Some(candidate) = context.candidates.get(index.saturating_sub(1)) else {
+                return Ok(Err("候选编号不存在".to_string()));
+            };
+            let Some((credit_id, credit_value, tier)) =
+                crate::music::storage::oldest_pending_credit(conn, &session_id, uid)?
+            else {
+                return Ok(Err("还没有可用点歌权益，请先送礼解锁".to_string()));
+            };
+            let tier_enum = tier_for_credit(credit_value)
+                .ok_or_else(|| anyhow!("stored credit is below minimum tier: {credit_value}"))?;
+            let score = priority_score(tier_enum, credit_value, 0, 0);
+            let request_id = crate::music::storage::insert_song_request_and_consume_credit(
+                conn,
+                credit_id,
+                &NewSongRequest {
+                    session_id: session_id.clone(),
+                    room_id: self.room_id,
+                    uid,
+                    uname: uname.to_string(),
+                    source: candidate.track.source.as_str().to_string(),
+                    song_id: candidate.track.song_id.clone(),
+                    song_name: candidate.track.name.clone(),
+                    artist_names: artists_text(&candidate.track.artists),
+                    album_name: Some(candidate.track.album.clone()),
+                    pic_url: None,
+                    lyric_id: candidate.track.lyric_id.clone(),
+                    url_id: candidate.track.url_id.clone(),
+                    duration_ms: candidate.track.duration_ms,
+                    requested_text: format!("确认 #{index}"),
+                    tier,
+                    credit_value,
+                    priority_score: score,
+                    source_event_id: None,
+                },
+            )?;
+            Ok(Ok(request_id))
+        })?;
+
+        match request_id {
+            Ok(request_id) => Ok(SongServiceReply::Message(format!(
+                "已加入点歌队列 #{request_id}"
+            ))),
+            Err(message) => Ok(SongServiceReply::Message(message)),
+        }
+    }
+
+    fn record_credit(
+        &self,
+        uid: i64,
+        uname: &str,
+        credit_value: i64,
+        source_type: &str,
+        source_event_id: i64,
+    ) -> Result<bool> {
+        let Some(storage) = &self.storage else {
+            return Ok(false);
+        };
+        let Some(session_id) = self.current_session_id() else {
+            return Ok(false);
+        };
+        let Some(tier) = tier_for_credit(credit_value) else {
+            return Ok(false);
+        };
+        storage.with_connection(|conn| {
+            crate::music::storage::insert_credit(
+                conn,
+                &crate::music::storage::NewSongCredit {
+                    session_id,
+                    room_id: self.room_id,
+                    uid,
+                    uname: uname.to_string(),
+                    credit_value,
+                    tier: tier.as_str().to_string(),
+                    source_type: source_type.to_string(),
+                    source_event_id,
+                    expires_at: Self::credit_expires_at(),
+                },
+            )
+        })?;
+        Ok(true)
     }
 }
 
@@ -152,10 +372,12 @@ fn artists_text(artists: &[String]) -> String {
 mod tests {
     use anyhow::{Result, anyhow};
     use async_trait::async_trait;
+    use std::sync::{Arc, Mutex};
 
     use super::{MusicInteractionService, SongServiceReply};
     use crate::music::provider::{MusicProvider, SearchOptions};
     use crate::music::types::{MusicSource, MusicTrack};
+    use crate::storage::Storage;
 
     enum SearchResult {
         Tracks(Vec<MusicTrack>),
@@ -386,5 +608,91 @@ mod tests {
         assert!(!text.is_empty());
         assert!(text.contains("点歌积分将在接入存储后生效"));
         assert!(text.contains("30元"));
+    }
+
+    #[tokio::test]
+    async fn gift_event_records_credit_when_storage_is_available() {
+        let storage = Arc::new(Storage::open_in_memory().expect("storage"));
+        let service = MusicInteractionService::new_for_tests_with_storage(
+            vec![Box::new(FakeProvider::with_tracks(vec![track(
+                "晴天",
+                &["周杰伦"],
+                "186016",
+            )]))],
+            storage.clone(),
+            100,
+            Arc::new(Mutex::new(Some("session-1".to_string()))),
+        );
+        let event = bilibili_live_protocol::LiveEvent::Gift {
+            user_id: 42,
+            user: "alice".to_string(),
+            gift: "辣条".to_string(),
+            count: 1,
+            price: 100,
+            original_gift_name: None,
+            original_gift_price: 100,
+        };
+
+        service
+            .handle_live_event(&event)
+            .await
+            .expect("gift handled");
+
+        let pending = storage
+            .with_connection(|conn| {
+                crate::music::storage::pending_credit_value(conn, "session-1", 42)
+            })
+            .expect("pending");
+        assert_eq!(pending, 100);
+    }
+
+    #[tokio::test]
+    async fn confirm_uses_latest_context_and_consumes_credit() {
+        let storage = Arc::new(Storage::open_in_memory().expect("storage"));
+        let session = Arc::new(Mutex::new(Some("session-1".to_string())));
+        let service = MusicInteractionService::new_for_tests_with_storage(
+            vec![Box::new(FakeProvider::with_tracks(vec![track(
+                "晴天",
+                &["周杰伦"],
+                "186016",
+            )]))],
+            storage.clone(),
+            100,
+            session,
+        );
+        service
+            .handle_danmu(42, "alice", "点歌 晴天")
+            .await
+            .expect("search");
+        service
+            .handle_live_event(&bilibili_live_protocol::LiveEvent::Gift {
+                user_id: 42,
+                user: "alice".to_string(),
+                gift: "小花花".to_string(),
+                count: 1,
+                price: 66,
+                original_gift_name: None,
+                original_gift_price: 66,
+            })
+            .await
+            .expect("credit");
+
+        let reply = service
+            .handle_danmu(42, "alice", "确认 #1")
+            .await
+            .expect("confirm");
+
+        assert!(reply.to_danmu_text().contains("已加入点歌队列"));
+        let queue = storage
+            .with_connection(|conn| crate::music::storage::list_queue(conn, "session-1", 100))
+            .expect("queue");
+        assert_eq!(queue.len(), 1);
+        assert_eq!(queue[0].song_name, "晴天");
+        let pending = storage
+            .with_connection(|conn| {
+                crate::music::storage::pending_credit_value(conn, "session-1", 42)
+            })
+            .expect("pending");
+        assert_eq!(pending, 0);
     }
 }
