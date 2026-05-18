@@ -6,7 +6,7 @@ use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::Instant;
 use tokio::net::TcpStream;
-use tokio::sync::{Semaphore, mpsc};
+use tokio::sync::{OwnedSemaphorePermit, Semaphore, mpsc};
 use tokio::time::{Duration, sleep, timeout};
 use tokio_util::sync::CancellationToken;
 
@@ -29,6 +29,39 @@ fn music_interaction_enabled() -> bool {
     PluginSettings::load_or_default()
         .map(|settings| settings.music_interaction.enabled)
         .unwrap_or(false)
+}
+
+fn spawn_music_event_handler<E: EventEmitter + Send + Sync + 'static>(
+    music_service: Arc<MusicInteractionService>,
+    event: bilibili_live_protocol::LiveEvent,
+    tx: mpsc::Sender<String>,
+    app: Arc<E>,
+    cancel: CancellationToken,
+    should_send_reply: bool,
+    permit: OwnedSemaphorePermit,
+) {
+    tokio::spawn(async move {
+        let _permit = permit;
+        tokio::select! {
+            _ = cancel.cancelled() => {}
+            result = music_service.handle_live_event(&event) => {
+                match result {
+                    Ok(reply) => {
+                        let text = reply.to_danmu_text();
+                        if should_send_reply && !text.is_empty() {
+                            let _ = tx.send(text).await;
+                        }
+                    }
+                    Err(err) => {
+                        let _ = app.emit(
+                            "monitor-log",
+                            json!(format!("点歌处理失败: {err}")),
+                        );
+                    }
+                }
+            }
+        }
+    });
 }
 
 pub async fn run_monitor_loop<E: EventEmitter + Send + Sync + 'static>(
@@ -661,43 +694,59 @@ pub async fn run_monitor_loop<E: EventEmitter + Send + Sync + 'static>(
                     ) && music_interaction_enabled()
                     {
                         let music_service = event_music_service.clone();
-                        match event_music_task_limit.clone().try_acquire_owned() {
-                            Ok(permit) => {
-                                let tx = event_tx.clone();
-                                let app = event_app.clone();
-                                let should_send_reply =
-                                    matches!(event, bilibili_live_protocol::LiveEvent::Danmu { .. });
-                                let event = event.clone();
-                                let cancel = event_music_cancel.clone();
-                                tokio::spawn(async move {
-                                    let _permit = permit;
-                                    tokio::select! {
-                                        _ = cancel.cancelled() => {}
-                                        result = music_service.handle_live_event(&event) => {
-                                            match result {
-                                                Ok(reply) => {
-                                                    let text = reply.to_danmu_text();
-                                                    if should_send_reply && !text.is_empty() {
-                                                        let _ = tx.send(text).await;
-                                                    }
-                                                }
-                                                Err(err) => {
-                                                    let _ = app.emit(
-                                                        "monitor-log",
-                                                        json!(format!("点歌处理失败: {err}")),
-                                                    );
-                                                }
+                        let tx = event_tx.clone();
+                        let app = event_app.clone();
+                        let event = event.clone();
+                        let cancel = event_music_cancel.clone();
+
+                        if matches!(event, bilibili_live_protocol::LiveEvent::Danmu { .. }) {
+                            match event_music_task_limit.clone().try_acquire_owned() {
+                                Ok(permit) => {
+                                    spawn_music_event_handler(
+                                        music_service,
+                                        event,
+                                        tx,
+                                        app,
+                                        cancel,
+                                        true,
+                                        permit,
+                                    );
+                                }
+                                Err(_) => {
+                                    let _ = event_app.emit(
+                                        "monitor-log",
+                                        json!("点歌处理繁忙，已跳过本次事件"),
+                                    );
+                                }
+                            }
+                        } else {
+                            let task_limit = event_music_task_limit.clone();
+                            tokio::spawn(async move {
+                                tokio::select! {
+                                    _ = cancel.cancelled() => {}
+                                    permit = task_limit.acquire_owned() => {
+                                        match permit {
+                                            Ok(permit) => {
+                                                spawn_music_event_handler(
+                                                    music_service,
+                                                    event,
+                                                    tx,
+                                                    app,
+                                                    cancel,
+                                                    false,
+                                                    permit,
+                                                );
+                                            }
+                                            Err(err) => {
+                                                let _ = app.emit(
+                                                    "monitor-log",
+                                                    json!(format!("点歌处理并发限制器已关闭: {err}")),
+                                                );
                                             }
                                         }
                                     }
-                                });
-                            }
-                            Err(_) => {
-                                let _ = event_app.emit(
-                                    "monitor-log",
-                                    json!("点歌处理繁忙，已跳过本次事件"),
-                                );
-                            }
+                                }
+                            });
                         }
                     }
                     if let bilibili_live_protocol::LiveEvent::Popularity { value } = event {
