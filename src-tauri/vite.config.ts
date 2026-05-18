@@ -36,5 +36,20 @@ export default defineConfig({
   assetsInclude: ['**/*.svg', '**/*.csv'],
   build: {
     chunkSizeWarningLimit: 800,
+    rollupOptions: {
+      input: {
+        index: path.resolve(__dirname, 'index.html'),
+        overlay: path.resolve(__dirname, 'src/overlay/main.tsx'),
+      },
+      output: {
+        entryFileNames: 'assets/[name].js',
+        chunkFileNames: 'assets/[name]-[hash].js',
+        assetFileNames: assetInfo => {
+          const name = assetInfo.name || '';
+          if (name.endsWith('.css')) return 'assets/[name][extname]';
+          return 'assets/[name]-[hash][extname]';
+        },
+      },
+    },
   },
 })
