@@ -136,7 +136,7 @@ impl MusicInteractionService {
                 });
                 candidates.truncate(3);
                 if !candidates.is_empty() {
-                    self.save_search_context(uid, &query, &candidates);
+                    self.save_search_context(uid, &query, &candidates)?;
                 }
                 Ok(SongServiceReply::Candidates { candidates })
             }
@@ -172,12 +172,13 @@ impl MusicInteractionService {
                 ..
             } => {
                 let storage_ready = self.storage.is_some() && self.current_session_id().is_some();
+                let source_event_id = self.source_event_id(event);
                 let recorded = self.record_credit(
                     *user_id,
                     user,
                     price.saturating_mul(*count as i64),
                     "gift",
-                    Self::source_event_id(),
+                    source_event_id,
                 )?;
                 if recorded {
                     Ok(SongServiceReply::Message(format!(
@@ -200,13 +201,9 @@ impl MusicInteractionService {
                 ..
             } => {
                 let storage_ready = self.storage.is_some() && self.current_session_id().is_some();
-                let recorded = self.record_credit(
-                    *user_id,
-                    user,
-                    *price,
-                    "super_chat",
-                    Self::source_event_id(),
-                )?;
+                let source_event_id = self.source_event_id(event);
+                let recorded =
+                    self.record_credit(*user_id, user, *price, "super_chat", source_event_id)?;
                 if recorded {
                     Ok(SongServiceReply::Message(format!(
                         "感谢 {user} 的醒目留言，点歌权益已记录（{price}元）"
@@ -239,15 +236,55 @@ impl MusicInteractionService {
         (Local::now() + Duration::hours(24)).to_rfc3339()
     }
 
-    fn source_event_id() -> i64 {
-        Local::now().timestamp_millis()
+    fn source_event_id(&self, event: &bilibili_live_protocol::LiveEvent) -> i64 {
+        let session_id = self.current_session_id().unwrap_or_default();
+        match event {
+            bilibili_live_protocol::LiveEvent::Gift {
+                user_id,
+                user,
+                gift,
+                count,
+                price,
+                original_gift_name,
+                original_gift_price,
+            } => stable_i64_hash(&[
+                "gift",
+                &session_id,
+                &user_id.to_string(),
+                user,
+                gift,
+                &count.to_string(),
+                &price.to_string(),
+                original_gift_name.as_deref().unwrap_or(""),
+                &original_gift_price.to_string(),
+            ]),
+            bilibili_live_protocol::LiveEvent::SuperChat {
+                user_id,
+                user,
+                text,
+                price,
+            } => stable_i64_hash(&[
+                "super_chat",
+                &session_id,
+                &user_id.to_string(),
+                user,
+                text,
+                &price.to_string(),
+            ]),
+            _ => stable_i64_hash(&["unsupported", &session_id]),
+        }
     }
 
-    fn save_search_context(&self, uid: i64, query: &str, candidates: &[SearchCandidate]) {
+    fn save_search_context(
+        &self,
+        uid: i64,
+        query: &str,
+        candidates: &[SearchCandidate],
+    ) -> Result<()> {
         let (Some(storage), Some(session_id)) = (&self.storage, self.current_session_id()) else {
-            return;
+            return Ok(());
         };
-        let _ = storage.with_connection(|conn| {
+        storage.with_connection(|conn| {
             crate::music::storage::save_search_context(
                 conn,
                 &session_id,
@@ -256,7 +293,8 @@ impl MusicInteractionService {
                 candidates,
                 &Self::context_expires_at(),
             )
-        });
+        })?;
+        Ok(())
     }
 
     fn confirm_candidate(&self, uid: i64, uname: &str, index: usize) -> Result<SongServiceReply> {
@@ -366,6 +404,19 @@ fn artists_text(artists: &[String]) -> String {
     } else {
         artists.join("/")
     }
+}
+
+fn stable_i64_hash(parts: &[&str]) -> i64 {
+    let mut hash = 0xcbf29ce484222325_u64;
+    for part in parts {
+        for byte in part.as_bytes() {
+            hash ^= u64::from(*byte);
+            hash = hash.wrapping_mul(0x100000001b3);
+        }
+        hash ^= 0xff;
+        hash = hash.wrapping_mul(0x100000001b3);
+    }
+    (hash & 0x7fff_ffff_ffff_ffff) as i64
 }
 
 #[cfg(test)]
@@ -549,6 +600,34 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn search_returns_error_when_context_persistence_fails() {
+        let storage = Arc::new(Storage::open_in_memory().expect("storage"));
+        storage
+            .with_connection(|conn| {
+                conn.execute("drop table song_search_contexts", [])?;
+                Ok(())
+            })
+            .expect("drop context table");
+        let service = MusicInteractionService::new_for_tests_with_storage(
+            vec![Box::new(FakeProvider::with_tracks(vec![track(
+                "晴天",
+                &["周杰伦"],
+                "186016",
+            )]))],
+            storage,
+            100,
+            Arc::new(Mutex::new(Some("session-1".to_string()))),
+        );
+
+        let error = service
+            .handle_danmu(42, "alice", "点歌 晴天")
+            .await
+            .expect_err("persistence error");
+
+        assert!(error.to_string().contains("song_search_contexts"));
+    }
+
+    #[tokio::test]
     async fn live_event_danmu_command_returns_candidates() {
         let service = MusicInteractionService::new_for_tests(vec![Box::new(
             FakeProvider::with_tracks(vec![track("晴天", &["周杰伦"], "186016")]),
@@ -644,6 +723,56 @@ mod tests {
             })
             .expect("pending");
         assert_eq!(pending, 100);
+    }
+
+    #[tokio::test]
+    async fn same_gift_event_records_same_source_event_id_within_session() {
+        let storage = Arc::new(Storage::open_in_memory().expect("storage"));
+        let service = MusicInteractionService::new_for_tests_with_storage(
+            vec![Box::new(FakeProvider::with_tracks(vec![track(
+                "晴天",
+                &["周杰伦"],
+                "186016",
+            )]))],
+            storage.clone(),
+            100,
+            Arc::new(Mutex::new(Some("session-1".to_string()))),
+        );
+        let event = bilibili_live_protocol::LiveEvent::Gift {
+            user_id: 42,
+            user: "alice".to_string(),
+            gift: "辣条".to_string(),
+            count: 1,
+            price: 100,
+            original_gift_name: None,
+            original_gift_price: 100,
+        };
+
+        service
+            .handle_live_event(&event)
+            .await
+            .expect("first gift handled");
+        service
+            .handle_live_event(&event)
+            .await
+            .expect("second gift handled");
+
+        let event_ids = storage
+            .with_connection(|conn| {
+                let mut stmt = conn.prepare(
+                    "select source_event_id
+                     from song_request_credits
+                     where session_id = 'session-1' and uid = 42
+                     order by id asc",
+                )?;
+                let rows = stmt.query_map([], |row| row.get::<_, i64>(0))?;
+                rows.collect::<rusqlite::Result<Vec<_>>>()
+                    .map_err(anyhow::Error::from)
+            })
+            .expect("event ids");
+
+        assert_eq!(event_ids.len(), 2);
+        assert_eq!(event_ids[0], event_ids[1]);
     }
 
     #[tokio::test]
