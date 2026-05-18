@@ -1,9 +1,8 @@
 #![allow(dead_code)]
 
 use anyhow::{Result, bail};
+use reqwest::Url;
 
-const CUSTOM_URL_PREFIXES: &[&str] = &["orpheus://", "qqmusic://"];
-const HTTPS_HOST_PREFIXES: &[&str] = &["https://music.163.com", "https://y.qq.com"];
 const SONG_ID_PLACEHOLDER: &str = "{song_id}";
 
 pub fn build_open_url(template: &str, song_id: &str) -> Result<String> {
@@ -24,12 +23,20 @@ pub fn build_open_url(template: &str, song_id: &str) -> Result<String> {
 }
 
 pub fn is_allowed_open_url(url: &str) -> bool {
-    CUSTOM_URL_PREFIXES
-        .iter()
-        .any(|prefix| url.starts_with(prefix))
-        || HTTPS_HOST_PREFIXES
-            .iter()
-            .any(|prefix| has_allowed_https_host_prefix(url, prefix))
+    if has_path_traversal_marker(url) {
+        return false;
+    }
+
+    let Ok(parsed) = Url::parse(url) else {
+        return false;
+    };
+
+    match parsed.scheme() {
+        "https" => is_allowed_https_url(&parsed),
+        "orpheus" => is_allowed_orpheus_url(&parsed),
+        "qqmusic" => is_allowed_qqmusic_url(&parsed),
+        _ => false,
+    }
 }
 
 fn is_valid_song_id(song_id: &str) -> bool {
@@ -39,12 +46,47 @@ fn is_valid_song_id(song_id: &str) -> bool {
             .all(|byte| byte.is_ascii_alphanumeric() || byte == b'_' || byte == b'-')
 }
 
-fn has_allowed_https_host_prefix(url: &str, prefix: &str) -> bool {
-    let Some(rest) = url.strip_prefix(prefix) else {
+fn is_allowed_https_url(url: &Url) -> bool {
+    matches!(url.host_str(), Some("music.163.com" | "y.qq.com"))
+        && matches!(url.port(), None | Some(443))
+}
+
+fn is_allowed_orpheus_url(url: &Url) -> bool {
+    url.host_str() == Some("song")
+        && valid_single_path_song_id(url.path())
+        && url.query().is_none()
+        && url.fragment().is_none()
+}
+
+fn is_allowed_qqmusic_url(url: &Url) -> bool {
+    if url.host_str() == Some("song")
+        && valid_single_path_song_id(url.path())
+        && url.query().is_none()
+        && url.fragment().is_none()
+    {
+        return true;
+    }
+
+    url.host_str() == Some("qq.com")
+        && url.path() == "/media/playSonglist"
+        && url.fragment().is_none()
+        && matches!(
+            url.query_pairs().collect::<Vec<_>>().as_slice(),
+            [(key, value)] if key == "p" && is_valid_song_id(value)
+        )
+}
+
+fn valid_single_path_song_id(path: &str) -> bool {
+    let Some(song_id) = path.strip_prefix('/') else {
         return false;
     };
+    !song_id.contains('/') && is_valid_song_id(song_id)
+}
 
-    rest.is_empty() || matches!(rest.as_bytes()[0], b'/' | b'?' | b'#')
+fn has_path_traversal_marker(url: &str) -> bool {
+    let lower = url.to_ascii_lowercase();
+    lower.contains("/..") || lower.contains("%2e%2e") || lower.contains("%2e.")
+        || lower.contains(".%2e")
 }
 
 #[cfg(test)]
@@ -56,8 +98,13 @@ pub mod tests {
         assert!(is_allowed_open_url("orpheus://song/123"));
         assert!(is_allowed_open_url("qqmusic://song/123"));
         assert!(is_allowed_open_url("https://music.163.com/#/song?id=123"));
+        assert!(is_allowed_open_url("https://music.163.com:443/#/song?id=123"));
+        assert!(is_allowed_open_url("HTTPS://MUSIC.163.com/#/song?id=123"));
         assert!(is_allowed_open_url(
             "https://y.qq.com/n/ryqq/songDetail/123"
+        ));
+        assert!(is_allowed_open_url(
+            "qqmusic://qq.com/media/playSonglist?p=123"
         ));
     }
 
@@ -71,6 +118,10 @@ pub mod tests {
             "https://music.163.com.evil/song?id=123"
         ));
         assert!(!is_allowed_open_url("https://y.qq.com.evil/song?id=123"));
+        assert!(!is_allowed_open_url("orpheus://settings/privacy"));
+        assert!(!is_allowed_open_url("orpheus://song/../123"));
+        assert!(!is_allowed_open_url("qqmusic://qq.com/media/playSonglist?p=../123"));
+        assert!(!is_allowed_open_url("qqmusic://qq.com/media/delete?p=123"));
     }
 
     #[test]
