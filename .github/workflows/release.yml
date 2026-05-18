@@ -46,12 +46,14 @@ jobs:
             platform: macos-latest
             rust_targets: aarch64-apple-darwin
             args: --target aarch64-apple-darwin
+            sherpa_archive_suffix: osx-arm64-shared-lib
 
           # Windows x86_64
           - name: windows-x64
             platform: windows-latest
             rust_targets: x86_64-pc-windows-msvc
             args: --target x86_64-pc-windows-msvc
+            sherpa_archive_suffix: win-x64-shared-MT-Release-lib
 
     name: Build ${{ matrix.name }}
     runs-on: ${{ matrix.platform }}
@@ -79,6 +81,34 @@ jobs:
         with:
           key: ${{ matrix.platform }}-${{ matrix.rust_targets }}
 
+      - name: Download sherpa-onnx archive
+        shell: bash
+        env:
+          SHERPA_ARCHIVE_SUFFIX: ${{ matrix.sherpa_archive_suffix }}
+        run: |
+          set -euo pipefail
+
+          version="$(awk '
+            $0 == "[[package]]" { in_package = 1; found = 0; next }
+            in_package && $1 == "name" && $3 == "\"sherpa-onnx-sys\"" { found = 1; next }
+            in_package && found && $1 == "version" { gsub(/"/, "", $3); print $3; exit }
+          ' Cargo.lock
+          )"
+
+          if [ -z "${version}" ]; then
+            echo "sherpa-onnx-sys not found in Cargo.lock" >&2
+            exit 1
+          fi
+
+          archive="sherpa-onnx-v${version}-${SHERPA_ARCHIVE_SUFFIX}.tar.bz2"
+          mkdir -p .sherpa-onnx-cache
+
+          if [ ! -f ".sherpa-onnx-cache/${archive}" ]; then
+            curl --fail --location --retry 3 --retry-delay 5 \
+              --output ".sherpa-onnx-cache/${archive}" \
+              "https://github.com/k2-fsa/sherpa-onnx/releases/download/v${version}/${archive}"
+          fi
+
       - name: Install frontend deps
         working-directory: src-tauri
         run: npm ci
@@ -94,6 +124,7 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+          SHERPA_ONNX_ARCHIVE_DIR: ${{ github.workspace }}/.sherpa-onnx-cache
         with:
           releaseId: ${{ needs.create-release.outputs.release_id }}
           tagName: ${{ github.ref_name }}
