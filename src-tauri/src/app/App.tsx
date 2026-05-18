@@ -9,8 +9,6 @@ import { RoomProvider, useRoom } from './context/RoomContext';
 import { BackgroundManager } from './components/BackgroundEffects';
 import { CursorEffect } from './components/CursorEffect';
 import { ClickRippleEffect } from './components/ClickRippleEffect';
-import { SplashScreen } from './components/SplashScreen';
-import { registerSplashTrigger } from './lib/splashTrigger';
 import { DanmuOverlay } from './components/DanmuOverlay';
 import { TopBar } from './components/TopBar';
 import { Sidebar } from './components/Sidebar';
@@ -88,7 +86,6 @@ function AppContent() {
   const [settingsPanelOpen, setSettingsPanelOpen] = useState(false);
   const [isLoggedIn, setIsLoggedIn] = useState(false);
   const [loginChecked, setLoginChecked] = useState(false);
-  const [splashDismissed, setSplashDismissed] = useState(false);
   const [userInfo, setUserInfo] = useState<UserInfo | null>(null);
   const [autoRoom, setAutoRoom] = useState<{ roomId: string; liveStatus: number; liveTime: string } | null>(null);
   const [showRoomModal, setShowRoomModal] = useState(false);
@@ -99,10 +96,6 @@ function AppContent() {
     registerOpenRoomModal(() => setShowRoomModal(true));
   }, [registerOpenRoomModal]);
 
-  // 设置页"预览启动页"按钮触发
-  useEffect(() => {
-    registerSplashTrigger(() => setSplashDismissed(false));
-  }, []);
   const [loginUrl, setLoginUrl] = useState('');
   const [loginKey, setLoginKey] = useState('');
   const [loginStatus, setLoginStatus] = useState<'pending' | 'expired' | 'success' | 'idle'>('pending');
@@ -289,12 +282,6 @@ function AppContent() {
 
   return (
     <>
-      {!splashDismissed && (
-        <SplashScreen
-          isReady={loginChecked}
-          onDismiss={() => setSplashDismissed(true)}
-        />
-      )}
       <Toaster
         position="top-right"
         richColors
