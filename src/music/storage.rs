@@ -151,6 +151,58 @@ pub fn ensure_schema(conn: &Connection) -> Result<()> {
         );
         ",
     )?;
+    migrate_song_request_credits_source_event_id_nullable(conn)?;
+    Ok(())
+}
+
+fn migrate_song_request_credits_source_event_id_nullable(conn: &Connection) -> Result<()> {
+    let mut stmt = conn.prepare("pragma table_info(song_request_credits)")?;
+    let columns = stmt.query_map([], |row| {
+        Ok((row.get::<_, String>(1)?, row.get::<_, i64>(3)?))
+    })?;
+
+    let mut source_event_id_is_not_null = false;
+    for column in columns {
+        let (name, not_null) = column?;
+        if name == "source_event_id" {
+            source_event_id_is_not_null = not_null == 1;
+            break;
+        }
+    }
+    if !source_event_id_is_not_null {
+        return Ok(());
+    }
+
+    conn.execute_batch(
+        "
+        begin;
+        alter table song_request_credits rename to song_request_credits_old;
+        create table song_request_credits (
+            id integer primary key autoincrement,
+            session_id text not null,
+            room_id integer not null,
+            uid integer not null,
+            uname text not null,
+            credit_value integer not null,
+            tier text not null,
+            source_type text not null,
+            source_event_id integer,
+            expires_at text not null,
+            used_request_id integer,
+            created_at text not null,
+            used_at text
+        );
+        insert into song_request_credits
+            (id, session_id, room_id, uid, uname, credit_value, tier, source_type, source_event_id,
+             expires_at, used_request_id, created_at, used_at)
+        select id, session_id, room_id, uid, uname, credit_value, tier, source_type, source_event_id,
+               expires_at, used_request_id, created_at, used_at
+        from song_request_credits_old;
+        drop table song_request_credits_old;
+        create index if not exists idx_song_request_credits_uid on song_request_credits(uid, expires_at, used_at);
+        commit;
+        ",
+    )?;
     Ok(())
 }
 
@@ -524,6 +576,93 @@ mod tests {
             )
             .expect("count reads");
         assert_eq!(count, 5);
+    }
+
+    #[test]
+    fn migrates_old_credit_source_event_id_not_null_schema() {
+        let conn = Connection::open_in_memory().expect("db opens");
+        conn.execute_batch(
+            "
+            create table song_request_credits (
+                id integer primary key autoincrement,
+                session_id text not null,
+                room_id integer not null,
+                uid integer not null,
+                uname text not null,
+                credit_value integer not null,
+                tier text not null,
+                source_type text not null,
+                source_event_id integer not null,
+                expires_at text not null,
+                used_request_id integer,
+                created_at text not null,
+                used_at text
+            );
+            create index idx_song_request_credits_uid on song_request_credits(uid, expires_at, used_at);
+            insert into song_request_credits
+                (session_id, room_id, uid, uname, credit_value, tier, source_type, source_event_id,
+                 expires_at, created_at)
+            values
+                ('session-1', 100, 42, 'alice', 233, 'jump_queue', 'gift', 9001,
+                 '2099-01-01T00:00:00+08:00', '2026-01-01T00:00:00+08:00');
+            ",
+        )
+        .expect("old schema");
+
+        ensure_schema(&conn).expect("schema migrates");
+        ensure_schema(&conn).expect("schema remains idempotent");
+
+        let source_event_id_not_null: i64 = conn
+            .query_row(
+                "select [notnull] from pragma_table_info('song_request_credits') where name = 'source_event_id'",
+                [],
+                |row| row.get(0),
+            )
+            .expect("column reads");
+        assert_eq!(source_event_id_not_null, 0);
+
+        let preserved_source_event_id: i64 = conn
+            .query_row(
+                "select source_event_id from song_request_credits where uid = 42",
+                [],
+                |row| row.get(0),
+            )
+            .expect("old row preserved");
+        assert_eq!(preserved_source_event_id, 9001);
+
+        insert_credit(
+            &conn,
+            &NewSongCredit {
+                session_id: "session-1".to_string(),
+                room_id: 100,
+                uid: 43,
+                uname: "bob".to_string(),
+                credit_value: 66,
+                tier: "priority".to_string(),
+                source_type: "sc".to_string(),
+                source_event_id: None,
+                expires_at: "2099-01-01T00:00:00+08:00".to_string(),
+            },
+        )
+        .expect("insert nullable source event id");
+
+        let inserted_source_event_id: Option<i64> = conn
+            .query_row(
+                "select source_event_id from song_request_credits where uid = 43",
+                [],
+                |row| row.get(0),
+            )
+            .expect("inserted row reads");
+        assert_eq!(inserted_source_event_id, None);
+
+        let index_count: i64 = conn
+            .query_row(
+                "select count(*) from sqlite_master where type = 'index' and name = 'idx_song_request_credits_uid'",
+                [],
+                |row| row.get(0),
+            )
+            .expect("index reads");
+        assert_eq!(index_count, 1);
     }
 
     #[test]
