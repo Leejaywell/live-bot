@@ -51,7 +51,11 @@ export function resolveOverlayRoute(pathname = window.location.pathname): Overla
   if (pathname.endsWith('/song-request/rank')) {
     return { plugin: 'song-request', view: 'rank' };
   }
-  if (pathname === '/song-request' || pathname.endsWith('/song-request/playlist')) {
+  if (
+    pathname === '/song-request' ||
+    pathname === '/overlay/song-request' ||
+    pathname.endsWith('/song-request/playlist')
+  ) {
     return { plugin: 'song-request', view: 'playlist' };
   }
   return { plugin: 'danmaku', view: 'default' };
