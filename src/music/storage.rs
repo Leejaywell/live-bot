@@ -1,5 +1,69 @@
 use anyhow::Result;
-use rusqlite::Connection;
+use chrono::Local;
+use rusqlite::{Connection, OptionalExtension, params};
+
+use crate::music::types::SearchCandidate;
+
+#[derive(Debug, Clone)]
+#[allow(dead_code)]
+pub struct NewSongCredit {
+    pub session_id: String,
+    pub room_id: i64,
+    pub uid: i64,
+    pub uname: String,
+    pub credit_value: i64,
+    pub tier: String,
+    pub source_type: String,
+    pub source_event_id: i64,
+    pub expires_at: String,
+}
+
+#[derive(Debug, Clone)]
+#[allow(dead_code)]
+pub struct StoredSearchContext {
+    pub id: i64,
+    pub query: String,
+    pub candidates: Vec<SearchCandidate>,
+}
+
+#[derive(Debug, Clone)]
+#[allow(dead_code)]
+pub struct NewSongRequest {
+    pub session_id: String,
+    pub room_id: i64,
+    pub uid: i64,
+    pub uname: String,
+    pub source: String,
+    pub song_id: String,
+    pub song_name: String,
+    pub artist_names: String,
+    pub album_name: Option<String>,
+    pub pic_url: Option<String>,
+    pub lyric_id: String,
+    pub url_id: String,
+    pub duration_ms: Option<i64>,
+    pub requested_text: String,
+    pub tier: String,
+    pub credit_value: i64,
+    pub priority_score: i64,
+    pub source_event_id: Option<i64>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+#[allow(dead_code)]
+pub struct QueueItem {
+    pub request_id: i64,
+    pub uid: i64,
+    pub uname: String,
+    pub song_name: String,
+    pub artist_names: String,
+    pub tier: String,
+    pub credit_value: i64,
+    pub priority_score: i64,
+    pub status: String,
+    pub created_at: String,
+}
 
 pub fn ensure_schema(conn: &Connection) -> Result<()> {
     conn.execute_batch(
@@ -90,11 +154,206 @@ pub fn ensure_schema(conn: &Connection) -> Result<()> {
     Ok(())
 }
 
+#[allow(dead_code)]
+fn now_text() -> String {
+    Local::now().to_rfc3339()
+}
+
+#[allow(dead_code)]
+pub fn insert_credit(conn: &Connection, credit: &NewSongCredit) -> Result<i64> {
+    let now = now_text();
+    conn.execute(
+        "insert into song_request_credits
+        (session_id, room_id, uid, uname, credit_value, tier, source_type, source_event_id, expires_at, created_at)
+        values (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)",
+        params![
+            &credit.session_id,
+            credit.room_id,
+            credit.uid,
+            &credit.uname,
+            credit.credit_value,
+            &credit.tier,
+            &credit.source_type,
+            credit.source_event_id,
+            &credit.expires_at,
+            now,
+        ],
+    )?;
+    Ok(conn.last_insert_rowid())
+}
+
+#[allow(dead_code)]
+pub fn pending_credit_value(conn: &Connection, session_id: &str, uid: i64) -> Result<i64> {
+    Ok(conn.query_row(
+        "select coalesce(sum(credit_value), 0)
+         from song_request_credits
+         where session_id = ?1 and uid = ?2 and used_at is null and expires_at > ?3",
+        params![session_id, uid, now_text()],
+        |row| row.get(0),
+    )?)
+}
+
+#[allow(dead_code)]
+pub fn session_pending_value(conn: &Connection, session_id: &str, room_id: i64) -> Result<i64> {
+    Ok(conn.query_row(
+        "select coalesce(sum(credit_value), 0)
+         from song_request_credits
+         where session_id = ?1 and room_id = ?2 and used_at is null and expires_at > ?3",
+        params![session_id, room_id, now_text()],
+        |row| row.get(0),
+    )?)
+}
+
+#[allow(dead_code)]
+pub fn save_search_context(
+    conn: &Connection,
+    session_id: &str,
+    uid: i64,
+    query: &str,
+    candidates: &[SearchCandidate],
+    expires_at: &str,
+) -> Result<i64> {
+    let json = serde_json::to_string(candidates)?;
+    conn.execute(
+        "insert into song_search_contexts (session_id, uid, query, candidates_json, expires_at, created_at)
+         values (?1, ?2, ?3, ?4, ?5, ?6)",
+        params![session_id, uid, query, json, expires_at, now_text()],
+    )?;
+    Ok(conn.last_insert_rowid())
+}
+
+#[allow(dead_code)]
+pub fn latest_search_context(
+    conn: &Connection,
+    session_id: &str,
+    uid: i64,
+) -> Result<Option<StoredSearchContext>> {
+    let row = conn
+        .query_row(
+            "select id, query, candidates_json
+             from song_search_contexts
+             where session_id = ?1 and uid = ?2 and expires_at > ?3
+             order by id desc
+             limit 1",
+            params![session_id, uid, now_text()],
+            |row| {
+                let json: String = row.get(2)?;
+                Ok((row.get::<_, i64>(0)?, row.get::<_, String>(1)?, json))
+            },
+        )
+        .optional()?;
+    row.map(|(id, query, json)| {
+        let candidates = serde_json::from_str(&json)?;
+        Ok(StoredSearchContext {
+            id,
+            query,
+            candidates,
+        })
+    })
+    .transpose()
+}
+
+#[allow(dead_code)]
+pub fn insert_song_request(conn: &Connection, request: &NewSongRequest) -> Result<i64> {
+    let now = now_text();
+    conn.execute(
+        "insert into song_requests
+        (session_id, room_id, uid, uname, source, song_id, song_name, artist_names, album_name, pic_url,
+         lyric_id, url_id, duration_ms, requested_text, tier, credit_value, priority_score, status,
+         source_event_id, created_at, updated_at)
+         values (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17, 'queued', ?18, ?19, ?19)",
+        params![
+            &request.session_id,
+            request.room_id,
+            request.uid,
+            &request.uname,
+            &request.source,
+            &request.song_id,
+            &request.song_name,
+            &request.artist_names,
+            request.album_name.as_deref(),
+            request.pic_url.as_deref(),
+            &request.lyric_id,
+            &request.url_id,
+            request.duration_ms,
+            &request.requested_text,
+            &request.tier,
+            request.credit_value,
+            request.priority_score,
+            request.source_event_id,
+            now,
+        ],
+    )?;
+    Ok(conn.last_insert_rowid())
+}
+
+#[allow(dead_code)]
+pub fn oldest_pending_credit(
+    conn: &Connection,
+    session_id: &str,
+    uid: i64,
+) -> Result<Option<(i64, i64, String)>> {
+    Ok(conn
+        .query_row(
+            "select id, credit_value, tier
+             from song_request_credits
+             where session_id = ?1 and uid = ?2 and used_at is null and expires_at > ?3
+             order by credit_value desc, id asc
+             limit 1",
+            params![session_id, uid, now_text()],
+            |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
+        )
+        .optional()?)
+}
+
+#[allow(dead_code)]
+pub fn mark_credit_used(conn: &Connection, credit_id: i64, request_id: i64) -> Result<()> {
+    conn.execute(
+        "update song_request_credits
+         set used_request_id = ?1, used_at = ?2
+         where id = ?3 and used_at is null",
+        params![request_id, now_text(), credit_id],
+    )?;
+    Ok(())
+}
+
+#[allow(dead_code)]
+pub fn list_queue(conn: &Connection, session_id: &str, room_id: i64) -> Result<Vec<QueueItem>> {
+    let mut stmt = conn.prepare(
+        "select id, uid, uname, song_name, artist_names, tier, credit_value, priority_score, status, created_at
+         from song_requests
+         where session_id = ?1 and room_id = ?2 and status in ('queued', 'playing')
+         order by case status when 'playing' then 0 else 1 end, priority_score desc, id asc",
+    )?;
+    let rows = stmt.query_map(params![session_id, room_id], |row| {
+        Ok(QueueItem {
+            request_id: row.get(0)?,
+            uid: row.get(1)?,
+            uname: row.get(2)?,
+            song_name: row.get(3)?,
+            artist_names: row.get(4)?,
+            tier: row.get(5)?,
+            credit_value: row.get(6)?,
+            priority_score: row.get(7)?,
+            status: row.get(8)?,
+            created_at: row.get(9)?,
+        })
+    })?;
+    Ok(rows.collect::<rusqlite::Result<Vec<_>>>()?)
+}
+
 #[cfg(test)]
 mod tests {
     use rusqlite::Connection;
 
+    use crate::music::types::{MusicSource, MusicTrack, SearchCandidate};
+
     use super::ensure_schema;
+    use super::latest_search_context;
+    use super::{
+        NewSongCredit, NewSongRequest, insert_credit, insert_song_request, list_queue,
+        mark_credit_used, pending_credit_value, save_search_context, session_pending_value,
+    };
 
     #[test]
     fn creates_music_tables() {
@@ -108,5 +367,125 @@ mod tests {
             )
             .expect("count reads");
         assert_eq!(count, 5);
+    }
+
+    #[test]
+    fn credit_insert_and_pending_totals_work() {
+        let conn = Connection::open_in_memory().expect("db opens");
+        ensure_schema(&conn).expect("schema");
+        let credit = NewSongCredit {
+            session_id: "session-1".to_string(),
+            room_id: 100,
+            uid: 42,
+            uname: "alice".to_string(),
+            credit_value: 233,
+            tier: "jump_queue".to_string(),
+            source_type: "gift".to_string(),
+            source_event_id: 9001,
+            expires_at: "2099-01-01T00:00:00+08:00".to_string(),
+        };
+
+        insert_credit(&conn, &credit).expect("insert credit");
+
+        assert_eq!(
+            pending_credit_value(&conn, "session-1", 42).expect("pending"),
+            233
+        );
+        assert_eq!(
+            session_pending_value(&conn, "session-1", 100).expect("session pending"),
+            233
+        );
+    }
+
+    #[test]
+    fn search_context_round_trips_candidates() {
+        let conn = Connection::open_in_memory().expect("db opens");
+        ensure_schema(&conn).expect("schema");
+        let candidates = vec![SearchCandidate {
+            track: MusicTrack {
+                source: MusicSource::Netease,
+                song_id: "186016".to_string(),
+                name: "晴天".to_string(),
+                artists: vec!["周杰伦".to_string()],
+                album: "叶惠美".to_string(),
+                pic_id: String::new(),
+                url_id: "186016".to_string(),
+                lyric_id: "186016".to_string(),
+                duration_ms: Some(269000),
+            },
+            score: 100,
+            reason: "歌名匹配".to_string(),
+        }];
+
+        save_search_context(
+            &conn,
+            "session-1",
+            42,
+            "晴天",
+            &candidates,
+            "2099-01-01T00:00:00+08:00",
+        )
+        .expect("save context");
+        let loaded = latest_search_context(&conn, "session-1", 42)
+            .expect("query")
+            .expect("context");
+
+        assert_eq!(loaded.query, "晴天");
+        assert_eq!(loaded.candidates[0].track.song_id, "186016");
+    }
+
+    #[test]
+    fn enqueue_request_consumes_credit_and_lists_queue() {
+        let conn = Connection::open_in_memory().expect("db opens");
+        ensure_schema(&conn).expect("schema");
+        let credit_id = insert_credit(
+            &conn,
+            &NewSongCredit {
+                session_id: "session-1".to_string(),
+                room_id: 100,
+                uid: 42,
+                uname: "alice".to_string(),
+                credit_value: 66,
+                tier: "priority".to_string(),
+                source_type: "gift".to_string(),
+                source_event_id: 9001,
+                expires_at: "2099-01-01T00:00:00+08:00".to_string(),
+            },
+        )
+        .expect("credit");
+
+        let request_id = insert_song_request(
+            &conn,
+            &NewSongRequest {
+                session_id: "session-1".to_string(),
+                room_id: 100,
+                uid: 42,
+                uname: "alice".to_string(),
+                source: "netease".to_string(),
+                song_id: "186016".to_string(),
+                song_name: "晴天".to_string(),
+                artist_names: "周杰伦".to_string(),
+                album_name: Some("叶惠美".to_string()),
+                pic_url: None,
+                lyric_id: "186016".to_string(),
+                url_id: "186016".to_string(),
+                duration_ms: Some(269000),
+                requested_text: "点歌 晴天".to_string(),
+                tier: "priority".to_string(),
+                credit_value: 66,
+                priority_score: 3066,
+                source_event_id: None,
+            },
+        )
+        .expect("request");
+        mark_credit_used(&conn, credit_id, request_id).expect("consume");
+
+        let queue = list_queue(&conn, "session-1", 100).expect("queue");
+        assert_eq!(queue.len(), 1);
+        assert_eq!(queue[0].request_id, request_id);
+        assert_eq!(
+            pending_credit_value(&conn, "session-1", 42).expect("pending"),
+            0
+        );
     }
 }

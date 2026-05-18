@@ -270,6 +270,15 @@ impl Storage {
         })
     }
 
+    #[allow(dead_code)]
+    pub fn with_connection<T, F>(&self, f: F) -> Result<T>
+    where
+        F: FnOnce(&Connection) -> Result<T>,
+    {
+        let conn = self.conn.lock().expect("storage mutex poisoned");
+        f(&conn)
+    }
+
     pub fn replace_gift_catalog(&self, gifts: &[GiftCatalogItem]) -> Result<()> {
         let mut conn = self.conn.lock().expect("storage mutex poisoned");
         let tx = conn.transaction()?;
