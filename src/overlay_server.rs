@@ -26,10 +26,10 @@ use axum::{
     response::{Html, IntoResponse, Json},
     routing::get,
 };
-use rusqlite::OptionalExtension;
+use rusqlite::{OptionalExtension, params};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
-use std::sync::Arc;
+use std::sync::{Arc, OnceLock};
 use tokio::sync::broadcast;
 
 use crate::music::storage::QueueItem;
@@ -165,9 +165,12 @@ async fn song_queue_handler() -> impl IntoResponse {
 }
 
 async fn song_now_playing_handler() -> impl IntoResponse {
-    let item = observed_music_queue()
-        .into_iter()
-        .find(|item| item.status == "playing");
+    let queue = observed_music_queue();
+    let item = queue
+        .iter()
+        .find(|item| item.status == "playing")
+        .cloned()
+        .or_else(|| queue.into_iter().next());
     Json(NowPlayingResponse { item })
 }
 
@@ -176,25 +179,39 @@ async fn song_rank_handler() -> impl IntoResponse {
 }
 
 fn observed_music_queue() -> Vec<QueueItem> {
-    let path = crate::config::db_path();
-    let result = Storage::open(&path.to_string_lossy()).and_then(|storage| {
-        storage.with_connection(|conn| {
-            let session = conn
-                .query_row(
-                    "select id, room_id
-                     from live_sessions
-                     where start_source = 'observed' and ended_at is null
-                     order by started_at desc
-                     limit 1",
-                    [],
-                    |row| Ok((row.get::<_, String>(0)?, row.get::<_, i64>(1)?)),
-                )
-                .optional()?;
-            let Some((session_id, room_id)) = session else {
-                return Ok(Vec::new());
-            };
-            crate::music::storage::list_queue(conn, &session_id, room_id)
-        })
+    let app = match crate::config::AppConfig::load_or_default() {
+        Ok(app) => app,
+        Err(e) => {
+            eprintln!("音乐互动浮层读取配置失败: {e}");
+            return Vec::new();
+        }
+    };
+    let storage = match overlay_storage() {
+        Ok(storage) => storage,
+        Err(e) => {
+            eprintln!("音乐互动浮层打开存储失败: {e}");
+            return Vec::new();
+        }
+    };
+
+    let result = storage.with_connection(|conn| {
+        let session = conn
+            .query_row(
+                "select id, room_id
+                 from live_sessions
+                 where start_source = 'observed'
+                   and ended_at is null
+                   and room_id = ?1
+                 order by started_at desc
+                 limit 1",
+                params![app.room_id],
+                |row| Ok((row.get::<_, String>(0)?, row.get::<_, i64>(1)?)),
+            )
+            .optional()?;
+        let Some((session_id, room_id)) = session else {
+            return Ok(Vec::new());
+        };
+        crate::music::storage::list_queue(conn, &session_id, room_id)
     });
 
     match result {
@@ -204,6 +221,22 @@ fn observed_music_queue() -> Vec<QueueItem> {
             Vec::new()
         }
     }
+}
+
+fn overlay_storage() -> anyhow::Result<Arc<Storage>> {
+    static STORAGE: OnceLock<Arc<Storage>> = OnceLock::new();
+    if let Some(storage) = STORAGE.get() {
+        return Ok(Arc::clone(storage));
+    }
+
+    let path = crate::config::db_path();
+    let storage = Arc::new(Storage::open(&path.to_string_lossy())?);
+    if STORAGE.set(Arc::clone(&storage)).is_err() {
+        if let Some(storage) = STORAGE.get() {
+            return Ok(Arc::clone(storage));
+        }
+    }
+    Ok(storage)
 }
 
 async fn local_resource_handler(Query(q): Query<ProxyQuery>) -> Response<Body> {
