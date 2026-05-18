@@ -746,7 +746,7 @@ fn df_gift_rank_skin() -> String {
     "podium".to_string()
 }
 fn df_music_skin() -> String {
-    "compact".to_string()
+    "neon".to_string()
 }
 fn df_music_stats_range() -> String {
     "session".to_string()
@@ -882,10 +882,10 @@ mod music_interaction_tests {
     use super::PluginSettings;
 
     #[test]
-    fn music_interaction_defaults_are_enabled_and_compact() {
+    fn music_interaction_defaults_are_enabled_and_neon() {
         let settings = PluginSettings::default();
         assert!(settings.music_interaction.enabled);
-        assert_eq!(settings.music_interaction.skin, "compact");
+        assert_eq!(settings.music_interaction.skin, "neon");
         assert_eq!(settings.music_interaction.stats_range, "session");
     }
 }

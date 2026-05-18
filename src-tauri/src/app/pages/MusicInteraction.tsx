@@ -10,7 +10,7 @@ import { fallbackConfig } from './WishGoal';
 
 const fallbackMusicInteraction: MusicInteractionSettings = {
   Enabled: true,
-  Skin: 'compact',
+  Skin: 'neon',
   StatsRange: 'session',
   Transparent: true,
   Width: 720,
@@ -30,7 +30,7 @@ const initialConfig: PluginSettings = {
 };
 
 const statsRangeOptions = new Set(['session', 'today', 'week', 'month', 'all']);
-const skinOptions = new Set(['compact', 'minimal']);
+const skinOptions = new Set(['neon', 'idol-stage', 'vinyl']);
 
 function isHexColor(value: unknown): value is string {
   return typeof value === 'string' && /^#[0-9a-fA-F]{6}$/.test(value.trim());
@@ -456,8 +456,9 @@ export function MusicInteraction() {
               <span className="text-[11px] font-bold text-[var(--muted-text)]">皮肤</span>
               <select value={music.Skin} onChange={e => updateMusic({ Skin: e.target.value })} disabled={!loaded}
                 className="h-[32px] w-full rounded-lg border border-[var(--control-border)] bg-[var(--control-bg)] px-3 text-[12px] text-[var(--control-text)] focus:outline-none">
-                <option value="compact">紧凑</option>
-                <option value="minimal">极简</option>
+                <option value="neon">霓虹</option>
+                <option value="idol-stage">偶像舞台</option>
+                <option value="vinyl">黑胶</option>
               </select>
             </label>
             <label className="space-y-1.5">
