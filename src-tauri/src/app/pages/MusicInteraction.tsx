@@ -101,10 +101,10 @@ export function MusicInteraction() {
         setCandidates(next);
       }
     } catch (err) {
-      if (searchRequestId.current === requestId) {
+      if (searchRequestId.current === requestId && latestQuery.current.trim() === keyword) {
         setCandidates([]);
+        toast.error(`搜索失败: ${err}`);
       }
-      toast.error(`搜索失败: ${err}`);
     } finally {
       if (searchRequestId.current === requestId) {
         searchInFlight.current = false;
