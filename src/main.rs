@@ -2184,9 +2184,13 @@ async fn open_music_request(
         return Err("点歌请求 ID 必须大于 0".to_string());
     }
 
+    let (session_id, room_id) = active_music_session(&state)?
+        .ok_or_else(|| "当前没有直播场次，暂不能打开点歌".to_string())?;
     let request = state
         .storage
-        .with_connection(|conn| music::storage::openable_song_request(conn, request_id))
+        .with_connection(|conn| {
+            music::storage::openable_song_request(conn, request_id, &session_id, room_id)
+        })
         .map_err(|e| e.to_string())?
         .ok_or_else(|| "未找到可打开的点歌请求，只有排队中或播放中的歌曲可以打开".to_string())?;
 

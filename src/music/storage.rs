@@ -521,12 +521,17 @@ pub fn list_queue(conn: &Connection, session_id: &str, room_id: i64) -> Result<V
 pub fn openable_song_request(
     conn: &Connection,
     request_id: i64,
+    session_id: &str,
+    room_id: i64,
 ) -> Result<Option<OpenableSongRequest>> {
     conn.query_row(
         "select id, source, song_id, url_id
          from song_requests
-         where id = ?1 and status in ('queued', 'playing')",
-        params![request_id],
+         where id = ?1
+           and session_id = ?2
+           and room_id = ?3
+           and status in ('queued', 'playing')",
+        params![request_id, session_id, room_id],
         |row| {
             Ok(OpenableSongRequest {
                 request_id: row.get(0)?,
@@ -862,7 +867,7 @@ mod tests {
         )
         .expect("mark finished");
 
-        let queued = openable_song_request(&conn, queued_id)
+        let queued = openable_song_request(&conn, queued_id, "session-1", 100)
             .expect("queued lookup")
             .expect("queued openable");
         assert_eq!(queued.request_id, queued_id);
@@ -870,18 +875,54 @@ mod tests {
         assert_eq!(queued.song_id, "186016");
         assert_eq!(queued.url_id, "186016");
 
-        let playing = openable_song_request(&conn, playing_id)
+        let playing = openable_song_request(&conn, playing_id, "session-1", 100)
             .expect("playing lookup")
             .expect("playing openable");
         assert_eq!(playing.request_id, playing_id);
 
         assert_eq!(
-            openable_song_request(&conn, finished_id).expect("finished lookup"),
+            openable_song_request(&conn, finished_id, "session-1", 100).expect("finished lookup"),
             None
         );
         assert_eq!(
-            openable_song_request(&conn, 999).expect("missing lookup"),
+            openable_song_request(&conn, 999, "session-1", 100).expect("missing lookup"),
             None
+        );
+    }
+
+    #[test]
+    fn openable_song_request_is_scoped_to_session_and_room() {
+        let conn = Connection::open_in_memory().expect("db opens");
+        ensure_schema(&conn).expect("schema");
+
+        let mut other_session_request = song_request();
+        other_session_request.session_id = "session-2".to_string();
+        let other_session_id =
+            insert_song_request(&conn, &other_session_request).expect("other session request");
+
+        let mut other_room_request = song_request();
+        other_room_request.room_id = 200;
+        let other_room_id =
+            insert_song_request(&conn, &other_room_request).expect("other room request");
+
+        assert_eq!(
+            openable_song_request(&conn, other_session_id, "session-1", 100)
+                .expect("other session lookup"),
+            None
+        );
+        assert_eq!(
+            openable_song_request(&conn, other_room_id, "session-1", 100)
+                .expect("other room lookup"),
+            None
+        );
+
+        let active_id = insert_song_request(&conn, &song_request()).expect("active request");
+        assert_eq!(
+            openable_song_request(&conn, active_id, "session-1", 100)
+                .expect("active lookup")
+                .expect("active openable")
+                .request_id,
+            active_id
         );
     }
 
