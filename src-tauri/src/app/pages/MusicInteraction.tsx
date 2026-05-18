@@ -5,7 +5,7 @@ import { GlassCard } from '../components/GlassCard';
 import { Button } from '../components/Button';
 import { Input } from '../components/Input';
 import { Toggle } from '../components/Toggle';
-import { api, MusicInteractionSettings, PluginSettings, SearchCandidate } from '../lib/api';
+import { api, MusicInteractionSettings, MusicQueueItem, PluginSettings, SearchCandidate } from '../lib/api';
 import { fallbackConfig } from './WishGoal';
 
 const fallbackMusicInteraction: MusicInteractionSettings = {
@@ -112,9 +112,12 @@ export function MusicInteraction() {
   const [url, setUrl] = useState('');
   const [query, setQuery] = useState('');
   const [candidates, setCandidates] = useState<SearchCandidate[]>([]);
+  const [queue, setQueue] = useState<MusicQueueItem[]>([]);
   const [selectedCandidate, setSelectedCandidate] = useState<SearchCandidate | null>(null);
   const [confirmedCandidate, setConfirmedCandidate] = useState<SearchCandidate | null>(null);
   const [searching, setSearching] = useState(false);
+  const [queueLoading, setQueueLoading] = useState(false);
+  const [confirmingIndex, setConfirmingIndex] = useState<number | null>(null);
   const [refreshingUrl, setRefreshingUrl] = useState(false);
   const [numberDrafts, setNumberDrafts] = useState<Partial<Record<NumericMusicSetting, string>>>({});
   const [colorDraft, setColorDraft] = useState<string | null>(null);
@@ -182,12 +185,43 @@ export function MusicInteraction() {
     }
   };
 
+  const loadQueue = async () => {
+    setQueueLoading(true);
+    try {
+      setQueue(await api.getMusicQueue());
+    } catch (err) {
+      setQueue([]);
+      toast.error(`读取点歌队列失败: ${err}`);
+    } finally {
+      setQueueLoading(false);
+    }
+  };
+
   const copyUrl = async () => {
     try {
       await navigator.clipboard.writeText(url);
       toast.success('地址已复制');
     } catch (err) {
       toast.error(`复制失败: ${err}`);
+    }
+  };
+
+  const confirmCandidate = async (candidate: SearchCandidate, index: number) => {
+    setConfirmingIndex(index);
+    try {
+      const reply = await api.confirmMusicCandidate(0, '主播预览', index);
+      if (reply.includes('已加入点歌队列')) {
+        setSelectedCandidate(candidate);
+        setConfirmedCandidate(candidate);
+        toast.success(reply);
+        await loadQueue();
+      } else {
+        toast.warning(reply || '确认未加入队列');
+      }
+    } catch (err) {
+      toast.error(`确认失败: ${err}`);
+    } finally {
+      setConfirmingIndex(null);
     }
   };
 
@@ -258,7 +292,7 @@ export function MusicInteraction() {
       setConfig(initialConfig);
       setLoaded(true);
     });
-    refreshUrl();
+    refreshUrl().finally(() => { void loadQueue(); });
   }, []);
 
   useEffect(() => {
@@ -464,8 +498,9 @@ export function MusicInteraction() {
               </div>
             ) : (
               <div className="divide-y divide-[var(--surface-border)]">
-                {candidates.map((candidate) => {
+                {candidates.map((candidate, index) => {
                   const key = candidateKey(candidate);
+                  const candidateIndex = index + 1;
                   const selected = selectedCandidate ? candidateKey(selectedCandidate) === key : false;
                   const confirmed = confirmedCandidate ? candidateKey(confirmedCandidate) === key : false;
                   return (
@@ -484,8 +519,13 @@ export function MusicInteraction() {
                       <Button size="sm" variant={selected ? 'primary' : 'default'} onClick={() => setSelectedCandidate(candidate)}>
                         {selected ? '已选' : '选择'}
                       </Button>
-                      <Button size="sm" variant={confirmed ? 'primary' : 'default'} onClick={() => { setSelectedCandidate(candidate); setConfirmedCandidate(candidate); }}>
-                        {confirmed ? '已确认' : '确认'}
+                      <Button
+                        size="sm"
+                        variant={confirmed ? 'primary' : 'default'}
+                        onClick={() => confirmCandidate(candidate, candidateIndex)}
+                        disabled={confirmingIndex !== null}
+                      >
+                        {confirmingIndex === candidateIndex ? '确认中' : confirmed ? '已确认' : '确认'}
                       </Button>
                     </div>
                   </div>
@@ -502,11 +542,51 @@ export function MusicInteraction() {
                   {selectedCandidate.track.artists.join(' / ') || '未知歌手'} · {selectedCandidate.track.album || '未知专辑'}
                 </div>
               </div>
-              <Button variant="primary" onClick={() => setConfirmedCandidate(selectedCandidate)}>
+              <Button
+                variant="primary"
+                onClick={() => {
+                  const selectedIndex = candidates.findIndex(candidate => candidateKey(candidate) === candidateKey(selectedCandidate));
+                  if (selectedIndex >= 0) void confirmCandidate(selectedCandidate, selectedIndex + 1);
+                }}
+                disabled={confirmingIndex !== null}
+              >
                 <Check className="h-3.5 w-3.5" />确认候选
               </Button>
             </div>
           )}
+          <div className="mt-4 rounded-2xl border border-[var(--surface-border)] bg-[var(--control-bg)] p-4">
+            <div className="mb-3 flex items-center justify-between gap-3">
+              <div className="text-[12px] font-bold text-[var(--foreground)]">当前队列</div>
+              <Button size="sm" onClick={loadQueue} disabled={queueLoading}>
+                <RefreshCw className={`h-3.5 w-3.5 ${queueLoading ? 'animate-spin' : ''}`} />刷新
+              </Button>
+            </div>
+            {queue.length === 0 ? (
+              <div className="py-2 text-[12px] font-semibold text-[var(--muted-text)]">
+                {queueLoading ? '正在读取队列' : '暂无排队歌曲'}
+              </div>
+            ) : (
+              <div className="max-h-[168px] overflow-y-auto divide-y divide-[var(--surface-border)] [scrollbar-width:thin]">
+                {queue.map(item => (
+                  <div key={item.requestId} className="grid grid-cols-[auto_1fr_auto] items-center gap-3 py-2">
+                    <div className="flex h-7 min-w-8 items-center justify-center rounded-lg bg-[var(--primary-color)]/10 px-2 text-[11px] font-black text-[var(--primary-color)]">
+                      #{item.requestId}
+                    </div>
+                    <div className="min-w-0">
+                      <div className="truncate text-[12px] font-black text-[var(--foreground)]">{item.songName}</div>
+                      <div className="mt-0.5 truncate text-[11px] font-semibold text-[var(--muted-text)]">
+                        {item.artistNames || '未知歌手'} · {item.uname || '未知用户'}
+                      </div>
+                    </div>
+                    <div className="text-right text-[11px] font-bold text-[var(--muted-text)]">
+                      <div>{item.tier}</div>
+                      <div>{item.status}</div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
         </div>
       </GlassCard>
     </div>

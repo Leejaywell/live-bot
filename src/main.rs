@@ -3654,6 +3654,8 @@ fn main() -> Result<()> {
             get_gift_rank_url,
             get_music_interaction_url,
             search_music_candidates,
+            get_music_queue,
+            confirm_music_candidate,
             load_overlay_config,
             save_overlay_config,
             load_plugin_settings,
@@ -3734,8 +3736,18 @@ async fn search_music_candidates(
         return Ok(Vec::new());
     }
 
+    let config = AppConfig::load_or_default().map_err(|e| e.to_string())?;
+    let session_id = manual_music_session_id(config.room_id);
     let provider = music::providers::netease::NeteaseProvider::new(reqwest::Client::new());
-    let service = music::service::MusicInteractionService::new(vec![Box::new(provider)]);
+    let db_path = config::db_path();
+    let storage =
+        Arc::new(storage::Storage::open(&db_path.to_string_lossy()).map_err(|e| e.to_string())?);
+    let service = music::service::MusicInteractionService::new_with_storage(
+        vec![Box::new(provider)],
+        storage,
+        config.room_id,
+        Arc::new(Mutex::new(Some(session_id))),
+    );
     match service
         .handle_danmu(0, "preview", &format!("点歌 {query}"))
         .await
@@ -3744,6 +3756,45 @@ async fn search_music_candidates(
         music::service::SongServiceReply::Candidates { candidates } => Ok(candidates),
         _ => Ok(Vec::new()),
     }
+}
+
+#[cfg(feature = "tauri")]
+fn manual_music_session_id(room_id: i64) -> String {
+    format!("manual-room-{room_id}")
+}
+
+#[cfg(feature = "tauri")]
+#[tauri::command]
+async fn get_music_queue() -> Result<Vec<music::storage::QueueItem>, String> {
+    let config = AppConfig::load_or_default().map_err(|e| e.to_string())?;
+    let db_path = config::db_path();
+    let storage = storage::Storage::open(&db_path.to_string_lossy()).map_err(|e| e.to_string())?;
+    let session_id = manual_music_session_id(config.room_id);
+    storage
+        .with_connection(|conn| music::storage::list_queue(conn, &session_id, config.room_id))
+        .map_err(|e| e.to_string())
+}
+
+#[cfg(feature = "tauri")]
+#[tauri::command]
+async fn confirm_music_candidate(uid: i64, uname: String, index: usize) -> Result<String, String> {
+    let config = AppConfig::load_or_default().map_err(|e| e.to_string())?;
+    let session_id = manual_music_session_id(config.room_id);
+    let db_path = config::db_path();
+    let storage =
+        Arc::new(storage::Storage::open(&db_path.to_string_lossy()).map_err(|e| e.to_string())?);
+    let provider = music::providers::netease::NeteaseProvider::new(reqwest::Client::new());
+    let service = music::service::MusicInteractionService::new_with_storage(
+        vec![Box::new(provider)],
+        storage,
+        config.room_id,
+        Arc::new(Mutex::new(Some(session_id))),
+    );
+    let reply = service
+        .handle_danmu(uid, &uname, &format!("确认 #{index}"))
+        .await
+        .map_err(|e| e.to_string())?;
+    Ok(reply.to_danmu_text())
 }
 
 #[cfg(feature = "tauri")]
