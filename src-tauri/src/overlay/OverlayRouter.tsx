@@ -30,7 +30,7 @@ function renderOverlayContent(
     case 'gift-rank':
       return <GiftRankOverlay settings={settings} />;
     case 'song-request':
-      return <SongRequestOverlay route={route} config={config} />;
+      return <SongRequestOverlay route={route} config={config} settings={settings.MusicInteraction} />;
   }
 }
 

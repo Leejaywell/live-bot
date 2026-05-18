@@ -72,8 +72,8 @@ body {
 
 .song-card {
   display: grid;
-  width: min(100vw, 760px);
-  min-height: 104px;
+  width: min(100vw, var(--song-card-width, 760px));
+  min-height: min(100vh, var(--song-card-height, 104px));
   gap: 12px;
   padding: 14px 16px;
   border-radius: 12px;
@@ -129,12 +129,16 @@ body {
 .song-queue li,
 .song-rank-row {
   display: grid;
-  grid-template-columns: 24px minmax(0, 1fr) auto;
+  grid-template-columns: 24px minmax(0, 1fr);
   align-items: center;
   gap: 8px;
   color: rgba(255, 255, 255, 0.82);
   font-size: 12px;
   font-weight: 800;
+}
+
+.song-queue li[data-show-tier="1"] {
+  grid-template-columns: 24px minmax(0, 1fr) auto;
 }
 
 .song-queue em {
@@ -253,6 +257,28 @@ body {
 .song-theme-vinyl.song-playlist {
   grid-template-columns: 72px minmax(0, 1fr) minmax(180px, 260px);
   align-items: center;
+}
+
+.song-theme-neon.song-playlist[data-show-cover="0"],
+.song-theme-idol-stage.song-playlist[data-show-cover="0"],
+.song-theme-vinyl.song-playlist[data-show-cover="0"] {
+  grid-template-columns: minmax(0, 1fr) minmax(180px, 260px);
+}
+
+.song-theme-neon.song-playlist[data-show-queue="0"],
+.song-theme-idol-stage.song-playlist[data-show-queue="0"],
+.song-theme-vinyl.song-playlist[data-show-queue="0"] {
+  grid-template-columns: 72px minmax(0, 1fr);
+}
+
+.song-theme-neon.song-playlist[data-show-cover="0"][data-show-queue="0"],
+.song-theme-idol-stage.song-playlist[data-show-cover="0"][data-show-queue="0"],
+.song-theme-vinyl.song-playlist[data-show-cover="0"][data-show-queue="0"] {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.song-now[data-show-cover="0"] {
+  grid-template-columns: minmax(0, 1fr);
 }
 
 @media (max-width: 360px) {
