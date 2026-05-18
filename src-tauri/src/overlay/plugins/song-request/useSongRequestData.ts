@@ -1,0 +1,73 @@
+import { useEffect, useRef, useState } from 'react';
+import { fetchJson } from '../../runtime/fetch';
+import { NowPlayingResponse, RankResponse, SongQueueItem, SongQueueResponse, SongRequestVisualState } from './types';
+
+const EMPTY_VISUAL: SongRequestVisualState = {
+  newRequestIds: new Set<number>(),
+  playingChanged: false,
+  highTierRequestId: null,
+};
+
+function highTier(item: SongQueueItem | null | undefined) {
+  return item?.tier === 'jump_queue' || item?.tier === 'exclusive' || item?.tier === 'playlist_takeover';
+}
+
+export function useSongRequestData(view: 'playlist' | 'now-playing' | 'rank') {
+  const [queue, setQueue] = useState<SongQueueItem[]>([]);
+  const [nowPlaying, setNowPlaying] = useState<SongQueueItem | null>(null);
+  const [rank, setRank] = useState<RankResponse['items']>([]);
+  const [visual, setVisual] = useState<SongRequestVisualState>(EMPTY_VISUAL);
+  const previousIds = useRef<Set<number>>(new Set());
+  const previousPlaying = useRef<number | null>(null);
+
+  useEffect(() => {
+    let disposed = false;
+
+    async function load() {
+      if (view === 'now-playing') {
+        const data = await fetchJson<NowPlayingResponse>('/song-request/api/now-playing', { item: null });
+        if (disposed) return;
+        const nextPlayingId = data.item?.requestId ?? null;
+        setVisual({
+          newRequestIds: new Set<number>(),
+          playingChanged: previousPlaying.current !== null && previousPlaying.current !== nextPlayingId,
+          highTierRequestId: highTier(data.item) ? data.item!.requestId : null,
+        });
+        previousPlaying.current = nextPlayingId;
+        setNowPlaying(data.item || null);
+        return;
+      }
+
+      if (view === 'rank') {
+        const data = await fetchJson<RankResponse>('/song-request/api/rank', { items: [] });
+        if (!disposed) setRank(Array.isArray(data.items) ? data.items : []);
+        return;
+      }
+
+      const data = await fetchJson<SongQueueResponse>('/song-request/api/queue', { items: [] });
+      if (disposed) return;
+      const items = Array.isArray(data.items) ? data.items : [];
+      const nextIds = new Set(items.map(item => item.requestId));
+      const newRequestIds = new Set(items.filter(item => !previousIds.current.has(item.requestId)).map(item => item.requestId));
+      const playing = items.find(item => item.status === 'playing') || null;
+      setVisual({
+        newRequestIds,
+        playingChanged: previousPlaying.current !== null && previousPlaying.current !== (playing?.requestId ?? null),
+        highTierRequestId: items.find(highTier)?.requestId ?? null,
+      });
+      previousIds.current = nextIds;
+      previousPlaying.current = playing?.requestId ?? null;
+      setQueue(items);
+      setNowPlaying(playing);
+    }
+
+    load();
+    const timer = window.setInterval(load, 3000);
+    return () => {
+      disposed = true;
+      window.clearInterval(timer);
+    };
+  }, [view]);
+
+  return { queue, nowPlaying, rank, visual };
+}
