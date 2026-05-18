@@ -13,14 +13,14 @@ const fallbackMusicInteraction: MusicInteractionSettings = {
   Skin: 'compact',
   StatsRange: 'session',
   Transparent: true,
-  Width: 420,
-  Height: 180,
+  Width: 720,
+  Height: 120,
   ShowCover: true,
   ShowRequester: true,
   ShowGiftTier: true,
   ShowQueue: true,
-  ShowTodayValue: true,
-  PrimaryColor: '#22d3ee',
+  ShowTodayValue: false,
+  PrimaryColor: '#8b5cf6',
   FontScale: 1,
 };
 
@@ -30,20 +30,45 @@ const initialConfig: PluginSettings = {
 };
 
 const statsRangeOptions = new Set(['session', 'today', 'week', 'month', 'all']);
+const skinOptions = new Set(['compact', 'minimal']);
 
-function isHexColor(value: string): boolean {
-  return /^#[0-9a-fA-F]{6}$/.test(value.trim());
+function isHexColor(value: unknown): value is string {
+  return typeof value === 'string' && /^#[0-9a-fA-F]{6}$/.test(value.trim());
 }
 
-function sanitizeMusicInteraction(next: MusicInteractionSettings | undefined): MusicInteractionSettings {
-  const merged = {
-    ...fallbackMusicInteraction,
-    ...next,
-  };
+function sanitizeBoolean(value: unknown, fallback: boolean): boolean {
+  return typeof value === 'boolean' ? value : fallback;
+}
+
+function sanitizeNumber(key: NumericMusicSetting, value: unknown, fallback: number): number {
+  if (typeof value !== 'number' || !Number.isFinite(value)) return fallback;
+  return clampSettingValue(key, String(value)) ?? fallback;
+}
+
+function sanitizeMusicInteraction(next: MusicInteractionSettings | undefined | null): MusicInteractionSettings {
+  const source = next && typeof next === 'object'
+    ? next as Partial<Record<keyof MusicInteractionSettings, unknown>>
+    : {};
+  const skin = typeof source.Skin === 'string' && skinOptions.has(source.Skin)
+    ? source.Skin
+    : fallbackMusicInteraction.Skin;
+  const statsRange = typeof source.StatsRange === 'string' && statsRangeOptions.has(source.StatsRange)
+    ? source.StatsRange
+    : fallbackMusicInteraction.StatsRange;
   return {
-    ...merged,
-    StatsRange: statsRangeOptions.has(merged.StatsRange) ? merged.StatsRange : fallbackMusicInteraction.StatsRange,
-    PrimaryColor: isHexColor(merged.PrimaryColor) ? merged.PrimaryColor : fallbackMusicInteraction.PrimaryColor,
+    Enabled: sanitizeBoolean(source.Enabled, fallbackMusicInteraction.Enabled),
+    Skin: skin,
+    StatsRange: statsRange,
+    Transparent: sanitizeBoolean(source.Transparent, fallbackMusicInteraction.Transparent),
+    Width: sanitizeNumber('Width', source.Width, fallbackMusicInteraction.Width),
+    Height: sanitizeNumber('Height', source.Height, fallbackMusicInteraction.Height),
+    ShowCover: sanitizeBoolean(source.ShowCover, fallbackMusicInteraction.ShowCover),
+    ShowRequester: sanitizeBoolean(source.ShowRequester, fallbackMusicInteraction.ShowRequester),
+    ShowGiftTier: sanitizeBoolean(source.ShowGiftTier, fallbackMusicInteraction.ShowGiftTier),
+    ShowQueue: sanitizeBoolean(source.ShowQueue, fallbackMusicInteraction.ShowQueue),
+    ShowTodayValue: sanitizeBoolean(source.ShowTodayValue, fallbackMusicInteraction.ShowTodayValue),
+    PrimaryColor: isHexColor(source.PrimaryColor) ? source.PrimaryColor : fallbackMusicInteraction.PrimaryColor,
+    FontScale: sanitizeNumber('FontScale', source.FontScale, fallbackMusicInteraction.FontScale),
   };
 }
 
