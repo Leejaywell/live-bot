@@ -666,6 +666,10 @@ pub async fn run_monitor_loop<E: EventEmitter + Send + Sync + 'static>(
                                 Ok(permit) => {
                                     let tx = event_tx.clone();
                                     let app = event_app.clone();
+                                    let should_send_reply = matches!(
+                                        event,
+                                        bilibili_live_protocol::LiveEvent::Danmu { .. }
+                                    );
                                     let event = event.clone();
                                     let cancel = event_music_cancel.clone();
                                     tokio::spawn(async move {
@@ -676,7 +680,7 @@ pub async fn run_monitor_loop<E: EventEmitter + Send + Sync + 'static>(
                                                 match result {
                                                     Ok(reply) => {
                                                         let text = reply.to_danmu_text();
-                                                        if !text.is_empty() {
+                                                        if should_send_reply && !text.is_empty() {
                                                             let _ = tx.send(text).await;
                                                         }
                                                     }
