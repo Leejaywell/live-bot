@@ -26,6 +26,10 @@ import { Models } from './pages/Models';
 import { Stats } from './pages/Stats';
 import { ChatOverlay } from './pages/ChatOverlay';
 import { WishGoal } from './pages/WishGoal';
+import { LotteryInteraction } from './pages/LotteryInteraction';
+import { GiftEffect } from './pages/GiftEffect';
+import { RecentGifts } from './pages/RecentGifts';
+import { GiftRank } from './pages/GiftRank';
 import { api, UserInfo, RoomInfo, AnchorInfo } from './lib/api';
 import { invoke } from '@tauri-apps/api/core';
 import QRCode from 'react-qr-code';
@@ -434,6 +438,10 @@ function AnimatedRoutes() {
         <Route path="/plugins" element={<Navigate to="/plugins/chat-overlay" replace />} />
         <Route path="/plugins/chat-overlay" element={<ChatOverlay />} />
         <Route path="/plugins/wish-goal" element={<WishGoal />} />
+        <Route path="/plugins/lottery" element={<LotteryInteraction />} />
+        <Route path="/plugins/gift-effect" element={<GiftEffect />} />
+        <Route path="/plugins/recent-gifts" element={<RecentGifts />} />
+        <Route path="/plugins/gift-rank" element={<GiftRank />} />
       </Routes>
     </div>
   );

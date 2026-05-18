@@ -117,7 +117,17 @@ impl bot::EventEmitter for BufferedEmitter {
         } else if event == "live-event" {
             if let Ok(mut settings) = plugin_settings::PluginSettings::load_or_default() {
                 let live_event = payload.get("event").unwrap_or(&payload);
-                if settings.apply_wish_goal_event(live_event) && settings.save().is_ok() {
+                let wish_changed = settings.apply_wish_goal_event(live_event);
+                let lottery_changed = settings.apply_lottery_event(live_event);
+                let gift_effect_changed = settings.apply_gift_effect_event(live_event);
+                let recent_gifts_changed = settings.apply_recent_gifts_event(live_event);
+                let gift_rank_changed = settings.apply_gift_rank_event(live_event);
+                let changed = wish_changed
+                    || lottery_changed
+                    || gift_effect_changed
+                    || recent_gifts_changed
+                    || gift_rank_changed;
+                if changed && settings.save().is_ok() {
                     overlay_server::broadcast_plugin_settings_update(&self.overlay_tx);
                 }
             }
@@ -3320,7 +3330,7 @@ fn main() -> Result<()> {
         .plugin(tauri_plugin_dialog::init())
         .manage(state)
         .menu(|app| {
-            use tauri::menu::{MenuBuilder, MenuItem, SubmenuBuilder};
+            use tauri::menu::{MenuBuilder, MenuItem, PredefinedMenuItem, SubmenuBuilder};
 
             let close = MenuItem::with_id(
                 app,
@@ -3340,7 +3350,16 @@ fn main() -> Result<()> {
                 .item(&close)
                 .item(&quit)
                 .build()?;
-            MenuBuilder::new(app).item(&app_menu).build()
+            let edit_menu = SubmenuBuilder::new(app, "编辑")
+                .item(&PredefinedMenuItem::undo(app, Some("撤销"))?)
+                .item(&PredefinedMenuItem::redo(app, Some("重做"))?)
+                .separator()
+                .item(&PredefinedMenuItem::cut(app, Some("剪切"))?)
+                .item(&PredefinedMenuItem::copy(app, Some("复制"))?)
+                .item(&PredefinedMenuItem::paste(app, Some("粘贴"))?)
+                .item(&PredefinedMenuItem::select_all(app, Some("全选"))?)
+                .build()?;
+            MenuBuilder::new(app).item(&app_menu).item(&edit_menu).build()
         })
         .on_menu_event(|app, event| {
             if event.id().0 == MENU_FORCE_QUIT_ID {
@@ -3472,13 +3491,21 @@ fn main() -> Result<()> {
             refresh_gift_catalog,
             get_overlay_url,
             get_wish_goal_url,
+            get_lottery_url,
+            get_gift_effect_url,
+            get_recent_gifts_url,
+            get_gift_rank_url,
             load_overlay_config,
             save_overlay_config,
             load_plugin_settings,
             save_plugin_settings,
             pick_plugin_resource,
             reset_wish_goal,
-            simulate_wish_goal
+            simulate_wish_goal,
+            simulate_lottery,
+            simulate_gift_effect,
+            simulate_recent_gift,
+            simulate_gift_rank
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
@@ -3498,6 +3525,34 @@ async fn get_overlay_url(_state: tauri::State<'_, SharedState>) -> Result<String
 async fn get_wish_goal_url(_state: tauri::State<'_, SharedState>) -> Result<String, String> {
     let cfg = overlay_config::OverlayConfig::load_or_default().map_err(|e| e.to_string())?;
     Ok(format!("http://127.0.0.1:{}/wish-goal", cfg.port))
+}
+
+#[cfg(feature = "tauri")]
+#[tauri::command]
+async fn get_lottery_url(_state: tauri::State<'_, SharedState>) -> Result<String, String> {
+    let cfg = overlay_config::OverlayConfig::load_or_default().map_err(|e| e.to_string())?;
+    Ok(format!("http://127.0.0.1:{}/lottery", cfg.port))
+}
+
+#[cfg(feature = "tauri")]
+#[tauri::command]
+async fn get_gift_effect_url(_state: tauri::State<'_, SharedState>) -> Result<String, String> {
+    let cfg = overlay_config::OverlayConfig::load_or_default().map_err(|e| e.to_string())?;
+    Ok(format!("http://127.0.0.1:{}/gift-effect", cfg.port))
+}
+
+#[cfg(feature = "tauri")]
+#[tauri::command]
+async fn get_recent_gifts_url(_state: tauri::State<'_, SharedState>) -> Result<String, String> {
+    let cfg = overlay_config::OverlayConfig::load_or_default().map_err(|e| e.to_string())?;
+    Ok(format!("http://127.0.0.1:{}/recent-gifts", cfg.port))
+}
+
+#[cfg(feature = "tauri")]
+#[tauri::command]
+async fn get_gift_rank_url(_state: tauri::State<'_, SharedState>) -> Result<String, String> {
+    let cfg = overlay_config::OverlayConfig::load_or_default().map_err(|e| e.to_string())?;
+    Ok(format!("http://127.0.0.1:{}/gift-rank", cfg.port))
 }
 
 #[cfg(feature = "tauri")]
@@ -3729,7 +3784,6 @@ async fn pick_plugin_resource(app: AppHandle, kind: String) -> Result<Option<Str
     use tauri_plugin_dialog::DialogExt;
 
     let (title, filter, extensions): (&str, &str, &[&str]) = match kind.as_str() {
-        "font" => ("选择字体文件", "字体文件", &["ttf", "otf", "woff", "woff2"]),
         "sound" => ("选择音效文件", "音频文件", &["mp3", "wav", "ogg"]),
         _ => return Err("不支持的资源类型".to_string()),
     };
@@ -3775,6 +3829,46 @@ async fn reset_wish_goal(state: tauri::State<'_, SharedState>) -> Result<plugin_
 async fn simulate_wish_goal(state: tauri::State<'_, SharedState>) -> Result<plugin_settings::PluginSettings, String> {
     let mut config = plugin_settings::PluginSettings::load_or_default().map_err(|e| e.to_string())?;
     config.simulate_wish_goal();
+    config.save().map_err(|e| e.to_string())?;
+    overlay_server::broadcast_plugin_settings_update(&state.overlay_tx);
+    Ok(config)
+}
+
+#[cfg(feature = "tauri")]
+#[tauri::command]
+async fn simulate_lottery(state: tauri::State<'_, SharedState>) -> Result<plugin_settings::PluginSettings, String> {
+    let mut config = plugin_settings::PluginSettings::load_or_default().map_err(|e| e.to_string())?;
+    config.simulate_lottery();
+    config.save().map_err(|e| e.to_string())?;
+    overlay_server::broadcast_plugin_settings_update(&state.overlay_tx);
+    Ok(config)
+}
+
+#[cfg(feature = "tauri")]
+#[tauri::command]
+async fn simulate_gift_effect(state: tauri::State<'_, SharedState>) -> Result<plugin_settings::PluginSettings, String> {
+    let mut config = plugin_settings::PluginSettings::load_or_default().map_err(|e| e.to_string())?;
+    config.simulate_gift_effect();
+    config.save().map_err(|e| e.to_string())?;
+    overlay_server::broadcast_plugin_settings_update(&state.overlay_tx);
+    Ok(config)
+}
+
+#[cfg(feature = "tauri")]
+#[tauri::command]
+async fn simulate_recent_gift(state: tauri::State<'_, SharedState>) -> Result<plugin_settings::PluginSettings, String> {
+    let mut config = plugin_settings::PluginSettings::load_or_default().map_err(|e| e.to_string())?;
+    config.simulate_recent_gift();
+    config.save().map_err(|e| e.to_string())?;
+    overlay_server::broadcast_plugin_settings_update(&state.overlay_tx);
+    Ok(config)
+}
+
+#[cfg(feature = "tauri")]
+#[tauri::command]
+async fn simulate_gift_rank(state: tauri::State<'_, SharedState>) -> Result<plugin_settings::PluginSettings, String> {
+    let mut config = plugin_settings::PluginSettings::load_or_default().map_err(|e| e.to_string())?;
+    config.simulate_gift_rank();
     config.save().map_err(|e| e.to_string())?;
     overlay_server::broadcast_plugin_settings_update(&state.overlay_tx);
     Ok(config)

@@ -3,6 +3,10 @@
 //! GET /        → 独立弹幕浮层页面
 //! GET /cfg     → 当前 OverlayConfig（JSON）
 //! GET /wish-goal → 心愿目标浮层页面
+//! GET /lottery → 抽奖互动浮层页面
+//! GET /gift-effect → 礼物特效浮层页面
+//! GET /recent-gifts → 最近礼物浮层页面
+//! GET /gift-rank → 礼物排行浮层页面
 //! GET /plugin-settings → 插件配置（JSON）
 //! GET /ws      → WebSocket，推送 live-event 事件流 + 配置变更通知
 //! GET /proxy   → 图片代理，绕过 B站 CDN CORS 限制
@@ -28,6 +32,10 @@ use crate::plugin_settings::PluginSettings;
 
 const HTML: &str = include_str!("overlay.html");
 const WISH_GOAL_HTML: &str = include_str!("wish_goal.html");
+const LOTTERY_HTML: &str = include_str!("lottery.html");
+const GIFT_EFFECT_HTML: &str = include_str!("gift_effect.html");
+const RECENT_GIFTS_HTML: &str = include_str!("recent_gifts.html");
+const GIFT_RANK_HTML: &str = include_str!("gift_rank.html");
 
 pub type OverlayTx = Arc<broadcast::Sender<Value>>;
 
@@ -52,6 +60,10 @@ pub async fn start(port: u16, tx: OverlayTx) {
         .route("/", get(index_handler))
         .route("/cfg", get(cfg_handler))
         .route("/wish-goal", get(wish_goal_handler))
+        .route("/lottery", get(lottery_handler))
+        .route("/gift-effect", get(gift_effect_handler))
+        .route("/recent-gifts", get(recent_gifts_handler))
+        .route("/gift-rank", get(gift_rank_handler))
         .route("/plugin-settings", get(plugin_settings_handler))
         .route("/local-resource", get(local_resource_handler))
         .route("/ws", get(ws_handler))
@@ -82,6 +94,22 @@ async fn wish_goal_handler() -> Html<&'static str> {
     Html(WISH_GOAL_HTML)
 }
 
+async fn lottery_handler() -> Html<&'static str> {
+    Html(LOTTERY_HTML)
+}
+
+async fn gift_effect_handler() -> Html<&'static str> {
+    Html(GIFT_EFFECT_HTML)
+}
+
+async fn recent_gifts_handler() -> Html<&'static str> {
+    Html(RECENT_GIFTS_HTML)
+}
+
+async fn gift_rank_handler() -> Html<&'static str> {
+    Html(GIFT_RANK_HTML)
+}
+
 async fn cfg_handler() -> impl IntoResponse {
     let cfg = OverlayConfig::load_or_default().unwrap_or_default();
     Json(cfg)
@@ -97,8 +125,8 @@ async fn local_resource_handler(Query(q): Query<ProxyQuery>) -> Response<Body> {
         return empty_response(StatusCode::NOT_FOUND);
     };
     let allowed = [
-        cfg.wish_goal.custom_font_path,
         cfg.wish_goal.custom_sound_path,
+        cfg.gift_effect.custom_sound_path,
     ];
     if !allowed.iter().any(|path| !path.is_empty() && path == &q.url) {
         return empty_response(StatusCode::FORBIDDEN);
@@ -112,10 +140,6 @@ async fn local_resource_handler(Query(q): Query<ProxyQuery>) -> Response<Body> {
         Err(_) => return empty_response(StatusCode::NOT_FOUND),
     };
     let ct = match path.extension().and_then(|ext| ext.to_str()).unwrap_or("").to_ascii_lowercase().as_str() {
-        "ttf" => "font/ttf",
-        "otf" => "font/otf",
-        "woff" => "font/woff",
-        "woff2" => "font/woff2",
         "mp3" => "audio/mpeg",
         "wav" => "audio/wav",
         "ogg" => "audio/ogg",

@@ -1106,7 +1106,7 @@ export function ChatOverlay() {
             <div className="glass-card rounded-[18px] px-5 py-4">
             <div>
               <div>
-                <div className="text-[16px] font-bold text-[var(--foreground)]">浮层样式控制台</div>
+                <div className="text-[16px] font-bold text-[var(--foreground)]">弹幕样式控制台</div>
                 <div className="mt-1 text-[11px] text-[var(--muted-text)]">修改会自动保存，右侧只负责预览效果</div>
               </div>
               <div className="mt-3 flex flex-wrap items-center gap-2">

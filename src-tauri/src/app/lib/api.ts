@@ -222,6 +222,10 @@ export interface OverlayConfig {
 
 export interface PluginSettings {
   WishGoal: WishGoalSettings;
+  LotteryInteraction: LotteryInteractionSettings;
+  GiftEffect: GiftEffectSettings;
+  RecentGifts: RecentGiftsSettings;
+  GiftRank: GiftRankSettings;
 }
 
 export interface WishGoalSettings {
@@ -234,13 +238,13 @@ export interface WishGoalSettings {
   TextColor: string;
   DisplaySize: 'small' | 'normal' | 'large' | string;
   ShowIcons: boolean;
-  FontMode: string;
   FontFamily: string;
+  StylePreset: string;
+  CustomCss: string;
   CompleteAnimation: string;
   CompleteSound: string;
   SoundVolume: number;
   SoundRepeat: string;
-  CustomFontPath: string;
   CustomSoundPath: string;
 }
 
@@ -261,6 +265,72 @@ export interface GiftCatalogItem {
   Price: number;
   Image: string;
   UpdatedAt: string;
+}
+
+export interface LotteryInteractionSettings {
+  Enabled: boolean;
+  Title: string;
+  GiftName: string;
+  GiftCount: number;
+  StaySeconds: number;
+  Prizes: LotteryPrize[];
+  LastWinner: string;
+  LastPrize: string;
+  DrawNonce: number;
+}
+
+export interface LotteryPrize {
+  Id: string;
+  Name: string;
+  Weight: number;
+}
+
+export interface GiftEffectSettings {
+  Enabled: boolean;
+  Skin: string;
+  GiftName: string;
+  Sound: string;
+  SoundVolume: number;
+  CustomSoundPath: string;
+  LastUser: string;
+  LastGift: string;
+  LastCount: number;
+  EffectNonce: number;
+}
+
+export interface RecentGiftsSettings {
+  Enabled: boolean;
+  Title: string;
+  MaxItems: number;
+  Skin: string;
+  NameColor: string;
+  NumberColor: string;
+  GiftColor: string;
+  Items: RecentGiftItem[];
+}
+
+export interface RecentGiftItem {
+  Id: string;
+  User: string;
+  Avatar: string;
+  Gift: string;
+  Count: number;
+}
+
+export interface GiftRankSettings {
+  Enabled: boolean;
+  Title: string;
+  MaxItems: number;
+  Skin: string;
+  Date: string;
+  Items: GiftRankItem[];
+}
+
+export interface GiftRankItem {
+  User: string;
+  Avatar: string;
+  Value: number;
+  Count: number;
 }
 
 export interface UserInfo {
@@ -385,7 +455,11 @@ export const api = {
   onMonitorLogs: (callback: (logs: string[]) => void) => listen<string[]>('monitor-logs', (event) => callback(event.payload)),
   getOverlayUrl: () => invoke<string>('get_overlay_url'),
   getWishGoalUrl: () => invoke<string>('get_wish_goal_url'),
-  pickPluginResource: (kind: 'font' | 'sound') => invoke<string | null>('pick_plugin_resource', { kind }),
+  getLotteryUrl: () => invoke<string>('get_lottery_url'),
+  getGiftEffectUrl: () => invoke<string>('get_gift_effect_url'),
+  getRecentGiftsUrl: () => invoke<string>('get_recent_gifts_url'),
+  getGiftRankUrl: () => invoke<string>('get_gift_rank_url'),
+  pickPluginResource: (kind: 'sound') => invoke<string | null>('pick_plugin_resource', { kind }),
   getGiftCatalog: () => invoke<GiftCatalogItem[]>('get_gift_catalog'),
   refreshGiftCatalog: () => invoke<GiftCatalogItem[]>('refresh_gift_catalog'),
   onLiveEvent: (callback: (event: any) => void) => listen<any>('live-event', (event) => callback(event.payload)),
@@ -423,6 +497,10 @@ export const api = {
   savePluginSettings: (config: PluginSettings) => invoke<void>('save_plugin_settings', { config }),
   resetWishGoal: () => invoke<PluginSettings>('reset_wish_goal'),
   simulateWishGoal: () => invoke<PluginSettings>('simulate_wish_goal'),
+  simulateLottery: () => invoke<PluginSettings>('simulate_lottery'),
+  simulateGiftEffect: () => invoke<PluginSettings>('simulate_gift_effect'),
+  simulateRecentGift: () => invoke<PluginSettings>('simulate_recent_gift'),
+  simulateGiftRank: () => invoke<PluginSettings>('simulate_gift_rank'),
 
   // Persistent room connection
   setConnectedRoom: (roomId: number | null) => invoke<void>('set_connected_room', { roomId }),
