@@ -143,6 +143,7 @@ export interface OverlayConfig {
   Port: number;
   MaxMsgs: number;
   MsgGap: number;
+  Theme: string;
   CustomCss: string;
 
   // 全局缩放

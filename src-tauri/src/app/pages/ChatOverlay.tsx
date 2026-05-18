@@ -184,7 +184,7 @@ body.lbfx-on yt-live-chat-ticker-renderer #container{background-image:linear-gra
   font-weight:var(--sc-content-weight,600)}`;
 
 const DEFAULT_CFG: OverlayConfig = {
-  Port: 12450, MaxMsgs: 50, MsgGap: 3, CustomCss: DEFAULT_CUSTOM_CSS,
+  Port: 12450, MaxMsgs: 50, MsgGap: 3, Theme: 'classic', CustomCss: DEFAULT_CUSTOM_CSS,
   GlobalScale: 1, FontScale: 1,
   ShowAvatar: true, AvatarSize: 24,
   ShowUsername: true, UserNameFont: 'PingFang SC, Microsoft YaHei, Noto Sans SC, sans-serif',
@@ -209,6 +209,106 @@ const DEFAULT_CFG: OverlayConfig = {
   EffectsEnabled: true, EffectIntensity: 1,
   ShowOutlines: false, OutlineSize: 2, OutlineColor: '#000000', BlurryOutline: false,
 };
+
+type OverlayThemeId = 'classic' | 'glass' | 'contrast' | 'compact' | 'gift' | 'minimal';
+
+const OVERLAY_THEMES: {
+  id: OverlayThemeId;
+  name: string;
+  hint: string;
+  patch: Partial<OverlayConfig>;
+}[] = [
+  {
+    id: 'classic',
+    name: '经典流光',
+    hint: '均衡的头像、昵称和消息层级，接近当前默认效果。',
+    patch: {
+      MsgGap: 3, FontScale: 1, AvatarSize: 24, ShowAvatar: true, ShowUsername: true, ShowBadges: true,
+      MessageFontSize: 13, MessageWeight: 600, MessageColor: '#ffffff',
+      UserNameFontSize: 13, UserNameWeight: 600, UserNameColor: '#effee3',
+      OwnerUserNameColor: '#ff96aa', ModeratorUserNameColor: '#e7a9ff', MemberUserNameColor: '#96deff',
+      MessageBgColor: 'transparent', OwnerMessageBgColor: 'rgba(255,214,0,0.18)',
+      ModeratorMessageBgColor: 'rgba(94,132,241,0.18)', MemberMessageBgColor: 'rgba(15,157,88,0.18)',
+      ShowOutlines: false, BlurryOutline: false, EffectsEnabled: true, EffectIntensity: 1,
+      AnimateIn: true, FadeInTime: 200, Slide: true, ReverseSlide: false,
+    },
+  },
+  {
+    id: 'glass',
+    name: '清透玻璃',
+    hint: '减少背景遮挡，保留轻量阴影和透明质感。',
+    patch: {
+      MsgGap: 4, FontScale: 1, AvatarSize: 24, ShowAvatar: true, ShowUsername: true, ShowBadges: true,
+      MessageFontSize: 13, MessageWeight: 600, MessageColor: '#ffffff',
+      UserNameFontSize: 13, UserNameWeight: 600, UserNameColor: '#f3fff4',
+      OwnerUserNameColor: '#ffb3c1', ModeratorUserNameColor: '#d8b4fe', MemberUserNameColor: '#93c5fd',
+      MessageBgColor: 'rgba(12,18,28,0.18)', OwnerMessageBgColor: 'rgba(255,214,0,0.12)',
+      ModeratorMessageBgColor: 'rgba(94,132,241,0.12)', MemberMessageBgColor: 'rgba(15,157,88,0.10)',
+      ShowOutlines: false, BlurryOutline: false, EffectsEnabled: true, EffectIntensity: 0.8,
+      AnimateIn: true, FadeInTime: 220, Slide: true, ReverseSlide: false,
+    },
+  },
+  {
+    id: 'contrast',
+    name: '强光可读',
+    hint: '强化描边和投影，适合亮色、复杂画面。',
+    patch: {
+      MsgGap: 4, FontScale: 1.04, AvatarSize: 25, ShowAvatar: true, ShowUsername: true, ShowBadges: true,
+      MessageFontSize: 14, MessageWeight: 700, MessageColor: '#ffffff',
+      UserNameFontSize: 13, UserNameWeight: 800, UserNameColor: '#ffffff',
+      OwnerUserNameColor: '#ffd166', ModeratorUserNameColor: '#f0abfc', MemberUserNameColor: '#93c5fd',
+      MessageBgColor: 'rgba(0,0,0,0.34)', OwnerMessageBgColor: 'rgba(90,60,0,0.36)',
+      ModeratorMessageBgColor: 'rgba(34,42,112,0.36)', MemberMessageBgColor: 'rgba(0,76,58,0.34)',
+      ShowOutlines: true, OutlineSize: 2, OutlineColor: '#000000', BlurryOutline: true,
+      EffectsEnabled: true, EffectIntensity: 1.05, AnimateIn: true, FadeInTime: 180, Slide: true, ReverseSlide: false,
+    },
+  },
+  {
+    id: 'compact',
+    name: '密集弹幕',
+    hint: '压缩间距和字号，适合高弹幕密度直播间。',
+    patch: {
+      MsgGap: 1, FontScale: 0.92, AvatarSize: 20, ShowAvatar: true, ShowUsername: true, ShowBadges: false,
+      MessageFontSize: 12, MessageWeight: 600, MessageColor: '#ffffff',
+      UserNameFontSize: 12, UserNameWeight: 600, UserNameColor: '#effee3',
+      OwnerUserNameColor: '#ff96aa', ModeratorUserNameColor: '#e7a9ff', MemberUserNameColor: '#96deff',
+      MessageBgColor: 'transparent', OwnerMessageBgColor: 'rgba(255,214,0,0.12)',
+      ModeratorMessageBgColor: 'rgba(94,132,241,0.12)', MemberMessageBgColor: 'rgba(15,157,88,0.10)',
+      ShowOutlines: false, BlurryOutline: false, EffectsEnabled: true, EffectIntensity: 0.7,
+      AnimateIn: true, FadeInTime: 140, Slide: true, ReverseSlide: false,
+    },
+  },
+  {
+    id: 'gift',
+    name: '礼物高亮',
+    hint: '普通弹幕低调，礼物、舰长和醒目留言更突出。',
+    patch: {
+      MsgGap: 4, FontScale: 1, AvatarSize: 25, ShowAvatar: true, ShowUsername: true, ShowBadges: true,
+      MessageFontSize: 13, MessageWeight: 600, MessageColor: '#ffffff',
+      UserNameFontSize: 13, UserNameWeight: 700, UserNameColor: '#e7f8ef',
+      OwnerUserNameColor: '#ff96aa', ModeratorUserNameColor: '#e7a9ff', MemberUserNameColor: '#96deff',
+      MessageBgColor: 'transparent', OwnerMessageBgColor: 'rgba(255,214,0,0.16)',
+      ModeratorMessageBgColor: 'rgba(94,132,241,0.14)', MemberMessageBgColor: 'rgba(15,157,88,0.13)',
+      ShowGiftIcon: true, ShowOutlines: false, BlurryOutline: false, EffectsEnabled: true, EffectIntensity: 1.35,
+      AnimateIn: true, FadeInTime: 180, Slide: true, ReverseSlide: false,
+    },
+  },
+  {
+    id: 'minimal',
+    name: '极简文字',
+    hint: '减少装饰和动画，更接近传统弹幕样式。',
+    patch: {
+      MsgGap: 2, FontScale: 1, AvatarSize: 22, ShowAvatar: false, ShowUsername: true, ShowBadges: false,
+      MessageFontSize: 13, MessageWeight: 600, MessageColor: '#ffffff',
+      UserNameFontSize: 13, UserNameWeight: 600, UserNameColor: '#f2f2f2',
+      OwnerUserNameColor: '#ffd166', ModeratorUserNameColor: '#d8b4fe', MemberUserNameColor: '#93c5fd',
+      MessageBgColor: 'transparent', OwnerMessageBgColor: 'transparent',
+      ModeratorMessageBgColor: 'transparent', MemberMessageBgColor: 'transparent',
+      ShowOutlines: true, OutlineSize: 2, OutlineColor: '#000000', BlurryOutline: true,
+      EffectsEnabled: false, EffectIntensity: 1, AnimateIn: true, FadeInTime: 120, Slide: false, ReverseSlide: false,
+    },
+  },
+];
 
 // ─── Sample messages (with identity) ─────────────────────────────────────────
 
@@ -761,7 +861,7 @@ export function ChatOverlay() {
   // ── Initial load ─────────────────────────────────────────────────────────
   useEffect(() => {
     api.loadOverlayConfig().then(c => {
-      setCfg({ ...c, CustomCss: c.CustomCss || DEFAULT_CUSTOM_CSS });
+      setCfg({ ...c, Theme: c.Theme || DEFAULT_CFG.Theme, CustomCss: c.CustomCss || DEFAULT_CUSTOM_CSS });
       setLoaded(true);
     }).catch(() => setLoaded(true));
     api.getOverlayUrl().then(setOverlayUrl).catch(() => {});
@@ -794,6 +894,20 @@ export function ChatOverlay() {
     return () => window.removeEventListener('beforeunload', onUnload);
   }, []);
 
+  useEffect(() => {
+    const onKeyDown = (e: KeyboardEvent) => {
+      const target = e.target as HTMLElement | null;
+      const isEditing = target?.closest('input, textarea, select, [contenteditable="true"]');
+      const isCloseShortcut = e.key === 'Escape' || ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'w');
+      if (!isCloseShortcut) return;
+      if (isEditing && e.key !== 'Escape') return;
+      e.preventDefault();
+      closeOverlay();
+    };
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, []);
+
   // ── Native drag ───────────────────────────────────────────────────────────
   useEffect(() => {
     const el = dragRef.current;
@@ -814,6 +928,13 @@ export function ChatOverlay() {
   // ── Helpers ───────────────────────────────────────────────────────────────
   const u = <K extends keyof OverlayConfig>(k: K, v: OverlayConfig[K]) =>
     setCfg(prev => ({ ...prev, [k]: v }));
+
+  const activeTheme = OVERLAY_THEMES.find(theme => theme.id === cfg.Theme) ?? OVERLAY_THEMES[0];
+  const applyOverlayTheme = (themeId: OverlayThemeId) => {
+    const theme = OVERLAY_THEMES.find(item => item.id === themeId);
+    if (!theme) return;
+    setCfg(prev => ({ ...prev, ...theme.patch, Theme: theme.id }));
+  };
 
   const resetAll = () => {
     if (confirm('确认重置所有浮层样式为默认值？')) setCfg({ ...DEFAULT_CFG, Port: cfg.Port });
@@ -1079,6 +1200,39 @@ export function ChatOverlay() {
                 </button>
               </div>
             </div>
+            </div>
+          </div>
+
+          <div className="shrink-0 px-4 pb-3">
+            <div className="glass-card rounded-[18px] px-4 py-3">
+              <div className="flex items-start justify-between gap-3">
+                <div>
+                  <div className="text-[12px] font-bold text-[var(--foreground)]">主题方案</div>
+                  <div className="mt-1 text-[11px] leading-relaxed text-[var(--muted-text)]">{activeTheme.hint}</div>
+                </div>
+                <span className="shrink-0 rounded-full bg-[var(--button-ghost-hover)] px-2.5 py-1 text-[10px] font-semibold text-[var(--primary-color)]">
+                  CSS 叠加
+                </span>
+              </div>
+              <div className="mt-3 grid grid-cols-3 gap-1.5 max-[1040px]:grid-cols-6">
+                {OVERLAY_THEMES.map(theme => {
+                  const active = activeTheme.id === theme.id;
+                  return (
+                    <button
+                      key={theme.id}
+                      onClick={() => applyOverlayTheme(theme.id)}
+                      title={theme.hint}
+                      className={`h-8 rounded-xl px-2 text-[11px] font-semibold transition-colors ${
+                        active
+                          ? 'bg-[var(--primary-color)] text-white shadow-sm'
+                          : 'border border-[var(--control-border)] bg-[var(--control-bg)] text-[var(--control-text)] hover:bg-[var(--button-ghost-hover)]'
+                      }`}
+                    >
+                      {theme.name}
+                    </button>
+                  );
+                })}
+              </div>
             </div>
           </div>
 

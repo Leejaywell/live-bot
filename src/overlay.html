@@ -316,17 +316,64 @@ function identityColor(id){
 }
 
 // ── Face extraction from raw payload ─────────────────────────────────────────
+function normalizeBiliImageUrl(url){
+  if (!url || typeof url !== 'string') return '';
+  var out=url.trim();
+  if (!out) return '';
+  if (out.indexOf('//')===0) out='https:'+out;
+  if (out.indexOf('http://i')===0 && out.indexOf('hdslb.com')>0) out='https://'+out.slice('http://'.length);
+  return out;
+}
+function parseJsonMaybe(value){
+  if (!value || typeof value !== 'string') return null;
+  try { return JSON.parse(value); } catch(e) { return null; }
+}
+function findAvatarUrl(value, depth){
+  if (!value || depth > 6) return '';
+  if (typeof value === 'string') {
+    var direct=normalizeBiliImageUrl(value);
+    return /^https?:\/\//i.test(direct) && /hdslb\.com/i.test(direct) ? direct : '';
+  }
+  if (Array.isArray(value)) {
+    for (var i=0;i<value.length;i++) {
+      var fromArray=findAvatarUrl(value[i], depth+1);
+      if (fromArray) return fromArray;
+    }
+    return '';
+  }
+  if (typeof value === 'object') {
+    var preferred=['face','avatar','head','head_url','headUrl','face_url','faceUrl'];
+    for (var p=0;p<preferred.length;p++) {
+      if (value[preferred[p]]) {
+        var direct=findAvatarUrl(value[preferred[p]], depth+1);
+        if (direct) return direct;
+      }
+    }
+    for (var k in value) {
+      if (!Object.prototype.hasOwnProperty.call(value,k)) continue;
+      if (!/(face|avatar|head|user|uinfo|base|info)/i.test(k)) continue;
+      var nested=findAvatarUrl(value[k], depth+1);
+      if (nested) return nested;
+    }
+  }
+  return '';
+}
 function getFace(parsed){
   var ev=parsed.event, raw=parsed.raw;
   try{
-    if(ev.face) return ev.face;
+    if(ev.face) return normalizeBiliImageUrl(ev.face);
     if(ev.type==='Danmu'){
-      var x=JSON.parse((raw&&raw.info&&raw.info[0]&&raw.info[0][15])||'{}');
-      return (x&&x.user&&x.user.base&&x.user.base.face)||'';
+      var extra=parseJsonMaybe(raw&&raw.info&&raw.info[0]&&raw.info[0][15]);
+      return normalizeBiliImageUrl(
+        (extra&&extra.user&&extra.user.base&&extra.user.base.face) ||
+        findAvatarUrl(raw&&raw.info,0) ||
+        findAvatarUrl(raw,0)
+      );
     }
-    if(ev.type==='Gift')     return (raw&&raw.data&&raw.data.face)||'';
-    if(ev.type==='GuardBuy') return (raw&&raw.data&&((raw.data.user_info&&raw.data.user_info.face)||raw.data.face))||'';
-    if(ev.type==='SuperChat')return (raw&&raw.data&&raw.data.user_info&&raw.data.user_info.face)||'';
+    if(ev.type==='Gift')     return normalizeBiliImageUrl((raw&&raw.data&&raw.data.face)||findAvatarUrl(raw&&raw.data,0));
+    if(ev.type==='GuardBuy') return normalizeBiliImageUrl((raw&&raw.data&&((raw.data.user_info&&raw.data.user_info.face)||raw.data.face))||findAvatarUrl(raw&&raw.data,0));
+    if(ev.type==='SuperChat')return normalizeBiliImageUrl((raw&&raw.data&&raw.data.user_info&&raw.data.user_info.face)||findAvatarUrl(raw&&raw.data,0));
+    return findAvatarUrl(raw,0);
   }catch(e){}
   return '';
 }
@@ -455,6 +502,7 @@ function avatarEl(face,uid,user,scope){
   if(face){
     var img=document.createElement('img');
     img.alt=user; img.className='style-scope yt-img-shadow';
+    img.referrerPolicy='no-referrer';
     img.src=PROXY+encodeURIComponent(face);
     img.onerror=function(){
       host.textContent = ch;

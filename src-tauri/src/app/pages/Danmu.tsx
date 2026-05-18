@@ -59,7 +59,8 @@ function parseMonitorLog(text: string): LogEntry | null {
   }
   if (
     text.startsWith('进场 ') || text.startsWith('进场特效 ') ||
-    text.startsWith('关注 ') || text.startsWith('分享 ') || text.startsWith('互动 ')
+    text.startsWith('关注 ') || text.startsWith('分享 ') || text.startsWith('互动 ') ||
+    text.startsWith('点赞 ')
   ) {
     return { id, type: 'interact', text, time };
   }
@@ -292,6 +293,12 @@ export function Danmu() {
               }
               case 'EntryEffect':
                 line = `进场特效 ${ev.user}`;
+                break;
+              case 'LikeClick':
+                line = `点赞 ${ev.user}: ${ev.text}`;
+                break;
+              case 'System':
+                line = `系统 ${ev.text}`;
                 break;
               case 'GuardBuy':
                 line = `大航海 ${ev.user}: ${ev.gift}`;

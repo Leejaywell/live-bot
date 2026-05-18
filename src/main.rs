@@ -9,12 +9,21 @@ mod token;
 
 use anyhow::Result;
 use config::AppConfig;
+#[cfg(feature = "tauri")]
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 use tokio::runtime::Runtime;
 use tokio_util::sync::CancellationToken;
 
 #[cfg(feature = "tauri")]
 use tauri::{AppHandle, Emitter, Manager};
+
+#[cfg(feature = "tauri")]
+const MENU_FORCE_QUIT_ID: &str = "force_quit";
+#[cfg(feature = "tauri")]
+const MENU_CLOSE_MAIN_ID: &str = "close_main";
+#[cfg(feature = "tauri")]
+static MAIN_CLOSE_PROMPT_OPEN: AtomicBool = AtomicBool::new(false);
 
 #[derive(Clone)]
 struct SharedState {
@@ -2012,6 +2021,13 @@ async fn open_config_dir(app: AppHandle) -> Result<(), String> {
 
 #[cfg(feature = "tauri")]
 #[tauri::command]
+async fn force_quit(app: AppHandle) -> Result<(), String> {
+    app.exit(0);
+    Ok(())
+}
+
+#[cfg(feature = "tauri")]
+#[tauri::command]
 async fn check_update_cmd(
     state: tauri::State<'_, SharedState>,
 ) -> Result<Option<api::UpdateInfo>, String> {
@@ -3284,6 +3300,72 @@ fn main() -> Result<()> {
         .plugin(tauri_plugin_process::init())
         .plugin(tauri_plugin_dialog::init())
         .manage(state)
+        .menu(|app| {
+            use tauri::menu::{MenuBuilder, MenuItem, SubmenuBuilder};
+
+            let close = MenuItem::with_id(
+                app,
+                MENU_CLOSE_MAIN_ID,
+                "关闭窗口",
+                true,
+                Some("CmdOrCtrl+W"),
+            )?;
+            let quit = MenuItem::with_id(
+                app,
+                MENU_FORCE_QUIT_ID,
+                "退出流光",
+                true,
+                Some("CmdOrCtrl+Q"),
+            )?;
+            let app_menu = SubmenuBuilder::new(app, "流光")
+                .item(&close)
+                .item(&quit)
+                .build()?;
+            MenuBuilder::new(app).item(&app_menu).build()
+        })
+        .on_menu_event(|app, event| {
+            if event.id().0 == MENU_FORCE_QUIT_ID {
+                app.exit(0);
+            } else if event.id().0 == MENU_CLOSE_MAIN_ID {
+                if let Some(window) = app.get_webview_window("main") {
+                    let _ = window.close();
+                }
+            }
+        })
+        .on_window_event(|window, event| {
+            if window.label() != "main" {
+                return;
+            }
+
+            if let tauri::WindowEvent::CloseRequested { api, .. } = event {
+                api.prevent_close();
+
+                if MAIN_CLOSE_PROMPT_OPEN.swap(true, Ordering::SeqCst) {
+                    return;
+                }
+
+                use tauri_plugin_dialog::DialogExt;
+
+                let app = window.app_handle().clone();
+                let window = window.clone();
+                app.dialog()
+                    .message("要退出程序，还是最小化到后台？")
+                    .title("关闭流光")
+                    .kind(tauri_plugin_dialog::MessageDialogKind::Info)
+                    .buttons(tauri_plugin_dialog::MessageDialogButtons::OkCancelCustom(
+                        "退出".to_string(),
+                        "最小化".to_string(),
+                    ))
+                    .show(move |should_exit| {
+                        MAIN_CLOSE_PROMPT_OPEN.store(false, Ordering::SeqCst);
+                        if should_exit {
+                            app.exit(0);
+                        } else {
+                            let _ = window.minimize();
+                        }
+                    });
+            }
+        })
         .setup(move |app| {
             // 启动弹幕浮层 HTTP 服务（使用独立的 overlay.toml 配置）
             let port = overlay_config::OverlayConfig::load_or_default()
@@ -3360,6 +3442,7 @@ fn main() -> Result<()> {
             cancel_model_download,
             delete_model,
             open_folder,
+            force_quit,
             convert_rvc_pth_to_onnx,
             open_overlay_window,
             close_overlay_window,

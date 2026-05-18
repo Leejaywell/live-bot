@@ -72,6 +72,12 @@ pub enum LiveEvent {
         guard_level: i64,
         wealth_level: i64,
     },
+    LikeClick {
+        user_id: i64,
+        user: String,
+        count: i64,
+        text: String,
+    },
     GuardBuy {
         user_id: i64,
         user: String,
@@ -85,6 +91,9 @@ pub enum LiveEvent {
     },
     Block {
         user: String,
+    },
+    System {
+        text: String,
     },
     Popularity {
         value: i64,
@@ -164,11 +173,13 @@ impl fmt::Display for LiveEvent {
                 InteractKind::Unknown(value) => write!(f, "互动 {user}: {value}"),
             },
             Self::EntryEffect { user, .. } => write!(f, "进场特效 {user}"),
+            Self::LikeClick { user, text, .. } => write!(f, "点赞 {user}: {text}"),
             Self::GuardBuy { user, gift, .. } => write!(f, "大航海 {user}: {gift}"),
             Self::SuperChat {
                 user, text, price, ..
             } => write!(f, "醒目留言 {user} (¥{price}): {text}"),
             Self::Block { user } => write!(f, "禁言 {user}"),
+            Self::System { text } => write!(f, "系统 {text}"),
             Self::Popularity { value } => write!(f, "人气 {value}"),
             Self::Pk { kind } => write!(f, "PK {kind:?}"),
             Self::RedPocket { kind } => write!(f, "红包 {kind:?}"),
@@ -470,6 +481,45 @@ fn collect_notification(packet: Packet<'_>, events: &mut Vec<ParsedLiveEvent>) -
                 &json,
             ));
         }
+        "LIKE_INFO_V3_CLICK" | "LIKE_INFO_V3_UPDATE" => {
+            let user_id = json
+                .pointer("/data/uid")
+                .and_then(Value::as_i64)
+                .unwrap_or(0);
+            let user = json
+                .pointer("/data/uname")
+                .or_else(|| json.pointer("/data/user_name"))
+                .and_then(Value::as_str)
+                .unwrap_or("用户");
+            let count = json
+                .pointer("/data/click_count")
+                .or_else(|| json.pointer("/data/count"))
+                .or_else(|| json.pointer("/data/like_count"))
+                .and_then(Value::as_i64)
+                .unwrap_or(0);
+            let text = json
+                .pointer("/data/like_text")
+                .or_else(|| json.pointer("/data/msg"))
+                .or_else(|| json.pointer("/data/text"))
+                .and_then(Value::as_str)
+                .map(str::to_string)
+                .unwrap_or_else(|| {
+                    if count > 0 {
+                        format!("点亮了 {count} 次点赞")
+                    } else {
+                        "点亮了直播间".to_string()
+                    }
+                });
+            events.push(parsed(
+                LiveEvent::LikeClick {
+                    user_id,
+                    user: user.to_string(),
+                    count,
+                    text,
+                },
+                &json,
+            ));
+        }
         "GUARD_BUY" => {
             let user_id = json
                 .pointer("/data/uid")
@@ -527,6 +577,23 @@ fn collect_notification(packet: Packet<'_>, events: &mut Vec<ParsedLiveEvent>) -
             events.push(parsed(
                 LiveEvent::Block {
                     user: user.to_string(),
+                },
+                &json,
+            ));
+        }
+        "NOTICE_MSG" | "ROOM_NOTICE_MSG" | "COMMON_NOTICE_DANMAKU" | "SYS_MSG" => {
+            let text = json
+                .pointer("/data/msg_common")
+                .or_else(|| json.pointer("/data/msg_self"))
+                .or_else(|| json.pointer("/data/content"))
+                .or_else(|| json.pointer("/data/message"))
+                .or_else(|| json.pointer("/msg"))
+                .or_else(|| json.pointer("/message"))
+                .and_then(Value::as_str)
+                .unwrap_or(cmd);
+            events.push(parsed(
+                LiveEvent::System {
+                    text: strip_html_tags(text),
                 },
                 &json,
             ));
@@ -678,6 +745,34 @@ fn parsed(event: LiveEvent, raw: &Value) -> ParsedLiveEvent {
     }
 }
 
+fn strip_html_tags(input: &str) -> String {
+    let mut out = String::with_capacity(input.len());
+    let mut chars = input.chars().peekable();
+    let mut in_tag = false;
+    while let Some(ch) = chars.next() {
+        if ch == '<' && chars.peek() == Some(&'%') {
+            chars.next();
+            let mut previous = '\0';
+            for inner in chars.by_ref() {
+                if previous == '%' && inner == '>' {
+                    out.pop();
+                    break;
+                }
+                out.push(inner);
+                previous = inner;
+            }
+            continue;
+        }
+        match ch {
+            '<' => in_tag = true,
+            '>' => in_tag = false,
+            _ if !in_tag => out.push(ch),
+            _ => {}
+        }
+    }
+    out.trim().to_string()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -765,6 +860,51 @@ mod tests {
                 .pointer("/data/activity_id")
                 .and_then(Value::as_i64),
             Some(99)
+        );
+    }
+
+    #[test]
+    fn parses_like_click_event() {
+        let body = serde_json::json!({
+            "cmd": "LIKE_INFO_V3_CLICK",
+            "data": {
+                "uid": 42,
+                "uname": "alice",
+                "click_count": 18
+            }
+        });
+        let raw = build_packet(0, OP_NOTIFICATION, body.to_string().as_bytes());
+
+        let events = parse_events(&raw).unwrap();
+
+        assert_eq!(
+            events,
+            vec![LiveEvent::LikeClick {
+                user_id: 42,
+                user: "alice".to_string(),
+                count: 18,
+                text: "点亮了 18 次点赞".to_string(),
+            }]
+        );
+    }
+
+    #[test]
+    fn parses_system_notice_event() {
+        let body = serde_json::json!({
+            "cmd": "NOTICE_MSG",
+            "data": {
+                "msg_common": "<%系统通知%> 直播间活动开始"
+            }
+        });
+        let raw = build_packet(0, OP_NOTIFICATION, body.to_string().as_bytes());
+
+        let events = parse_events(&raw).unwrap();
+
+        assert_eq!(
+            events,
+            vec![LiveEvent::System {
+                text: "系统通知 直播间活动开始".to_string(),
+            }]
         );
     }
 

@@ -30,6 +30,8 @@ pub struct OverlayConfig {
     pub max_msgs: u32,
     #[serde(default = "df_msg_gap")]
     pub msg_gap: u8,
+    #[serde(default = "df_overlay_theme")]
+    pub theme: String,
     #[serde(default)]
     pub custom_css: String,
 
@@ -168,6 +170,7 @@ impl Default for OverlayConfig {
             port: df_port(),
             max_msgs: df_max_msgs(),
             msg_gap: df_msg_gap(),
+            theme: df_overlay_theme(),
             custom_css: String::new(),
 
             global_scale: df_one(),
@@ -296,6 +299,7 @@ fn df_one() -> f32 { 1.0 }
 fn df_port() -> u16 { 12450 }
 fn df_max_msgs() -> u32 { 50 }
 fn df_msg_gap() -> u8 { 3 }
+fn df_overlay_theme() -> String { "classic".to_string() }
 
 fn df_avatar_size() -> u8 { 24 }
 
