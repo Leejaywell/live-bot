@@ -526,7 +526,8 @@ body {
 }
 
 .lottery-card {
-  min-width: 360px;
+  width: min(100vw, 360px);
+  min-width: 0;
   border: 2px solid rgba(216, 180, 254, 0.9);
   border-radius: 24px;
   padding: 18px;
@@ -592,8 +593,8 @@ body {
 
 .gift-effect-stage {
   position: relative;
-  width: 360px;
-  height: 360px;
+  width: min(100vw, 360px);
+  aspect-ratio: 1;
 }
 
 .gift-effect-cup {
@@ -619,14 +620,17 @@ body {
   position: absolute;
   bottom: 10px;
   left: 50%;
-  min-width: 280px;
+  max-width: calc(100% - 24px);
   transform: translateX(-50%);
   border-radius: 999px;
   padding: 8px 14px;
   background: rgba(88, 28, 135, 0.88);
   color: #fef3c7;
   font-weight: 950;
+  overflow: hidden;
   text-align: center;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 @keyframes giftBubble {
