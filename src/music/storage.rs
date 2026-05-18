@@ -166,6 +166,11 @@ fn is_future_expires_at(expires_at: &str, now: DateTime<Local>) -> Result<bool> 
 }
 
 #[allow(dead_code)]
+fn is_readable_future_expires_at(expires_at: &str, now: DateTime<Local>) -> bool {
+    is_future_expires_at(expires_at, now).unwrap_or(false)
+}
+
+#[allow(dead_code)]
 pub fn insert_credit(conn: &Connection, credit: &NewSongCredit) -> Result<i64> {
     let now = now_text();
     conn.execute(
@@ -202,7 +207,7 @@ pub fn pending_credit_value(conn: &Connection, session_id: &str, uid: i64) -> Re
     let mut total = 0;
     for row in rows {
         let (credit_value, expires_at) = row?;
-        if is_future_expires_at(&expires_at, now)? {
+        if is_readable_future_expires_at(&expires_at, now) {
             total += credit_value;
         }
     }
@@ -223,7 +228,7 @@ pub fn session_pending_value(conn: &Connection, session_id: &str, room_id: i64) 
     let mut total = 0;
     for row in rows {
         let (credit_value, expires_at) = row?;
-        if is_future_expires_at(&expires_at, now)? {
+        if is_readable_future_expires_at(&expires_at, now) {
             total += credit_value;
         }
     }
@@ -271,7 +276,7 @@ pub fn latest_search_context(
     })?;
     for row in rows {
         let (id, query, json, expires_at) = row?;
-        if is_future_expires_at(&expires_at, now)? {
+        if is_readable_future_expires_at(&expires_at, now) {
             let candidates = serde_json::from_str(&json)?;
             return Ok(Some(StoredSearchContext {
                 id,
@@ -341,7 +346,7 @@ pub fn oldest_pending_credit(
     })?;
     for row in rows {
         let (id, credit_value, tier, expires_at) = row?;
-        if is_future_expires_at(&expires_at, now)? {
+        if is_readable_future_expires_at(&expires_at, now) {
             return Ok(Some((id, credit_value, tier)));
         }
     }
@@ -350,18 +355,55 @@ pub fn oldest_pending_credit(
 
 #[allow(dead_code)]
 pub fn mark_credit_used(conn: &Connection, credit_id: i64, request_id: i64) -> Result<()> {
-    let expires_at = conn
-        .query_row(
-            "select expires_at
+    let (expires_at, credit_session_id, credit_room_id, credit_uid, credit_value, credit_tier) =
+        conn.query_row(
+            "select expires_at, session_id, room_id, uid, credit_value, tier
              from song_request_credits
              where id = ?1 and used_at is null",
             params![credit_id],
-            |row| row.get::<_, String>(0),
+            |row| {
+                Ok((
+                    row.get::<_, String>(0)?,
+                    row.get::<_, String>(1)?,
+                    row.get::<_, i64>(2)?,
+                    row.get::<_, i64>(3)?,
+                    row.get::<_, i64>(4)?,
+                    row.get::<_, String>(5)?,
+                ))
+            },
         )
         .optional()?
         .ok_or_else(|| anyhow!("song request credit is missing or already used: {credit_id}"))?;
     if !is_future_expires_at(&expires_at, Local::now())? {
         return Err(anyhow!("song request credit is expired: {credit_id}"));
+    }
+
+    let request_matches = conn
+        .query_row(
+            "select 1
+             from song_requests
+             where id = ?1
+               and session_id = ?2
+               and room_id = ?3
+               and uid = ?4
+               and credit_value = ?5
+               and tier = ?6",
+            params![
+                request_id,
+                credit_session_id,
+                credit_room_id,
+                credit_uid,
+                credit_value,
+                credit_tier,
+            ],
+            |row| row.get::<_, i64>(0),
+        )
+        .optional()?
+        .is_some();
+    if !request_matches {
+        return Err(anyhow!(
+            "song request credit does not match request: credit_id={credit_id}, request_id={request_id}"
+        ));
     }
 
     let rows_affected = conn.execute(
@@ -425,8 +467,8 @@ mod tests {
     use super::latest_search_context;
     use super::{
         NewSongCredit, NewSongRequest, insert_credit, insert_song_request,
-        insert_song_request_and_consume_credit, list_queue, mark_credit_used, pending_credit_value,
-        save_search_context, session_pending_value,
+        insert_song_request_and_consume_credit, list_queue, mark_credit_used,
+        oldest_pending_credit, pending_credit_value, save_search_context, session_pending_value,
     };
 
     fn song_request() -> NewSongRequest {
@@ -449,6 +491,24 @@ mod tests {
             credit_value: 66,
             priority_score: 3066,
             source_event_id: None,
+        }
+    }
+
+    fn search_candidate() -> SearchCandidate {
+        SearchCandidate {
+            track: MusicTrack {
+                source: MusicSource::Netease,
+                song_id: "186016".to_string(),
+                name: "晴天".to_string(),
+                artists: vec!["周杰伦".to_string()],
+                album: "叶惠美".to_string(),
+                pic_id: String::new(),
+                url_id: "186016".to_string(),
+                lyric_id: "186016".to_string(),
+                duration_ms: Some(269000),
+            },
+            score: 100,
+            reason: "歌名匹配".to_string(),
         }
     }
 
@@ -560,21 +620,7 @@ mod tests {
     fn search_context_round_trips_candidates() {
         let conn = Connection::open_in_memory().expect("db opens");
         ensure_schema(&conn).expect("schema");
-        let candidates = vec![SearchCandidate {
-            track: MusicTrack {
-                source: MusicSource::Netease,
-                song_id: "186016".to_string(),
-                name: "晴天".to_string(),
-                artists: vec!["周杰伦".to_string()],
-                album: "叶惠美".to_string(),
-                pic_id: String::new(),
-                url_id: "186016".to_string(),
-                lyric_id: "186016".to_string(),
-                duration_ms: Some(269000),
-            },
-            score: 100,
-            reason: "歌名匹配".to_string(),
-        }];
+        let candidates = vec![search_candidate()];
 
         save_search_context(
             &conn,
@@ -647,7 +693,8 @@ mod tests {
             },
         )
         .expect("used credit");
-        mark_credit_used(&conn, used_credit_id, 1).expect("first consume");
+        let used_request_id = insert_song_request(&conn, &song_request()).expect("used request");
+        mark_credit_used(&conn, used_credit_id, used_request_id).expect("first consume");
         assert!(mark_credit_used(&conn, used_credit_id, 2).is_err());
 
         let expired_credit_id = insert_credit(
@@ -666,6 +713,33 @@ mod tests {
         )
         .expect("expired credit");
         assert!(mark_credit_used(&conn, expired_credit_id, 3).is_err());
+    }
+
+    #[test]
+    fn mark_credit_used_rejects_nonexistent_request_id() {
+        let conn = Connection::open_in_memory().expect("db opens");
+        ensure_schema(&conn).expect("schema");
+        let credit_id = insert_credit(
+            &conn,
+            &NewSongCredit {
+                session_id: "session-1".to_string(),
+                room_id: 100,
+                uid: 42,
+                uname: "alice".to_string(),
+                credit_value: 66,
+                tier: "priority".to_string(),
+                source_type: "gift".to_string(),
+                source_event_id: 9001,
+                expires_at: "2099-01-01T00:00:00+08:00".to_string(),
+            },
+        )
+        .expect("credit");
+
+        assert!(mark_credit_used(&conn, credit_id, 999).is_err());
+        assert_eq!(
+            pending_credit_value(&conn, "session-1", 42).expect("pending"),
+            66
+        );
     }
 
     #[test]
@@ -699,5 +773,111 @@ mod tests {
             pending_credit_value(&conn, "session-1", 42).expect("pending"),
             0
         );
+    }
+
+    #[test]
+    fn atomic_helper_rejects_mismatched_credit_and_rolls_back() {
+        let cases = [
+            ("session mismatch", "session-2", 100, 42, 66, "priority"),
+            ("user mismatch", "session-1", 100, 43, 66, "priority"),
+            ("value mismatch", "session-1", 100, 42, 233, "priority"),
+        ];
+
+        for (name, session_id, room_id, uid, credit_value, tier) in cases {
+            let mut conn = Connection::open_in_memory().expect("db opens");
+            ensure_schema(&conn).expect("schema");
+            let credit_id = insert_credit(
+                &conn,
+                &NewSongCredit {
+                    session_id: session_id.to_string(),
+                    room_id,
+                    uid,
+                    uname: "alice".to_string(),
+                    credit_value,
+                    tier: tier.to_string(),
+                    source_type: "gift".to_string(),
+                    source_event_id: 9001,
+                    expires_at: "2099-01-01T00:00:00+08:00".to_string(),
+                },
+            )
+            .expect("credit");
+
+            assert!(
+                insert_song_request_and_consume_credit(&mut conn, credit_id, &song_request())
+                    .is_err(),
+                "{name}"
+            );
+            assert!(
+                list_queue(&conn, "session-1", 100)
+                    .expect("queue")
+                    .is_empty(),
+                "{name}"
+            );
+            assert_eq!(
+                pending_credit_value(&conn, session_id, uid).expect("pending"),
+                credit_value,
+                "{name}"
+            );
+        }
+    }
+
+    #[test]
+    fn malformed_expires_at_rows_are_ignored_by_reads() {
+        let conn = Connection::open_in_memory().expect("db opens");
+        ensure_schema(&conn).expect("schema");
+        insert_credit(
+            &conn,
+            &NewSongCredit {
+                session_id: "session-1".to_string(),
+                room_id: 100,
+                uid: 42,
+                uname: "alice".to_string(),
+                credit_value: 233,
+                tier: "jump_queue".to_string(),
+                source_type: "gift".to_string(),
+                source_event_id: 9001,
+                expires_at: "not-a-date".to_string(),
+            },
+        )
+        .expect("malformed credit");
+
+        assert_eq!(
+            pending_credit_value(&conn, "session-1", 42).expect("pending"),
+            0
+        );
+        assert_eq!(
+            session_pending_value(&conn, "session-1", 100).expect("session pending"),
+            0
+        );
+        assert_eq!(
+            oldest_pending_credit(&conn, "session-1", 42).expect("oldest"),
+            None
+        );
+
+        let candidates = vec![search_candidate()];
+        let valid_id = save_search_context(
+            &conn,
+            "session-1",
+            42,
+            "valid",
+            &candidates,
+            "2099-01-01T00:00:00+08:00",
+        )
+        .expect("valid context");
+        save_search_context(
+            &conn,
+            "session-1",
+            42,
+            "malformed",
+            &candidates,
+            "not-a-date",
+        )
+        .expect("malformed context");
+
+        let loaded = latest_search_context(&conn, "session-1", 42)
+            .expect("query")
+            .expect("context");
+        assert_eq!(loaded.id, valid_id);
+        assert_eq!(loaded.query, "valid");
     }
 }
