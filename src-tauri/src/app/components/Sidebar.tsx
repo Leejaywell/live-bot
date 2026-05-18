@@ -47,6 +47,7 @@ const navItems = [
     icon: Plug,
     children: [
       { path: '/plugins/chat-overlay', label: '弹幕聊天' },
+      { path: '/plugins/music-interaction', label: '音乐互动' },
       { path: '/plugins/wish-goal', label: '心愿目标' },
       { path: '/plugins/lottery', label: '抽奖互动' },
       { path: '/plugins/gift-effect', label: '礼物特效' },

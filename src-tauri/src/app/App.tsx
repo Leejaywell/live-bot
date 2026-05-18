@@ -25,6 +25,7 @@ import { VoiceChanger } from './pages/VoiceChanger';
 import { Models } from './pages/Models';
 import { Stats } from './pages/Stats';
 import { ChatOverlay } from './pages/ChatOverlay';
+import { MusicInteraction } from './pages/MusicInteraction';
 import { WishGoal } from './pages/WishGoal';
 import { LotteryInteraction } from './pages/LotteryInteraction';
 import { GiftEffect } from './pages/GiftEffect';
@@ -437,6 +438,7 @@ function AnimatedRoutes() {
         <Route path="/stats" element={<Stats />} />
         <Route path="/plugins" element={<Navigate to="/plugins/chat-overlay" replace />} />
         <Route path="/plugins/chat-overlay" element={<ChatOverlay />} />
+        <Route path="/plugins/music-interaction" element={<MusicInteraction />} />
         <Route path="/plugins/wish-goal" element={<WishGoal />} />
         <Route path="/plugins/lottery" element={<LotteryInteraction />} />
         <Route path="/plugins/gift-effect" element={<GiftEffect />} />
