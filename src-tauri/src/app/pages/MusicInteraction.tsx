@@ -54,6 +54,9 @@ export function MusicInteraction() {
   const [searching, setSearching] = useState(false);
   const [refreshingUrl, setRefreshingUrl] = useState(false);
   const saveTimer = useRef<number | null>(null);
+  const searchInFlight = useRef(false);
+  const searchRequestId = useRef(0);
+  const latestQuery = useRef('');
   const music = config.MusicInteraction;
 
   const updateMusic = (patch: Partial<MusicInteractionSettings>) => {
@@ -86,15 +89,27 @@ export function MusicInteraction() {
       setCandidates([]);
       return;
     }
+    if (searchInFlight.current) return;
+    searchInFlight.current = true;
+    const requestId = searchRequestId.current + 1;
+    searchRequestId.current = requestId;
     setSearching(true);
     setCandidates([]);
     try {
-      setCandidates(await api.searchMusicCandidates(keyword));
+      const next = await api.searchMusicCandidates(keyword);
+      if (searchRequestId.current === requestId && latestQuery.current.trim() === keyword) {
+        setCandidates(next);
+      }
     } catch (err) {
-      setCandidates([]);
+      if (searchRequestId.current === requestId) {
+        setCandidates([]);
+      }
       toast.error(`搜索失败: ${err}`);
     } finally {
-      setSearching(false);
+      if (searchRequestId.current === requestId) {
+        searchInFlight.current = false;
+        setSearching(false);
+      }
     }
   };
 
@@ -130,7 +145,7 @@ export function MusicInteraction() {
             </div>
             <div className="flex items-center gap-2">
               <span className="text-[11px] font-bold text-[var(--muted-text)]">启用</span>
-              <Toggle checked={music.Enabled} onChange={v => updateMusic({ Enabled: v })} />
+              <Toggle checked={music.Enabled} onChange={v => updateMusic({ Enabled: v })} disabled={!loaded} />
             </div>
           </div>
 
@@ -154,7 +169,7 @@ export function MusicInteraction() {
             <div className="mb-3 text-[12px] font-bold">显示设置</div>
             <label className="space-y-1.5">
               <span className="text-[11px] font-bold text-[var(--muted-text)]">皮肤</span>
-              <select value={music.Skin} onChange={e => updateMusic({ Skin: e.target.value })}
+              <select value={music.Skin} onChange={e => updateMusic({ Skin: e.target.value })} disabled={!loaded}
                 className="h-[32px] w-full rounded-lg border border-[var(--control-border)] bg-[var(--control-bg)] px-3 text-[12px] text-[var(--control-text)] focus:outline-none">
                 <option value="compact">紧凑</option>
                 <option value="minimal">极简</option>
@@ -167,7 +182,11 @@ export function MusicInteraction() {
           <div className="mb-4 flex gap-2">
             <Input
               value={query}
-              onChange={e => setQuery(e.target.value)}
+              onChange={e => {
+                latestQuery.current = e.target.value;
+                setQuery(e.target.value);
+                if (searchInFlight.current) setCandidates([]);
+              }}
               onKeyDown={e => { if (e.key === 'Enter') searchCandidates(); }}
               placeholder="搜索歌曲"
               className="flex-1"
