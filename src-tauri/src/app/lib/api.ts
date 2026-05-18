@@ -113,6 +113,110 @@ export interface AppConfig {
   SpecialWelcomeList: SpecialWelcomeEntry[];
   /** 弹幕播报开关（仅内存，不持久化） */
   DanmuAnnounce?: boolean;
+  // ── 弹幕浮层 ──
+  OverlayPort: number;
+  OverlayFontSize: number;
+  OverlayBgOpacity: number;
+  OverlayShowAvatar: boolean;
+  OverlayAvatarSize: number;
+  OverlayMaxMsgs: number;
+  OverlayCustomCss: string;
+  OverlayMsgGap: number;
+  OverlayShowGift: boolean;
+  OverlayShowGuard: boolean;
+  OverlayShowSc: boolean;
+  OverlayGiftMinCost: number;
+  OverlayDanmuColor: string;
+  OverlayFontWeight: number;
+  OverlayShowUsername: boolean;
+  OverlayAnimateIn: boolean;
+  OverlayAnimateInMs: number;
+  OverlayAnimateOut: boolean;
+  OverlayAnimateOutMs: number;
+  OverlayAnimateOutWait: number;
+  OverlayScMinCost: number;
+}
+
+/** 弹幕浮层独立配置（etc/overlay.toml） */
+export interface OverlayConfig {
+  // 服务 / 性能
+  Port: number;
+  MaxMsgs: number;
+  MsgGap: number;
+  CustomCss: string;
+
+  // 全局缩放
+  GlobalScale: number;
+  FontScale: number;
+
+  // 头像
+  ShowAvatar: boolean;
+  AvatarSize: number;
+
+  // 用户名
+  ShowUsername: boolean;
+  UserNameFont: string;
+  UserNameFontSize: number;
+  UserNameWeight: number;
+  UserNameColor: string;
+  OwnerUserNameColor: string;
+  ModeratorUserNameColor: string;
+  MemberUserNameColor: string;
+  ShowBadges: boolean;
+
+  // 消息
+  MessageFont: string;
+  MessageFontSize: number;
+  MessageWeight: number;
+  MessageColor: string;
+
+  // 时间
+  ShowTime: boolean;
+  TimeFont: string;
+  TimeFontSize: number;
+  TimeWeight: number;
+  TimeColor: string;
+
+  // 背景
+  BgColor: string;
+  BgOpacity: number;
+  MessageBgColor: string;
+  OwnerMessageBgColor: string;
+  ModeratorMessageBgColor: string;
+  MemberMessageBgColor: string;
+
+  // 礼物 / SC / 舰长
+  ShowGift: boolean;
+  GiftMinCost: number;
+  ShowGiftIcon: boolean;
+  ShowGuard: boolean;
+  ShowSc: boolean;
+  ScMinCost: number;
+
+  // SC 三行
+  FirstLineFontSize: number;
+  FirstLineWeight: number;
+  SecondLineFontSize: number;
+  SecondLineWeight: number;
+  ScContentFontSize: number;
+  ScContentWeight: number;
+
+  // 动画
+  AnimateIn: boolean;
+  FadeInTime: number;
+  AnimateOut: boolean;
+  FadeOutTime: number;
+  AnimateOutWaitTime: number;
+  Slide: boolean;
+  ReverseSlide: boolean;
+  EffectsEnabled: boolean;
+  EffectIntensity: number;
+
+  // 描边
+  ShowOutlines: boolean;
+  OutlineSize: number;
+  OutlineColor: string;
+  BlurryOutline: boolean;
 }
 
 export interface UserInfo {
@@ -235,6 +339,9 @@ export const api = {
   onMonitorStatus: (callback: (status: string) => void) => listen<string>('monitor-status', (event) => callback(event.payload)),
   onMonitorLog: (callback: (log: string) => void) => listen<string>('monitor-log', (event) => callback(event.payload)),
   onMonitorLogs: (callback: (logs: string[]) => void) => listen<string[]>('monitor-logs', (event) => callback(event.payload)),
+  openOverlayWindow: () => invoke<void>('open_overlay_window'),
+  closeOverlayWindow: () => invoke<void>('close_overlay_window'),
+  getOverlayUrl: () => invoke<string>('get_overlay_url'),
   onLiveEvent: (callback: (event: any) => void) => listen<any>('live-event', (event) => callback(event.payload)),
   onLiveEvents: (callback: (events: any[]) => void) => listen<any[]>('live-events', (event) => callback(event.payload)),
   onRoomStatus: (callback: (data: { live_status: number; online: number; live_time: string }) => void) =>
@@ -262,6 +369,10 @@ export const api = {
   queryUserDetail: (uid: string) => invoke<UserDetailResult>('query_user_detail', { uid }),
   openUrl: (url: string) => invoke<void>('open_url', { url }),
   proxyImage: (url: string) => invoke<string>('proxy_image', { url }),
+
+  // Overlay config (独立存储，etc/overlay.toml)
+  loadOverlayConfig: () => invoke<OverlayConfig>('load_overlay_config'),
+  saveOverlayConfig: (config: OverlayConfig) => invoke<void>('save_overlay_config', { config }),
 
   // Persistent room connection
   setConnectedRoom: (roomId: number | null) => invoke<void>('set_connected_room', { roomId }),

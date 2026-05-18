@@ -53,9 +53,7 @@ function parseNotification(log: string): AppNotif | null {
   if (/^感谢.+(电池|舰长|提督|总督)/.test(log)) return { ...base, type: 'gift', title: '收到礼物', message: log };
   if (/^感谢.+的 /.test(log)) return { ...base, type: 'gift', title: '收到礼物', message: log };
   if (/.+被禁言$/.test(log)) return { ...base, type: 'warning', title: '用户禁言', message: log };
-  if (log === '直播间监听已启动') return { ...base, type: 'info', title: '监听已启动', message: log };
   if (log === '监听已停止') return { ...base, type: 'info', title: '监听已停止', message: log };
-  if (log.startsWith('直播场次') || log.startsWith('直播状态变更')) return { ...base, type: 'info', title: '直播状态', message: log };
   if (log.includes('失败') || log.includes('错误')) return { ...base, type: 'error', title: '错误', message: log };
 
   return null;

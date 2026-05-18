@@ -1,9 +1,10 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { invoke } from '@tauri-apps/api/core';
+import { listen } from '@tauri-apps/api/event';
 import { GlassCard } from '../components/GlassCard';
 import { Input } from '../components/Input';
 import { Toggle } from '../components/Toggle';
-import { RefreshCw, ChevronDown, Radio, Plus, Pause } from 'lucide-react';
+import { RefreshCw, ChevronDown, Radio, Plus, Pause, Settings2, Trash2 } from 'lucide-react';
 import { api, AiProvider, AppConfig } from '../lib/api';
 import { availableProviders, detectProvider, findVoice, getVoices, TtsProvider } from '../lib/voices';
 import { VoicePicker } from '../components/VoicePicker';
@@ -81,6 +82,7 @@ const typeBadge: Record<LogType, string> = {
 const HOT_WINDOW_MS = 10_000;
 const HOT_THRESHOLD = 5;
 const SPEECH_DEDUP_MS = 1800;
+const ENTRY_DEDUP_MS = 2500;
 
 function buildDanmuSpeechText(user?: string, content?: string): string | null {
   const safeContent = content
@@ -104,6 +106,8 @@ export function Danmu() {
   // content → 最近出现时间戳列表
   const freqMap = useRef<Map<string, number[]>>(new Map());
 
+  const [isOverlayOpen, setIsOverlayOpen] = useState(false);
+
   // Pause state: frontend stops polling, backend continues
   const [isPaused, setIsPaused] = useState(false);
   const isPausedRef = useRef(false);
@@ -121,6 +125,7 @@ export function Danmu() {
   const danmuAnnounceSpeedRef = useRef(1.0);
   const [voiceOpen, setVoiceOpen] = useState(false);
   const spokenRef = useRef<Map<string, number>>(new Map());
+  const seenEntriesRef = useRef<Map<string, number>>(new Map());
 
   // Keep refs in sync with state; auto-scroll and clear badge on resume
   useEffect(() => {
@@ -133,6 +138,12 @@ export function Danmu() {
   useEffect(() => { isTtsEnabledRef.current = isTtsEnabled; }, [isTtsEnabled]);
   useEffect(() => { ttsVoiceRef.current = ttsVoice; }, [ttsVoice]);
   useEffect(() => { danmuAnnounceSpeedRef.current = danmuAnnounceSpeed; }, [danmuAnnounceSpeed]);
+
+  // 监听弹幕浮层窗口关闭事件，同步按钮状态
+  useEffect(() => {
+    const p = listen('overlay-closed', () => setIsOverlayOpen(false));
+    return () => { p.then(fn => fn()).catch(() => {}); };
+  }, []);
 
   // Load TTS providers from config
   useEffect(() => {
@@ -190,6 +201,15 @@ export function Danmu() {
   }, [ttsProviderId, ttsProviders]);
 
   const pushEntry = useCallback((entry: LogEntry, announce = false) => {
+    const now = Date.now();
+    for (const [key, ts] of seenEntriesRef.current.entries()) {
+      if (now - ts > ENTRY_DEDUP_MS) seenEntriesRef.current.delete(key);
+    }
+    const dedupKey = `${entry.type}::${entry.user ?? ''}::${entry.content ?? entry.text}`;
+    const lastSeenAt = seenEntriesRef.current.get(dedupKey);
+    if (lastSeenAt && now - lastSeenAt < ENTRY_DEDUP_MS) return;
+    seenEntriesRef.current.set(dedupKey, now);
+
     if (announce) speakDanmu(entry);
     if (isPausedRef.current) {
       setNewMsgCount(c => c + 1);
@@ -240,29 +260,13 @@ export function Danmu() {
 
     const flushTimer = setInterval(flushLogs, 200);
 
-    const pollTimer = setInterval(async () => {
-      try {
-        const lines = await api.getRecentDanmaku();
-        if (lines.length > 0) {
-          for (const line of lines) {
-            const entry = parseMonitorLog(line);
-            if (entry) pushEntry(entry, true);
-          }
-        }
-      } catch (err) {
-        console.error('Polling error:', err);
-      }
-    }, 150);
-
     let unlistenLiveEvents: (() => void) | undefined;
-    let unlistenLiveEvent: (() => void) | undefined;
     let unlistenLog: (() => void) | undefined;
     let unlistenStatus: (() => void) | undefined;
 
     const setup = async () => {
       try {
         const handleBatch = (batch: any[]) => {
-          if (isPausedRef.current) return;
           for (const parsed of batch) {
             const ev = parsed.event as Record<string, any>;
             let line: string | null = null;
@@ -308,7 +312,6 @@ export function Danmu() {
         };
 
         unlistenLiveEvents = await api.onLiveEvents(handleBatch);
-        unlistenLiveEvent = await api.onLiveEvent((parsed) => handleBatch([parsed]));
         unlistenLog = await api.onMonitorLogs((texts) => {
           for (const text of texts) {
             const entry = parseMonitorLog(text);
@@ -326,9 +329,7 @@ export function Danmu() {
 
     return () => {
       clearInterval(flushTimer);
-      clearInterval(pollTimer);
       if (unlistenLiveEvents) unlistenLiveEvents();
-      if (unlistenLiveEvent) unlistenLiveEvent();
       if (unlistenLog) unlistenLog();
       if (unlistenStatus) unlistenStatus();
     };
@@ -359,6 +360,20 @@ export function Danmu() {
     const next = !isPaused;
     setIsPaused(next);
     isPausedRef.current = next;
+  };
+
+  const toggleOverlay = async () => {
+    try {
+      if (isOverlayOpen) {
+        await api.closeOverlayWindow();
+        setIsOverlayOpen(false);
+      } else {
+        await api.openOverlayWindow();
+        setIsOverlayOpen(true);
+      }
+    } catch (err) {
+      toast.error(`浮层操作失败: ${err}`);
+    }
   };
 
   const toggleTts = () => {
@@ -430,16 +445,6 @@ export function Danmu() {
       )}>
         <div className="flex items-center justify-between px-5 py-3 border-b border-black/5 dark:border-white/5 bg-white/30 dark:bg-black/10 shrink-0">
           <div className="flex items-center gap-3 flex-wrap">
-            <div className="flex items-center gap-2 px-3 py-1.5 rounded-full bg-white/50 dark:bg-white/5 border border-white/20">
-              <div className={`w-2 h-2 rounded-full ${
-                isPaused ? 'bg-orange-400' :
-                isMonitoring ? 'bg-green-500 animate-pulse shadow-[0_0_8px_rgba(34,197,94,0.6)]' : 'bg-gray-400'
-              }`} />
-              <span className="text-[11px] font-black text-gray-600 dark:text-gray-300">
-                {isPaused ? '已暂停' : isMonitoring ? '监听中' : '未监听'}
-              </span>
-            </div>
-
             <div className="relative">
               <button
                 onClick={togglePause}
@@ -459,10 +464,9 @@ export function Danmu() {
               )}
             </div>
 
-            <div className="w-px h-4 bg-black/10 dark:bg-white/10" />
 
             <div className="flex items-center gap-2">
-              <span className="text-[11px] font-black text-gray-600 dark:text-gray-200 uppercase tracking-widest">播报弹幕</span>
+              <span className="text-[11px] font-black text-gray-600 dark:text-gray-200 uppercase tracking-widest">播报</span>
               <Toggle checked={isTtsEnabled} onChange={toggleTts} />
             </div>
 
@@ -509,10 +513,23 @@ export function Danmu() {
               ))}
             </div>
             <button
-              onClick={() => setLogs([])}
-              className="h-[32px] px-4 rounded-full text-[11px] font-black border border-gray-200 dark:border-white/20 text-gray-500 hover:bg-white/60 transition-all ml-2 active:scale-95"
+              onClick={toggleOverlay}
+              title={isOverlayOpen ? '关闭弹幕浮层' : '打开弹幕浮层设置'}
+              className={cn(
+                'h-[32px] w-[32px] rounded-full flex items-center justify-center border transition-all ml-2 active:scale-95',
+                isOverlayOpen
+                  ? 'bg-[var(--primary-color)]/15 border-[var(--primary-color)]/40 text-[var(--primary-color)]'
+                  : 'border-gray-200 dark:border-white/20 text-gray-400 hover:bg-white/60 hover:text-gray-600 dark:hover:text-gray-300'
+              )}
             >
-              清空记录
+              <Settings2 className="w-3.5 h-3.5" />
+            </button>
+            <button
+              onClick={() => setLogs([])}
+              title="清空记录"
+              className="h-[32px] w-[32px] rounded-full flex items-center justify-center border border-gray-200 dark:border-white/20 text-gray-400 hover:bg-white/60 hover:text-gray-600 dark:hover:text-gray-300 transition-all active:scale-95"
+            >
+              <Trash2 className="w-3.5 h-3.5" />
             </button>
           </div>
         </div>

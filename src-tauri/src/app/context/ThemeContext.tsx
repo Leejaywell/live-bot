@@ -582,12 +582,18 @@ function deriveAccent(primary: string) {
   return hslToHex((h + 28) % 360, Math.min(95, Math.max(48, s)), Math.min(72, Math.max(44, l + 6)));
 }
 
+const THEME_STORAGE_KEY = 'streamix-theme-v1';
+function readStoredTheme() {
+  try { return JSON.parse(localStorage.getItem(THEME_STORAGE_KEY) || '{}'); } catch { return {}; }
+}
+
 export function ThemeProvider({ children }: { children: React.ReactNode }) {
-  const [theme, setThemeState] = useState<'light' | 'dark'>('light');
-  const [visualTheme, setVisualThemeState] = useState<VisualThemeId>(DEFAULT_VISUAL_THEME);
-  const [colorSource, setColorSource] = useState<ColorSource>('theme');
-  const [customPrimaryColor, setCustomPrimaryColor] = useState(themePresets[0].primary);
-  const [blur, setBlur] = useState(DEFAULT_BLUR);
+  const stored = useMemo(() => readStoredTheme(), []);
+  const [theme, setThemeState] = useState<'light' | 'dark'>(stored.theme ?? 'light');
+  const [visualTheme, setVisualThemeState] = useState<VisualThemeId>(stored.visualTheme ?? DEFAULT_VISUAL_THEME);
+  const [colorSource, setColorSource] = useState<ColorSource>(stored.colorSource ?? 'theme');
+  const [customPrimaryColor, setCustomPrimaryColor] = useState(stored.customPrimaryColor ?? themePresets[0].primary);
+  const [blur, setBlur] = useState(stored.blur ?? DEFAULT_BLUR);
 
   const activeTheme = visualThemes[visualTheme];
   const primaryColor = colorSource === 'custom' ? customPrimaryColor : activeTheme.primary;
@@ -645,7 +651,12 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
     if (accentRgb) {
       root.style.setProperty('--accent-rgb', `${accentRgb.r}, ${accentRgb.g}, ${accentRgb.b}`);
     }
-  }, [theme, activeTheme, primaryColor, accentColor, hue, blur]);
+    try {
+      localStorage.setItem(THEME_STORAGE_KEY, JSON.stringify({
+        theme, visualTheme, colorSource, customPrimaryColor, blur, primaryColor,
+      }));
+    } catch {}
+  }, [theme, activeTheme, primaryColor, accentColor, hue, blur, visualTheme, colorSource, customPrimaryColor]);
 
   const toggleTheme = () => {
     setThemeState((prev) => (prev === 'light' ? 'dark' : 'light'));

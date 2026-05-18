@@ -2,6 +2,8 @@ mod api;
 mod bot;
 mod config;
 mod obs;
+mod overlay_config;
+mod overlay_server;
 mod storage;
 mod token;
 
@@ -41,6 +43,8 @@ struct SharedState {
     model_dl_cancels: Arc<Mutex<std::collections::HashMap<String, CancellationToken>>>,
     /// 全局 AI 会话记忆（机器人 ID 隔离）
     session_memory: Arc<Mutex<bot::memory::SessionMemory>>,
+    /// 弹幕浮层 HTTP 服务广播通道
+    overlay_tx: overlay_server::OverlayTx,
     /// 基础 AI Agent 运行时
     agent_runtime: Arc<bot::agent::AgentRuntime>,
     /// 实时变声器状态
@@ -73,6 +77,7 @@ struct BufferedEmitter {
     handle: AppHandle,
     log_buffer: Arc<Mutex<Vec<String>>>,
     batch_tx: tokio::sync::mpsc::UnboundedSender<String>,
+    overlay_tx: overlay_server::OverlayTx,
 }
 
 #[cfg(feature = "tauri")]
@@ -92,7 +97,8 @@ impl bot::EventEmitter for BufferedEmitter {
                 // Fallthrough to emit singular event (needed for notifications in App.tsx)
             }
         } else if event == "live-event" {
-            // singular events are allowed for immediate updates
+            // 同步推送到 HTTP 弹幕浮层 WebSocket 客户端
+            let _ = self.overlay_tx.send(payload.clone());
         }
 
         tauri::Emitter::emit(&self.handle, event, payload)
@@ -362,6 +368,7 @@ async fn start_monitor(
         handle: app.clone(),
         log_buffer: state.monitor_log_buffer.clone(),
         batch_tx,
+        overlay_tx: state.overlay_tx.clone(),
     };
 
     let models = model_dir(&app);
@@ -3245,6 +3252,8 @@ fn main() -> Result<()> {
 
     let saved_room = token::read_connected_room();
 
+    let (overlay_tx, _) = overlay_server::new_channel();
+
     let state = SharedState {
         runtime: Arc::new(Runtime::new()?),
         http: api::BiliApi::new()?,
@@ -3252,6 +3261,7 @@ fn main() -> Result<()> {
         storage: Arc::new(storage),
         connected_room: Arc::new(Mutex::new(saved_room)),
         monitor_log_buffer: Arc::new(Mutex::new(Vec::new())),
+        overlay_tx: overlay_tx.clone(),
         #[cfg(feature = "tauri")]
         preview_tts: Arc::new(Mutex::new(None)),
         #[cfg(feature = "tauri")]
@@ -3275,6 +3285,15 @@ fn main() -> Result<()> {
         .plugin(tauri_plugin_dialog::init())
         .manage(state)
         .setup(move |app| {
+            // 启动弹幕浮层 HTTP 服务（使用独立的 overlay.toml 配置）
+            let port = overlay_config::OverlayConfig::load_or_default()
+                .map(|c| c.port)
+                .unwrap_or(12450);
+            let srv_tx = overlay_tx.clone();
+            tauri::async_runtime::spawn(async move {
+                overlay_server::start(port, srv_tx).await;
+            });
+
             let handle_for_update = app.handle().clone();
             tauri::async_runtime::spawn(update_check_loop(handle_for_update));
 
@@ -3341,11 +3360,83 @@ fn main() -> Result<()> {
             cancel_model_download,
             delete_model,
             open_folder,
-            convert_rvc_pth_to_onnx
+            convert_rvc_pth_to_onnx,
+            open_overlay_window,
+            close_overlay_window,
+            get_overlay_url,
+            load_overlay_config,
+            save_overlay_config
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
 
+    Ok(())
+}
+
+#[cfg(feature = "tauri")]
+#[tauri::command]
+async fn get_overlay_url(_state: tauri::State<'_, SharedState>) -> Result<String, String> {
+    let cfg = overlay_config::OverlayConfig::load_or_default().map_err(|e| e.to_string())?;
+    Ok(format!("http://127.0.0.1:{}", cfg.port))
+}
+
+#[cfg(feature = "tauri")]
+#[tauri::command]
+async fn load_overlay_config() -> Result<overlay_config::OverlayConfig, String> {
+    overlay_config::OverlayConfig::load_or_default().map_err(|e| e.to_string())
+}
+
+#[cfg(feature = "tauri")]
+#[tauri::command]
+async fn save_overlay_config(
+    config: overlay_config::OverlayConfig,
+    state: tauri::State<'_, SharedState>,
+) -> Result<(), String> {
+    config.save().map_err(|e| e.to_string())?;
+    // 通知所有 overlay 网页客户端重新拉取配置
+    overlay_server::broadcast_cfg_update(&state.overlay_tx);
+    Ok(())
+}
+
+#[cfg(feature = "tauri")]
+#[tauri::command]
+async fn open_overlay_window(app: tauri::AppHandle) -> Result<(), String> {
+    if let Some(win) = app.get_webview_window("danmu-overlay") {
+        let _ = win.show();
+        let _ = win.set_focus();
+        return Ok(());
+    }
+    let win = tauri::WebviewWindowBuilder::new(
+        &app,
+        "danmu-overlay",
+        tauri::WebviewUrl::App(std::path::PathBuf::from("index.html#overlay")),
+    )
+    .title("")
+    .inner_size(1280.0, 780.0)
+    .min_inner_size(900.0, 600.0)
+    .decorations(false)
+    .transparent(true)
+    .visible(false)
+    .resizable(true)
+    .always_on_top(false)
+    .accept_first_mouse(true)
+    .build()
+    .map_err(|e| e.to_string())?;
+    let show_win = win.clone();
+    tauri::async_runtime::spawn(async move {
+        tokio::time::sleep(std::time::Duration::from_millis(180)).await;
+        let _ = show_win.show();
+        let _ = show_win.set_focus();
+    });
+    Ok(())
+}
+
+#[cfg(feature = "tauri")]
+#[tauri::command]
+async fn close_overlay_window(app: tauri::AppHandle) -> Result<(), String> {
+    if let Some(win) = app.get_webview_window("danmu-overlay") {
+        win.close().map_err(|e| e.to_string())?;
+    }
     Ok(())
 }
 

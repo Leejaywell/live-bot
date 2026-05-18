@@ -1,0 +1,770 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<style id="base-style">
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+html,body{background:var(--bg-color,transparent);height:100%;overflow:hidden;
+  font-family:var(--font-family,"PingFang SC","Microsoft YaHei","Noto Sans SC",sans-serif)}
+#app{height:100%;display:flex;flex-direction:column;
+  padding:4px 6px 8px;
+  gap:var(--msg-gap,3px);
+  overflow-y:auto;overflow-x:hidden;scrollbar-width:none;
+  transform-origin:top left;
+  transform:scale(var(--global-scale,1))}
+#app::-webkit-scrollbar{display:none}
+.spacer{flex:1 0 0}
+
+/* ── blivechat selector compatibility ── */
+yt-live-chat-renderer{height:100%;display:flex;flex-direction:column;background:transparent;color:inherit;overflow:hidden}
+yt-live-chat-ticker-renderer{display:block;flex-shrink:0;background:transparent}
+yt-live-chat-ticker-renderer[hidden]{display:none!important}
+yt-live-chat-item-list-renderer{display:flex;flex:1;min-height:0;overflow:hidden}
+yt-live-chat-item-list-renderer #item-scroller{flex:1;overflow:hidden}
+yt-live-chat-item-list-renderer #item-offset,
+yt-live-chat-item-list-renderer #items{min-height:100%;display:flex;flex-direction:column;gap:var(--msg-gap,3px)}
+yt-live-chat-text-message-renderer,
+yt-live-chat-paid-message-renderer,
+yt-live-chat-membership-item-renderer{display:flex;flex-shrink:0}
+yt-live-chat-author-chip{display:inline-flex;align-items:baseline}
+yt-live-chat-author-badge-renderer{display:var(--badge-display,inline-flex);align-items:center}
+yt-img-shadow{display:var(--av-display,flex);flex-shrink:0;overflow:hidden;border-radius:50%}
+yt-img-shadow img{width:100%;height:100%;object-fit:cover;border-radius:inherit}
+
+/* ── Entry / exit animation ── */
+@keyframes msgIn{from{opacity:0;transform:translateY(var(--slide-from,5px))}to{opacity:1;transform:translateY(0)}}
+@keyframes msgOut{from{opacity:1}to{opacity:0;transform:translateY(-4px)}}
+@keyframes lbfxSweep{from{transform:translateX(-120%) skewX(-16deg)}to{transform:translateX(260%) skewX(-16deg)}}
+@keyframes lbfxGlow{0%,100%{filter:brightness(1)}50%{filter:brightness(1.16)}}
+@keyframes lbfxRise{0%{opacity:0;transform:translateY(8px) scale(.98)}65%{opacity:1;transform:translateY(-1px) scale(1)}100%{opacity:1;transform:translateY(0) scale(1)}}
+@keyframes lbfxTicker{from{background-position:0 0}to{background-position:42px 0}}
+
+/* ── Base message row ── */
+.msg{display:flex;align-items:flex-start;gap:7px;
+  padding:5px 8px;border-radius:6px;flex-shrink:0;
+  word-break:break-all;line-height:1.5;
+  font-size:calc(var(--msg-font-size,13px) * var(--font-scale,1))}
+.msg.anim-in{animation:msgIn var(--fade-in,200ms) ease}
+.msg.anim-out{animation:msgOut var(--fade-out,400ms) ease forwards}
+
+/* ── Optional effect layer. All selectors are gated by body.lbfx-on so old CSS keeps working. ── */
+body.lbfx-on .msg{position:relative;isolation:isolate;text-shadow:0 1px 2px rgba(0,0,0,.95)}
+body.lbfx-on .msg.anim-in{animation:lbfxRise var(--fade-in,200ms) ease-out}
+body.lbfx-on .msg-danmu,
+body.lbfx-on .msg-danmu[data-id="owner"],
+body.lbfx-on .msg-danmu[data-id="moderator"],
+body.lbfx-on .msg-danmu[data-id="member"]{background:transparent}
+body.lbfx-on .uname{color:#effee3}
+body.lbfx-on .msg[blc-guard-level="1"] .uname,
+body.lbfx-on .msg[data-id="member"] .uname{color:#96deff}
+body.lbfx-on .msg[blc-guard-level="2"] .uname,
+body.lbfx-on .msg[data-id="moderator"] .uname{color:#e7a9ff}
+body.lbfx-on .msg[blc-guard-level="3"] .uname,
+body.lbfx-on .msg[data-id="owner"] .uname{color:#ff96aa}
+body.lbfx-on .dtext,
+body.lbfx-on .sc-body,
+body.lbfx-on .msg-gift #message{color:#fff}
+body.lbfx-on .msg::after{content:"";position:absolute;inset:0;border-radius:inherit;pointer-events:none;z-index:-1;opacity:0}
+body.lbfx-on .msg-gift,
+body.lbfx-on .msg-guard,
+body.lbfx-on .msg-sc{overflow:hidden}
+body.lbfx-on .msg-gift::before,
+body.lbfx-on .msg-guard::before,
+body.lbfx-on .msg-sc::before{content:"";position:absolute;top:0;bottom:0;left:0;width:34%;pointer-events:none;z-index:2;
+  background:linear-gradient(90deg,transparent,rgba(255,255,255,calc(.16 * var(--lbfx-i,1))),transparent);
+  transform:translateX(-120%) skewX(-16deg);animation:lbfxSweep calc(2600ms / var(--lbfx-i,1)) ease-out 1}
+body.lbfx-on .msg-gift{background:rgba(233,30,99,.2);border-left-color:#e91e63}
+body.lbfx-on .msg-notice{background:var(--notice-bg);border-left-color:var(--notice-c)}
+body.lbfx-on .msg-gift .gname,
+body.lbfx-on .msg-gift .gcnt{color:#ffc107}
+body.lbfx-on .msg-gift::after{opacity:1;box-shadow:inset 0 0 0 1px rgba(233,30,99,.14)}
+body.lbfx-on .msg-guard::after{opacity:1;box-shadow:inset 0 0 0 1px rgba(255,255,255,.12);animation:lbfxGlow 2600ms ease-in-out infinite}
+body.lbfx-on .msg-sc{background:rgba(255,152,0,.2);border-left:3px solid #ff9800;border-radius:6px}
+body.lbfx-on .msg-sc .sc-head{background:transparent!important;padding-bottom:0}
+body.lbfx-on .msg-sc .sc-body{background:transparent;border-radius:0;padding-top:2px}
+body.lbfx-on .msg-sc::after{opacity:1;box-shadow:inset 0 0 0 1px rgba(255,152,0,.12);animation:lbfxGlow 2200ms ease-in-out infinite}
+body.lbfx-on yt-live-chat-ticker-renderer #container{background-image:linear-gradient(90deg,rgba(255,255,255,.08) 0,transparent 22px,rgba(255,255,255,.08) 42px);background-size:42px 100%;animation:lbfxTicker 1800ms linear infinite}
+
+/* ── Avatar ── */
+.av{width:var(--av-size,24px);height:var(--av-size,24px);border-radius:50%;
+  flex-shrink:0;object-fit:cover;
+  display:var(--av-display,flex);
+  align-items:center;justify-content:center;font-size:10px;font-weight:700;color:#fff}
+
+/* ── Time ── */
+.tm{flex-shrink:0;
+  font-family:var(--time-font,inherit);
+  font-size:calc(var(--time-font-size,12px) * var(--font-scale,1));
+  font-weight:var(--time-weight,400);
+  color:var(--time-color,#999);
+  display:var(--time-display,none);
+  margin-right:2px;align-self:center}
+
+/* ── Username ── */
+.uname{flex-shrink:0;
+  font-family:var(--username-font,inherit);
+  font-size:calc(var(--username-font-size,13px) * var(--font-scale,1));
+  font-weight:var(--username-weight,600);
+  display:var(--username-display,inline)}
+
+/* ── Identity badge ── */
+.idbadge{flex-shrink:0;font-size:10px;font-weight:700;padding:1px 5px;
+  border-radius:4px;align-self:center;
+  display:var(--badge-display,inline-flex);align-items:center;gap:2px}
+
+/* ── Danmu ── */
+.msg-danmu{background:var(--msg-bg,rgba(0,0,0,.72))}
+.msg-danmu[data-id="owner"]   {background:var(--owner-bg,rgba(255,214,0,.18))}
+.msg-danmu[data-id="moderator"]{background:var(--mod-bg,rgba(94,132,241,.18))}
+.msg-danmu[data-id="member"]  {background:var(--member-bg,rgba(15,157,88,.18))}
+.dtext{font-family:var(--msg-font,inherit);
+  font-weight:var(--msg-weight,600);
+  color:var(--msg-color,#e8e8e8)}
+.msg-notice{align-items:center;background:var(--notice-bg,rgba(77,91,125,.28));border-left:3px solid var(--notice-c,#a7b7d8)}
+.msg-notice .ntag{color:var(--notice-c,#a7b7d8);font-size:10px;font-weight:800;flex-shrink:0}
+.msg-notice .ntext{font-family:var(--msg-font,inherit);font-weight:var(--msg-weight,600);color:var(--msg-color,#fff)}
+.msg-interact{--notice-c:#7dd3fc;--notice-bg:rgba(14,165,233,.16)}
+.msg-like{--notice-c:#ffd455;--notice-bg:rgba(244,63,94,.14)}
+.msg-entry{--notice-c:#00bcd4;--notice-bg:rgba(0,188,212,.2)}
+.msg-entry[blc-guard-level="1"]{--notice-c:#73efff;--notice-bg:rgba(0,188,212,.2)}
+.msg-entry[blc-guard-level="2"]{--notice-c:#e59bfb;--notice-bg:rgba(226,30,233,.2)}
+.msg-entry[blc-guard-level="3"]{--notice-c:#ff5f5f;--notice-bg:rgba(255,0,64,.2)}
+
+/* ── Outline ── */
+.outline-on .uname,.outline-on .dtext,.outline-on .tm,
+.outline-on .gname,.outline-on .gcnt,.outline-on .glabel,
+.outline-on .sc-uname,.outline-on .sc-price,.outline-on .sc-body{
+  text-shadow:
+    calc(var(--outline-w,2px) * -1) calc(var(--outline-w,2px) * -1) 0 var(--outline-c,#000),
+    var(--outline-w,2px) calc(var(--outline-w,2px) * -1) 0 var(--outline-c,#000),
+    calc(var(--outline-w,2px) * -1) var(--outline-w,2px) 0 var(--outline-c,#000),
+    var(--outline-w,2px) var(--outline-w,2px) 0 var(--outline-c,#000)}
+.outline-blur .uname,.outline-blur .dtext,.outline-blur .tm,
+.outline-blur .gname,.outline-blur .gcnt,.outline-blur .glabel,
+.outline-blur .sc-uname,.outline-blur .sc-price,.outline-blur .sc-body{
+  text-shadow:0 0 var(--outline-w,2px) var(--outline-c,#000),
+              0 0 calc(var(--outline-w,2px) * 2) var(--outline-c,#000)}
+
+/* ── Gift ── */
+.msg-gift{background:var(--msg-bg,rgba(0,0,0,.72));border-left:3px solid #ffa500;align-items:center;gap:5px}
+.gift-icon{width:calc(var(--av-size,24px) * .9);height:calc(var(--av-size,24px) * .9);object-fit:contain;flex-shrink:0;
+  display:var(--gift-icon-display,none);filter:drop-shadow(0 1px 2px rgba(0,0,0,.35))}
+.gname{color:#ffa500;font-weight:600;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.gcnt{color:#ffa500;font-weight:800;flex-shrink:0}
+
+/* ── Guard ── */
+.msg-guard{align-items:center;gap:5px}
+.gbadge{font-weight:700;flex-shrink:0}
+.glabel{font-weight:800;flex-shrink:0}
+
+/* ── SuperChat ── */
+.msg-sc{flex-direction:column;gap:0;padding:0;background:none;align-items:stretch}
+.msg-gift #card,.msg-guard #card,.msg-sc #card{width:100%}
+.msg-gift #header,.msg-guard #header{display:flex;align-items:center;gap:6px}
+.msg-gift #header-content,.msg-guard #header-content,.msg-sc #header-content{display:flex;align-items:center;gap:6px;flex:1;min-width:0}
+.msg-gift #header-content-primary-column,.msg-guard #header-content-primary-column,.msg-sc #header-content-primary-column{display:flex;align-items:center;gap:6px;flex:1;min-width:0}
+.sc-head{display:flex;align-items:center;justify-content:space-between;
+  padding:5px 8px;border-radius:6px 6px 0 0;gap:6px}
+.sc-uname{font-weight:700;color:#fff;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
+  font-size:calc(var(--sc-line1-size,15px) * var(--font-scale,1));
+  font-weight:var(--sc-line1-weight,700)}
+.sc-price{font-weight:800;flex-shrink:0;
+  font-size:calc(var(--sc-line2-size,13px) * var(--font-scale,1));
+  font-weight:var(--sc-line2-weight,700)}
+.sc-body{padding:6px 8px;background:rgba(0,0,0,.82);border-radius:0 0 6px 6px;color:#e8e8e8;
+  font-size:calc(var(--sc-content-size,13px) * var(--font-scale,1));
+  font-weight:var(--sc-content-weight,600)}
+</style>
+<style id="user-css"></style>
+</head>
+<body>
+<yt-live-chat-renderer id="app" class="style-scope yt-live-chat-app" hide-timestamps>
+  <yt-live-chat-ticker-renderer hidden class="style-scope yt-live-chat-renderer">
+    <div id="container" class="style-scope yt-live-chat-ticker-renderer">
+      <div id="items" class="style-scope yt-live-chat-ticker-renderer"></div>
+    </div>
+  </yt-live-chat-ticker-renderer>
+  <yt-live-chat-item-list-renderer class="style-scope yt-live-chat-renderer" allow-scroll>
+    <div id="item-scroller" class="style-scope yt-live-chat-item-list-renderer animated">
+      <div id="item-offset" class="style-scope yt-live-chat-item-list-renderer">
+        <div id="items" class="style-scope yt-live-chat-item-list-renderer">
+          <div class="spacer"></div>
+        </div>
+      </div>
+    </div>
+  </yt-live-chat-item-list-renderer>
+</yt-live-chat-renderer>
+<script>
+// ── State ────────────────────────────────────────────────────────────────────
+var cfg = null;
+var PROXY = location.origin + '/proxy?url=';
+
+// ── Apply config → CSS vars ──────────────────────────────────────────────────
+function applyCfg(c){
+  cfg = c || {};
+  var R = document.documentElement;
+  var P = function(name, val){ R.style.setProperty(name, val); };
+
+  // 全局
+  P('--global-scale', cfg.GlobalScale || 1);
+  P('--font-scale',   cfg.FontScale   || 1);
+  P('--font-family',  cfg.MessageFont || 'PingFang SC, Microsoft YaHei, Noto Sans SC, sans-serif');
+  P('--msg-gap',      ((cfg.MsgGap || 3) + 'px'));
+  P('--bg-color',     cfg.BgColor || 'transparent');
+
+  // 头像
+  P('--av-size',     ((cfg.AvatarSize || 24) + 'px'));
+  P('--av-display',  cfg.ShowAvatar === false ? 'none' : 'flex');
+
+  // 用户名
+  P('--username-display',    cfg.ShowUsername === false ? 'none' : 'inline');
+  P('--username-font',       cfg.UserNameFont || 'inherit');
+  P('--username-font-size', ((cfg.UserNameFontSize || 13) + 'px'));
+  P('--username-weight',     cfg.UserNameWeight || 600);
+
+  // 消息
+  P('--msg-font',       cfg.MessageFont || 'inherit');
+  P('--msg-font-size', ((cfg.MessageFontSize || 13) + 'px'));
+  P('--msg-weight',     cfg.MessageWeight || 600);
+  P('--msg-color',      cfg.MessageColor || '#ffffff');
+
+  // 时间
+  P('--time-display',   cfg.ShowTime ? 'inline' : 'none');
+  P('--time-font',      cfg.TimeFont || 'inherit');
+  P('--time-font-size', ((cfg.TimeFontSize || 12) + 'px'));
+  P('--time-weight',    cfg.TimeWeight || 400);
+  P('--time-color',     cfg.TimeColor || '#999');
+
+  // 徽章
+  P('--badge-display', cfg.ShowBadges === false ? 'none' : 'inline-flex');
+  P('--gift-icon-display', cfg.ShowGiftIcon ? 'block' : 'none');
+
+  // 消息背景
+  var bgOp = cfg.BgOpacity != null ? cfg.BgOpacity : 0.15;
+  P('--msg-bg',      cfg.MessageBgColor       || ('rgba(0,0,0,' + bgOp + ')'));
+  P('--owner-bg',    cfg.OwnerMessageBgColor  || 'rgba(255,214,0,0.18)');
+  P('--mod-bg',      cfg.ModeratorMessageBgColor || 'rgba(94,132,241,0.18)');
+  P('--member-bg',   cfg.MemberMessageBgColor || 'rgba(15,157,88,0.18)');
+
+  // SC 三行
+  P('--sc-line1-size',   ((cfg.FirstLineFontSize  || 15) + 'px'));
+  P('--sc-line1-weight',  cfg.FirstLineWeight  || 700);
+  P('--sc-line2-size',   ((cfg.SecondLineFontSize || 13) + 'px'));
+  P('--sc-line2-weight',  cfg.SecondLineWeight || 700);
+  P('--sc-content-size', ((cfg.ScContentFontSize  || 13) + 'px'));
+  P('--sc-content-weight',cfg.ScContentWeight  || 600);
+
+  // 动画
+  P('--fade-in',  ((cfg.FadeInTime  || 200) + 'ms'));
+  P('--fade-out', ((cfg.FadeOutTime || 400) + 'ms'));
+  P('--slide-from', cfg.Slide === false ? '0' : (cfg.ReverseSlide ? '-5px' : '5px'));
+  P('--lbfx-i', Math.max(0.4, Math.min(1.8, cfg.EffectIntensity || 1)));
+  document.body.classList.toggle('lbfx-on', !!cfg.EffectsEnabled);
+
+  // 描边
+  document.body.classList.toggle('outline-on',   !!cfg.ShowOutlines);
+  document.body.classList.toggle('outline-blur', !!cfg.ShowOutlines && !!cfg.BlurryOutline);
+  P('--outline-w', ((cfg.OutlineSize || 2) + 'px'));
+  P('--outline-c',  cfg.OutlineColor || '#000');
+
+  // 自定义 CSS
+  var u = document.getElementById('user-css');
+  if (u) u.textContent = cfg.CustomCss || '';
+}
+
+function fetchCfg(){
+  return fetch('/cfg')
+    .then(function(r){ return r.json(); })
+    .then(applyCfg)
+    .catch(function(){});
+}
+fetchCfg();
+
+// ── Palette ──────────────────────────────────────────────────────────────────
+var UC=['#ff7eb3','#7ec8ff','#7affb2','#ffd17e','#c07eff','#ff9d7e','#7effee'];
+function uc(uid){return UC[Math.abs(uid)%UC.length]}
+function scc(p){return p>=500?'#ff4444':p>=100?'#ff8800':p>=30?'#ffb300':'#f5c842'}
+function priceLevel(p){return p>=700?7:p>=350?6:p>=140?5:p>=70?4:p>=35?3:p>=14?2:p>0?1:0}
+var GD={
+  '总督':{color:'#c084fc',bg:'rgba(192,132,252,.18)',label:'👑 总督'},
+  '提督':{color:'#60a5fa',bg:'rgba(96,165,250,.16)', label:'⭐ 提督'},
+  '舰长':{color:'#34d399',bg:'rgba(52,211,153,.14)', label:'⚓ 舰长'},
+};
+
+// ── Identity detection ────────────────────────────────────────────────────────
+function getIdentity(parsed){
+  var ev = parsed.event, raw = parsed.raw;
+  try {
+    if (ev.identity) return ev.identity;
+    if (ev.type === 'GuardBuy') return 'member';
+    if (raw && raw.info) {
+      var gl = raw.info[7];
+      if (gl && gl > 0) return 'member';
+      // info[2] 是用户基础信息 [uid, name, is_admin, is_vip, is_svip, ...]
+      if (raw.info[2] && raw.info[2][2]) return 'moderator';
+    }
+  } catch(e){}
+  return 'normal';
+}
+function identityColor(id){
+  if (!cfg) return null;
+  if (id === 'owner')     return cfg.OwnerUserNameColor;
+  if (id === 'moderator') return cfg.ModeratorUserNameColor;
+  if (id === 'member')    return cfg.MemberUserNameColor;
+  return cfg.UserNameColor;
+}
+
+// ── Face extraction from raw payload ─────────────────────────────────────────
+function getFace(parsed){
+  var ev=parsed.event, raw=parsed.raw;
+  try{
+    if(ev.face) return ev.face;
+    if(ev.type==='Danmu'){
+      var x=JSON.parse((raw&&raw.info&&raw.info[0]&&raw.info[0][15])||'{}');
+      return (x&&x.user&&x.user.base&&x.user.base.face)||'';
+    }
+    if(ev.type==='Gift')     return (raw&&raw.data&&raw.data.face)||'';
+    if(ev.type==='GuardBuy') return (raw&&raw.data&&((raw.data.user_info&&raw.data.user_info.face)||raw.data.face))||'';
+    if(ev.type==='SuperChat')return (raw&&raw.data&&raw.data.user_info&&raw.data.user_info.face)||'';
+  }catch(e){}
+  return '';
+}
+function findImageUrl(value, depth){
+  if (!value || depth > 5) return '';
+  if (typeof value === 'string') {
+    if (/^https?:\/\//i.test(value) && /\.(png|jpe?g|webp|gif)(\?|$)/i.test(value)) return value;
+    return '';
+  }
+  if (Array.isArray(value)) {
+    for (var i=0;i<value.length;i++) {
+      var a=findImageUrl(value[i], depth+1);
+      if (a) return a;
+    }
+    return '';
+  }
+  if (typeof value === 'object') {
+    var preferred=['gift_img','giftIcon','gift_icon','gift_pic','giftPic','img_basic','img_dynamic','webp','image','icon','pic','url'];
+    for (var p=0;p<preferred.length;p++) {
+      if (value[preferred[p]]) {
+        var direct=findImageUrl(value[preferred[p]], depth+1);
+        if (direct) return direct;
+      }
+    }
+    for (var k in value) {
+      if (!Object.prototype.hasOwnProperty.call(value,k)) continue;
+      if (!/(gift|img|image|icon|pic|webp|url)/i.test(k)) continue;
+      var nested=findImageUrl(value[k], depth+1);
+      if (nested) return nested;
+    }
+  }
+  return '';
+}
+function getGiftIcon(parsed){
+  if (!cfg || !cfg.ShowGiftIcon) return '';
+  try {
+    var raw=parsed.raw || {};
+    return findImageUrl(raw.data || raw, 0);
+  } catch(e) {
+    return '';
+  }
+}
+
+// ── Time helper ──────────────────────────────────────────────────────────────
+function nowTime(){
+  var d=new Date();
+  var h=('0'+d.getHours()).slice(-2);
+  var m=('0'+d.getMinutes()).slice(-2);
+  return h+':'+m;
+}
+
+// ── DOM helpers ──────────────────────────────────────────────────────────────
+var app=document.querySelector('yt-live-chat-item-list-renderer #items');
+var ticker=document.querySelector('yt-live-chat-ticker-renderer');
+var tickerItems=document.querySelector('yt-live-chat-ticker-renderer #items');
+function addMsg(el){
+  if (cfg && cfg.AnimateIn !== false) el.classList.add('anim-in');
+  app.appendChild(el);
+  var max = (cfg && cfg.MaxMsgs) || 50;
+  var all=app.querySelectorAll('.msg');
+  if(all.length>max) all[0].remove();
+  el.scrollIntoView({behavior:'smooth',block:'end'});
+
+  // auto-fade out
+  if (cfg && cfg.AnimateOut) {
+    var waitMs = (cfg.AnimateOutWaitTime || 30) * 1000;
+    setTimeout(function(){
+      el.classList.add('anim-out');
+      setTimeout(function(){ if (el.parentNode) el.parentNode.removeChild(el); },
+        (cfg.FadeOutTime || 400) + 50);
+    }, waitMs);
+  }
+}
+function addTicker(parsed, text, bg, color){
+  if(!ticker || !tickerItems) return;
+  var ev=parsed.event, face=getFace(parsed);
+  var item=ytEl('yt-live-chat-ticker-paid-message-item-renderer', 'style-scope yt-live-chat-ticker-renderer');
+  item.setAttribute('tabindex', '0');
+  item.style.overflow='hidden';
+  var container=document.createElement('div');
+  container.id='container';
+  container.className='style-scope yt-live-chat-ticker-paid-message-item-renderer';
+  container.style.background=bg;
+  var content=document.createElement('div');
+  content.id='content';
+  content.className='style-scope yt-live-chat-ticker-paid-message-item-renderer';
+  content.style.color=color || '#fff';
+  content.appendChild(avatarEl(face,ev.user_id,ev.user,'yt-live-chat-ticker-paid-message-item-renderer'));
+  var label=span('style-scope yt-live-chat-ticker-paid-message-item-renderer',null,text);
+  label.id='text';
+  content.appendChild(label);
+  container.appendChild(content);
+  item.appendChild(container);
+  tickerItems.appendChild(item);
+  ticker.hidden=false;
+  setTimeout(function(){
+    if(item.parentNode) item.parentNode.removeChild(item);
+    if(!tickerItems.children.length) ticker.hidden=true;
+  }, 120000);
+}
+function span(cls,style,text){
+  var s=document.createElement('span');
+  if(cls) s.className=cls;
+  if(style) Object.assign(s.style,style);
+  if(text!=null) s.textContent=text;
+  return s;
+}
+function timeSpan(){
+  var s = span('tm style-scope yt-live-chat-text-message-renderer', null, nowTime());
+  s.id = 'timestamp';
+  return s;
+}
+function ytEl(tag, cls){
+  var el = document.createElement(tag);
+  if(cls) el.className = cls;
+  return el;
+}
+function avatarEl(face,uid,user,scope){
+  var host = ytEl('yt-img-shadow', 'av style-scope ' + scope);
+  host.id = 'author-photo';
+  host.setAttribute('height', '24');
+  host.setAttribute('width', '24');
+  host.style.width = 'var(--av-size,24px)';
+  host.style.height = 'var(--av-size,24px)';
+  var c=uc(uid),ch=(user||'?')[0];
+  if(face){
+    var img=document.createElement('img');
+    img.alt=user; img.className='style-scope yt-img-shadow';
+    img.src=PROXY+encodeURIComponent(face);
+    img.onerror=function(){
+      host.textContent = ch;
+      host.style.background = c;
+      host.style.alignItems = 'center';
+      host.style.justifyContent = 'center';
+    };
+    host.appendChild(img);
+  } else {
+    host.textContent = ch;
+    host.style.background = c;
+    host.style.alignItems = 'center';
+    host.style.justifyContent = 'center';
+  }
+  return host;
+}
+function giftIconEl(url, gift, scope){
+  var img=document.createElement('img');
+  img.className='gift-icon style-scope '+scope;
+  img.alt=gift || 'gift';
+  img.referrerPolicy='no-referrer';
+  if(url) img.src=PROXY+encodeURIComponent(url);
+  img.onerror=function(){ img.remove(); };
+  return img;
+}
+function authorTypeFromIdentity(id){
+  if(id === 'owner') return 'owner';
+  if(id === 'moderator') return 'moderator';
+  if(id === 'member') return 'member';
+  return '';
+}
+function guardLevelFromIdentity(id, ev){
+  if (ev && ev.gift === '总督') return 3;
+  if (ev && ev.gift === '提督') return 2;
+  if (id === 'member' || (ev && ev.gift === '舰长')) return 1;
+  return 0;
+}
+function authorChip(user, id, guardLevel, scope){
+  var chip = ytEl('yt-live-chat-author-chip', 'style-scope ' + scope);
+  var author = span('uname style-scope yt-live-chat-author-chip', null, user);
+  author.id = 'author-name';
+  author.setAttribute('dir', 'auto');
+  var type = authorTypeFromIdentity(id);
+  if(type) author.setAttribute('type', type);
+  author.style.color = identityColor(id) || '';
+  var chipBadges = span('style-scope yt-live-chat-author-chip');
+  chipBadges.id = 'chip-badges';
+  author.appendChild(chipBadges);
+  chip.appendChild(author);
+  var badges = span('style-scope yt-live-chat-author-chip');
+  badges.id = 'chat-badges';
+  if(type === 'moderator' || guardLevel > 0){
+    var badge = ytEl('yt-live-chat-author-badge-renderer', 'idbadge style-scope yt-live-chat-author-chip');
+    if(type) badge.setAttribute('type', type);
+    if(guardLevel > 0) badge.setAttribute('blc-guard-level', String(guardLevel));
+    badge.textContent = type === 'moderator' ? '房管' : (guardLevel === 3 ? '总督' : guardLevel === 2 ? '提督' : '舰长');
+    badges.appendChild(badge);
+  }
+  chip.appendChild(badges);
+  return chip;
+}
+
+// ── Renderers ────────────────────────────────────────────────────────────────
+function rdDanmu(parsed){
+  var ev=parsed.event,face=getFace(parsed);
+  var id=getIdentity(parsed);
+  var el=ytEl('yt-live-chat-text-message-renderer', 'msg msg-danmu style-scope yt-live-chat-item-list-renderer');
+  el.dataset.id=id;
+  var authorType = authorTypeFromIdentity(id);
+  if(authorType) el.setAttribute('author-type', authorType);
+  var guardLevel = guardLevelFromIdentity(id, ev);
+  if(guardLevel) el.setAttribute('blc-guard-level', String(guardLevel));
+  el.appendChild(avatarEl(face,ev.user_id,ev.user,'yt-live-chat-text-message-renderer'));
+  var content=document.createElement('div');
+  content.id='content';
+  content.className='style-scope yt-live-chat-text-message-renderer';
+  content.appendChild(timeSpan());
+  content.appendChild(authorChip(ev.user, id, guardLevel, 'yt-live-chat-text-message-renderer'));
+  var message = span('dtext style-scope yt-live-chat-text-message-renderer', null, ev.text);
+  message.id = 'message';
+  content.appendChild(message);
+  el.appendChild(content);
+  addMsg(el);
+}
+
+function rdNotice(parsed, className, label, text, user, guardLevel){
+  var ev=parsed.event || {};
+  var el=ytEl('div', 'msg msg-notice '+className+' style-scope yt-live-chat-item-list-renderer');
+  if(guardLevel) el.setAttribute('blc-guard-level', String(guardLevel));
+  el.appendChild(timeSpan());
+  var tag=span('ntag', null, label);
+  el.appendChild(tag);
+  if(user){
+    var name=span('uname', null, user+'：');
+    name.style.color = guardLevel === 3 ? '#ff96aa' : guardLevel === 2 ? '#e7a9ff' : guardLevel === 1 ? '#96deff' : (identityColor('normal') || '#effee3');
+    el.appendChild(name);
+  }
+  var body=span('ntext', null, text || '');
+  el.appendChild(body);
+  addMsg(el);
+}
+
+function rdInteract(parsed){
+  var ev=parsed.event || {};
+  var map={Entry:'进入直播间', Follow:'关注了直播间', Share:'分享了直播间', MutualFollow:'互相关注'};
+  var action=map[ev.kind] || '触发互动';
+  rdNotice(parsed, ev.kind === 'Entry' ? 'msg-entry' : 'msg-interact', ev.kind === 'Entry' ? '进场' : '互动', action, ev.user, 0);
+}
+
+function rdEntryEffect(parsed){
+  var ev=parsed.event || {};
+  var level=ev.guard_level || ev.guardLevel || 0;
+  var text=(ev.text || ev.message || '').replace(/<%([^%>]+)%>/g, '$1').trim();
+  rdNotice(parsed, 'msg-entry', '进场', text || '带着醒目入场特效进入直播间', ev.user, level);
+}
+
+function rdLike(parsed){
+  var ev=parsed.event || {};
+  rdNotice(parsed, 'msg-like', '点赞', ev.text || ev.message || '点亮了直播间', ev.user, 0);
+}
+
+function rdSystem(parsed){
+  var ev=parsed.event || {};
+  rdNotice(parsed, 'msg-system', '系统', ev.text || ev.message || '系统消息', '', 0);
+}
+
+var mergeMap={};
+function rdGift(parsed){
+  var ev=parsed.event,face=getFace(parsed);
+  var giftIcon=getGiftIcon(parsed);
+  if (cfg && cfg.ShowGift === false) return;
+  if (cfg && cfg.GiftMinCost && (ev.price||0) < cfg.GiftMinCost) return;
+  var key=ev.user_id+':'+ev.gift, cnt=ev.count||1;
+  var ex=mergeMap[key];
+  if(ex){
+    clearTimeout(ex.t);
+    ex.cnt+=cnt;
+    ex.cEl.textContent='×'+ex.cnt;
+    ex.t=setTimeout(function(){delete mergeMap[key]},5000);
+    return;
+  }
+  var el=ytEl('yt-live-chat-paid-message-renderer', 'msg msg-gift style-scope yt-live-chat-item-list-renderer');
+  el.setAttribute('allow-animations', '');
+  el.setAttribute('show-only-header', '');
+  el.setAttribute('blc-price-level', '0');
+  var card=document.createElement('div'); card.id='card'; card.className='style-scope yt-live-chat-paid-message-renderer';
+  var header=document.createElement('div'); header.id='header'; header.className='style-scope yt-live-chat-paid-message-renderer';
+  header.appendChild(avatarEl(face,ev.user_id,ev.user,'yt-live-chat-paid-message-renderer'));
+  var headerContent=document.createElement('div'); headerContent.id='header-content'; headerContent.className='style-scope yt-live-chat-paid-message-renderer';
+  var col=document.createElement('div'); col.id='header-content-primary-column'; col.className='style-scope yt-live-chat-paid-message-renderer';
+  var author=span('uname style-scope yt-live-chat-paid-message-renderer',{color:uc(ev.user_id)},ev.user);
+  author.id='author-name';
+  col.appendChild(author);
+  var purchase=span('gname style-scope yt-live-chat-paid-message-renderer',null,ev.gift);
+  purchase.id='purchase-amount';
+  if(giftIcon) col.appendChild(giftIconEl(giftIcon, ev.gift, 'yt-live-chat-paid-message-renderer'));
+  col.appendChild(purchase);
+  headerContent.appendChild(col);
+  var ts=timeSpan();
+  ts.className='tm style-scope yt-live-chat-paid-message-renderer';
+  headerContent.appendChild(ts);
+  header.appendChild(headerContent);
+  card.appendChild(header);
+  var content=document.createElement('div'); content.id='content'; content.className='style-scope yt-live-chat-paid-message-renderer';
+  var message=span('style-scope yt-live-chat-paid-message-renderer',null,'赠送 '+ev.gift);
+  message.id='message';
+  content.appendChild(message);
+  card.appendChild(content);
+  var cEl=span('gcnt style-scope yt-live-chat-paid-message-renderer',null,cnt>1?'×'+cnt:'');
+  header.appendChild(cEl);
+  el.appendChild(card);
+  addMsg(el);
+  if ((ev.price || 0) > 0) {
+    var gc=scc(ev.price || 0);
+    addTicker(parsed, 'CN¥'+(ev.price || 0), gc, '#fff');
+  }
+  mergeMap[key]={el:el,cEl:cEl,cnt:cnt,
+    t:setTimeout(function(){delete mergeMap[key]},5000)};
+}
+
+function rdGuard(parsed){
+  var ev=parsed.event,face=getFace(parsed);
+  if (cfg && cfg.ShowGuard === false) return;
+  var g=GD[ev.gift]||GD['舰长'];
+  var el=ytEl('yt-live-chat-membership-item-renderer', 'msg msg-guard style-scope yt-live-chat-item-list-renderer');
+  el.setAttribute('show-only-header', '');
+  var guardLevel = guardLevelFromIdentity('member', ev);
+  el.setAttribute('blc-guard-level', String(guardLevel));
+  el.style.background=g.bg; el.style.borderLeft='3px solid '+g.color;
+  var card=document.createElement('div'); card.id='card'; card.className='style-scope yt-live-chat-membership-item-renderer';
+  var header=document.createElement('div'); header.id='header'; header.className='style-scope yt-live-chat-membership-item-renderer';
+  header.appendChild(avatarEl(face,ev.user_id,ev.user,'yt-live-chat-membership-item-renderer'));
+  var hc=document.createElement('div'); hc.id='header-content'; hc.className='style-scope yt-live-chat-membership-item-renderer';
+  var pc=document.createElement('div'); pc.id='header-content-primary-column'; pc.className='style-scope yt-live-chat-membership-item-renderer';
+  var inner=document.createElement('div'); inner.id='header-content-inner-column'; inner.className='style-scope yt-live-chat-membership-item-renderer';
+  inner.appendChild(authorChip(ev.user, 'member', guardLevel, 'yt-live-chat-membership-item-renderer'));
+  pc.appendChild(inner);
+  var sub=span('glabel style-scope yt-live-chat-membership-item-renderer',{color:g.color},'开通了 '+ev.gift);
+  sub.id='header-subtext';
+  pc.appendChild(sub);
+  hc.appendChild(pc);
+  var ts=timeSpan();
+  ts.className='tm style-scope yt-live-chat-membership-item-renderer';
+  hc.appendChild(ts);
+  header.appendChild(hc);
+  card.appendChild(header);
+  el.appendChild(card);
+  addMsg(el);
+  addTicker(parsed, ev.gift || '舰长', g.bg, '#fff');
+}
+
+function rdSc(parsed){
+  var ev=parsed.event,face=getFace(parsed);
+  if (cfg && cfg.ShowSc === false) return;
+  if (cfg && cfg.ScMinCost && (ev.price||0) < cfg.ScMinCost) return;
+  var c=scc(ev.price||0);
+  var el=ytEl('yt-live-chat-paid-message-renderer', 'msg msg-sc style-scope yt-live-chat-item-list-renderer');
+  el.setAttribute('allow-animations', '');
+  el.setAttribute('blc-price-level', String(priceLevel(ev.price||0)));
+  el.style.setProperty('--yt-live-chat-paid-message-primary-color', c);
+  el.style.setProperty('--yt-live-chat-paid-message-secondary-color', c);
+  var card=document.createElement('div'); card.id='card'; card.className='style-scope yt-live-chat-paid-message-renderer';
+  var hd=document.createElement('div'); hd.className='sc-head';
+  hd.id='header';
+  hd.style.background=c+'33';
+  hd.appendChild(avatarEl(face,ev.user_id,ev.user,'yt-live-chat-paid-message-renderer'));
+  var hc=document.createElement('div'); hc.id='header-content'; hc.className='style-scope yt-live-chat-paid-message-renderer';
+  var pc=document.createElement('div'); pc.id='header-content-primary-column'; pc.className='style-scope yt-live-chat-paid-message-renderer';
+  var author=span('sc-uname style-scope yt-live-chat-paid-message-renderer',null,ev.user);
+  author.id='author-name';
+  pc.appendChild(author);
+  var amount=span('sc-price style-scope yt-live-chat-paid-message-renderer',{color:c},'CN¥'+ev.price);
+  amount.id='purchase-amount';
+  pc.appendChild(amount);
+  hc.appendChild(pc);
+  var ts=timeSpan();
+  ts.className='tm style-scope yt-live-chat-paid-message-renderer';
+  hc.appendChild(ts);
+  hd.appendChild(hc);
+  card.appendChild(hd);
+  var bd=document.createElement('div'); bd.className='sc-body';
+  bd.id='content';
+  var msg=span('style-scope yt-live-chat-paid-message-renderer',null,ev.text);
+  msg.id='message';
+  bd.appendChild(msg);
+  card.appendChild(bd);
+  el.appendChild(card);
+  addMsg(el);
+  addTicker(parsed, 'CN¥'+(ev.price || 0), c, '#fff');
+}
+
+function dispatch(parsed){
+  // 配置更新通知
+  if (parsed && parsed._overlay_cfg_update) {
+    fetchCfg();
+    return;
+  }
+  var t=parsed&&parsed.event&&parsed.event.type;
+  if(t==='Danmu')      rdDanmu(parsed);
+  else if(t==='Gift')       rdGift(parsed);
+  else if(t==='Interact')   rdInteract(parsed);
+  else if(t==='EntryEffect')rdEntryEffect(parsed);
+  else if(t==='LikeClick' || t==='Like') rdLike(parsed);
+  else if(t==='System')     rdSystem(parsed);
+  else if(t==='GuardBuy')   rdGuard(parsed);
+  else if(t==='SuperChat')  rdSc(parsed);
+}
+
+function demoEvents(){
+  return [
+    {event:{type:'System',text:'预览模式：下面是模拟消息，真实直播数据会继续正常显示'}},
+    {event:{type:'Danmu',user_id:1001,user:'白桃汽水',text:'普通弹幕：透明背景和文字阴影',identity:'normal'}},
+    {event:{type:'Danmu',user_id:1002,user:'巡场房管',text:'房管弹幕：检查昵称颜色',identity:'moderator'}},
+    {event:{type:'Danmu',user_id:1003,user:'风铃舰长',text:'舰长弹幕：检查会员颜色',identity:'member'}},
+    {event:{type:'Danmu',user_id:1004,user:'主播',text:'主播弹幕：检查主播颜色',identity:'owner'}},
+    {event:{type:'Interact',kind:'Entry',user_id:1005,user:'星河来客'}},
+    {event:{type:'Interact',kind:'Follow',user_id:1006,user:'小手一点'}},
+    {event:{type:'Interact',kind:'Share',user_id:1007,user:'转发按钮'}},
+    {event:{type:'LikeClick',user_id:1008,user:'连点三下',text:'点亮了 18 次点赞'}},
+    {event:{type:'EntryEffect',user_id:1009,user:'夜航船长',message:'<%夜航船长%> 带着舰队入场',guard_level:1}},
+    {event:{type:'Gift',user_id:1010,user:'柠檬不酸',gift:'小花花',count:9,price:1}},
+    {event:{type:'Gift',user_id:1011,user:'橘子糖罐',gift:'能量电池',count:3,price:15}},
+    {event:{type:'GuardBuy',user_id:1012,user:'蓝鲸同学',gift:'舰长'}},
+    {event:{type:'GuardBuy',user_id:1013,user:'山海提督',gift:'提督'}},
+    {event:{type:'GuardBuy',user_id:1014,user:'银河总督',gift:'总督'}},
+    {event:{type:'SuperChat',user_id:1015,user:'会飞的便签',text:'醒目留言测试：低价档颜色',price:50}},
+    {event:{type:'SuperChat',user_id:1016,user:'金色麦克风',text:'醒目留言测试：高价档颜色和正文换行表现',price:138}},
+  ];
+}
+
+function runDemoIfRequested(){
+  var params=new URLSearchParams(location.search);
+  if(params.get('demo')!=='1') return;
+  demoEvents().forEach(function(item,i){
+    setTimeout(function(){ dispatch(item); }, 260 + i * 650);
+  });
+}
+
+// ── WebSocket with auto-reconnect ───────────────────────────────────────────
+var ws,retryT;
+function connect(){
+  var proto=location.protocol==='https:'?'wss:':'ws:';
+  ws=new WebSocket(proto+'//'+location.host+'/ws');
+  ws.onopen=function(){clearTimeout(retryT)};
+  ws.onmessage=function(e){try{dispatch(JSON.parse(e.data))}catch(err){}};
+  ws.onclose=function(){retryT=setTimeout(connect,2000)};
+  ws.onerror=function(){ws.close()};
+}
+connect();
+runDemoIfRequested();
+</script>
+</body>
+</html>
