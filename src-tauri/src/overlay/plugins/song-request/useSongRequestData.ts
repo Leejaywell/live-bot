@@ -20,12 +20,44 @@ function responseItems(value: unknown): unknown[] {
   return isObjectLike(value) && Array.isArray(value.items) ? value.items : [];
 }
 
-function isQueueItem(value: unknown): value is SongQueueItem {
-  return isObjectLike(value) && typeof value.requestId === 'number' && Number.isFinite(value.requestId);
+function finiteNumber(value: unknown) {
+  return typeof value === 'number' && Number.isFinite(value) ? value : 0;
 }
 
-function isRankItem(value: unknown): value is RankResponse['items'][number] {
-  return isObjectLike(value);
+function stringValue(value: unknown) {
+  return typeof value === 'string' ? value : '';
+}
+
+function normalizeQueueItem(value: unknown): SongQueueItem | null {
+  if (!isObjectLike(value) || typeof value.requestId !== 'number' || !Number.isFinite(value.requestId)) {
+    return null;
+  }
+
+  return {
+    requestId: value.requestId,
+    uid: finiteNumber(value.uid),
+    uname: stringValue(value.uname),
+    songName: stringValue(value.songName),
+    artistNames: stringValue(value.artistNames),
+    tier: stringValue(value.tier),
+    creditValue: finiteNumber(value.creditValue),
+    priorityScore: finiteNumber(value.priorityScore),
+    status: stringValue(value.status),
+    requestedAt: stringValue(value.requestedAt),
+  };
+}
+
+function normalizeRankItem(value: unknown): RankResponse['items'][number] | null {
+  if (!isObjectLike(value)) {
+    return null;
+  }
+
+  return {
+    uname: stringValue(value.uname),
+    tier: stringValue(value.tier),
+    value: finiteNumber(value.value),
+    count: finiteNumber(value.count),
+  };
 }
 
 export function useSongRequestData(view: 'playlist' | 'now-playing' | 'rank') {
@@ -43,7 +75,7 @@ export function useSongRequestData(view: 'playlist' | 'now-playing' | 'rank') {
       if (view === 'now-playing') {
         const data = await fetchJson<NowPlayingResponse>('/song-request/api/now-playing', { item: null });
         if (disposed) return;
-        const item = isObjectLike(data) && isQueueItem(data.item) ? data.item : null;
+        const item = isObjectLike(data) ? normalizeQueueItem(data.item) : null;
         const nextPlayingId = item?.requestId ?? null;
         setVisual({
           newRequestIds: new Set<number>(),
@@ -57,13 +89,13 @@ export function useSongRequestData(view: 'playlist' | 'now-playing' | 'rank') {
 
       if (view === 'rank') {
         const data = await fetchJson<RankResponse>('/song-request/api/rank', { items: [] });
-        if (!disposed) setRank(responseItems(data).filter(isRankItem));
+        if (!disposed) setRank(responseItems(data).map(normalizeRankItem).filter(item => item !== null));
         return;
       }
 
       const data = await fetchJson<SongQueueResponse>('/song-request/api/queue', { items: [] });
       if (disposed) return;
-      const items = responseItems(data).filter(isQueueItem);
+      const items = responseItems(data).map(normalizeQueueItem).filter(item => item !== null);
       const nextIds = new Set(items.map(item => item.requestId));
       const newRequestIds = new Set(items.filter(item => !previousIds.current.has(item.requestId)).map(item => item.requestId));
       const playing = items.find(item => item.status === 'playing') || null;
