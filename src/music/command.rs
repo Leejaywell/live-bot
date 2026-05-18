@@ -67,6 +67,14 @@ mod tests {
             parse_song_command("确认 3"),
             Some(SongCommand::Confirm { index: 3 })
         );
+        assert_eq!(
+            parse_song_command("选 2"),
+            Some(SongCommand::Confirm { index: 2 })
+        );
+        assert_eq!(
+            parse_song_command("选 #2"),
+            Some(SongCommand::Confirm { index: 2 })
+        );
     }
 
     #[test]
@@ -82,5 +90,6 @@ mod tests {
     fn ignores_unrelated_danmu() {
         assert_eq!(parse_song_command("主播晚上好"), None);
         assert_eq!(parse_song_command("点歌"), None);
+        assert_eq!(parse_song_command("选"), None);
     }
 }
