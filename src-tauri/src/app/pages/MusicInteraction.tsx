@@ -87,9 +87,11 @@ export function MusicInteraction() {
       return;
     }
     setSearching(true);
+    setCandidates([]);
     try {
       setCandidates(await api.searchMusicCandidates(keyword));
     } catch (err) {
+      setCandidates([]);
       toast.error(`搜索失败: ${err}`);
     } finally {
       setSearching(false);
@@ -101,7 +103,6 @@ export function MusicInteraction() {
       setConfig(mergeConfig(next));
       setLoaded(true);
     }).catch(err => {
-      setLoaded(true);
       toast.error(`读取插件配置失败: ${err}`);
     });
     refreshUrl();
