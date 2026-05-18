@@ -78,6 +78,10 @@ export function MusicInteraction() {
   const [refreshingUrl, setRefreshingUrl] = useState(false);
   const [numberDrafts, setNumberDrafts] = useState<Partial<Record<NumericMusicSetting, string>>>({});
   const saveTimer = useRef<number | null>(null);
+  const latestConfig = useRef(config);
+  const loadedRef = useRef(false);
+  const saveHydrated = useRef(false);
+  const pendingSave = useRef(false);
   const searchInFlight = useRef(false);
   const searchRequestId = useRef(0);
   const activeSearchQuery = useRef('');
@@ -86,7 +90,11 @@ export function MusicInteraction() {
   const music = config.MusicInteraction;
 
   const updateMusic = (patch: Partial<MusicInteractionSettings>) => {
-    setConfig(prev => ({ ...prev, MusicInteraction: { ...prev.MusicInteraction, ...patch } }));
+    setConfig(prev => {
+      const next = { ...prev, MusicInteraction: { ...prev.MusicInteraction, ...patch } };
+      latestConfig.current = next;
+      return next;
+    });
   };
 
   const updateNumberDraft = (key: NumericMusicSetting, value: string) => {
@@ -134,6 +142,7 @@ export function MusicInteraction() {
       return;
     }
     if (searchInFlight.current) {
+      if (keyword === activeSearchQuery.current) return;
       queuedSearchQuery.current = keyword;
       return;
     }
@@ -190,9 +199,35 @@ export function MusicInteraction() {
   }, []);
 
   useEffect(() => {
+    latestConfig.current = config;
+  }, [config]);
+
+  useEffect(() => {
+    loadedRef.current = loaded;
+  }, [loaded]);
+
+  useEffect(() => () => {
+    if (saveTimer.current) {
+      window.clearTimeout(saveTimer.current);
+      saveTimer.current = null;
+      if (loadedRef.current && pendingSave.current) {
+        pendingSave.current = false;
+        api.savePluginSettings(latestConfig.current).catch(err => toast.error(`保存失败: ${err}`));
+      }
+    }
+  }, []);
+
+  useEffect(() => {
     if (!loaded) return;
+    if (!saveHydrated.current) {
+      saveHydrated.current = true;
+      return;
+    }
     if (saveTimer.current) window.clearTimeout(saveTimer.current);
+    pendingSave.current = true;
     saveTimer.current = window.setTimeout(() => {
+      pendingSave.current = false;
+      saveTimer.current = null;
       api.savePluginSettings(config).catch(err => toast.error(`保存失败: ${err}`));
     }, 350);
     return () => { if (saveTimer.current) window.clearTimeout(saveTimer.current); };
