@@ -1,13 +1,43 @@
-import { EmptyState } from './components/EmptyState';
+import { ReactNode } from 'react';
 import { OverlayFrame } from './components/OverlayFrame';
+import { DanmakuOverlay } from './plugins/danmaku/DanmakuOverlay';
+import { GiftEffectOverlay } from './plugins/gift-effect/GiftEffectOverlay';
+import { GiftRankOverlay } from './plugins/gift-rank/GiftRankOverlay';
+import { LotteryOverlay } from './plugins/lottery/LotteryOverlay';
+import { RecentGiftsOverlay } from './plugins/recent-gifts/RecentGiftsOverlay';
+import { SongRequestOverlay } from './plugins/song-request/SongRequestOverlay';
+import { WishGoalOverlay } from './plugins/wish-goal/WishGoalOverlay';
 import { parseOverlayConfig, resolveOverlayRoute } from './runtime/query';
+import { OverlayRoute, PluginSettings } from './runtime/types';
+import { usePluginSettings } from './runtime/usePluginSettings';
+
+function renderOverlayContent(route: OverlayRoute, settings: PluginSettings): ReactNode {
+  switch (route.plugin) {
+    case 'danmaku':
+      return <DanmakuOverlay />;
+    case 'wish-goal':
+      return <WishGoalOverlay settings={settings} />;
+    case 'lottery':
+      return <LotteryOverlay settings={settings} />;
+    case 'gift-effect':
+      return <GiftEffectOverlay />;
+    case 'recent-gifts':
+      return <RecentGiftsOverlay settings={settings} />;
+    case 'gift-rank':
+      return <GiftRankOverlay settings={settings} />;
+    case 'song-request':
+      return <SongRequestOverlay route={route} />;
+  }
+}
 
 export function OverlayRouter() {
   const config = parseOverlayConfig();
   const route = resolveOverlayRoute();
+  const settings = usePluginSettings();
+
   return (
     <OverlayFrame config={config} plugin={route.plugin} view={route.view}>
-      <EmptyState title="React OBS Overlay" subtitle={`${route.plugin} / ${route.view}`} />
+      {renderOverlayContent(route, settings)}
     </OverlayFrame>
   );
 }
