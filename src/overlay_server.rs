@@ -19,7 +19,7 @@ use axum::{
     Router,
     body::Body,
     extract::{
-        Query, State,
+        Path, Query, State,
         ws::{Message, WebSocket, WebSocketUpgrade},
     },
     http::{Response, StatusCode, header},
@@ -44,6 +44,7 @@ const GIFT_EFFECT_HTML: &str = include_str!("gift_effect.html");
 const RECENT_GIFTS_HTML: &str = include_str!("recent_gifts.html");
 const GIFT_RANK_HTML: &str = include_str!("gift_rank.html");
 const MUSIC_INTERACTION_HTML: &str = include_str!("music_interaction.html");
+const REACT_OVERLAY_HTML: &str = include_str!("overlay_react.html");
 
 pub type OverlayTx = Arc<broadcast::Sender<Value>>;
 
@@ -84,6 +85,7 @@ pub async fn start(port: u16, tx: OverlayTx) {
         .route("/song-request/api/rank", get(song_rank_handler))
         .route("/plugin-settings", get(plugin_settings_handler))
         .route("/local-resource", get(local_resource_handler))
+        .route("/overlay-assets/{*path}", get(overlay_asset_handler))
         .route("/ws", get(ws_handler))
         .route("/proxy", get(proxy_handler))
         .with_state(tx);
@@ -105,31 +107,76 @@ pub async fn start(port: u16, tx: OverlayTx) {
 // ── Route handlers ─────────────────────────────────────────────────────────────
 
 async fn index_handler() -> Html<&'static str> {
-    Html(HTML)
+    overlay_shell_or_legacy(HTML)
 }
 
 async fn wish_goal_handler() -> Html<&'static str> {
-    Html(WISH_GOAL_HTML)
+    overlay_shell_or_legacy(WISH_GOAL_HTML)
 }
 
 async fn lottery_handler() -> Html<&'static str> {
-    Html(LOTTERY_HTML)
+    overlay_shell_or_legacy(LOTTERY_HTML)
 }
 
 async fn gift_effect_handler() -> Html<&'static str> {
-    Html(GIFT_EFFECT_HTML)
+    overlay_shell_or_legacy(GIFT_EFFECT_HTML)
 }
 
 async fn recent_gifts_handler() -> Html<&'static str> {
-    Html(RECENT_GIFTS_HTML)
+    overlay_shell_or_legacy(RECENT_GIFTS_HTML)
 }
 
 async fn gift_rank_handler() -> Html<&'static str> {
-    Html(GIFT_RANK_HTML)
+    overlay_shell_or_legacy(GIFT_RANK_HTML)
 }
 
 async fn music_interaction_handler() -> Html<&'static str> {
-    Html(MUSIC_INTERACTION_HTML)
+    overlay_shell_or_legacy(MUSIC_INTERACTION_HTML)
+}
+
+fn overlay_react_enabled() -> bool {
+    std::env::var("STREAMIX_LEGACY_OVERLAYS")
+        .map(|value| value != "1")
+        .unwrap_or(true)
+}
+
+fn overlay_shell_or_legacy(legacy: &'static str) -> Html<&'static str> {
+    if overlay_react_enabled() {
+        Html(REACT_OVERLAY_HTML)
+    } else {
+        Html(legacy)
+    }
+}
+
+async fn overlay_asset_handler(Path(path): Path<String>) -> Response<Body> {
+    let safe_path = path.trim_start_matches('/');
+    if safe_path.contains("..") || safe_path.contains('\\') {
+        return empty_response(StatusCode::FORBIDDEN);
+    }
+    let full_path = std::path::PathBuf::from("src-tauri/dist/assets").join(safe_path);
+    let bytes = match std::fs::read(&full_path) {
+        Ok(bytes) => bytes,
+        Err(_) => return empty_response(StatusCode::NOT_FOUND),
+    };
+    let content_type = match full_path
+        .extension()
+        .and_then(|ext| ext.to_str())
+        .unwrap_or("")
+    {
+        "js" => "text/javascript; charset=utf-8",
+        "css" => "text/css; charset=utf-8",
+        "svg" => "image/svg+xml",
+        "png" => "image/png",
+        "jpg" | "jpeg" => "image/jpeg",
+        "webp" => "image/webp",
+        _ => "application/octet-stream",
+    };
+    Response::builder()
+        .status(StatusCode::OK)
+        .header(header::CONTENT_TYPE, content_type)
+        .header(header::CACHE_CONTROL, "no-store")
+        .body(Body::from(bytes))
+        .unwrap_or_else(|_| Response::new(Body::empty()))
 }
 
 async fn cfg_handler() -> impl IntoResponse {
