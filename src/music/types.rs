@@ -1,6 +1,7 @@
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
 pub enum MusicSource {
     Netease,
     Tencent,
@@ -10,6 +11,7 @@ pub enum MusicSource {
 }
 
 impl MusicSource {
+    #[allow(dead_code)]
     pub fn as_str(&self) -> &'static str {
         match self {
             Self::Netease => "netease",
@@ -21,6 +23,7 @@ impl MusicSource {
     }
 }
 
+#[allow(dead_code)]
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct MusicTrack {
     pub source: MusicSource,
@@ -34,6 +37,7 @@ pub struct MusicTrack {
     pub duration_ms: Option<i64>,
 }
 
+#[allow(dead_code)]
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct SearchCandidate {
     pub track: MusicTrack,
