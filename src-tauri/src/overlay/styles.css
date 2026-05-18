@@ -149,3 +149,180 @@ body {
   background:
     radial-gradient(circle at center, #111827 0 14%, #f8fafc 15% 18%, #111827 19% 48%, #334155 49% 52%, #111827 53%);
 }
+
+@keyframes neonPulse {
+  0%, 100% {
+    box-shadow: 0 0 22px rgba(34, 211, 238, 0.34), 0 16px 42px rgba(0, 0, 0, 0.28);
+  }
+  50% {
+    box-shadow: 0 0 36px rgba(244, 114, 182, 0.48), 0 16px 42px rgba(0, 0, 0, 0.34);
+  }
+}
+
+@keyframes stageBeam {
+  0% {
+    transform: translateX(-28%) skewX(-14deg);
+    opacity: 0.2;
+  }
+  50% {
+    opacity: 0.58;
+  }
+  100% {
+    transform: translateX(130%) skewX(-14deg);
+    opacity: 0.2;
+  }
+}
+
+@keyframes recordSpin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@keyframes queueGlowIn {
+  0% {
+    background: rgba(34, 211, 238, 0.28);
+    transform: translateY(4px);
+  }
+  100% {
+    background: rgba(255, 255, 255, 0.08);
+    transform: translateY(0);
+  }
+}
+
+.song-theme-neon {
+  border: 1px solid rgba(34, 211, 238, 0.38);
+  background:
+    linear-gradient(135deg, rgba(8, 13, 28, 0.88), rgba(28, 12, 38, 0.78)),
+    rgba(20, 20, 26, 0.72);
+}
+
+.song-theme-neon[data-high-tier="1"],
+.song-theme-neon[data-playing-changed="1"] {
+  animation: neonPulse 1.8s ease-in-out infinite;
+}
+
+.song-theme-neon .song-title {
+  color: #f0fdff;
+  text-shadow: 0 0 14px rgba(34, 211, 238, 0.82), 0 0 22px rgba(244, 114, 182, 0.5);
+}
+
+.song-theme-idol-stage {
+  position: relative;
+  overflow: hidden;
+  border: 1px solid rgba(251, 191, 36, 0.34);
+  background:
+    linear-gradient(145deg, rgba(29, 18, 46, 0.86), rgba(50, 36, 14, 0.72)),
+    rgba(20, 20, 26, 0.72);
+}
+
+.song-theme-idol-stage::before {
+  position: absolute;
+  inset: -28% auto -28% -34%;
+  width: 42%;
+  background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.32), transparent);
+  content: "";
+  pointer-events: none;
+}
+
+.song-theme-idol-stage[data-tier="exclusive"]::before,
+.song-theme-idol-stage[data-tier="playlist_takeover"]::before {
+  animation: stageBeam 2.4s ease-in-out infinite;
+}
+
+.song-theme-idol-stage > * {
+  position: relative;
+  z-index: 1;
+}
+
+.song-theme-vinyl {
+  border: 1px solid rgba(226, 232, 240, 0.18);
+  background:
+    linear-gradient(135deg, rgba(17, 24, 39, 0.9), rgba(64, 52, 36, 0.74)),
+    rgba(20, 20, 26, 0.72);
+}
+
+.song-theme-vinyl .song-disc {
+  animation: recordSpin 5.5s linear infinite;
+  background:
+    radial-gradient(circle at center, #e5e7eb 0 8%, #111827 9% 18%, #030712 19% 38%, #4b5563 39% 41%, #030712 42% 60%, #374151 61% 63%, #030712 64%);
+}
+
+.song-theme-neon.song-playlist,
+.song-theme-idol-stage.song-playlist,
+.song-theme-vinyl.song-playlist {
+  grid-template-columns: 72px minmax(0, 1fr) minmax(180px, 260px);
+  align-items: center;
+}
+
+.song-theme-neon.song-rank,
+.song-theme-idol-stage.song-rank,
+.song-theme-vinyl.song-rank {
+  gap: 8px;
+}
+
+.song-rank-list {
+  display: grid;
+  gap: 6px;
+}
+
+.song-queue li {
+  min-height: 24px;
+  padding: 3px 6px;
+  border-radius: 6px;
+  background: rgba(255, 255, 255, 0.08);
+}
+
+.song-queue li[data-new="1"] {
+  animation: queueGlowIn 900ms ease-out;
+}
+
+.song-queue li[data-tier="jump_queue"] em,
+.song-queue li[data-tier="exclusive"] em,
+.song-queue li[data-tier="playlist_takeover"] em {
+  padding: 2px 6px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.14);
+  color: #fff;
+  text-shadow: 0 1px 4px rgba(0, 0, 0, 0.38);
+}
+
+.song-queue li[data-tier="jump_queue"] em {
+  background: rgba(34, 211, 238, 0.28);
+}
+
+.song-queue li[data-tier="exclusive"] em {
+  background: rgba(244, 114, 182, 0.32);
+}
+
+.song-queue li[data-tier="playlist_takeover"] em {
+  background: rgba(251, 191, 36, 0.32);
+}
+
+.song-takeover {
+  display: inline-flex;
+  width: fit-content;
+  max-width: 100%;
+  margin-top: 8px;
+  padding: 4px 8px;
+  border: 1px solid rgba(251, 191, 36, 0.42);
+  border-radius: 999px;
+  background: rgba(251, 191, 36, 0.16);
+  color: #fde68a;
+  font-size: 12px;
+  font-weight: 900;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.motion-off .song-theme-neon,
+.motion-off .song-theme-idol-stage::before,
+.motion-off .song-theme-vinyl .song-disc,
+.motion-off .song-queue li,
+.motion-reduced .song-theme-neon,
+.motion-reduced .song-theme-idol-stage::before,
+.motion-reduced .song-theme-vinyl .song-disc,
+.motion-reduced .song-queue li {
+  animation: none !important;
+}
