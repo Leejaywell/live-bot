@@ -187,7 +187,7 @@ export function LotteryInteraction() {
 
           <GlassCard className="mb-3 p-4">
             <div className="mb-3 text-[12px] font-bold">基础设置</div>
-            <div className="grid grid-cols-2 gap-3">
+            <div className="grid grid-cols-1 gap-3">
               <label className="space-y-1.5">
                 <span className="text-[11px] font-bold text-[var(--muted-text)]">标题</span>
                 <Input value={lottery.Title} onChange={e => updateLottery({ Title: e.target.value })} />

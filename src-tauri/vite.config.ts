@@ -39,7 +39,7 @@ export default defineConfig({
     rollupOptions: {
       input: {
         index: path.resolve(__dirname, 'index.html'),
-        overlay: path.resolve(__dirname, 'src/overlay/main.tsx'),
+        'danmaku-chat': path.resolve(__dirname, 'src/overlay/main.tsx'),
       },
       output: {
         entryFileNames: 'assets/[name].js',

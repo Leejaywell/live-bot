@@ -70,22 +70,22 @@ export function resolveOverlayConfig(
 }
 
 export function resolveOverlayRoute(pathname = window.location.pathname): OverlayRoute {
-  if (pathname === '/' || pathname === '/overlay/danmaku') {
+  if (pathname === '/') {
     return { plugin: 'danmaku', view: 'default' };
   }
-  if (pathname === '/wish-goal' || pathname === '/overlay/wish-goal') {
+  if (pathname === '/wish-goal') {
     return { plugin: 'wish-goal', view: 'default' };
   }
-  if (pathname === '/lottery' || pathname === '/overlay/lottery') {
+  if (pathname === '/lottery') {
     return { plugin: 'lottery', view: 'default' };
   }
-  if (pathname === '/gift-effect' || pathname === '/overlay/gift-effect') {
+  if (pathname === '/gift-effect') {
     return { plugin: 'gift-effect', view: 'default' };
   }
-  if (pathname === '/recent-gifts' || pathname === '/overlay/recent-gifts') {
+  if (pathname === '/recent-gifts') {
     return { plugin: 'recent-gifts', view: 'default' };
   }
-  if (pathname === '/gift-rank' || pathname === '/overlay/gift-rank') {
+  if (pathname === '/gift-rank') {
     return { plugin: 'gift-rank', view: 'default' };
   }
   if (pathname.endsWith('/song-request/now-playing')) {
@@ -96,7 +96,6 @@ export function resolveOverlayRoute(pathname = window.location.pathname): Overla
   }
   if (
     pathname === '/song-request' ||
-    pathname === '/overlay/song-request' ||
     pathname.endsWith('/song-request/playlist')
   ) {
     return { plugin: 'song-request', view: 'playlist' };

@@ -26,7 +26,7 @@ import { Voice } from './pages/Voice';
 import { VoiceChanger } from './pages/VoiceChanger';
 import { Models } from './pages/Models';
 import { Stats } from './pages/Stats';
-import { ChatOverlay } from './pages/ChatOverlay';
+import { DanmakuChat } from './pages/DanmakuChat';
 import { MusicInteraction } from './pages/MusicInteraction';
 import { WishGoal } from './pages/WishGoal';
 import { LotteryInteraction } from './pages/LotteryInteraction';
@@ -447,8 +447,8 @@ function AnimatedRoutes() {
         <Route path="/voice-changer" element={<VoiceChanger />} />
         <Route path="/models" element={<Models />} />
         <Route path="/stats" element={<Stats />} />
-        <Route path="/plugins" element={<Navigate to="/plugins/chat-overlay" replace />} />
-        <Route path="/plugins/chat-overlay" element={<ChatOverlay />} />
+        <Route path="/plugins" element={<Navigate to="/plugins/danmaku-chat" replace />} />
+        <Route path="/plugins/danmaku-chat" element={<DanmakuChat />} />
         <Route path="/plugins/music-interaction" element={<MusicInteraction />} />
         <Route path="/plugins/wish-goal" element={<WishGoal />} />
         <Route path="/plugins/lottery" element={<LotteryInteraction />} />

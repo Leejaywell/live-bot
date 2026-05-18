@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { api, OverlayConfig } from '../lib/api';
+import { api, DanmakuChatConfig } from '../lib/api';
 import { hexToRgb, visualThemes, type VisualThemeId } from '../context/ThemeContext';
 
 // ─── Theme sync (settings panel only) ────────────────────────────────────────
@@ -49,7 +49,7 @@ function applyStoredTheme() {
   } catch {}
 }
 
-// ─── Default config (mirrors Rust OverlayConfig::default) ────────────────────
+// ─── Default config (mirrors Rust DanmakuChatConfig::default) ────────────────────
 
 const DEFAULT_CUSTOM_CSS = `*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
 html,body{background:var(--bg-color,transparent);height:100%;overflow:hidden;
@@ -181,7 +181,7 @@ body.lbfx-on yt-live-chat-ticker-renderer #container{background-image:linear-gra
   font-size:calc(var(--sc-content-size,13px) * var(--font-scale,1));
   font-weight:var(--sc-content-weight,600)}`;
 
-const DEFAULT_CFG: OverlayConfig = {
+const DEFAULT_CFG: DanmakuChatConfig = {
   Port: 12450, MaxMsgs: 50, MsgGap: 3, Theme: 'classic', CustomCss: DEFAULT_CUSTOM_CSS,
   GlobalScale: 1, FontScale: 1,
   ShowAvatar: true, AvatarSize: 24,
@@ -208,13 +208,13 @@ const DEFAULT_CFG: OverlayConfig = {
   ShowOutlines: false, OutlineSize: 2, OutlineColor: '#000000', BlurryOutline: false,
 };
 
-type OverlayThemeId = 'classic' | 'glass' | 'contrast' | 'compact' | 'gift' | 'minimal';
+type DanmakuChatThemeId = 'classic' | 'glass' | 'contrast' | 'compact' | 'gift' | 'minimal';
 
-const OVERLAY_THEMES: {
-  id: OverlayThemeId;
+const DANMAKU_CHAT_THEMES: {
+  id: DanmakuChatThemeId;
   name: string;
   hint: string;
-  patch: Partial<OverlayConfig>;
+  patch: Partial<DanmakuChatConfig>;
 }[] = [
   {
     id: 'classic',
@@ -351,13 +351,13 @@ const GUARD: Record<string, { color: string; bg: string; label: string }> = {
   '舰长': { color: '#34d399', bg: 'rgba(52,211,153,0.14)',  label: '⚓ 舰长' },
 };
 
-function identityNameColor(cfg: OverlayConfig, id: Identity): string {
+function identityNameColor(cfg: DanmakuChatConfig, id: Identity): string {
   if (id === 'owner')     return cfg.OwnerUserNameColor;
   if (id === 'moderator') return cfg.ModeratorUserNameColor;
   if (id === 'member')    return cfg.MemberUserNameColor;
   return cfg.UserNameColor;
 }
-function identityBg(cfg: OverlayConfig, id: Identity): string {
+function identityBg(cfg: DanmakuChatConfig, id: Identity): string {
   if (id === 'owner')     return cfg.OwnerMessageBgColor;
   if (id === 'moderator') return cfg.ModeratorMessageBgColor;
   if (id === 'member')    return cfg.MemberMessageBgColor;
@@ -403,7 +403,7 @@ function PreviewGiftIcon({ kind, size }: { kind?: string; size: number }) {
   );
 }
 
-function outlineStyle(cfg: OverlayConfig): React.CSSProperties {
+function outlineStyle(cfg: DanmakuChatConfig): React.CSSProperties {
   if (!cfg.ShowOutlines) return {};
   const w = cfg.OutlineSize, c = cfg.OutlineColor;
   return cfg.BlurryOutline
@@ -411,7 +411,7 @@ function outlineStyle(cfg: OverlayConfig): React.CSSProperties {
     : { textShadow: `-${w}px -${w}px 0 ${c}, ${w}px -${w}px 0 ${c}, -${w}px ${w}px 0 ${c}, ${w}px ${w}px 0 ${c}` };
 }
 
-function animStyle(cfg: OverlayConfig): React.CSSProperties {
+function animStyle(cfg: DanmakuChatConfig): React.CSSProperties {
   return cfg.AnimateIn ? { animation: `msgIn ${cfg.FadeInTime}ms ease` } : {};
 }
 
@@ -420,7 +420,7 @@ function nowTime() {
   return `${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}`;
 }
 
-function TimeSpan({ cfg }: { cfg: OverlayConfig }) {
+function TimeSpan({ cfg }: { cfg: DanmakuChatConfig }) {
   if (!cfg.ShowTime) return null;
   return (
     <span style={{
@@ -433,7 +433,7 @@ function TimeSpan({ cfg }: { cfg: OverlayConfig }) {
   );
 }
 
-function NoticeItem({ msg, cfg, tone }: { msg: SystemMsg | InteractMsg | LikeMsg | EntryMsg; cfg: OverlayConfig; tone: 'system' | 'interact' | 'like' | 'entry' }) {
+function NoticeItem({ msg, cfg, tone }: { msg: SystemMsg | InteractMsg | LikeMsg | EntryMsg; cfg: DanmakuChatConfig; tone: 'system' | 'interact' | 'like' | 'entry' }) {
   const toneMap = {
     system: { fg: '#a7b7d8', bg: 'rgba(77, 91, 125, 0.28)', label: '系统' },
     interact: { fg: '#7dd3fc', bg: 'rgba(14, 165, 233, 0.16)', label: '互动' },
@@ -459,7 +459,7 @@ function NoticeItem({ msg, cfg, tone }: { msg: SystemMsg | InteractMsg | LikeMsg
   );
 }
 
-function DanmuItem({ msg, cfg }: { msg: DanmuMsg; cfg: OverlayConfig }) {
+function DanmuItem({ msg, cfg }: { msg: DanmuMsg; cfg: DanmakuChatConfig }) {
   const nameColor = identityNameColor(cfg, msg.identity);
   const laplaceNameColor = msg.identity === 'owner' ? '#ff96aa' : msg.identity === 'moderator' ? '#e7a9ff' : msg.identity === 'member' ? '#96deff' : '#effee3';
   return (
@@ -492,7 +492,7 @@ function DanmuItem({ msg, cfg }: { msg: DanmuMsg; cfg: OverlayConfig }) {
   );
 }
 
-function GiftItem({ msg, cfg }: { msg: GiftMsg; cfg: OverlayConfig }) {
+function GiftItem({ msg, cfg }: { msg: GiftMsg; cfg: DanmakuChatConfig }) {
   const accent = cfg.EffectsEnabled ? '#e91e63' : '#ffa500';
   const priceColor = cfg.EffectsEnabled ? '#ffc107' : '#ffa500';
   return (
@@ -522,7 +522,7 @@ function GiftItem({ msg, cfg }: { msg: GiftMsg; cfg: OverlayConfig }) {
   );
 }
 
-function GuardItem({ msg, cfg }: { msg: GuardMsg; cfg: OverlayConfig }) {
+function GuardItem({ msg, cfg }: { msg: GuardMsg; cfg: DanmakuChatConfig }) {
   const g = GUARD[msg.gift] ?? GUARD['舰长'];
   return (
     <div style={{
@@ -547,7 +547,7 @@ function GuardItem({ msg, cfg }: { msg: GuardMsg; cfg: OverlayConfig }) {
   );
 }
 
-function ScItem({ msg, cfg }: { msg: ScMsg; cfg: OverlayConfig }) {
+function ScItem({ msg, cfg }: { msg: ScMsg; cfg: DanmakuChatConfig }) {
   const c = scColor(msg.price);
   const laplaceSc = cfg.EffectsEnabled;
   return (
@@ -588,7 +588,7 @@ function ScItem({ msg, cfg }: { msg: ScMsg; cfg: OverlayConfig }) {
   );
 }
 
-function MessageItem({ msg, cfg }: { msg: ChatMsg; cfg: OverlayConfig }) {
+function MessageItem({ msg, cfg }: { msg: ChatMsg; cfg: DanmakuChatConfig }) {
   switch (msg.type) {
     case 'system': return <NoticeItem msg={msg} cfg={cfg} tone="system" />;
     case 'interact': return <NoticeItem msg={msg} cfg={cfg} tone="interact" />;
@@ -601,7 +601,7 @@ function MessageItem({ msg, cfg }: { msg: ChatMsg; cfg: OverlayConfig }) {
   }
 }
 
-function previewEffectStyle(msg: ChatMsg, cfg: OverlayConfig): React.CSSProperties | undefined {
+function previewEffectStyle(msg: ChatMsg, cfg: DanmakuChatConfig): React.CSSProperties | undefined {
   if (!cfg.EffectsEnabled || (msg.type !== 'gift' && msg.type !== 'guard' && msg.type !== 'sc')) return undefined;
   if (msg.type === 'gift') {
     return { boxShadow: 'inset 0 0 0 1px rgba(233,30,99,0.14)' };
@@ -618,7 +618,7 @@ interface PreviewEntry {
 }
 
 function PreviewScene({ cfg, previewEntries }: {
-  cfg: OverlayConfig;
+  cfg: DanmakuChatConfig;
   previewEntries: PreviewEntry[];
 }) {
   const scale = Math.max(0.5, cfg.GlobalScale);
@@ -799,10 +799,10 @@ const SETTINGS_TABS: { id: SettingsTab; label: string }[] = [
 
 // ─── Main component ──────────────────────────────────────────────────────────
 
-export function ChatOverlay() {
-  const [cfg, setCfg] = useState<OverlayConfig>(DEFAULT_CFG);
+export function DanmakuChat() {
+  const [cfg, setCfg] = useState<DanmakuChatConfig>(DEFAULT_CFG);
   const [loaded, setLoaded] = useState(false);
-  const [overlayUrl, setOverlayUrl] = useState('');
+  const [chatUrl, setChatUrl] = useState('');
   const [urlCopied, setUrlCopied] = useState(false);
   const [demoOpened, setDemoOpened] = useState(false);
   const [previewLight, setPreviewLight] = useState(true);
@@ -821,7 +821,7 @@ export function ChatOverlay() {
     document.body.style.background = 'transparent';
     document.documentElement.style.background = 'transparent';
     const style = document.createElement('style');
-    style.id = 'overlay-keyframes';
+    style.id = 'danmaku-chat-keyframes';
     style.textContent = `
       @keyframes msgIn  { from { opacity:0; transform:translateY(5px) } to { opacity:1; transform:none } }
       @keyframes msgOut { from { opacity:1 } to { opacity:0; transform:translateY(-4px) } }
@@ -843,11 +843,11 @@ export function ChatOverlay() {
 
   // ── Initial load ─────────────────────────────────────────────────────────
   useEffect(() => {
-    api.loadOverlayConfig().then(c => {
+    api.loadDanmakuChatConfig().then(c => {
       setCfg({ ...c, Theme: c.Theme || DEFAULT_CFG.Theme, CustomCss: c.CustomCss || DEFAULT_CUSTOM_CSS });
       setLoaded(true);
     }).catch(() => setLoaded(true));
-    api.getOverlayUrl().then(setOverlayUrl).catch(() => {});
+    api.getDanmakuChatUrl().then(setChatUrl).catch(() => {});
   }, []);
 
   // ── Debounced auto-save ───────────────────────────────────────────────────
@@ -855,7 +855,7 @@ export function ChatOverlay() {
     if (!loaded) return;
     if (saveTimer.current) window.clearTimeout(saveTimer.current);
     saveTimer.current = window.setTimeout(() => {
-      api.saveOverlayConfig(cfg).catch(() => {});
+      api.saveDanmakuChatConfig(cfg).catch(() => {});
     }, 350);
     return () => { if (saveTimer.current) window.clearTimeout(saveTimer.current); };
   }, [cfg, loaded]);
@@ -866,32 +866,32 @@ export function ChatOverlay() {
   }, [cfg.AnimateIn, cfg.FadeInTime, cfg.Slide, cfg.ReverseSlide]);
 
   // ── Helpers ───────────────────────────────────────────────────────────────
-  const u = <K extends keyof OverlayConfig>(k: K, v: OverlayConfig[K]) =>
+  const u = <K extends keyof DanmakuChatConfig>(k: K, v: DanmakuChatConfig[K]) =>
     setCfg(prev => ({ ...prev, [k]: v }));
 
-  const activeTheme = OVERLAY_THEMES.find(theme => theme.id === cfg.Theme) ?? OVERLAY_THEMES[0];
-  const applyOverlayTheme = (themeId: OverlayThemeId) => {
-    const theme = OVERLAY_THEMES.find(item => item.id === themeId);
+  const activeTheme = DANMAKU_CHAT_THEMES.find(theme => theme.id === cfg.Theme) ?? DANMAKU_CHAT_THEMES[0];
+  const applyDanmakuChatTheme = (themeId: DanmakuChatThemeId) => {
+    const theme = DANMAKU_CHAT_THEMES.find(item => item.id === themeId);
     if (!theme) return;
     setCfg(prev => ({ ...prev, ...theme.patch, Theme: theme.id }));
   };
 
   const resetAll = () => {
-    if (confirm('确认重置所有浮层样式为默认值？')) setCfg({ ...DEFAULT_CFG, Port: cfg.Port });
+    if (confirm('确认重置所有弹幕聊天样式为默认值？')) setCfg({ ...DEFAULT_CFG, Port: cfg.Port });
   };
 
   const copyUrl = () => {
-    if (!overlayUrl) return;
-    navigator.clipboard.writeText(overlayUrl).then(() => {
+    if (!chatUrl) return;
+    navigator.clipboard.writeText(chatUrl).then(() => {
       setUrlCopied(true);
       setTimeout(() => setUrlCopied(false), 1800);
     }).catch(() => {});
   };
 
   const openDemoPreview = () => {
-    if (!overlayUrl) return;
-    const joiner = overlayUrl.includes('?') ? '&' : '?';
-    api.openUrl(`${overlayUrl}${joiner}demo=1`).then(() => {
+    if (!chatUrl) return;
+    const joiner = chatUrl.includes('?') ? '&' : '?';
+    api.openUrl(`${chatUrl}${joiner}demo=1`).then(() => {
       setDemoOpened(true);
       setTimeout(() => setDemoOpened(false), 1800);
     }).catch(() => {});
@@ -1057,7 +1057,7 @@ export function ChatOverlay() {
         return <div className="grid grid-cols-1 gap-3.5">
           <Section title="自定义 CSS" wide defaultOpen>
             <textarea value={cfg.CustomCss} onChange={e => u('CustomCss', e.target.value)}
-              rows={24} placeholder="/* 任何 CSS 都会注入到浮层网页 */"
+              rows={24} placeholder="/* 任何 CSS 都会注入到弹幕聊天网页 */"
               className="w-full px-3 py-2 text-[11px] font-mono rounded-2xl border border-[var(--control-border)] bg-[var(--control-bg)] text-[var(--control-text)] focus:outline-none focus:ring-1 focus:ring-[var(--primary-color)]/50 resize-none" />
           </Section>
         </div>;
@@ -1110,7 +1110,7 @@ export function ChatOverlay() {
                 <div className="mt-1 text-[11px] text-[var(--muted-text)]">修改会自动保存，右侧只负责预览效果</div>
               </div>
               <div className="mt-3 flex flex-wrap items-center gap-2">
-                <input readOnly value={overlayUrl}
+                <input readOnly value={chatUrl}
                   onClick={e => (e.target as HTMLInputElement).select()}
                   className="h-8 min-w-[220px] flex-1 px-3 text-[11px] font-mono rounded-full border border-[var(--control-border)] bg-[var(--control-bg)] text-[var(--control-text)] truncate" />
                 <button onClick={copyUrl}
@@ -1138,12 +1138,12 @@ export function ChatOverlay() {
                 </span>
               </div>
               <div className="mt-3 grid grid-cols-3 gap-1.5 max-[1040px]:grid-cols-6">
-                {OVERLAY_THEMES.map(theme => {
+                {DANMAKU_CHAT_THEMES.map(theme => {
                   const active = activeTheme.id === theme.id;
                   return (
                     <button
                       key={theme.id}
-                      onClick={() => applyOverlayTheme(theme.id)}
+                      onClick={() => applyDanmakuChatTheme(theme.id)}
                       title={theme.hint}
                       className={`h-8 rounded-xl px-2 text-[11px] font-semibold transition-colors ${
                         active

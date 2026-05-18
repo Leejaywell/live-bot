@@ -25,6 +25,49 @@ use crate::token;
 #[cfg(feature = "vad")]
 use streamix_voice::asr::AsrBackend;
 
+pub type SharedTtsRouter = Arc<Mutex<Option<streamix_voice::SpeakerRouter>>>;
+
+pub enum MonitorCommand {
+    ReloadVoice,
+}
+
+pub fn spawn_tts_router(
+    config: &AppConfig,
+    model_dir: &std::path::Path,
+    cancel: CancellationToken,
+) -> Option<streamix_voice::SpeakerRouter> {
+    if !config.tts_enabled {
+        return None;
+    }
+
+    let tts_engine = resolve_tts_engine(config, model_dir);
+    let session_config = streamix_voice::SessionConfig {
+        tts_voice: config.tts_voice.clone(),
+        ..streamix_voice::SessionConfig::default()
+    };
+    Some(streamix_voice::SpeakerRouter::spawn_with_audio_and_engine(
+        session_config,
+        tts_engine,
+        cancel,
+    ))
+}
+
+pub fn replace_tts_router(
+    shared: &SharedTtsRouter,
+    config: &AppConfig,
+    model_dir: &std::path::Path,
+    cancel: CancellationToken,
+) {
+    let next = spawn_tts_router(config, model_dir, cancel);
+    if let Ok(mut router) = shared.lock() {
+        *router = next;
+    }
+}
+
+fn current_tts_router(shared: &SharedTtsRouter) -> Option<streamix_voice::SpeakerRouter> {
+    shared.lock().ok().and_then(|router| router.clone())
+}
+
 fn music_interaction_enabled() -> bool {
     PluginSettings::load_or_default()
         .map(|settings| settings.music_interaction.enabled)
@@ -69,6 +112,9 @@ pub async fn run_monitor_loop<E: EventEmitter + Send + Sync + 'static>(
     http: BiliApi,
     room_id: i64,
     cancel: CancellationToken,
+    tts_router: SharedTtsRouter,
+    tts_cancel: Arc<Mutex<CancellationToken>>,
+    mut command_rx: mpsc::UnboundedReceiver<MonitorCommand>,
     current_session_id: Arc<Mutex<Option<String>>>,
     danmaku_buffer: Arc<Mutex<Vec<String>>>,
     model_dir: std::path::PathBuf,
@@ -117,24 +163,11 @@ pub async fn run_monitor_loop<E: EventEmitter + Send + Sync + 'static>(
     );
 
     // TTS 语音播报：SpeakerRouter 按优先级路由（Bot=1, AI=5, System=10）
-    use streamix_voice::{SessionConfig, SpeakerRouter};
-    let tts_router: Option<SpeakerRouter> = if config.tts_enabled {
-        let tts_engine = resolve_tts_engine(&config, &model_dir);
-        let session_config = SessionConfig {
-            tts_voice: config.tts_voice.clone(),
-            ..SessionConfig::default()
-        };
-        Some(SpeakerRouter::spawn_with_audio_and_engine(
-            session_config,
-            tts_engine,
-            cancel.clone(),
-        ))
-    } else {
-        None
-    };
+    let initial_tts_cancel = tts_cancel.lock().unwrap_or_else(|e| e.into_inner()).clone();
+    replace_tts_router(&tts_router, &config, &model_dir, initial_tts_cancel);
     let mic_capture_enabled = Arc::new(AtomicBool::new(true));
     let recent_tts_text: Arc<Mutex<Vec<(Instant, String)>>> = Arc::new(Mutex::new(Vec::new()));
-    if let Some(ref router) = tts_router {
+    if let Some(router) = current_tts_router(&tts_router) {
         let mut tts_events = router.voice_session().subscribe();
         let capture_enabled = Arc::clone(&mic_capture_enabled);
         let tts_generation = Arc::new(AtomicU64::new(0));
@@ -197,8 +230,7 @@ pub async fn run_monitor_loop<E: EventEmitter + Send + Sync + 'static>(
 
     // OBS 场景感知：检测场景切换 / 推流状态，播报系统 TTS
     if config.obs_enabled {
-        if let Some(ref router) = tts_router {
-            let obs_router = router.clone();
+        if let Some(obs_router) = current_tts_router(&tts_router) {
             let obs_host = config.obs_host.clone();
             let obs_port = config.obs_port;
             let obs_password = config.obs_password.clone();
@@ -223,172 +255,22 @@ pub async fn run_monitor_loop<E: EventEmitter + Send + Sync + 'static>(
         }
     }
 
-    // VAD 麦克风捕获：检测主播语音段，触发 TTS 打断 + 话轮结束事件
     #[cfg(feature = "vad")]
-    let _mic_capture: Option<streamix_voice::SherpaMicCapture> = if config.vad_enabled {
-        let vad_model = model_dir.join("silero_vad.onnx");
-        let vad_exists = vad_model.exists();
-        let vad_size = std::fs::metadata(&vad_model).map(|m| m.len()).unwrap_or(0);
-        let _ = sender_app.emit(
-            "monitor-log",
-            serde_json::json!(format!(
-                "[诊断] VAD 启动检查 | 路径: {} | 存在: {} | 大小: {} bytes",
-                vad_model.display(),
-                vad_exists,
-                vad_size
-            )),
-        );
-
-        let (asr_url, asr_model_dir, asr_startup_notice) =
-            resolve_vad_asr_source(&config, &model_dir).await;
-
-        match streamix_voice::SherpaPipeline::spawn(
-            vad_model,
-            asr_model_dir,
-            &config.asr_language,
-            config.vad_threshold,
-            config.vad_min_speech_duration.min(0.08),
-            config.vad_min_silence_duration.min(0.3),
-            cancel.clone(),
-        ) {
-            Ok(pipeline) => {
-                let has_asr = pipeline.has_asr;
-                let _ = sender_app.emit(
-                    "monitor-log",
-                    serde_json::json!(if has_asr {
-                        "语音检测（VAD）已就绪，SenseVoice ASR 已加载，正在启动麦克风..."
-                    } else {
-                        "语音检测（VAD）已就绪，正在启动麦克风..."
-                    }),
-                );
-                if let Some(warn) = &pipeline.asr_warning {
-                    let _ = sender_app.emit("monitor-log", serde_json::json!(warn));
-                }
-                if let Some(notice) = asr_startup_notice {
-                    let _ = sender_app.emit("monitor-log", serde_json::json!(notice));
-                }
-
-                // 事件循环
-                let events = pipeline.subscribe();
-                let vad_app = sender_app.clone();
-                let vad_cancel = cancel.clone();
-                let vad_config = Arc::clone(&bot_config);
-                let vad_memory = session_memory.clone();
-                let vad_agent = agent_runtime.clone();
-                let vad_http = http.clone();
-                let vad_tx = send_tx.clone();
-                // TTS router：供 ASR 循环播报 AI 回复 + 用户说话时打断
-                let vad_router = tts_router.clone();
-
-                // WhisperLive：需要音频 tap；本地 sherpa ASR：事件里直接携带文本
-                let audio_tap = if !asr_url.is_empty() {
-                    let (tx, rx) = tokio::sync::mpsc::unbounded_channel::<Vec<f32>>();
-                    let events2 = pipeline.subscribe();
-                    let asr_cancel = cancel.clone();
-                    let asr_app = sender_app.clone();
-                    let asr_config = Arc::clone(&bot_config);
-                    let asr_memory = session_memory.clone();
-                    let asr_agent = agent_runtime.clone();
-                    let asr_http = http.clone();
-                    let asr_tx = send_tx.clone();
-                    let asr_url_c = asr_url.clone();
-                    let asr_router = vad_router.clone();
-                    let asr_recent_tts = Arc::clone(&recent_tts_text);
-                    tokio::spawn(async move {
-                        #[cfg(feature = "asr")]
-                        run_asr_loop(
-                            rx,
-                            events2,
-                            asr_url_c,
-                            asr_router,
-                            asr_http,
-                            asr_config,
-                            asr_memory,
-                            asr_agent,
-                            asr_tx,
-                            asr_app,
-                            asr_cancel,
-                            asr_recent_tts,
-                        )
-                        .await;
-                    });
-                    Some(tx)
-                } else {
-                    // 本地 sherpa ASR：SpeechEnd 事件里带文本，直接触发 AI
-                    tokio::spawn(run_sherpa_asr_event_loop(
-                        events,
-                        has_asr,
-                        vad_router,
-                        vad_http,
-                        vad_config,
-                        vad_memory,
-                        vad_agent,
-                        vad_tx,
-                        vad_app,
-                        vad_cancel,
-                        Arc::clone(&recent_tts_text),
-                    ));
-                    None
-                };
-
-                let (mic_status_tx, mic_status_rx) = std::sync::mpsc::channel::<String>();
-                let mic_status_app = sender_app.clone();
-                let mic_status_cancel = cancel.clone();
-                std::thread::Builder::new()
-                    .name("sherpa-mic-status".into())
-                    .spawn(move || {
-                        while !mic_status_cancel.is_cancelled() {
-                            match mic_status_rx.recv_timeout(std::time::Duration::from_millis(200))
-                            {
-                                Ok(line) => {
-                                    let _ =
-                                        mic_status_app.emit("monitor-log", serde_json::json!(line));
-                                }
-                                Err(std::sync::mpsc::RecvTimeoutError::Timeout) => {}
-                                Err(std::sync::mpsc::RecvTimeoutError::Disconnected) => break,
-                            }
-                        }
-                    })
-                    .ok();
-
-                match streamix_voice::SherpaMicCapture::start(
-                    &pipeline,
-                    audio_tap,
-                    Some(mic_status_tx),
-                    config.voice_mic_gain,
-                    Some(Arc::clone(&mic_capture_enabled)),
-                ) {
-                    Ok(mic) => {
-                        let _ = sender_app.emit(
-                            "monitor-log",
-                            serde_json::json!("麦克风已就绪，语音陪伴开始监听"),
-                        );
-                        let _ = sender_app.emit(
-                            "monitor-log",
-                            serde_json::json!("若3秒内未见「检测到你正在说话」，请检查：系统设置 > 隐私与安全 > 麦克风"),
-                        );
-                        Some(mic)
-                    }
-                    Err(e) => {
-                        let _ = sender_app.emit(
-                            "monitor-log",
-                            serde_json::json!(format!("麦克风启动失败: {e}")),
-                        );
-                        None
-                    }
-                }
-            }
-            Err(e) => {
-                let _ = sender_app.emit(
-                    "monitor-log",
-                    serde_json::json!(format!("VAD 初始化失败: {e}")),
-                );
-                None
-            }
-        }
-    } else {
-        None
-    };
+    let mut voice_runtime = start_vad_runtime(
+        sender_app.clone(),
+        http.clone(),
+        config.clone(),
+        Arc::clone(&bot_config),
+        session_memory.clone(),
+        agent_runtime.clone(),
+        send_tx.clone(),
+        tts_router.clone(),
+        Arc::clone(&recent_tts_text),
+        Arc::clone(&mic_capture_enabled),
+        &model_dir,
+        cancel.clone(),
+    )
+    .await;
 
     // Gift Aggregator
     let gift_task = tokio::spawn(crate::bot::thanks::run_gift_aggregator(
@@ -534,6 +416,10 @@ pub async fn run_monitor_loop<E: EventEmitter + Send + Sync + 'static>(
     let ws_cancel = cancel.clone();
     let ws_session = current_session_id.clone();
     let ws_danmaku = danmaku_buffer.clone();
+    let ws_session_memory = session_memory.clone();
+    let ws_agent_runtime = agent_runtime.clone();
+    let ws_send_tx = send_tx.clone();
+    let ws_tts_router = tts_router.clone();
     let ws_task = tokio::spawn(async move {
         let original_cookie = token::read_session()
             .ok()
@@ -549,7 +435,7 @@ pub async fn run_monitor_loop<E: EventEmitter + Send + Sync + 'static>(
 
         loop {
             let bot_config = bot_config.clone();
-            let session_memory = session_memory.clone();
+            let session_memory = ws_session_memory.clone();
             let my_room_ids = my_room_ids.clone();
             let music_service = music_service.clone();
             let music_task_limit = music_task_limit.clone();
@@ -606,19 +492,19 @@ pub async fn run_monitor_loop<E: EventEmitter + Send + Sync + 'static>(
 
                 // 发送进入房间提示语
                 if !bot_config.entry_msg.is_empty() {
-                    let _ = send_tx.send(bot_config.entry_msg.clone()).await;
+                    let _ = ws_send_tx.send(bot_config.entry_msg.clone()).await;
                     let _ = ws_app.emit("monitor-log", json!(format!("已发送登场语: {}", bot_config.entry_msg)));
                 }
 
                 let event_app = ws_app.clone();
-                let event_tx = send_tx.clone();
+                let event_tx = ws_send_tx.clone();
                 let event_gift_tx = gift_tx.clone();
                 let event_engine = engine.clone();
                 let event_storage = storage.clone();
                 let ai_http = ws_http.clone();
                 let session_id_inner = session_id.clone();
-                let event_tts_router = tts_router.clone();
-                let event_agent = agent_runtime.clone();
+                let event_tts_router = ws_tts_router.clone();
+                let event_agent = ws_agent_runtime.clone();
                 let event_music_service = music_service.clone();
                 let event_music_task_limit = music_task_limit.clone();
                 let event_music_cancel = music_cancel.clone();
@@ -774,8 +660,7 @@ pub async fn run_monitor_loop<E: EventEmitter + Send + Sync + 'static>(
 
                     for message in replies {
 
-                        if let Some(ref router) = event_tts_router {
-                            let r = router.clone();
+                        if let Some(r) = current_tts_router(&event_tts_router) {
                             let m = message.clone();
                             tokio::spawn(async move { let _ = r.speak_bot(m).await; });
                         }
@@ -801,7 +686,7 @@ pub async fn run_monitor_loop<E: EventEmitter + Send + Sync + 'static>(
                                 tokio::spawn(async move {
                                     let reply = agent::call_ai(&ai_http, &ai_config, &bot_id, &prompt, danmu_uid, &ai_uname, &ai_memory, &ai_agent).await;
                                     if !reply.is_empty() {
-                                        if let Some(ref r) = ai_router {
+                                        if let Some(r) = current_tts_router(&ai_router) {
                                             let _ = r.speak_ai(reply.clone()).await;
                                         }
                                         let _ = ai_tx.send(format!("[{}]{}", nickname, reply)).await;
@@ -825,7 +710,50 @@ pub async fn run_monitor_loop<E: EventEmitter + Send + Sync + 'static>(
             }
         }
     });
-    cancel.cancelled().await;
+    loop {
+        tokio::select! {
+            _ = cancel.cancelled() => break,
+            command = command_rx.recv() => {
+                match command {
+                    Some(MonitorCommand::ReloadVoice) => {
+                        #[cfg(feature = "vad")]
+                        {
+                            if let Some(runtime) = voice_runtime.take() {
+                                runtime.cancel.cancel();
+                            }
+                            match AppConfig::load_or_default() {
+                                Ok(next_config) => {
+                                    voice_runtime = start_vad_runtime(
+                                        sender_app.clone(),
+                                        http.clone(),
+                                        next_config.clone(),
+                                        Arc::new(next_config),
+                                        session_memory.clone(),
+                                        agent_runtime.clone(),
+                                        send_tx.clone(),
+                                        tts_router.clone(),
+                                        Arc::clone(&recent_tts_text),
+                                        Arc::clone(&mic_capture_enabled),
+                                        &model_dir,
+                                        cancel.clone(),
+                                    )
+                                    .await;
+                                }
+                                Err(err) => {
+                                    let _ = sender_app.emit("monitor-log", json!(format!("语音陪伴配置重载失败: {err}")));
+                                }
+                            }
+                        }
+                    }
+                    None => break,
+                }
+            }
+        }
+    }
+    #[cfg(feature = "vad")]
+    if let Some(runtime) = voice_runtime.take() {
+        runtime.cancel.cancel();
+    }
     send_task.abort();
     gift_task.abort();
     timed_task.abort();
@@ -836,6 +764,191 @@ pub async fn run_monitor_loop<E: EventEmitter + Send + Sync + 'static>(
     let _ = sender_app.emit("monitor-status", json!("已停止"));
     let _ = sender_app.emit("monitor-log", json!("监听已停止"));
     Ok(())
+}
+
+#[cfg(feature = "vad")]
+struct VoiceRuntime {
+    cancel: CancellationToken,
+    _mic_capture: Option<streamix_voice::SherpaMicCapture>,
+}
+
+#[cfg(feature = "vad")]
+#[allow(clippy::too_many_arguments)]
+async fn start_vad_runtime<E: EventEmitter + Send + Sync + 'static>(
+    app: Arc<E>,
+    http: BiliApi,
+    config: AppConfig,
+    bot_config: Arc<AppConfig>,
+    session_memory: Arc<Mutex<crate::bot::memory::SessionMemory>>,
+    agent_runtime: Arc<agent::AgentRuntime>,
+    send_tx: mpsc::Sender<String>,
+    tts_router: SharedTtsRouter,
+    recent_tts_text: Arc<Mutex<Vec<(Instant, String)>>>,
+    mic_capture_enabled: Arc<AtomicBool>,
+    model_dir: &std::path::Path,
+    monitor_cancel: CancellationToken,
+) -> Option<VoiceRuntime> {
+    if !config.vad_enabled {
+        let _ = app.emit("monitor-log", serde_json::json!("语音陪伴麦克风已关闭"));
+        return None;
+    }
+
+    let cancel = monitor_cancel.child_token();
+    let vad_model = model_dir.join("silero_vad.onnx");
+    let vad_exists = vad_model.exists();
+    let vad_size = std::fs::metadata(&vad_model).map(|m| m.len()).unwrap_or(0);
+    let _ = app.emit(
+        "monitor-log",
+        serde_json::json!(format!(
+            "[诊断] VAD 启动检查 | 路径: {} | 存在: {} | 大小: {} bytes",
+            vad_model.display(),
+            vad_exists,
+            vad_size
+        )),
+    );
+
+    let (asr_url, asr_model_dir, asr_startup_notice) =
+        resolve_vad_asr_source(&config, model_dir).await;
+    let pipeline = match streamix_voice::SherpaPipeline::spawn(
+        vad_model,
+        asr_model_dir,
+        &config.asr_language,
+        config.vad_threshold,
+        config.vad_min_speech_duration.min(0.08),
+        config.vad_min_silence_duration.min(0.3),
+        cancel.clone(),
+    ) {
+        Ok(pipeline) => pipeline,
+        Err(e) => {
+            let _ = app.emit(
+                "monitor-log",
+                serde_json::json!(format!("VAD 初始化失败: {e}")),
+            );
+            return Some(VoiceRuntime {
+                cancel,
+                _mic_capture: None,
+            });
+        }
+    };
+
+    let has_asr = pipeline.has_asr;
+    let _ = app.emit(
+        "monitor-log",
+        serde_json::json!(if has_asr {
+            "语音检测（VAD）已就绪，SenseVoice ASR 已加载，正在启动麦克风..."
+        } else {
+            "语音检测（VAD）已就绪，正在启动麦克风..."
+        }),
+    );
+    if let Some(warn) = &pipeline.asr_warning {
+        let _ = app.emit("monitor-log", serde_json::json!(warn));
+    }
+    if let Some(notice) = asr_startup_notice {
+        let _ = app.emit("monitor-log", serde_json::json!(notice));
+    }
+
+    let events = pipeline.subscribe();
+    let vad_router = current_tts_router(&tts_router);
+    let audio_tap = if !asr_url.is_empty() {
+        let (tx, rx) = tokio::sync::mpsc::unbounded_channel::<Vec<f32>>();
+        let events2 = pipeline.subscribe();
+        let asr_cancel = cancel.clone();
+        let asr_app = app.clone();
+        let asr_config = Arc::clone(&bot_config);
+        let asr_memory = session_memory.clone();
+        let asr_agent = agent_runtime.clone();
+        let asr_http = http.clone();
+        let asr_tx = send_tx.clone();
+        let asr_url_c = asr_url.clone();
+        let asr_router = vad_router.clone();
+        let asr_recent_tts = Arc::clone(&recent_tts_text);
+        tokio::spawn(async move {
+            #[cfg(feature = "asr")]
+            run_asr_loop(
+                rx,
+                events2,
+                asr_url_c,
+                asr_router,
+                asr_http,
+                asr_config,
+                asr_memory,
+                asr_agent,
+                asr_tx,
+                asr_app,
+                asr_cancel,
+                asr_recent_tts,
+            )
+            .await;
+        });
+        Some(tx)
+    } else {
+        tokio::spawn(run_sherpa_asr_event_loop(
+            events,
+            has_asr,
+            vad_router,
+            http.clone(),
+            Arc::clone(&bot_config),
+            session_memory.clone(),
+            agent_runtime.clone(),
+            send_tx.clone(),
+            app.clone(),
+            cancel.clone(),
+            Arc::clone(&recent_tts_text),
+        ));
+        None
+    };
+
+    let (mic_status_tx, mic_status_rx) = std::sync::mpsc::channel::<String>();
+    let mic_status_app = app.clone();
+    let mic_status_cancel = cancel.clone();
+    std::thread::Builder::new()
+        .name("sherpa-mic-status".into())
+        .spawn(move || {
+            while !mic_status_cancel.is_cancelled() {
+                match mic_status_rx.recv_timeout(std::time::Duration::from_millis(200)) {
+                    Ok(line) => {
+                        let _ = mic_status_app.emit("monitor-log", serde_json::json!(line));
+                    }
+                    Err(std::sync::mpsc::RecvTimeoutError::Timeout) => {}
+                    Err(std::sync::mpsc::RecvTimeoutError::Disconnected) => break,
+                }
+            }
+        })
+        .ok();
+
+    let mic_capture = match streamix_voice::SherpaMicCapture::start(
+        &pipeline,
+        audio_tap,
+        Some(mic_status_tx),
+        config.voice_mic_gain,
+        Some(Arc::clone(&mic_capture_enabled)),
+    ) {
+        Ok(mic) => {
+            let _ = app.emit(
+                "monitor-log",
+                serde_json::json!("麦克风已就绪，语音陪伴开始监听"),
+            );
+            let _ = app.emit(
+                "monitor-log",
+                serde_json::json!(
+                    "若3秒内未见「检测到你正在说话」，请检查：系统设置 > 隐私与安全 > 麦克风"
+                ),
+            );
+            Some(mic)
+        }
+        Err(e) => {
+            let _ = app.emit(
+                "monitor-log",
+                serde_json::json!(format!("麦克风启动失败: {e}")),
+            );
+            None
+        }
+    };
+
+    Some(VoiceRuntime {
+        cancel,
+        _mic_capture: mic_capture,
+    })
 }
 
 /// 监听 VadPipeline 话轮事件，记录日志（无 ASR 时使用）

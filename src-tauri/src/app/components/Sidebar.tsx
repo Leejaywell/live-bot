@@ -41,12 +41,12 @@ const navItems = [
   { path: '/voice-changer', label: '语音变声', icon: Sparkles },
   { path: '/models', label: '模型管理', icon: Cpu },
   {
-    path: '/plugins/chat-overlay',
+    path: '/plugins/danmaku-chat',
     pathPrefix: '/plugins',
     label: '插件中心',
     icon: Plug,
     children: [
-      { path: '/plugins/chat-overlay', label: '弹幕聊天' },
+      { path: '/plugins/danmaku-chat', label: '弹幕聊天' },
       { path: '/plugins/music-interaction', label: '音乐互动' },
       { path: '/plugins/wish-goal', label: '心愿目标' },
       { path: '/plugins/lottery', label: '抽奖互动' },

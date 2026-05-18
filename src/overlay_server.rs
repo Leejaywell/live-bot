@@ -1,13 +1,13 @@
-//! 弹幕浮层 HTTP 服务
+//! 弹幕聊天 HTTP 服务
 //!
-//! GET /        → 独立弹幕浮层页面
-//! GET /cfg     → 当前 OverlayConfig（JSON）
-//! GET /wish-goal → 心愿目标浮层页面
-//! GET /lottery → 抽奖互动浮层页面
-//! GET /gift-effect → 礼物特效浮层页面
-//! GET /recent-gifts → 最近礼物浮层页面
-//! GET /gift-rank → 礼物排行浮层页面
-//! GET /song-request → 音乐互动浮层页面
+//! GET /        → 弹幕聊天页面
+//! GET /cfg     → 当前 DanmakuChatSettings（JSON）
+//! GET /wish-goal → 心愿目标页面
+//! GET /lottery → 抽奖互动页面
+//! GET /gift-effect → 礼物特效页面
+//! GET /recent-gifts → 最近礼物页面
+//! GET /gift-rank → 礼物排行页面
+//! GET /song-request → 音乐互动页面
 //! GET /song-request/api/queue → 音乐互动队列（JSON）
 //! GET /song-request/api/now-playing → 当前播放歌曲（JSON）
 //! GET /song-request/api/rank → 音乐互动排行（JSON）
@@ -34,18 +34,10 @@ use std::sync::{Arc, OnceLock};
 use tokio::sync::broadcast;
 
 use crate::music::storage::QueueItem;
-use crate::overlay_config::OverlayConfig;
 use crate::plugin_settings::PluginSettings;
 use crate::storage::Storage;
 
-const HTML: &str = include_str!("overlay.html");
-const WISH_GOAL_HTML: &str = include_str!("wish_goal.html");
-const LOTTERY_HTML: &str = include_str!("lottery.html");
-const GIFT_EFFECT_HTML: &str = include_str!("gift_effect.html");
-const RECENT_GIFTS_HTML: &str = include_str!("recent_gifts.html");
-const GIFT_RANK_HTML: &str = include_str!("gift_rank.html");
-const MUSIC_INTERACTION_HTML: &str = include_str!("music_interaction.html");
-const REACT_OVERLAY_HTML: &str = include_str!("overlay_react.html");
+const DANMAKU_CHAT_HTML: &str = include_str!("danmaku_chat.html");
 
 pub type OverlayTx = Arc<broadcast::Sender<Value>>;
 
@@ -60,7 +52,7 @@ pub fn new_channel() -> (OverlayTx, broadcast::Receiver<Value>) {
     (Arc::new(tx), rx)
 }
 
-/// 让 main.rs 在 save_overlay_config 之后调用，通知所有 overlay 网页客户端重新拉取配置
+/// 让 main.rs 在 save_danmaku_chat_config 之后调用，通知所有弹幕聊天网页客户端重新拉取配置
 pub fn broadcast_cfg_update(tx: &OverlayTx) {
     let msg = serde_json::json!({ "_overlay_cfg_update": true });
     let _ = tx.send(msg);
@@ -80,31 +72,15 @@ pub async fn start(port: u16, tx: OverlayTx, resource_dir: Option<PathBuf>) {
     let app = Router::new()
         .route("/", get(index_handler))
         .route("/cfg", get(cfg_handler))
-        .route("/overlay/danmaku", get(index_handler))
         .route("/wish-goal", get(wish_goal_handler))
-        .route("/overlay/wish-goal", get(wish_goal_handler))
         .route("/lottery", get(lottery_handler))
-        .route("/overlay/lottery", get(lottery_handler))
         .route("/gift-effect", get(gift_effect_handler))
-        .route("/overlay/gift-effect", get(gift_effect_handler))
         .route("/recent-gifts", get(recent_gifts_handler))
-        .route("/overlay/recent-gifts", get(recent_gifts_handler))
         .route("/gift-rank", get(gift_rank_handler))
-        .route("/overlay/gift-rank", get(gift_rank_handler))
         .route("/song-request", get(music_interaction_handler))
         .route("/song-request/playlist", get(music_interaction_handler))
         .route("/song-request/now-playing", get(music_interaction_handler))
         .route("/song-request/rank", get(music_interaction_handler))
-        .route("/overlay/song-request", get(music_interaction_handler))
-        .route(
-            "/overlay/song-request/playlist",
-            get(music_interaction_handler),
-        )
-        .route(
-            "/overlay/song-request/now-playing",
-            get(music_interaction_handler),
-        )
-        .route("/overlay/song-request/rank", get(music_interaction_handler))
         .route("/song-request/api/queue", get(song_queue_handler))
         .route(
             "/song-request/api/now-playing",
@@ -113,7 +89,10 @@ pub async fn start(port: u16, tx: OverlayTx, resource_dir: Option<PathBuf>) {
         .route("/song-request/api/rank", get(song_rank_handler))
         .route("/plugin-settings", get(plugin_settings_handler))
         .route("/local-resource", get(local_resource_handler))
-        .route("/overlay-assets/{*path}", get(overlay_asset_handler))
+        .route(
+            "/danmaku-chat-assets/{*path}",
+            get(danmaku_chat_asset_handler),
+        )
         .route("/ws", get(ws_handler))
         .route("/proxy", get(proxy_handler))
         .with_state(state);
@@ -122,58 +101,48 @@ pub async fn start(port: u16, tx: OverlayTx, resource_dir: Option<PathBuf>) {
     let listener = match tokio::net::TcpListener::bind(&addr).await {
         Ok(l) => l,
         Err(e) => {
-            eprintln!("弹幕浮层服务绑定 {addr} 失败: {e}");
+            eprintln!("弹幕聊天服务绑定 {addr} 失败: {e}");
             return;
         }
     };
-    println!("弹幕浮层服务已启动: http://{addr}");
+    println!("弹幕聊天服务已启动: http://{addr}");
     if let Err(e) = axum::serve(listener, app).await {
-        eprintln!("弹幕浮层服务异常退出: {e}");
+        eprintln!("弹幕聊天服务异常退出: {e}");
     }
 }
 
 // ── Route handlers ─────────────────────────────────────────────────────────────
 
 async fn index_handler() -> Html<&'static str> {
-    overlay_shell_or_legacy(HTML)
+    danmaku_chat_shell()
 }
 
 async fn wish_goal_handler() -> Html<&'static str> {
-    overlay_shell_or_legacy(WISH_GOAL_HTML)
+    danmaku_chat_shell()
 }
 
 async fn lottery_handler() -> Html<&'static str> {
-    overlay_shell_or_legacy(LOTTERY_HTML)
+    danmaku_chat_shell()
 }
 
 async fn gift_effect_handler() -> Html<&'static str> {
-    overlay_shell_or_legacy(GIFT_EFFECT_HTML)
+    danmaku_chat_shell()
 }
 
 async fn recent_gifts_handler() -> Html<&'static str> {
-    overlay_shell_or_legacy(RECENT_GIFTS_HTML)
+    danmaku_chat_shell()
 }
 
 async fn gift_rank_handler() -> Html<&'static str> {
-    overlay_shell_or_legacy(GIFT_RANK_HTML)
+    danmaku_chat_shell()
 }
 
 async fn music_interaction_handler() -> Html<&'static str> {
-    overlay_shell_or_legacy(MUSIC_INTERACTION_HTML)
+    danmaku_chat_shell()
 }
 
-fn overlay_react_enabled() -> bool {
-    std::env::var("STREAMIX_LEGACY_OVERLAYS")
-        .map(|value| value != "1")
-        .unwrap_or(true)
-}
-
-fn overlay_shell_or_legacy(legacy: &'static str) -> Html<&'static str> {
-    if overlay_react_enabled() {
-        Html(REACT_OVERLAY_HTML)
-    } else {
-        Html(legacy)
-    }
+fn danmaku_chat_shell() -> Html<&'static str> {
+    Html(DANMAKU_CHAT_HTML)
 }
 
 fn overlay_asset_roots(resource_dir: Option<&FsPath>) -> Vec<PathBuf> {
@@ -187,7 +156,7 @@ fn overlay_asset_roots(resource_dir: Option<&FsPath>) -> Vec<PathBuf> {
     roots
 }
 
-async fn overlay_asset_handler(
+async fn danmaku_chat_asset_handler(
     State(state): State<AppState>,
     Path(path): Path<String>,
 ) -> Response<Body> {
@@ -225,7 +194,9 @@ async fn overlay_asset_handler(
 }
 
 async fn cfg_handler() -> impl IntoResponse {
-    let cfg = OverlayConfig::load_or_default().unwrap_or_default();
+    let cfg = PluginSettings::load_or_default()
+        .map(|settings| settings.danmaku_chat)
+        .unwrap_or_default();
     Json(cfg)
 }
 

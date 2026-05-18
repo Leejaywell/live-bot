@@ -5,8 +5,11 @@ use chrono::Local;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
+use crate::config;
+
 const APP_ID: &str = "com.streamix.app";
 const PLUGIN_SETTINGS_FILE: &str = "plugin-settings.toml";
+const LEGACY_DANMAKU_CHAT_FILE: &str = "overlay.toml";
 
 pub fn plugin_settings_path() -> PathBuf {
     dirs::config_dir()
@@ -19,6 +22,8 @@ pub fn plugin_settings_path() -> PathBuf {
 #[serde(rename_all = "PascalCase")]
 pub struct PluginSettings {
     #[serde(default)]
+    pub danmaku_chat: DanmakuChatSettings,
+    #[serde(default)]
     pub wish_goal: WishGoalSettings,
     #[serde(default)]
     pub lottery_interaction: LotteryInteractionSettings,
@@ -30,6 +35,127 @@ pub struct PluginSettings {
     pub gift_rank: GiftRankSettings,
     #[serde(default)]
     pub music_interaction: MusicInteractionSettings,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "PascalCase")]
+pub struct DanmakuChatSettings {
+    #[serde(default = "dc_port")]
+    pub port: u16,
+    #[serde(default = "dc_max_msgs")]
+    pub max_msgs: u32,
+    #[serde(default = "dc_msg_gap")]
+    pub msg_gap: u8,
+    #[serde(default = "dc_theme")]
+    pub theme: String,
+    #[serde(default)]
+    pub custom_css: String,
+    #[serde(default = "dc_one")]
+    pub global_scale: f32,
+    #[serde(default = "dc_one")]
+    pub font_scale: f32,
+    #[serde(default = "df_true")]
+    pub show_avatar: bool,
+    #[serde(default = "dc_avatar_size")]
+    pub avatar_size: u8,
+    #[serde(default = "df_true")]
+    pub show_username: bool,
+    #[serde(default = "dc_font_family")]
+    pub user_name_font: String,
+    #[serde(default = "dc_username_size")]
+    pub user_name_font_size: u8,
+    #[serde(default = "dc_weight_normal")]
+    pub user_name_weight: u16,
+    #[serde(default = "dc_username_color")]
+    pub user_name_color: String,
+    #[serde(default = "dc_owner_color")]
+    pub owner_user_name_color: String,
+    #[serde(default = "dc_mod_color")]
+    pub moderator_user_name_color: String,
+    #[serde(default = "dc_member_color")]
+    pub member_user_name_color: String,
+    #[serde(default = "df_true")]
+    pub show_badges: bool,
+    #[serde(default = "dc_font_family")]
+    pub message_font: String,
+    #[serde(default = "dc_msg_size")]
+    pub message_font_size: u8,
+    #[serde(default = "dc_weight_normal")]
+    pub message_weight: u16,
+    #[serde(default = "dc_msg_color")]
+    pub message_color: String,
+    #[serde(default)]
+    pub show_time: bool,
+    #[serde(default = "dc_font_family")]
+    pub time_font: String,
+    #[serde(default = "dc_time_size")]
+    pub time_font_size: u8,
+    #[serde(default = "dc_weight_normal")]
+    pub time_weight: u16,
+    #[serde(default = "dc_time_color")]
+    pub time_color: String,
+    #[serde(default = "dc_bg_color")]
+    pub bg_color: String,
+    #[serde(default = "dc_bg_opacity")]
+    pub bg_opacity: f32,
+    #[serde(default = "dc_msg_bg_color")]
+    pub message_bg_color: String,
+    #[serde(default = "dc_owner_bg_color")]
+    pub owner_message_bg_color: String,
+    #[serde(default = "dc_mod_bg_color")]
+    pub moderator_message_bg_color: String,
+    #[serde(default = "dc_member_bg_color")]
+    pub member_message_bg_color: String,
+    #[serde(default = "df_true")]
+    pub show_gift: bool,
+    #[serde(default)]
+    pub gift_min_cost: u32,
+    #[serde(default)]
+    pub show_gift_icon: bool,
+    #[serde(default = "df_true")]
+    pub show_guard: bool,
+    #[serde(default = "df_true")]
+    pub show_sc: bool,
+    #[serde(default)]
+    pub sc_min_cost: u32,
+    #[serde(default = "dc_sc_line1_size")]
+    pub first_line_font_size: u8,
+    #[serde(default = "dc_weight_bold")]
+    pub first_line_weight: u16,
+    #[serde(default = "dc_msg_size")]
+    pub second_line_font_size: u8,
+    #[serde(default = "dc_weight_bold")]
+    pub second_line_weight: u16,
+    #[serde(default = "dc_msg_size")]
+    pub sc_content_font_size: u8,
+    #[serde(default = "dc_weight_normal")]
+    pub sc_content_weight: u16,
+    #[serde(default = "df_true")]
+    pub animate_in: bool,
+    #[serde(default = "dc_fade_in")]
+    pub fade_in_time: u16,
+    #[serde(default)]
+    pub animate_out: bool,
+    #[serde(default = "dc_fade_out")]
+    pub fade_out_time: u16,
+    #[serde(default = "dc_out_wait")]
+    pub animate_out_wait_time: u16,
+    #[serde(default = "df_true")]
+    pub slide: bool,
+    #[serde(default)]
+    pub reverse_slide: bool,
+    #[serde(default = "df_true")]
+    pub effects_enabled: bool,
+    #[serde(default = "dc_one")]
+    pub effect_intensity: f32,
+    #[serde(default)]
+    pub show_outlines: bool,
+    #[serde(default = "dc_outline_size")]
+    pub outline_size: u8,
+    #[serde(default = "dc_outline_color")]
+    pub outline_color: String,
+    #[serde(default)]
+    pub blurry_outline: bool,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -243,12 +369,78 @@ pub struct MusicInteractionSettings {
 impl Default for PluginSettings {
     fn default() -> Self {
         Self {
+            danmaku_chat: DanmakuChatSettings::default(),
             wish_goal: WishGoalSettings::default(),
             lottery_interaction: LotteryInteractionSettings::default(),
             gift_effect: GiftEffectSettings::default(),
             recent_gifts: RecentGiftsSettings::default(),
             gift_rank: GiftRankSettings::default(),
             music_interaction: MusicInteractionSettings::default(),
+        }
+    }
+}
+
+impl Default for DanmakuChatSettings {
+    fn default() -> Self {
+        Self {
+            port: dc_port(),
+            max_msgs: dc_max_msgs(),
+            msg_gap: dc_msg_gap(),
+            theme: dc_theme(),
+            custom_css: String::new(),
+            global_scale: dc_one(),
+            font_scale: dc_one(),
+            show_avatar: true,
+            avatar_size: dc_avatar_size(),
+            show_username: true,
+            user_name_font: dc_font_family(),
+            user_name_font_size: dc_username_size(),
+            user_name_weight: dc_weight_normal(),
+            user_name_color: dc_username_color(),
+            owner_user_name_color: dc_owner_color(),
+            moderator_user_name_color: dc_mod_color(),
+            member_user_name_color: dc_member_color(),
+            show_badges: true,
+            message_font: dc_font_family(),
+            message_font_size: dc_msg_size(),
+            message_weight: dc_weight_normal(),
+            message_color: dc_msg_color(),
+            show_time: false,
+            time_font: dc_font_family(),
+            time_font_size: dc_time_size(),
+            time_weight: dc_weight_normal(),
+            time_color: dc_time_color(),
+            bg_color: dc_bg_color(),
+            bg_opacity: dc_bg_opacity(),
+            message_bg_color: dc_msg_bg_color(),
+            owner_message_bg_color: dc_owner_bg_color(),
+            moderator_message_bg_color: dc_mod_bg_color(),
+            member_message_bg_color: dc_member_bg_color(),
+            show_gift: true,
+            gift_min_cost: 0,
+            show_gift_icon: false,
+            show_guard: true,
+            show_sc: true,
+            sc_min_cost: 0,
+            first_line_font_size: dc_sc_line1_size(),
+            first_line_weight: dc_weight_bold(),
+            second_line_font_size: dc_msg_size(),
+            second_line_weight: dc_weight_bold(),
+            sc_content_font_size: dc_msg_size(),
+            sc_content_weight: dc_weight_normal(),
+            animate_in: true,
+            fade_in_time: dc_fade_in(),
+            animate_out: false,
+            fade_out_time: dc_fade_out(),
+            animate_out_wait_time: dc_out_wait(),
+            slide: true,
+            reverse_slide: false,
+            effects_enabled: true,
+            effect_intensity: dc_one(),
+            show_outlines: false,
+            outline_size: dc_outline_size(),
+            outline_color: dc_outline_color(),
+            blurry_outline: false,
         }
     }
 }
@@ -362,11 +554,22 @@ impl PluginSettings {
     pub fn load_or_default() -> Result<Self> {
         let path = plugin_settings_path();
         if path.exists() {
-            let text = std::fs::read_to_string(path)?;
-            let cfg: Self = toml::from_str(&text)?;
+            let text = std::fs::read_to_string(&path)?;
+            let has_danmaku_chat = text
+                .parse::<toml::Value>()
+                .ok()
+                .and_then(|value| value.as_table().cloned())
+                .map(|table| table.contains_key("DanmakuChat"))
+                .unwrap_or(false);
+            let mut cfg: Self = toml::from_str(&text)?;
+            if !has_danmaku_chat {
+                cfg.danmaku_chat = DanmakuChatSettings::migrate_from_legacy().unwrap_or_default();
+                let _ = cfg.save();
+            }
             return Ok(cfg);
         }
-        let cfg = Self::default();
+        let mut cfg = Self::default();
+        cfg.danmaku_chat = DanmakuChatSettings::migrate_from_legacy().unwrap_or_default();
         let _ = cfg.save();
         Ok(cfg)
     }
@@ -681,6 +884,82 @@ impl PluginSettings {
     }
 }
 
+impl DanmakuChatSettings {
+    fn legacy_path() -> PathBuf {
+        dirs::config_dir()
+            .unwrap_or_else(|| PathBuf::from("etc"))
+            .join(APP_ID)
+            .join(LEGACY_DANMAKU_CHAT_FILE)
+    }
+
+    fn migrate_from_legacy() -> Option<Self> {
+        let legacy_path = Self::legacy_path();
+        if legacy_path.exists() {
+            let text = std::fs::read_to_string(legacy_path).ok()?;
+            return toml::from_str(&text).ok();
+        }
+        Self::migrate_from_app_config()
+    }
+
+    fn migrate_from_app_config() -> Option<Self> {
+        let text = std::fs::read_to_string(config::config_path()).ok()?;
+        let value = text.parse::<toml::Value>().ok()?;
+        let mut cfg = Self::default();
+        cfg.port = legacy_u16(&value, "OverlayPort").unwrap_or(cfg.port);
+        cfg.max_msgs = legacy_u32(&value, "OverlayMaxMsgs").unwrap_or(cfg.max_msgs);
+        cfg.msg_gap = legacy_u8(&value, "OverlayMsgGap").unwrap_or(cfg.msg_gap);
+        cfg.custom_css = legacy_string(&value, "OverlayCustomCss").unwrap_or(cfg.custom_css);
+        cfg.show_avatar = legacy_bool(&value, "OverlayShowAvatar").unwrap_or(cfg.show_avatar);
+        cfg.avatar_size = legacy_u8(&value, "OverlayAvatarSize").unwrap_or(cfg.avatar_size);
+        cfg.show_username = legacy_bool(&value, "OverlayShowUsername").unwrap_or(cfg.show_username);
+        cfg.message_font_size =
+            legacy_u8(&value, "OverlayFontSize").unwrap_or(cfg.message_font_size);
+        cfg.message_weight = legacy_u16(&value, "OverlayFontWeight").unwrap_or(cfg.message_weight);
+        cfg.message_color = legacy_string(&value, "OverlayDanmuColor").unwrap_or(cfg.message_color);
+        cfg.bg_opacity = legacy_f32(&value, "OverlayBgOpacity").unwrap_or(cfg.bg_opacity);
+        cfg.show_gift = legacy_bool(&value, "OverlayShowGift").unwrap_or(cfg.show_gift);
+        cfg.gift_min_cost = legacy_u32(&value, "OverlayGiftMinCost").unwrap_or(cfg.gift_min_cost);
+        cfg.show_guard = legacy_bool(&value, "OverlayShowGuard").unwrap_or(cfg.show_guard);
+        cfg.show_sc = legacy_bool(&value, "OverlayShowSc").unwrap_or(cfg.show_sc);
+        cfg.sc_min_cost = legacy_u32(&value, "OverlayScMinCost").unwrap_or(cfg.sc_min_cost);
+        cfg.animate_in = legacy_bool(&value, "OverlayAnimateIn").unwrap_or(cfg.animate_in);
+        cfg.fade_in_time = legacy_u16(&value, "OverlayAnimateInMs").unwrap_or(cfg.fade_in_time);
+        cfg.animate_out = legacy_bool(&value, "OverlayAnimateOut").unwrap_or(cfg.animate_out);
+        cfg.fade_out_time = legacy_u16(&value, "OverlayAnimateOutMs").unwrap_or(cfg.fade_out_time);
+        cfg.animate_out_wait_time =
+            legacy_u16(&value, "OverlayAnimateOutWait").unwrap_or(cfg.animate_out_wait_time);
+        Some(cfg)
+    }
+}
+
+fn legacy_value<'a>(value: &'a toml::Value, key: &str) -> Option<&'a toml::Value> {
+    value.as_table()?.get(key)
+}
+
+fn legacy_bool(value: &toml::Value, key: &str) -> Option<bool> {
+    legacy_value(value, key)?.as_bool()
+}
+
+fn legacy_string(value: &toml::Value, key: &str) -> Option<String> {
+    legacy_value(value, key)?.as_str().map(ToOwned::to_owned)
+}
+
+fn legacy_u8(value: &toml::Value, key: &str) -> Option<u8> {
+    legacy_value(value, key)?.as_integer()?.try_into().ok()
+}
+
+fn legacy_u16(value: &toml::Value, key: &str) -> Option<u16> {
+    legacy_value(value, key)?.as_integer()?.try_into().ok()
+}
+
+fn legacy_u32(value: &toml::Value, key: &str) -> Option<u32> {
+    legacy_value(value, key)?.as_integer()?.try_into().ok()
+}
+
+fn legacy_f32(value: &toml::Value, key: &str) -> Option<f32> {
+    legacy_value(value, key)?.as_float().map(|v| v as f32)
+}
+
 impl LotteryInteractionSettings {
     fn draw(&mut self, winner: String) -> bool {
         if self.prizes.is_empty() {
@@ -762,6 +1041,96 @@ fn df_music_primary_color() -> String {
 }
 fn df_font_scale() -> f32 {
     1.0
+}
+fn dc_one() -> f32 {
+    1.0
+}
+fn dc_port() -> u16 {
+    12450
+}
+fn dc_max_msgs() -> u32 {
+    50
+}
+fn dc_msg_gap() -> u8 {
+    3
+}
+fn dc_theme() -> String {
+    "classic".to_string()
+}
+fn dc_avatar_size() -> u8 {
+    24
+}
+fn dc_font_family() -> String {
+    "PingFang SC, Microsoft YaHei, Noto Sans SC, sans-serif".to_string()
+}
+fn dc_username_size() -> u8 {
+    13
+}
+fn dc_msg_size() -> u8 {
+    13
+}
+fn dc_time_size() -> u8 {
+    12
+}
+fn dc_sc_line1_size() -> u8 {
+    15
+}
+fn dc_weight_normal() -> u16 {
+    600
+}
+fn dc_weight_bold() -> u16 {
+    700
+}
+fn dc_username_color() -> String {
+    "#effee3".to_string()
+}
+fn dc_owner_color() -> String {
+    "#ff96aa".to_string()
+}
+fn dc_mod_color() -> String {
+    "#e7a9ff".to_string()
+}
+fn dc_member_color() -> String {
+    "#96deff".to_string()
+}
+fn dc_msg_color() -> String {
+    "#ffffff".to_string()
+}
+fn dc_time_color() -> String {
+    "#999999".to_string()
+}
+fn dc_bg_color() -> String {
+    "rgba(0,0,0,0)".to_string()
+}
+fn dc_bg_opacity() -> f32 {
+    0.15
+}
+fn dc_msg_bg_color() -> String {
+    "transparent".to_string()
+}
+fn dc_owner_bg_color() -> String {
+    "rgba(255,214,0,0.18)".to_string()
+}
+fn dc_mod_bg_color() -> String {
+    "rgba(94,132,241,0.18)".to_string()
+}
+fn dc_member_bg_color() -> String {
+    "rgba(15,157,88,0.18)".to_string()
+}
+fn dc_fade_in() -> u16 {
+    200
+}
+fn dc_fade_out() -> u16 {
+    400
+}
+fn dc_out_wait() -> u16 {
+    30
+}
+fn dc_outline_size() -> u8 {
+    2
+}
+fn dc_outline_color() -> String {
+    "#000000".to_string()
 }
 fn df_lottery_gift_count() -> i64 {
     1

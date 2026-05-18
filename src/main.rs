@@ -1,9 +1,9 @@
+mod ai_client;
 mod api;
 mod bot;
 mod config;
 mod music;
 mod obs;
-mod overlay_config;
 mod overlay_server;
 mod plugin_settings;
 mod storage;
@@ -61,7 +61,7 @@ struct SharedState {
     model_dl_cancels: Arc<Mutex<std::collections::HashMap<String, CancellationToken>>>,
     /// 全局 AI 会话记忆（机器人 ID 隔离）
     session_memory: Arc<Mutex<bot::memory::SessionMemory>>,
-    /// 弹幕浮层 HTTP 服务广播通道
+    /// 弹幕聊天 HTTP 服务广播通道
     overlay_tx: overlay_server::OverlayTx,
     /// 基础 AI Agent 运行时
     agent_runtime: Arc<bot::agent::AgentRuntime>,
@@ -72,6 +72,9 @@ struct SharedState {
 
 struct MonitorHandle {
     cancel: CancellationToken,
+    tts_cancel: Arc<Mutex<CancellationToken>>,
+    tts_router: bot::monitor::SharedTtsRouter,
+    command_tx: tokio::sync::mpsc::UnboundedSender<bot::monitor::MonitorCommand>,
     session_id: Arc<Mutex<Option<String>>>,
     danmaku_buffer: Arc<Mutex<Vec<String>>>,
 }
@@ -133,7 +136,7 @@ impl bot::EventEmitter for BufferedEmitter {
                 }
             }
             cache_guard_gift_from_event(&self.storage, &payload);
-            // 同步推送到 HTTP 弹幕浮层 WebSocket 客户端
+            // 同步推送到 HTTP 弹幕聊天 WebSocket 客户端
             let _ = self.overlay_tx.send(payload.clone());
         }
 
@@ -365,9 +368,15 @@ async fn start_monitor(
 
     let danmaku_buf: Arc<Mutex<Vec<String>>> = Arc::new(Mutex::new(Vec::new()));
     let cancel = CancellationToken::new();
+    let tts_cancel = Arc::new(Mutex::new(cancel.child_token()));
+    let tts_router = Arc::new(Mutex::new(None));
+    let (command_tx, command_rx) = tokio::sync::mpsc::unbounded_channel();
     let session_id = Arc::new(Mutex::new(None));
     let handle = MonitorHandle {
         cancel: cancel.clone(),
+        tts_cancel: tts_cancel.clone(),
+        tts_router: tts_router.clone(),
+        command_tx,
         session_id: session_id.clone(),
         danmaku_buffer: danmaku_buf.clone(),
     };
@@ -450,6 +459,9 @@ async fn start_monitor(
             http,
             room_id,
             cancel,
+            tts_router,
+            tts_cancel,
+            command_rx,
             session_id,
             danmaku_buf,
             models,
@@ -476,10 +488,69 @@ async fn stop_monitor(state: tauri::State<'_, SharedState>) -> Result<(), String
     let mut monitor = state.monitor.lock().map_err(|e| e.to_string())?;
     if let Some(handle) = monitor.take() {
         handle.cancel.cancel();
+        handle
+            .tts_cancel
+            .lock()
+            .map_err(|e| e.to_string())?
+            .cancel();
         Ok(())
     } else {
         Err("Monitor is not running".to_string())
     }
+}
+
+#[cfg(feature = "tauri")]
+#[tauri::command]
+async fn reload_monitor_tts(
+    app: AppHandle,
+    state: tauri::State<'_, SharedState>,
+) -> Result<(), String> {
+    let (monitor_cancel, tts_cancel, tts_router) = {
+        let monitor = state.monitor.lock().map_err(|e| e.to_string())?;
+        let Some(handle) = monitor.as_ref() else {
+            return Ok(());
+        };
+        (
+            handle.cancel.clone(),
+            handle.tts_cancel.clone(),
+            handle.tts_router.clone(),
+        )
+    };
+
+    let config = AppConfig::load_or_default().map_err(|e| e.to_string())?;
+    let next_cancel = monitor_cancel.child_token();
+    let old_cancel = {
+        let mut guard = tts_cancel.lock().map_err(|e| e.to_string())?;
+        let old = guard.clone();
+        *guard = next_cancel.clone();
+        old
+    };
+    old_cancel.cancel();
+    bot::monitor::replace_tts_router(&tts_router, &config, &model_dir(&app), next_cancel);
+    let _ = app.emit(
+        "monitor-log",
+        serde_json::json!(if config.tts_enabled {
+            "语音播报已刷新，弹幕监听保持连接"
+        } else {
+            "语音播报已关闭，弹幕监听保持连接"
+        }),
+    );
+    Ok(())
+}
+
+#[cfg(feature = "tauri")]
+#[tauri::command]
+async fn reload_monitor_voice(state: tauri::State<'_, SharedState>) -> Result<(), String> {
+    let command_tx = {
+        let monitor = state.monitor.lock().map_err(|e| e.to_string())?;
+        let Some(handle) = monitor.as_ref() else {
+            return Ok(());
+        };
+        handle.command_tx.clone()
+    };
+    command_tx
+        .send(bot::monitor::MonitorCommand::ReloadVoice)
+        .map_err(|e| e.to_string())
 }
 
 #[cfg(feature = "tauri")]
@@ -2613,6 +2684,39 @@ async fn delete_model(app: AppHandle, model_id: String) -> Result<String, String
             }
             Ok("Kokoro TTS 模型已删除".to_string())
         }
+        "kokoro-sherpa" => {
+            let d = base.join("sherpa-onnx-kokoro-multi-lang-v1.1-ONNX");
+            if d.exists() {
+                std::fs::remove_dir_all(d).map_err(|e| e.to_string())?;
+            }
+            let tmp = base.join("_kokoro_sherpa_dl.tar.bz2");
+            if tmp.exists() {
+                let _ = std::fs::remove_file(tmp);
+            }
+            Ok("Kokoro Sherpa 模型已删除".to_string())
+        }
+        "melo-tts" => {
+            let d = base.join("sherpa-onnx-melo-tts-zh_en");
+            if d.exists() {
+                std::fs::remove_dir_all(d).map_err(|e| e.to_string())?;
+            }
+            let tmp = base.join("_melo_tts_dl.tar.bz2");
+            if tmp.exists() {
+                let _ = std::fs::remove_file(tmp);
+            }
+            Ok("MeloTTS 模型已删除".to_string())
+        }
+        "piper-zh" => {
+            let d = base.join("vits-piper-zh_CN-huayan-medium");
+            if d.exists() {
+                std::fs::remove_dir_all(d).map_err(|e| e.to_string())?;
+            }
+            let tmp = base.join("_piper_zh_dl.tar.bz2");
+            if tmp.exists() {
+                let _ = std::fs::remove_file(tmp);
+            }
+            Ok("Piper ZH 模型已删除".to_string())
+        }
         _ => Err(format!("未知模型: {}", model_id)),
     }
 }
@@ -3604,9 +3708,9 @@ fn main() -> Result<()> {
             }
         })
         .setup(move |app| {
-            // 启动弹幕浮层 HTTP 服务（使用独立的 overlay.toml 配置）
-            let port = overlay_config::OverlayConfig::load_or_default()
-                .map(|c| c.port)
+            // 启动弹幕聊天 HTTP 服务（配置存放在 plugin-settings.toml）
+            let port = plugin_settings::PluginSettings::load_or_default()
+                .map(|settings| settings.danmaku_chat.port)
                 .unwrap_or(12450);
             let srv_tx = overlay_tx.clone();
             let resource_dir = app.path().resource_dir().ok();
@@ -3646,6 +3750,8 @@ fn main() -> Result<()> {
             get_system_info,
             start_monitor,
             stop_monitor,
+            reload_monitor_tts,
+            reload_monitor_voice,
             get_monitor_status,
             get_stats,
             get_gift_stats,
@@ -3696,7 +3802,7 @@ fn main() -> Result<()> {
             convert_rvc_pth_to_onnx,
             get_gift_catalog,
             refresh_gift_catalog,
-            get_overlay_url,
+            get_danmaku_chat_url,
             get_wish_goal_url,
             get_lottery_url,
             get_gift_effect_url,
@@ -3706,8 +3812,8 @@ fn main() -> Result<()> {
             search_music_candidates,
             get_music_queue,
             confirm_music_candidate,
-            load_overlay_config,
-            save_overlay_config,
+            load_danmaku_chat_config,
+            save_danmaku_chat_config,
             load_plugin_settings,
             save_plugin_settings,
             pick_plugin_resource,
@@ -3726,50 +3832,50 @@ fn main() -> Result<()> {
 
 #[cfg(feature = "tauri")]
 #[tauri::command]
-async fn get_overlay_url(_state: tauri::State<'_, SharedState>) -> Result<String, String> {
-    let cfg = overlay_config::OverlayConfig::load_or_default().map_err(|e| e.to_string())?;
+async fn get_danmaku_chat_url(_state: tauri::State<'_, SharedState>) -> Result<String, String> {
+    let cfg = load_danmaku_chat_settings()?;
     Ok(format!("http://127.0.0.1:{}", cfg.port))
 }
 
 #[cfg(feature = "tauri")]
 #[tauri::command]
 async fn get_wish_goal_url(_state: tauri::State<'_, SharedState>) -> Result<String, String> {
-    let cfg = overlay_config::OverlayConfig::load_or_default().map_err(|e| e.to_string())?;
+    let cfg = load_danmaku_chat_settings()?;
     Ok(format!("http://127.0.0.1:{}/wish-goal", cfg.port))
 }
 
 #[cfg(feature = "tauri")]
 #[tauri::command]
 async fn get_lottery_url(_state: tauri::State<'_, SharedState>) -> Result<String, String> {
-    let cfg = overlay_config::OverlayConfig::load_or_default().map_err(|e| e.to_string())?;
+    let cfg = load_danmaku_chat_settings()?;
     Ok(format!("http://127.0.0.1:{}/lottery", cfg.port))
 }
 
 #[cfg(feature = "tauri")]
 #[tauri::command]
 async fn get_gift_effect_url(_state: tauri::State<'_, SharedState>) -> Result<String, String> {
-    let cfg = overlay_config::OverlayConfig::load_or_default().map_err(|e| e.to_string())?;
+    let cfg = load_danmaku_chat_settings()?;
     Ok(format!("http://127.0.0.1:{}/gift-effect", cfg.port))
 }
 
 #[cfg(feature = "tauri")]
 #[tauri::command]
 async fn get_recent_gifts_url(_state: tauri::State<'_, SharedState>) -> Result<String, String> {
-    let cfg = overlay_config::OverlayConfig::load_or_default().map_err(|e| e.to_string())?;
+    let cfg = load_danmaku_chat_settings()?;
     Ok(format!("http://127.0.0.1:{}/recent-gifts", cfg.port))
 }
 
 #[cfg(feature = "tauri")]
 #[tauri::command]
 async fn get_gift_rank_url(_state: tauri::State<'_, SharedState>) -> Result<String, String> {
-    let cfg = overlay_config::OverlayConfig::load_or_default().map_err(|e| e.to_string())?;
+    let cfg = load_danmaku_chat_settings()?;
     Ok(format!("http://127.0.0.1:{}/gift-rank", cfg.port))
 }
 
 #[cfg(feature = "tauri")]
 #[tauri::command]
 async fn get_music_interaction_url() -> Result<String, String> {
-    let cfg = overlay_config::OverlayConfig::load_or_default().map_err(|e| e.to_string())?;
+    let cfg = load_danmaku_chat_settings()?;
     Ok(format!(
         "http://127.0.0.1:{}/song-request/playlist",
         cfg.port
@@ -4116,20 +4222,30 @@ fn valid_gift_catalog_item(name: &str, image: &str, price: i64) -> bool {
 
 #[cfg(feature = "tauri")]
 #[tauri::command]
-async fn load_overlay_config() -> Result<overlay_config::OverlayConfig, String> {
-    overlay_config::OverlayConfig::load_or_default().map_err(|e| e.to_string())
+async fn load_danmaku_chat_config() -> Result<plugin_settings::DanmakuChatSettings, String> {
+    Ok(load_danmaku_chat_settings()?)
 }
 
 #[cfg(feature = "tauri")]
 #[tauri::command]
-async fn save_overlay_config(
-    config: overlay_config::OverlayConfig,
+async fn save_danmaku_chat_config(
+    config: plugin_settings::DanmakuChatSettings,
     state: tauri::State<'_, SharedState>,
 ) -> Result<(), String> {
-    config.save().map_err(|e| e.to_string())?;
-    // 通知所有 overlay 网页客户端重新拉取配置
+    let mut settings =
+        plugin_settings::PluginSettings::load_or_default().map_err(|e| e.to_string())?;
+    settings.danmaku_chat = config;
+    settings.save().map_err(|e| e.to_string())?;
+    // 通知所有弹幕聊天网页客户端重新拉取配置
     overlay_server::broadcast_cfg_update(&state.overlay_tx);
     Ok(())
+}
+
+#[cfg(feature = "tauri")]
+fn load_danmaku_chat_settings() -> Result<plugin_settings::DanmakuChatSettings, String> {
+    plugin_settings::PluginSettings::load_or_default()
+        .map(|settings| settings.danmaku_chat)
+        .map_err(|e| e.to_string())
 }
 
 #[cfg(feature = "tauri")]

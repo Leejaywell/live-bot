@@ -530,7 +530,7 @@ export function WishGoal() {
             </button>
             {baseOpen && (
               <div className="space-y-4 p-4">
-                <div className="grid grid-cols-2 items-end gap-3">
+                <div className="grid grid-cols-1 gap-3">
                   <label className="space-y-1.5">
                   <span className="text-[11px] font-bold text-[var(--muted-text)]">标题</span>
                   <Input value={wish.Title} onChange={e => updateWish({ Title: e.target.value })} />
@@ -552,7 +552,7 @@ export function WishGoal() {
                   {systemFonts.map(font => <option key={font} value={font}>{font}</option>)}
                 </select>
                 </label>
-                <div className="grid grid-cols-2 gap-3">
+                <div className="grid grid-cols-1 gap-3">
                   <label className="space-y-1.5">
                 <span className="text-[11px] font-bold text-[var(--muted-text)]">达成动画</span>
                 <select value={wish.CompleteAnimation} onChange={e => updateWish({ CompleteAnimation: e.target.value })}

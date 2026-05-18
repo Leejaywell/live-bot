@@ -531,6 +531,14 @@
   }
 
   /* ── Toast (sonner) 主题包联动 ──────────────────────────────────── */
+  [data-sonner-toaster] {
+    pointer-events: none;
+  }
+
+  [data-sonner-toast] {
+    pointer-events: auto;
+  }
+
   /* 通用：左侧色条 + 入场扫光容器；不动 transform 以免破坏 sonner 堆叠 */
   li[data-sonner-toast].toast-edge {
     position: relative;

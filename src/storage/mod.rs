@@ -153,7 +153,6 @@ impl Storage {
             "
             PRAGMA journal_mode = WAL;
             PRAGMA synchronous = NORMAL;
-            drop table if exists danmu_count;
 
             create table if not exists blind_box_stat (
                 id integer primary key autoincrement,

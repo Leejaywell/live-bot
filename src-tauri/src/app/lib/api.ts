@@ -85,6 +85,9 @@ export interface AppConfig {
   // Voice / TTS / ASR / OBS
   TtsEnabled: boolean;
   TtsVoice: string;
+  DanmuAnnounce: boolean;
+  DanmuAnnounceTtsProviderId: string;
+  DanmuAnnounceTtsVoice: string;
   TtsSpeed: number;
   DanmuAnnounceSpeed: number;
   TtsPitch: number;
@@ -115,32 +118,10 @@ export interface AppConfig {
   SpecialWelcomeList: SpecialWelcomeEntry[];
   /** 弹幕播报开关（仅内存，不持久化） */
   DanmuAnnounce?: boolean;
-  // ── 弹幕浮层 ──
-  OverlayPort: number;
-  OverlayFontSize: number;
-  OverlayBgOpacity: number;
-  OverlayShowAvatar: boolean;
-  OverlayAvatarSize: number;
-  OverlayMaxMsgs: number;
-  OverlayCustomCss: string;
-  OverlayMsgGap: number;
-  OverlayShowGift: boolean;
-  OverlayShowGuard: boolean;
-  OverlayShowSc: boolean;
-  OverlayGiftMinCost: number;
-  OverlayDanmuColor: string;
-  OverlayFontWeight: number;
-  OverlayShowUsername: boolean;
-  OverlayAnimateIn: boolean;
-  OverlayAnimateInMs: number;
-  OverlayAnimateOut: boolean;
-  OverlayAnimateOutMs: number;
-  OverlayAnimateOutWait: number;
-  OverlayScMinCost: number;
 }
 
-/** 弹幕浮层独立配置（etc/overlay.toml） */
-export interface OverlayConfig {
+/** 弹幕聊天配置（plugin-settings.toml / DanmakuChat） */
+export interface DanmakuChatConfig {
   // 服务 / 性能
   Port: number;
   MaxMsgs: number;
@@ -223,6 +204,7 @@ export interface OverlayConfig {
 }
 
 export interface PluginSettings {
+  DanmakuChat: DanmakuChatConfig;
   WishGoal: WishGoalSettings;
   LotteryInteraction: LotteryInteractionSettings;
   GiftEffect: GiftEffectSettings;
@@ -498,12 +480,14 @@ export const api = {
   // Monitor
   startMonitor: (roomId?: number) => invoke<void>('start_monitor', { roomId: roomId ?? null }),
   stopMonitor: () => invoke<void>('stop_monitor'),
+  reloadMonitorTts: () => invoke<void>('reload_monitor_tts'),
+  reloadMonitorVoice: () => invoke<void>('reload_monitor_voice'),
   getMonitorStatus: () => invoke<boolean>('get_monitor_status'),
   getMonitorLogs: () => invoke<string[]>('get_monitor_logs'),
   onMonitorStatus: (callback: (status: string) => void) => listen<string>('monitor-status', (event) => callback(event.payload)),
   onMonitorLog: (callback: (log: string) => void) => listen<string>('monitor-log', (event) => callback(event.payload)),
   onMonitorLogs: (callback: (logs: string[]) => void) => listen<string[]>('monitor-logs', (event) => callback(event.payload)),
-  getOverlayUrl: () => invoke<string>('get_overlay_url'),
+  getDanmakuChatUrl: () => invoke<string>('get_danmaku_chat_url'),
   getWishGoalUrl: () => invoke<string>('get_wish_goal_url'),
   getLotteryUrl: () => invoke<string>('get_lottery_url'),
   getGiftEffectUrl: () => invoke<string>('get_gift_effect_url'),
@@ -547,9 +531,9 @@ export const api = {
   openUrl: (url: string) => invoke<void>('open_url', { url }),
   proxyImage: (url: string) => invoke<string>('proxy_image', { url }),
 
-  // Overlay config (独立存储，etc/overlay.toml)
-  loadOverlayConfig: () => invoke<OverlayConfig>('load_overlay_config'),
-  saveOverlayConfig: (config: OverlayConfig) => invoke<void>('save_overlay_config', { config }),
+  // Danmaku chat config (stored in plugin-settings.toml)
+  loadDanmakuChatConfig: () => invoke<DanmakuChatConfig>('load_danmaku_chat_config'),
+  saveDanmakuChatConfig: (config: DanmakuChatConfig) => invoke<void>('save_danmaku_chat_config', { config }),
   loadPluginSettings: () => invoke<PluginSettings>('load_plugin_settings'),
   savePluginSettings: (config: PluginSettings) => invoke<void>('save_plugin_settings', { config }),
   resetWishGoal: () => invoke<PluginSettings>('reset_wish_goal'),
