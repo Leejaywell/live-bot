@@ -35,6 +35,7 @@ Still missing:
 ## File Map
 
 - Modify: `src/music/storage.rs` — repository methods for credits, search contexts, queue rows, status transitions, and stats reads.
+- Modify: `src/storage/mod.rs` — expose a small locked-connection helper used by music services.
 - Modify: `src/music/service.rs` — gift credit intake, candidate context persistence, confirm/enqueue/cancel/status orchestration.
 - Modify: `src/bot/monitor.rs` — pass storage/session/room into music service and refresh enabled setting cheaply.
 - Modify: `src/main.rs` — Tauri commands for confirming candidates, reading queue state, opening queued songs.
@@ -49,6 +50,7 @@ Still missing:
 
 **Files:**
 - Modify: `src/music/storage.rs`
+- Modify: `src/storage/mod.rs`
 
 - [ ] **Step 1: Add failing storage tests**
 
@@ -161,6 +163,18 @@ cargo test -q music::storage
 Expected: compile failure for missing `NewSongCredit`, `insert_credit`, `pending_credit_value`, `save_search_context`, `latest_search_context`, `NewSongRequest`, `insert_song_request`, `mark_credit_used`, and `list_queue`.
 
 - [ ] **Step 3: Implement storage structs and methods**
+
+Add this helper inside `impl Storage` in `src/storage/mod.rs`:
+
+```rust
+pub fn with_connection<T, F>(&self, f: F) -> Result<T>
+where
+    F: FnOnce(&Connection) -> Result<T>,
+{
+    let conn = self.conn.lock().expect("storage mutex poisoned");
+    f(&conn)
+}
+```
 
 Add these imports and public structs near the top of `src/music/storage.rs`:
 
@@ -412,7 +426,7 @@ Expected: all music storage tests pass.
 - [ ] **Step 5: Commit**
 
 ```bash
-git add src/music/storage.rs
+git add src/music/storage.rs src/storage/mod.rs
 git commit -m "feat: add music request storage operations"
 ```
 
