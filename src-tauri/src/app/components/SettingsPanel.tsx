@@ -19,6 +19,7 @@ import { useState, useEffect, useCallback } from 'react';
 import { Button } from './Button';
 import { Modal, ModalCloseButton } from './Modal';
 import { api, SystemInfo } from '../lib/api';
+import { showSplashAgain } from '../lib/splashTrigger';
 import { toast } from 'sonner';
 import { cn } from '../lib/utils';
 import { useConfig, DlState } from '../context/ConfigContext';
@@ -387,12 +388,31 @@ export function SettingsPanel({ onClose }: SettingsPanelProps) {
                 <div className="flex items-center justify-between">
                   <div className="space-y-0.5">
                     <div className="text-[12px] font-medium text-gray-800 dark:text-gray-200">关闭背景特效</div>
-                    <div className="text-[10px] text-gray-400">关闭主界面的动态背景背景球（降低 CPU 占用）</div>
+                    <div className="text-[10px] text-gray-400">关闭主界面的动态背景动画（降低 CPU 占用）</div>
                   </div>
                   <Toggle
                     checked={config?.DisableBackgroundEffects ?? false}
                     onChange={(val) => updateConfig({ DisableBackgroundEffects: val })}
                   />
+                </div>
+                <div className="flex items-center justify-between">
+                  <div className="space-y-0.5">
+                    <div className="text-[12px] font-medium text-gray-800 dark:text-gray-200">关闭鼠标特效</div>
+                    <div className="text-[10px] text-gray-400">关闭自定义光标与点击波纹（不影响背景）</div>
+                  </div>
+                  <Toggle
+                    checked={config?.DisableCursorEffects ?? false}
+                    onChange={(val) => updateConfig({ DisableCursorEffects: val })}
+                  />
+                </div>
+                <div className="flex items-center justify-between">
+                  <div className="space-y-0.5">
+                    <div className="text-[12px] font-medium text-gray-800 dark:text-gray-200">预览启动页</div>
+                    <div className="text-[10px] text-gray-400">按当前主题与时段重新播放启动动画</div>
+                  </div>
+                  <Button size="sm" variant="default" onClick={() => showSplashAgain()}>
+                    查看
+                  </Button>
                 </div>
               </div>
             </div>

@@ -386,12 +386,531 @@
 
   /* ── Motion ──────────────────────────────────────────────────────── */
 
-  /* Page / route transition */
+  /* Page / route transition (默认) */
   @keyframes page-in {
     from { opacity: 0; transform: translateY(10px); }
     to   { opacity: 1; transform: translateY(0);    }
   }
   .animate-page-in { animation: page-in 0.22s cubic-bezier(0.16, 1, 0.3, 1) both; }
+
+  /* 国风：卷轴展开（横向 clip-path） */
+  @keyframes page-in-ink {
+    from {
+      opacity: 0;
+      clip-path: inset(0 50% 0 50%);
+      filter: blur(6px);
+    }
+    to {
+      opacity: 1;
+      clip-path: inset(0 0 0 0);
+      filter: blur(0);
+    }
+  }
+  .animate-page-in-ink { animation: page-in-ink 0.42s cubic-bezier(0.22, 1, 0.36, 1) both; }
+
+  /* 科技：扫描线 + 切片错位 */
+  @keyframes page-in-tech {
+    0% {
+      opacity: 0;
+      transform: translateY(14px) skewX(-3deg);
+      clip-path: polygon(0 0, 100% 0, 100% 0, 0 0);
+      filter: hue-rotate(-15deg) brightness(1.15);
+    }
+    60% {
+      opacity: 1;
+      transform: translateY(0) skewX(0);
+      clip-path: polygon(0 0, 100% 0, 100% 100%, 0 100%);
+      filter: hue-rotate(0) brightness(1.04);
+    }
+    100% {
+      opacity: 1;
+      transform: translateY(0);
+      filter: none;
+    }
+  }
+  .animate-page-in-tech { animation: page-in-tech 0.34s cubic-bezier(0.2, 0.8, 0.2, 1) both; }
+
+  /* 海洋：波浪由下滑入 */
+  @keyframes page-in-ocean {
+    from {
+      opacity: 0;
+      transform: translateY(24px) scale(0.985);
+      filter: blur(4px);
+    }
+    to {
+      opacity: 1;
+      transform: translateY(0) scale(1);
+      filter: blur(0);
+    }
+  }
+  .animate-page-in-ocean { animation: page-in-ocean 0.36s cubic-bezier(0.22, 1, 0.36, 1) both; }
+
+  /* ── 按钮微交互 (按 themeFamily 切换) ───────────────────────────── */
+  /* 所有 data-fx="btn" 按钮共用基础: relative + 流光层 */
+  button[data-fx="btn"] { position: relative; isolation: isolate; }
+  button[data-fx="btn"]::before,
+  button[data-fx="btn"]::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+    border-radius: inherit;
+    z-index: 0;
+    transition: opacity 0.32s ease, transform 0.55s cubic-bezier(0.2, 0.8, 0.2, 1);
+    opacity: 0;
+  }
+  button[data-fx="btn"] > * { position: relative; z-index: 1; }
+
+  /* 国风：墨色由中心晕染 + 按下时朱砂闪 */
+  [data-theme-family="ink"] button[data-fx="btn"]::before {
+    background: radial-gradient(circle at center, rgba(255,235,225,0.22), transparent 70%);
+  }
+  [data-theme-family="ink"] button[data-fx="btn"]:hover::before { opacity: 1; }
+  [data-theme-family="ink"] button[data-fx="btn"]::after {
+    background: radial-gradient(circle at center, rgba(186,38,38,0.32), transparent 60%);
+    transform: scale(0.6);
+  }
+  [data-theme-family="ink"] button[data-fx="btn"]:active::after {
+    opacity: 1;
+    transform: scale(1.15);
+    transition: opacity 0.18s, transform 0.28s ease-out;
+  }
+  [data-theme-family="ink"] button[data-fx="btn"]:hover {
+    box-shadow: 0 4px 18px -4px rgba(0,0,0,0.18), 0 0 0 1px rgba(186,38,38,0.08);
+  }
+
+  /* 科技：横向扫光 + 边框霓虹 */
+  [data-theme-family="tech"] button[data-fx="btn"]::before {
+    background: linear-gradient(120deg,
+      transparent 30%,
+      color-mix(in srgb, var(--accent-color) 55%, transparent) 50%,
+      transparent 70%);
+    transform: translateX(-110%);
+    opacity: 0;
+  }
+  [data-theme-family="tech"] button[data-fx="btn"]:hover::before {
+    opacity: 0.55;
+    transform: translateX(110%);
+  }
+  [data-theme-family="tech"] button[data-fx="btn"]::after {
+    box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--accent-color) 45%, transparent),
+                0 0 14px color-mix(in srgb, var(--accent-color) 35%, transparent);
+  }
+  [data-theme-family="tech"] button[data-fx="btn"]:hover::after { opacity: 1; }
+  [data-theme-family="tech"] button[data-fx="btn"]:active {
+    transform: scale(0.96);
+    transition: transform 0.08s ease;
+  }
+  [data-theme-family="tech"] button[data-fx="btn"]:active::after {
+    opacity: 1;
+    box-shadow: inset 0 0 0 1.4px var(--accent-color),
+                0 0 26px color-mix(in srgb, var(--accent-color) 65%, transparent);
+  }
+
+  /* 海洋：水波涟漪 hover + 按下下沉 */
+  [data-theme-family="ocean"] button[data-fx="btn"]::before {
+    background: radial-gradient(circle at center, rgba(120,210,230,0.32), transparent 65%);
+  }
+  [data-theme-family="ocean"] button[data-fx="btn"]:hover::before {
+    opacity: 1;
+    transform: scale(1.08);
+  }
+  [data-theme-family="ocean"] button[data-fx="btn"]:active {
+    transform: translateY(1px) scale(0.98);
+    transition: transform 0.12s ease;
+  }
+
+  /* 默认：轻微 hover lift */
+  [data-theme-family="default"] button[data-fx="btn"]:hover {
+    transform: translateY(-1px);
+    box-shadow: 0 6px 16px -8px rgba(0,0,0,0.25);
+  }
+  [data-theme-family="default"] button[data-fx="btn"]:active {
+    transform: translateY(0);
+    transition: transform 0.08s ease;
+  }
+
+  /* ── Splash Screen 启动页 ───────────────────────────────────────── */
+  .splash-screen {
+    position: fixed;
+    inset: 0;
+    z-index: 100000;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    pointer-events: none;
+    overflow: hidden;
+  }
+  .splash-in  { animation: splash-fade-in  0.30s ease-out both; }
+  .splash-out { animation: splash-fade-out 0.45s ease-in  both; }
+  @keyframes splash-fade-in  { from { opacity: 0; } to { opacity: 1; } }
+  @keyframes splash-fade-out {
+    from { opacity: 1; filter: blur(0); }
+    to   { opacity: 0; filter: blur(8px); }
+  }
+
+  .splash-content {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 36px;
+  }
+
+  /* 插画铺满全屏 + Ken Burns 推镜头 */
+  .splash-art-frame {
+    position: absolute;
+    inset: -2%;
+    overflow: hidden;
+    z-index: 0;
+  }
+  .splash-art {
+    width: 100%;
+    height: 100%;
+    display: block;
+    transform-origin: center center;
+    animation: splash-ken-burns 8s cubic-bezier(0.22, 0.65, 0.36, 1) both;
+  }
+  @keyframes splash-ken-burns {
+    0%   { transform: scale(1.02) translate(0, 0); }
+    100% { transform: scale(1.14) translate(-2%, -2.5%); }
+  }
+
+  /* 暗角，让中央 Logo 更突出 */
+  .splash-vignette {
+    position: absolute;
+    inset: 0;
+    z-index: 1;
+    pointer-events: none;
+    background:
+      radial-gradient(ellipse at center, transparent 35%, rgba(0,0,0,0.32) 100%);
+  }
+
+  /* 中央覆盖层：问候 + Logo */
+  .splash-overlay {
+    position: relative;
+    z-index: 2;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 32px;
+    animation: splash-overlay-in 0.9s cubic-bezier(0.22, 1, 0.36, 1) 0.2s both;
+  }
+  @keyframes splash-overlay-in {
+    from { opacity: 0; transform: translateY(14px); }
+    to   { opacity: 1; transform: translateY(0); }
+  }
+
+  .splash-greeting {
+    font-size: 64px;
+    font-weight: 700;
+    line-height: 1;
+    letter-spacing: 0.05em;
+    color: #fff;
+    text-shadow:
+      0 2px 16px rgba(0, 0, 0, 0.45),
+      0 0 32px rgba(0, 0, 0, 0.25);
+  }
+  .splash-screen[data-family="ink"] .splash-greeting {
+    font-family: "Ma Shan Zheng", "STXingkai", "华文行楷",
+                 "Songti SC", "STSong", "KaiTi", serif;
+    color: #fff8e6;
+    text-shadow:
+      0 0 20px rgba(186, 38, 38, 0.5),
+      0 2px 12px rgba(0, 0, 0, 0.5);
+  }
+  .splash-screen[data-family="tech"] .splash-greeting {
+    font-family: "Orbitron", "JetBrains Mono", "PingFang SC", sans-serif;
+    color: #e6f5ff;
+    text-shadow:
+      0 0 12px color-mix(in srgb, var(--accent-color) 80%, transparent),
+      0 0 28px color-mix(in srgb, var(--accent-color) 50%, transparent),
+      0 2px 8px rgba(0, 0, 0, 0.4);
+  }
+  .splash-screen[data-family="ocean"] .splash-greeting {
+    font-family: "ZCOOL KuaiLe", "Hiragino Sans GB", "PingFang SC", sans-serif;
+    color: #e8f6ff;
+    text-shadow:
+      0 0 18px hsla(195, 95%, 65%, 0.6),
+      0 2px 10px rgba(0, 0, 0, 0.5);
+  }
+
+  .splash-brand {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 10px 18px;
+    border-radius: 16px;
+    background: rgba(0, 0, 0, 0.32);
+    backdrop-filter: blur(14px);
+    -webkit-backdrop-filter: blur(14px);
+    border: 1px solid rgba(255, 255, 255, 0.10);
+  }
+  .splash-logo {
+    width: 32px;
+    height: 32px;
+    border-radius: 8px;
+  }
+  .splash-meta {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+  }
+  .splash-name {
+    font-size: 13px;
+    font-weight: 700;
+    letter-spacing: 0.05em;
+    color: #fff;
+  }
+  .splash-tagline {
+    font-size: 10px;
+    color: rgba(255, 255, 255, 0.65);
+    letter-spacing: 0.08em;
+  }
+
+  /* ── 装饰粒子动画 ─────────────────────────────────────────────── */
+  .splash-art .ink-petals circle {
+    animation: ink-petal-drift 5s ease-in-out infinite both;
+  }
+  @keyframes ink-petal-drift {
+    0%   { transform: translate(0, 0)        rotate(0); opacity: 0; }
+    20%  { opacity: 1; }
+    100% { transform: translate(-30px, 180px) rotate(180deg); opacity: 0; }
+  }
+  .splash-art .tech-particles circle {
+    animation: tech-particle-twinkle 3s ease-in-out infinite both;
+  }
+  @keyframes tech-particle-twinkle {
+    0%, 100% { opacity: 0.3; transform: scale(1); }
+    50%      { opacity: 1;   transform: scale(1.6); }
+  }
+  .splash-art .ocean-bubbles circle {
+    animation: ocean-bubble-rise 6s ease-in infinite both;
+  }
+  @keyframes ocean-bubble-rise {
+    0%   { transform: translateY(0);    opacity: 0; }
+    15%  { opacity: 0.7; }
+    100% { transform: translateY(-200px); opacity: 0; }
+  }
+
+  /* Logo 块默认不可见，splash-logo-in 触发浮入 */
+  .splash-logo-block {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 8px;
+    opacity: 0;
+    transform: translateY(8px);
+    transition: opacity 0.6s ease, transform 0.6s cubic-bezier(0.22, 1, 0.36, 1);
+  }
+  .splash-logo-block.splash-logo-in {
+    opacity: 1;
+    transform: translateY(0);
+  }
+  .splash-logo {
+    width: 56px;
+    height: 56px;
+    border-radius: 14px;
+    box-shadow: 0 8px 28px color-mix(in srgb, var(--primary-color) 25%, rgba(0,0,0,0.18));
+  }
+  .splash-name {
+    font-size: 16px;
+    font-weight: 700;
+    letter-spacing: 0.04em;
+    color: var(--foreground);
+  }
+  .splash-tagline {
+    font-size: 11px;
+    font-weight: 500;
+    color: var(--muted-text);
+    letter-spacing: 0.08em;
+  }
+  .splash-screen[data-family="ink"] .splash-name {
+    font-family: "Songti SC", "STSong", "SimSun", serif;
+  }
+  .splash-screen[data-family="tech"] .splash-name {
+    font-family: "JetBrains Mono", "Menlo", monospace;
+    text-shadow: 0 0 12px color-mix(in srgb, var(--accent-color) 55%, transparent);
+  }
+
+  /* ── Toast (sonner) 主题包联动 ──────────────────────────────────── */
+  /* 通用：左侧色条 + 入场扫光容器；不动 transform 以免破坏 sonner 堆叠 */
+  li[data-sonner-toast].toast-edge {
+    position: relative;
+    overflow: hidden;
+    isolation: isolate;
+  }
+  li[data-sonner-toast].toast-edge > * {
+    position: relative;
+    z-index: 1;
+  }
+
+  /* 国风 (ink): 朱砂边条 + 卷轴展开 */
+  @keyframes toast-in-ink {
+    0% {
+      opacity: 0;
+      clip-path: inset(0 0 0 100%);
+      filter: blur(4px);
+    }
+    100% {
+      opacity: 1;
+      clip-path: inset(0 0 0 0);
+      filter: blur(0);
+    }
+  }
+  [data-theme-family="ink"] li[data-sonner-toast].toast-edge[data-mounted="true"]:not([data-removed="true"]) {
+    animation: toast-in-ink 0.42s cubic-bezier(0.22, 1, 0.36, 1) both;
+  }
+  [data-theme-family="ink"] li[data-sonner-toast].toast-edge::before {
+    content: '';
+    position: absolute;
+    left: 0; top: 6px; bottom: 6px;
+    width: 3px;
+    background: linear-gradient(180deg,
+      rgba(186, 38, 38, 0.92) 0%,
+      rgba(186, 38, 38, 0.55) 100%);
+    border-radius: 0 1px 1px 0;
+    z-index: 2;
+  }
+  [data-theme-family="ink"] li[data-sonner-toast].toast-edge {
+    font-family: "Songti SC", "STSong", "SimSun", serif !important;
+    letter-spacing: 0.02em;
+  }
+
+  /* 科技 (tech): 霓虹边 + 横向切片入场 + 扫光带 */
+  @keyframes toast-in-tech {
+    0% {
+      opacity: 0;
+      clip-path: polygon(0 35%, 100% 35%, 100% 65%, 0 65%);
+      filter: hue-rotate(-18deg) brightness(1.35);
+    }
+    45% {
+      opacity: 1;
+      clip-path: polygon(0 0, 100% 0, 100% 100%, 0 100%);
+      filter: hue-rotate(0) brightness(1.12);
+    }
+    100% {
+      opacity: 1;
+      filter: none;
+    }
+  }
+  @keyframes toast-scan-tech {
+    0%   { left: -60%; opacity: 0; }
+    20%  { opacity: 0.55; }
+    100% { left: 120%; opacity: 0; }
+  }
+  [data-theme-family="tech"] li[data-sonner-toast].toast-edge[data-mounted="true"]:not([data-removed="true"]) {
+    animation: toast-in-tech 0.40s cubic-bezier(0.2, 0.8, 0.2, 1) both;
+  }
+  [data-theme-family="tech"] li[data-sonner-toast].toast-edge {
+    border-color: color-mix(in srgb, var(--accent-color) 38%, var(--surface-border)) !important;
+    box-shadow: -2px 4px 18px color-mix(in srgb, var(--accent-color) 22%, transparent),
+                inset 0 0 0 1px color-mix(in srgb, var(--accent-color) 14%, transparent) !important;
+  }
+  [data-theme-family="tech"] li[data-sonner-toast].toast-edge::before {
+    content: '';
+    position: absolute;
+    left: 0; top: 0; bottom: 0;
+    width: 2px;
+    background: linear-gradient(180deg, var(--accent-color), var(--primary-color));
+    box-shadow: 0 0 8px var(--accent-color);
+    z-index: 2;
+  }
+  [data-theme-family="tech"] li[data-sonner-toast].toast-edge::after {
+    content: '';
+    position: absolute;
+    top: 0; bottom: 0;
+    width: 50%;
+    background: linear-gradient(120deg,
+      transparent 0%,
+      color-mix(in srgb, var(--accent-color) 60%, transparent) 50%,
+      transparent 100%);
+    pointer-events: none;
+    z-index: 0;
+    left: -60%;
+    opacity: 0;
+  }
+  [data-theme-family="tech"] li[data-sonner-toast].toast-edge[data-mounted="true"]:not([data-removed="true"])::after {
+    animation: toast-scan-tech 0.85s ease-out 0.08s both;
+  }
+
+  /* 海洋 (ocean): 水波涟漪 + 底部光晕 */
+  @keyframes toast-in-ocean {
+    0% {
+      opacity: 0;
+      clip-path: inset(30% 0 0 0);
+      filter: blur(5px);
+    }
+    100% {
+      opacity: 1;
+      clip-path: inset(0 0 0 0);
+      filter: blur(0);
+    }
+  }
+  [data-theme-family="ocean"] li[data-sonner-toast].toast-edge[data-mounted="true"]:not([data-removed="true"]) {
+    animation: toast-in-ocean 0.36s cubic-bezier(0.22, 1, 0.36, 1) both;
+  }
+  [data-theme-family="ocean"] li[data-sonner-toast].toast-edge {
+    border-radius: 18px !important;
+  }
+  [data-theme-family="ocean"] li[data-sonner-toast].toast-edge::before {
+    content: '';
+    position: absolute;
+    left: 0; top: 4px; bottom: 4px;
+    width: 3px;
+    background: linear-gradient(180deg,
+      hsl(195, 75%, 55%) 0%,
+      hsl(220, 70%, 60%) 100%);
+    box-shadow: 0 0 8px hsla(195, 80%, 60%, 0.55);
+    border-radius: 0 1.5px 1.5px 0;
+    z-index: 2;
+  }
+  [data-theme-family="ocean"] li[data-sonner-toast].toast-edge::after {
+    content: '';
+    position: absolute;
+    inset: auto 0 0 0;
+    height: 34%;
+    background: linear-gradient(180deg,
+      transparent 0%,
+      color-mix(in srgb, var(--primary-color) 18%, transparent) 100%);
+    pointer-events: none;
+    z-index: 0;
+    border-radius: inherit;
+  }
+
+  /* ── 重要事件 toast (notify.ts -> toast-important) ─────────────── */
+  /* 顶部居中大卡片，更厚阴影、更明显边框、不被入场切片动画截掉 */
+  li[data-sonner-toast].toast-important {
+    border-radius: 16px !important;
+    border-width: 1.5px !important;
+    box-shadow: 0 16px 48px rgba(0, 0, 0, 0.20),
+                0 2px 8px rgba(0, 0, 0, 0.08) !important;
+    backdrop-filter: blur(calc(var(--glass-blur) * 1.2)) !important;
+  }
+  /* tech family 重要 toast：边框更亮、shadow 带 accent 染色 */
+  [data-theme-family="tech"] li[data-sonner-toast].toast-important {
+    box-shadow: 0 16px 48px color-mix(in srgb, var(--accent-color) 30%, rgba(0,0,0,0.4)),
+                inset 0 0 0 1.5px color-mix(in srgb, var(--accent-color) 40%, transparent) !important;
+  }
+  /* ink family 重要 toast：朱砂双边 */
+  [data-theme-family="ink"] li[data-sonner-toast].toast-important::after {
+    content: '';
+    position: absolute;
+    right: 0; top: 8px; bottom: 8px;
+    width: 2px;
+    background: linear-gradient(180deg,
+      rgba(186, 38, 38, 0.55) 0%,
+      rgba(186, 38, 38, 0.85) 100%);
+    z-index: 2;
+  }
+
+  /* default: 极简,只入场淡入 */
+  @keyframes toast-in-default {
+    from { opacity: 0; clip-path: inset(0 0 0 40%); }
+    to   { opacity: 1; clip-path: inset(0 0 0 0);   }
+  }
+  [data-theme-family="default"] li[data-sonner-toast].toast-edge[data-mounted="true"]:not([data-removed="true"]) {
+    animation: toast-in-default 0.28s ease-out both;
+  }
 
   /* Tab content fade-slide */
   @keyframes tab-in {

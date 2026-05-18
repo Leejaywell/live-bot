@@ -39,6 +39,8 @@ pub struct AppConfig {
     pub launch_at_startup: bool,
     #[serde(default)]
     pub disable_background_effects: bool,
+    #[serde(default)]
+    pub disable_cursor_effects: bool,
     #[serde(default = "default_room_id")]
     pub room_id: i64,
     /// 主播自己的直播间列表，空表示不限制
@@ -382,6 +384,7 @@ impl Default for AppConfig {
             minimize_to_tray: true,
             launch_at_startup: false,
             disable_background_effects: false,
+            disable_cursor_effects: false,
             room_id: 3,
             ws_server_url: "wss://broadcastlv.chat.bilibili.com:2245/sub".to_string(),
             danmu_len: 20,
@@ -516,9 +519,15 @@ fn default_asr_engine() -> String {
 fn default_true() -> bool {
     true
 }
-fn default_vad_threshold() -> f32 { 0.3 }
-fn default_vad_min_speech_duration() -> f32 { 0.08 }
-fn default_vad_min_silence_duration() -> f32 { 0.3 }
+fn default_vad_threshold() -> f32 {
+    0.3
+}
+fn default_vad_min_speech_duration() -> f32 {
+    0.08
+}
+fn default_vad_min_silence_duration() -> f32 {
+    0.3
+}
 fn default_asr_language() -> String {
     "zh".to_string()
 }
@@ -754,15 +763,39 @@ fn default_voice_temperature() -> f32 {
     0.7
 }
 
-fn default_overlay_port() -> u16 { 12450 }
-fn default_overlay_font_size() -> u8 { 13 }
-fn default_overlay_bg_opacity() -> f32 { 0.72 }
-fn default_overlay_show_avatar() -> bool { true }
-fn default_overlay_avatar_size() -> u8 { 24 }
-fn default_overlay_max_msgs() -> u8 { 50 }
-fn default_overlay_msg_gap() -> u8 { 3 }
-fn default_overlay_danmu_color() -> String { "#e8e8e8".to_string() }
-fn default_overlay_font_weight() -> u16 { 400 }
-fn default_overlay_animate_in_ms() -> u16 { 200 }
-fn default_overlay_animate_out_ms() -> u16 { 400 }
-fn default_overlay_animate_out_wait() -> u16 { 30 }
+fn default_overlay_port() -> u16 {
+    12450
+}
+fn default_overlay_font_size() -> u8 {
+    13
+}
+fn default_overlay_bg_opacity() -> f32 {
+    0.72
+}
+fn default_overlay_show_avatar() -> bool {
+    true
+}
+fn default_overlay_avatar_size() -> u8 {
+    24
+}
+fn default_overlay_max_msgs() -> u8 {
+    50
+}
+fn default_overlay_msg_gap() -> u8 {
+    3
+}
+fn default_overlay_danmu_color() -> String {
+    "#e8e8e8".to_string()
+}
+fn default_overlay_font_weight() -> u16 {
+    400
+}
+fn default_overlay_animate_in_ms() -> u16 {
+    200
+}
+fn default_overlay_animate_out_ms() -> u16 {
+    400
+}
+fn default_overlay_animate_out_wait() -> u16 {
+    30
+}

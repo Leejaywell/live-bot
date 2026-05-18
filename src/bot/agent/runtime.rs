@@ -47,7 +47,8 @@ impl AgentRuntime {
         history: &[(String, String)],
         user_prompt: &str,
     ) -> Result<String> {
-        self.run_with_provider_opts(http, provider, system_prompt, history, user_prompt, None).await
+        self.run_with_provider_opts(http, provider, system_prompt, history, user_prompt, None)
+            .await
     }
 
     pub async fn run_with_provider_opts(

@@ -2,11 +2,15 @@ import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { HashRouter, Routes, Route, Navigate, useLocation } from 'react-router-dom';
 import { LogIn, Home, Radio } from 'lucide-react';
 import { Toaster } from 'sonner';
-import { ThemeProvider } from './context/ThemeContext';
+import { ThemeProvider, useTheme } from './context/ThemeContext';
 import { ConfigProvider, useConfig } from './context/ConfigContext';
 import { LoginContext } from './context/LoginContext';
 import { RoomProvider, useRoom } from './context/RoomContext';
 import { BackgroundManager } from './components/BackgroundEffects';
+import { CursorEffect } from './components/CursorEffect';
+import { ClickRippleEffect } from './components/ClickRippleEffect';
+import { SplashScreen } from './components/SplashScreen';
+import { registerSplashTrigger } from './lib/splashTrigger';
 import { DanmuOverlay } from './components/DanmuOverlay';
 import { TopBar } from './components/TopBar';
 import { Sidebar } from './components/Sidebar';
@@ -84,6 +88,7 @@ function AppContent() {
   const [settingsPanelOpen, setSettingsPanelOpen] = useState(false);
   const [isLoggedIn, setIsLoggedIn] = useState(false);
   const [loginChecked, setLoginChecked] = useState(false);
+  const [splashDismissed, setSplashDismissed] = useState(false);
   const [userInfo, setUserInfo] = useState<UserInfo | null>(null);
   const [autoRoom, setAutoRoom] = useState<{ roomId: string; liveStatus: number; liveTime: string } | null>(null);
   const [showRoomModal, setShowRoomModal] = useState(false);
@@ -93,6 +98,11 @@ function AppContent() {
   useEffect(() => {
     registerOpenRoomModal(() => setShowRoomModal(true));
   }, [registerOpenRoomModal]);
+
+  // 设置页"预览启动页"按钮触发
+  useEffect(() => {
+    registerSplashTrigger(() => setSplashDismissed(false));
+  }, []);
   const [loginUrl, setLoginUrl] = useState('');
   const [loginKey, setLoginKey] = useState('');
   const [loginStatus, setLoginStatus] = useState<'pending' | 'expired' | 'success' | 'idle'>('pending');
@@ -252,12 +262,13 @@ function AppContent() {
     window.location.reload();
   }, []);
 
-  // 连接房间成功
+  // 连接房间成功（仅用户主动连接走此路径；启动恢复不进这里，因此自动恢复时不会有 toast）
   const handleRoomConnected = useCallback((roomId: string, liveStatus: number, liveTime: string, roomUid?: number) => {
     const id = parseInt(roomId);
     setAutoRoom({ roomId, liveStatus, liveTime });
     setShowRoomModal(false);
     setConnected(true);
+    toast.success(`已连接到直播间 ${roomId}`);
     // 持久化已连接的房间
     api.setConnectedRoom(id).catch(() => {});
     // 拉取主播信息
@@ -278,31 +289,36 @@ function AppContent() {
 
   return (
     <>
+      {!splashDismissed && (
+        <SplashScreen
+          isReady={loginChecked}
+          onDismiss={() => setSplashDismissed(true)}
+        />
+      )}
       <Toaster
         position="top-right"
         richColors
-        gap={6}
+        gap={8}
         visibleToasts={4}
         duration={2500}
         containerStyle={{
-          right: '0px',
+          right: '4px',
           top: '64px',
         }}
         toastOptions={{
           className: 'toast-edge',
           style: {
-            fontSize: '11px',
+            fontSize: '12px',
             fontWeight: 600,
             background: 'var(--surface-bg)',
             color: 'var(--foreground)',
             backdropFilter: 'blur(var(--glass-blur))',
             border: '1px solid var(--surface-border)',
-            borderRight: 'none',
-            boxShadow: '-4px 6px 20px rgba(0, 0, 0, 0.07)',
-            borderRadius: '14px 0 0 14px',
-            padding: '7px 14px',
+            boxShadow: '0 10px 30px rgba(0, 0, 0, 0.14)',
+            borderRadius: '14px',
+            padding: '9px 14px',
             width: 'fit-content',
-            minWidth: '160px',
+            minWidth: '200px',
           },
         }}
       />
@@ -313,6 +329,8 @@ function AppContent() {
       <ConfigProvider>
       <HashRouter>
         <BackgroundManager />
+        <ClickRippleEffect />
+        <CursorEffect />
         <DanmuOverlay />
         {loginChecked && <div
           className="w-full h-screen overflow-hidden flex relative z-[1]"
@@ -421,11 +439,17 @@ function AppContent() {
   );
 }
 
-// 带页面过渡的路由容器
+// 带页面过渡的路由容器（按 themeFamily 选择不同转场）
 function AnimatedRoutes() {
   const location = useLocation();
+  const { themeFamily } = useTheme();
+  const animClass =
+    themeFamily === 'ink'   ? 'animate-page-in-ink'   :
+    themeFamily === 'tech'  ? 'animate-page-in-tech'  :
+    themeFamily === 'ocean' ? 'animate-page-in-ocean' :
+                              'animate-page-in';
   return (
-    <div key={location.pathname} className="animate-page-in h-full overflow-y-auto">
+    <div key={location.pathname} className={`${animClass} h-full overflow-y-auto`}>
       <Routes location={location}>
         <Route path="/" element={<Dashboard />} />
         <Route path="/audience" element={<Audience />} />

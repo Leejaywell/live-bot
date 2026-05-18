@@ -478,7 +478,8 @@ impl PluginSettings {
             .get("original_gift_name")
             .and_then(Value::as_str)
             .unwrap_or_default();
-        if !effect.gift_name.is_empty() && effect.gift_name != gift && effect.gift_name != original {
+        if !effect.gift_name.is_empty() && effect.gift_name != gift && effect.gift_name != original
+        {
             return false;
         }
         effect.last_user = event
@@ -489,7 +490,11 @@ impl PluginSettings {
             .unwrap_or("观众")
             .to_string();
         effect.last_gift = if gift.is_empty() { original } else { gift }.to_string();
-        effect.last_count = event.get("count").and_then(Value::as_i64).unwrap_or(1).max(1);
+        effect.last_count = event
+            .get("count")
+            .and_then(Value::as_i64)
+            .unwrap_or(1)
+            .max(1);
         effect.effect_nonce = effect.effect_nonce.saturating_add(1);
         true
     }
@@ -524,9 +529,22 @@ impl PluginSettings {
             .and_then(Value::as_str)
             .unwrap_or_default()
             .to_string();
-        let count = event.get("count").and_then(Value::as_i64).unwrap_or(1).max(1);
+        let count = event
+            .get("count")
+            .and_then(Value::as_i64)
+            .unwrap_or(1)
+            .max(1);
         let id = format!("gift-{}", rand::random::<u64>());
-        recent.items.insert(0, RecentGiftItem { id, user, avatar, gift, count });
+        recent.items.insert(
+            0,
+            RecentGiftItem {
+                id,
+                user,
+                avatar,
+                gift,
+                count,
+            },
+        );
         recent.items.truncate(recent.max_items.max(1));
         true
     }
@@ -560,7 +578,11 @@ impl PluginSettings {
             .and_then(Value::as_str)
             .unwrap_or_default()
             .to_string();
-        let count = event.get("count").and_then(Value::as_i64).unwrap_or(1).max(1);
+        let count = event
+            .get("count")
+            .and_then(Value::as_i64)
+            .unwrap_or(1)
+            .max(1);
         let price = event
             .get("price")
             .or_else(|| event.get("gift_price"))
@@ -576,7 +598,12 @@ impl PluginSettings {
                 item.avatar = avatar;
             }
         } else {
-            rank.items.push(GiftRankItem { user, avatar, value, count });
+            rank.items.push(GiftRankItem {
+                user,
+                avatar,
+                value,
+                count,
+            });
         }
         rank.items.sort_by(|a, b| b.value.cmp(&a.value));
         rank.items.truncate(rank.max_items.max(1));
@@ -623,13 +650,20 @@ impl PluginSettings {
     pub fn simulate_recent_gift(&mut self) {
         let recent = &mut self.recent_gifts;
         let seed = recent.items.len().saturating_add(1);
-        recent.items.insert(0, RecentGiftItem {
-            id: format!("sim-{}", rand::random::<u64>()),
-            user: format!("模拟观众{seed}"),
-            avatar: String::new(),
-            gift: if seed % 2 == 0 { "舰长".to_string() } else { "辣条".to_string() },
-            count: if seed % 2 == 0 { 1 } else { 10 },
-        });
+        recent.items.insert(
+            0,
+            RecentGiftItem {
+                id: format!("sim-{}", rand::random::<u64>()),
+                user: format!("模拟观众{seed}"),
+                avatar: String::new(),
+                gift: if seed % 2 == 0 {
+                    "舰长".to_string()
+                } else {
+                    "辣条".to_string()
+                },
+                count: if seed % 2 == 0 { 1 } else { 10 },
+            },
+        );
         recent.items.truncate(recent.max_items.max(1));
     }
 
@@ -740,10 +774,26 @@ fn df_lottery_weight() -> i64 {
 }
 fn df_lottery_prizes() -> Vec<LotteryPrize> {
     vec![
-        LotteryPrize { id: "prize-1".to_string(), name: "1元红包".to_string(), weight: 1 },
-        LotteryPrize { id: "prize-2".to_string(), name: "20元红包".to_string(), weight: 1 },
-        LotteryPrize { id: "prize-3".to_string(), name: "谢谢参与".to_string(), weight: 5 },
-        LotteryPrize { id: "prize-4".to_string(), name: "神秘礼物".to_string(), weight: 1 },
+        LotteryPrize {
+            id: "prize-1".to_string(),
+            name: "1元红包".to_string(),
+            weight: 1,
+        },
+        LotteryPrize {
+            id: "prize-2".to_string(),
+            name: "20元红包".to_string(),
+            weight: 1,
+        },
+        LotteryPrize {
+            id: "prize-3".to_string(),
+            name: "谢谢参与".to_string(),
+            weight: 5,
+        },
+        LotteryPrize {
+            id: "prize-4".to_string(),
+            name: "神秘礼物".to_string(),
+            weight: 1,
+        },
     ]
 }
 fn df_number_color() -> String {

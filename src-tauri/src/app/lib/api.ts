@@ -30,6 +30,8 @@ export interface AppConfig {
   AutoUpdate: boolean;
   MinimizeToTray: boolean;
   LaunchAtStartup: boolean;
+  DisableBackgroundEffects: boolean;
+  DisableCursorEffects: boolean;
   RoomId: number;
   MyRoomIds: number[];
   RecordEnabled: boolean;

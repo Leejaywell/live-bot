@@ -294,41 +294,103 @@ impl OverlayConfig {
 
 // ── Defaults ────────────────────────────────────────────────────────────────
 
-fn df_true() -> bool { true }
-fn df_one() -> f32 { 1.0 }
-fn df_port() -> u16 { 12450 }
-fn df_max_msgs() -> u32 { 50 }
-fn df_msg_gap() -> u8 { 3 }
-fn df_overlay_theme() -> String { "classic".to_string() }
+fn df_true() -> bool {
+    true
+}
+fn df_one() -> f32 {
+    1.0
+}
+fn df_port() -> u16 {
+    12450
+}
+fn df_max_msgs() -> u32 {
+    50
+}
+fn df_msg_gap() -> u8 {
+    3
+}
+fn df_overlay_theme() -> String {
+    "classic".to_string()
+}
 
-fn df_avatar_size() -> u8 { 24 }
+fn df_avatar_size() -> u8 {
+    24
+}
 
-fn df_font_family() -> String { "PingFang SC, Microsoft YaHei, Noto Sans SC, sans-serif".to_string() }
-fn df_username_size() -> u8 { 13 }
-fn df_msg_size() -> u8 { 13 }
-fn df_time_size() -> u8 { 12 }
-fn df_sc_line1_size() -> u8 { 15 }
+fn df_font_family() -> String {
+    "PingFang SC, Microsoft YaHei, Noto Sans SC, sans-serif".to_string()
+}
+fn df_username_size() -> u8 {
+    13
+}
+fn df_msg_size() -> u8 {
+    13
+}
+fn df_time_size() -> u8 {
+    12
+}
+fn df_sc_line1_size() -> u8 {
+    15
+}
 
-fn df_weight_normal() -> u16 { 600 }
-fn df_weight_bold() -> u16 { 700 }
+fn df_weight_normal() -> u16 {
+    600
+}
+fn df_weight_bold() -> u16 {
+    700
+}
 
-fn df_username_color() -> String { "#effee3".to_string() }
-fn df_owner_color() -> String { "#ff96aa".to_string() }
-fn df_mod_color() -> String { "#e7a9ff".to_string() }
-fn df_member_color() -> String { "#96deff".to_string() }
-fn df_msg_color() -> String { "#ffffff".to_string() }
-fn df_time_color() -> String { "#999999".to_string() }
+fn df_username_color() -> String {
+    "#effee3".to_string()
+}
+fn df_owner_color() -> String {
+    "#ff96aa".to_string()
+}
+fn df_mod_color() -> String {
+    "#e7a9ff".to_string()
+}
+fn df_member_color() -> String {
+    "#96deff".to_string()
+}
+fn df_msg_color() -> String {
+    "#ffffff".to_string()
+}
+fn df_time_color() -> String {
+    "#999999".to_string()
+}
 
-fn df_bg_color() -> String { "rgba(0,0,0,0)".to_string() }
-fn df_bg_opacity() -> f32 { 0.15 }
-fn df_msg_bg_color() -> String { "transparent".to_string() }
-fn df_owner_bg_color() -> String { "rgba(255,214,0,0.18)".to_string() }
-fn df_mod_bg_color() -> String { "rgba(94,132,241,0.18)".to_string() }
-fn df_member_bg_color() -> String { "rgba(15,157,88,0.18)".to_string() }
+fn df_bg_color() -> String {
+    "rgba(0,0,0,0)".to_string()
+}
+fn df_bg_opacity() -> f32 {
+    0.15
+}
+fn df_msg_bg_color() -> String {
+    "transparent".to_string()
+}
+fn df_owner_bg_color() -> String {
+    "rgba(255,214,0,0.18)".to_string()
+}
+fn df_mod_bg_color() -> String {
+    "rgba(94,132,241,0.18)".to_string()
+}
+fn df_member_bg_color() -> String {
+    "rgba(15,157,88,0.18)".to_string()
+}
 
-fn df_fade_in() -> u16 { 200 }
-fn df_fade_out() -> u16 { 400 }
-fn df_out_wait() -> u16 { 30 }
+fn df_fade_in() -> u16 {
+    200
+}
+fn df_fade_out() -> u16 {
+    400
+}
+fn df_out_wait() -> u16 {
+    30
+}
 
-fn df_outline_size() -> u8 { 2 }
-fn df_outline_color() -> String { "#000000".to_string() }
+fn df_outline_size() -> u8 {
+    2
+}
+fn df_outline_color() -> String {
+    "#000000".to_string()
+}

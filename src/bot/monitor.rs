@@ -2,8 +2,8 @@ use anyhow::Result;
 use cron::Schedule;
 use serde_json::json;
 use std::str::FromStr;
-use std::sync::{Arc, Mutex};
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
+use std::sync::{Arc, Mutex};
 use std::time::Instant;
 use tokio::net::TcpStream;
 use tokio::sync::mpsc;
@@ -187,10 +187,15 @@ pub async fn run_monitor_loop<E: EventEmitter + Send + Sync + 'static>(
         let vad_model = model_dir.join("silero_vad.onnx");
         let vad_exists = vad_model.exists();
         let vad_size = std::fs::metadata(&vad_model).map(|m| m.len()).unwrap_or(0);
-        let _ = sender_app.emit("monitor-log", serde_json::json!(format!(
-            "[诊断] VAD 启动检查 | 路径: {} | 存在: {} | 大小: {} bytes",
-            vad_model.display(), vad_exists, vad_size
-        )));
+        let _ = sender_app.emit(
+            "monitor-log",
+            serde_json::json!(format!(
+                "[诊断] VAD 启动检查 | 路径: {} | 存在: {} | 大小: {} bytes",
+                vad_model.display(),
+                vad_exists,
+                vad_size
+            )),
+        );
 
         let (asr_url, asr_model_dir, asr_startup_notice) =
             resolve_vad_asr_source(&config, &model_dir).await;
@@ -250,8 +255,18 @@ pub async fn run_monitor_loop<E: EventEmitter + Send + Sync + 'static>(
                     tokio::spawn(async move {
                         #[cfg(feature = "asr")]
                         run_asr_loop(
-                            rx, events2, asr_url_c, asr_router, asr_http, asr_config,
-                            asr_memory, asr_agent, asr_tx, asr_app, asr_cancel, asr_recent_tts,
+                            rx,
+                            events2,
+                            asr_url_c,
+                            asr_router,
+                            asr_http,
+                            asr_config,
+                            asr_memory,
+                            asr_agent,
+                            asr_tx,
+                            asr_app,
+                            asr_cancel,
+                            asr_recent_tts,
                         )
                         .await;
                     });
@@ -259,8 +274,17 @@ pub async fn run_monitor_loop<E: EventEmitter + Send + Sync + 'static>(
                 } else {
                     // 本地 sherpa ASR：SpeechEnd 事件里带文本，直接触发 AI
                     tokio::spawn(run_sherpa_asr_event_loop(
-                        events, has_asr, vad_router, vad_http, vad_config, vad_memory,
-                        vad_agent, vad_tx, vad_app, vad_cancel, Arc::clone(&recent_tts_text),
+                        events,
+                        has_asr,
+                        vad_router,
+                        vad_http,
+                        vad_config,
+                        vad_memory,
+                        vad_agent,
+                        vad_tx,
+                        vad_app,
+                        vad_cancel,
+                        Arc::clone(&recent_tts_text),
                     ));
                     None
                 };

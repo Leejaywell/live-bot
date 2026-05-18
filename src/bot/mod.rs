@@ -2,6 +2,7 @@ pub mod agent;
 pub mod engine;
 pub mod memory;
 pub mod monitor;
+pub mod profile_worker;
 pub mod sender;
 pub mod thanks;
 pub mod timed;
@@ -42,8 +43,43 @@ pub fn record_and_handle_event(
     if should_record {
         storage.record_interaction(session_id, room_id, parsed)?;
         try_auto_track(storage, &parsed.event);
+        try_trigger_profile_analysis(storage, &parsed.event);
     }
     Ok(engine.handle_event(&parsed.event, Some(storage)))
+}
+
+/// 弹幕事件触发的粉丝档案分析：
+///   - 首次到 5 条弹幕（且 AI 摘要为空）
+///   - 之后每累计 50 条且距上次分析 > 7 天
+/// 入队后由 profile_worker 异步消费。
+fn try_trigger_profile_analysis(storage: &Storage, event: &LiveEvent) {
+    let uid = match event {
+        LiveEvent::Danmu { user_id, .. } if *user_id > 0 => *user_id,
+        _ => return,
+    };
+    let profile = match storage.get_user_profile(uid) {
+        Ok(Some(p)) => p,
+        _ => return,
+    };
+    let count = profile.total_danmu_count;
+    let should = match count {
+        5 => profile.ai_summary.is_empty(),
+        n if n > 5 && n % 50 == 0 => is_summary_stale(&profile, 7),
+        _ => false,
+    };
+    if should {
+        crate::bot::profile_worker::try_enqueue(uid);
+    }
+}
+
+fn is_summary_stale(profile: &crate::storage::UserProfile, days: i64) -> bool {
+    let Some(last) = profile.ai_summary_updated_at.as_deref() else {
+        return true;
+    };
+    match chrono::DateTime::parse_from_rfc3339(last) {
+        Ok(t) => (Local::now() - t.with_timezone(&Local)).num_days() >= days,
+        Err(_) => true,
+    }
 }
 
 fn try_auto_track(storage: &Storage, event: &LiveEvent) {

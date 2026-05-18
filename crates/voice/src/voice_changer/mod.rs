@@ -301,9 +301,8 @@ fn run_realtime_loop(
             let wet_rms = rms(&wet_hop);
             let dry_zcr = zero_crossing_rate(&dry_hop);
             let wet_zcr = zero_crossing_rate(&wet_hop);
-            let suspicious_wet = wet_hop.is_empty()
-                || wet_rms < dry_rms * 0.12
-                || wet_zcr > 0.32 && dry_zcr < 0.18;
+            let suspicious_wet =
+                wet_hop.is_empty() || wet_rms < dry_rms * 0.12 || wet_zcr > 0.32 && dry_zcr < 0.18;
             let mut mixed = if suspicious_wet {
                 dry_hop.clone()
             } else {

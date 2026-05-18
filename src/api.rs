@@ -3,7 +3,7 @@ use std::time::{SystemTime, UNIX_EPOCH};
 use crate::token;
 use anyhow::{Result, anyhow};
 use reqwest::header::{COOKIE, HeaderMap, HeaderValue, USER_AGENT};
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 
 const UA: &str = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36";
 
@@ -506,7 +506,8 @@ impl BiliApi {
         messages: &[serde_json::Value],
         tools: Option<&[serde_json::Value]>,
     ) -> anyhow::Result<serde_json::Value> {
-        self.chat_completions_raw_with_opts(provider, messages, tools, None).await
+        self.chat_completions_raw_with_opts(provider, messages, tools, None)
+            .await
     }
 
     pub async fn chat_completions_raw_with_opts(
@@ -623,6 +624,186 @@ impl BiliApi {
         });
 
         Ok(rx)
+    }
+
+    // ── 直播管理 (My Live Control) ─────────────────────────────────────
+    // 接口参考：MagicalDanmaku/services/live_services/bilibili/bili_liveservice.cpp
+
+    /// 一键开播。area_v2 必填（具体分区 ID，非父分区）。
+    /// 返回 status="LIVE" 表示成功，或重复开播 change=0。
+    pub async fn start_live(
+        &self,
+        room_id: i64,
+        area_v2: i64,
+        cookie: &str,
+    ) -> Result<StartLiveData> {
+        let csrf =
+            extract_cookie(cookie, "bili_jct").ok_or_else(|| anyhow!("token 中缺少 bili_jct"))?;
+        let response: ApiResponse<StartLiveData> = self
+            .client
+            .post(
+                "https://api.live.bilibili.com/xlive/app-blink/v1/streaming/WebLiveCenterStartLive",
+            )
+            .header(COOKIE, cookie)
+            .form(&[
+                ("room_id", room_id.to_string()),
+                ("platform", "pc".to_string()),
+                ("area_v2", area_v2.to_string()),
+                ("backup_stream", "0".to_string()),
+                ("csrf_token", csrf.clone()),
+                ("csrf", csrf),
+            ])
+            .send()
+            .await?
+            .error_for_status()?
+            .json()
+            .await?;
+        if response.code != 0 {
+            return Err(anyhow!("开播失败: {}", response.message));
+        }
+        Ok(response.data)
+    }
+
+    /// 一键下播。
+    pub async fn stop_live(&self, room_id: i64, cookie: &str) -> Result<()> {
+        let csrf =
+            extract_cookie(cookie, "bili_jct").ok_or_else(|| anyhow!("token 中缺少 bili_jct"))?;
+        let response: ApiResponse<serde_json::Value> = self
+            .client
+            .post("https://api.live.bilibili.com/room/v1/Room/stopLive")
+            .header(COOKIE, cookie)
+            .form(&[
+                ("room_id", room_id.to_string()),
+                ("platform", "pc".to_string()),
+                ("csrf_token", csrf.clone()),
+                ("csrf", csrf),
+            ])
+            .send()
+            .await?
+            .error_for_status()?
+            .json()
+            .await?;
+        if response.code != 0 {
+            return Err(anyhow!("下播失败: {}", response.message));
+        }
+        Ok(())
+    }
+
+    /// 修改直播间标题 / 分区 / 简介。三者均可选，至少传一个。
+    pub async fn update_room_info(
+        &self,
+        room_id: i64,
+        title: Option<&str>,
+        area_id: Option<i64>,
+        description: Option<&str>,
+        cookie: &str,
+    ) -> Result<()> {
+        if title.is_none() && area_id.is_none() && description.is_none() {
+            return Err(anyhow!("title/area_id/description 至少需提供一项"));
+        }
+        let csrf =
+            extract_cookie(cookie, "bili_jct").ok_or_else(|| anyhow!("token 中缺少 bili_jct"))?;
+        let mut form: Vec<(&str, String)> = vec![
+            ("room_id", room_id.to_string()),
+            ("csrf_token", csrf.clone()),
+            ("csrf", csrf),
+        ];
+        if let Some(t) = title {
+            form.push(("title", t.to_string()));
+        }
+        if let Some(a) = area_id {
+            form.push(("area_id", a.to_string()));
+        }
+        if let Some(d) = description {
+            form.push(("description", d.to_string()));
+        }
+        let response: ApiResponse<serde_json::Value> = self
+            .client
+            .post("https://api.live.bilibili.com/room/v1/Room/update")
+            .header(COOKIE, cookie)
+            .form(&form)
+            .send()
+            .await?
+            .error_for_status()?
+            .json()
+            .await?;
+        if response.code != 0 {
+            return Err(anyhow!("修改直播间信息失败: {}", response.message));
+        }
+        Ok(())
+    }
+
+    /// 获取分区列表（无需登录）。返回的是父分区→子分区两级结构。
+    pub async fn get_web_area_list(&self) -> Result<Vec<AreaCategory>> {
+        let response: ApiResponse<AreaListData> = self
+            .client
+            .get("https://api.live.bilibili.com/xlive/web-interface/v1/index/getWebAreaList?source_id=2")
+            .send()
+            .await?
+            .error_for_status()?
+            .json()
+            .await?;
+        if response.code != 0 {
+            return Err(anyhow!("获取分区列表失败: {}", response.message));
+        }
+        Ok(response.data.data)
+    }
+
+    /// 获取自己的推流地址（rtmp + 推流码），用于 OBS 推流。
+    pub async fn fetch_stream_addr(&self, cookie: &str) -> Result<StreamAddr> {
+        let csrf =
+            extract_cookie(cookie, "bili_jct").ok_or_else(|| anyhow!("token 中缺少 bili_jct"))?;
+        let response: ApiResponse<FetchStreamAddrData> = self
+            .client
+            .post("https://api.live.bilibili.com/xlive/app-blink/v1/live/FetchWebUpStreamAddr")
+            .header(COOKIE, cookie)
+            .form(&[
+                ("platform", "pc".to_string()),
+                ("backup_stream", "0".to_string()),
+                ("csrf_token", csrf.clone()),
+                ("csrf", csrf),
+            ])
+            .send()
+            .await?
+            .error_for_status()?
+            .json()
+            .await?;
+        if response.code != 0 {
+            return Err(anyhow!("获取推流地址失败: {}", response.message));
+        }
+        Ok(response.data.addr)
+    }
+
+    /// 修改主播公告。
+    pub async fn update_room_news(
+        &self,
+        room_id: i64,
+        uid: i64,
+        content: &str,
+        cookie: &str,
+    ) -> Result<()> {
+        let csrf =
+            extract_cookie(cookie, "bili_jct").ok_or_else(|| anyhow!("token 中缺少 bili_jct"))?;
+        let response: ApiResponse<serde_json::Value> = self
+            .client
+            .post("https://api.live.bilibili.com/room_ex/v1/RoomNews/update")
+            .header(COOKIE, cookie)
+            .form(&[
+                ("room_id", room_id.to_string()),
+                ("uid", uid.to_string()),
+                ("content", content.to_string()),
+                ("csrf_token", csrf.clone()),
+                ("csrf", csrf),
+            ])
+            .send()
+            .await?
+            .error_for_status()?
+            .json()
+            .await?;
+        if response.code != 0 {
+            return Err(anyhow!("修改主播公告失败: {}", response.message));
+        }
+        Ok(())
     }
 }
 
@@ -761,4 +942,97 @@ struct UpdateResponse {
     html_url: String,
     #[serde(default)]
     body: String,
+}
+
+// ── 直播管理相关响应 ──────────────────────────────────────────────────────
+
+#[derive(Debug, Deserialize, Serialize, Clone)]
+pub struct StartLiveData {
+    #[serde(default)]
+    pub change: i32,
+    #[serde(default)]
+    pub status: String,
+    /// 仅开播成功时返回推流地址，移动端开播时也可能不带
+    #[serde(default)]
+    pub rtmp: Option<RtmpAddr>,
+}
+
+#[derive(Debug, Deserialize, Serialize, Clone)]
+pub struct RtmpAddr {
+    #[serde(default)]
+    pub addr: String,
+    #[serde(default)]
+    pub code: String,
+}
+
+#[derive(Debug, Deserialize, Serialize, Clone)]
+pub struct StreamAddr {
+    #[serde(default)]
+    pub addr: String,
+    #[serde(default)]
+    pub code: String,
+}
+
+#[derive(Debug, Deserialize)]
+struct FetchStreamAddrData {
+    addr: StreamAddr,
+}
+
+/// 父分区（含其下子分区列表）
+#[derive(Debug, Deserialize, Serialize, Clone)]
+pub struct AreaCategory {
+    /// 父分区 ID
+    pub id: i64,
+    pub name: String,
+    #[serde(default)]
+    pub list: Vec<AreaItem>,
+}
+
+/// 子分区（具体可选项）
+#[derive(Debug, Deserialize, Serialize, Clone)]
+pub struct AreaItem {
+    /// 子分区 ID（接口返回为字符串，反序列化兼容字符串/数字）
+    #[serde(deserialize_with = "de_i64_from_any")]
+    pub id: i64,
+    pub name: String,
+    #[serde(
+        default,
+        rename = "parent_id",
+        deserialize_with = "de_i64_from_any_opt"
+    )]
+    pub parent_id: Option<i64>,
+    #[serde(default)]
+    pub parent_name: String,
+}
+
+#[derive(Debug, Deserialize)]
+struct AreaListData {
+    data: Vec<AreaCategory>,
+}
+
+fn de_i64_from_any<'de, D: serde::Deserializer<'de>>(d: D) -> Result<i64, D::Error> {
+    use serde::de::Error;
+    let v = serde_json::Value::deserialize(d)?;
+    match v {
+        serde_json::Value::Number(n) => n.as_i64().ok_or_else(|| Error::custom("not i64")),
+        serde_json::Value::String(s) => s.parse::<i64>().map_err(Error::custom),
+        _ => Err(Error::custom("expected number or string")),
+    }
+}
+
+fn de_i64_from_any_opt<'de, D: serde::Deserializer<'de>>(d: D) -> Result<Option<i64>, D::Error> {
+    use serde::de::Error;
+    let v = serde_json::Value::deserialize(d)?;
+    match v {
+        serde_json::Value::Null => Ok(None),
+        serde_json::Value::Number(n) => Ok(n.as_i64()),
+        serde_json::Value::String(s) => {
+            if s.is_empty() {
+                Ok(None)
+            } else {
+                s.parse::<i64>().map(Some).map_err(Error::custom)
+            }
+        }
+        _ => Err(Error::custom("expected number/string/null")),
+    }
 }

@@ -549,7 +549,13 @@ async fn synthesize_sentence(
                 channel: Some(1),
             };
             let mut stream = client
-                .synthesize_direct(api_key, voice_id, text, Some(voice_setting), Some(audio_setting))
+                .synthesize_direct(
+                    api_key,
+                    voice_id,
+                    text,
+                    Some(voice_setting),
+                    Some(audio_setting),
+                )
                 .map_err(|e: crate::tts::MiniMaxError| e.to_string())?;
 
             let mut audio_bytes: Vec<u8> = Vec::new();

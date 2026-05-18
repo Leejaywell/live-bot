@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect, useCallback } from 'react';
-import { ChevronDown, Sparkles, Waves, Zap, Cherry, Star, Boxes, Mountain, Coins, Paintbrush, PaintbrushVertical, Trees, CloudRain, Flower2, Lamp, Fish, Shell, Rocket, CloudMoon } from 'lucide-react';
+import { ChevronDown, Sparkles, Waves, Zap, Cherry, Star, Boxes, Mountain, Coins, Paintbrush, PaintbrushVertical, Trees, CloudRain, Flower2, Lamp, Fish, Shell, CloudMoon, Landmark, Atom } from 'lucide-react';
 import { HexColorPicker } from 'react-colorful';
 import { useTheme, themePresets, type BackgroundEffectType } from '../context/ThemeContext';
 import { GlassCard } from './GlassCard';
@@ -10,7 +10,7 @@ interface ThemePanelProps {
 }
 
 const backgroundEffects: { id: BackgroundEffectType; name: string; icon: any }[] = [
-  { id: 'mountain-parallax', name: '山水层峦', icon: Mountain },
+  { id: 'mountain-parallax', name: '千里江山', icon: Landmark },
   { id: 'particle-galaxy', name: '粒子星河', icon: Sparkles },
   { id: 'fluid-ripple',    name: '流体波纹', icon: Waves },
   { id: 'aurora-bands',    name: '极光光带', icon: Zap },
@@ -28,7 +28,7 @@ const backgroundEffects: { id: BackgroundEffectType; name: string; icon: any }[]
   { id: 'palace-lantern',  name: '宫灯霞光', icon: Lamp },
   { id: 'deep-sea-drift',  name: '深海漂流', icon: Fish },
   { id: 'coral-reef',      name: '珊瑚礁光', icon: Shell },
-  { id: 'meteor-shower',   name: '流星雨夜', icon: Rocket },
+  { id: 'meteor-shower',   name: '量子粒子', icon: Atom },
   { id: 'nebula-drift',    name: '星云漂移', icon: CloudMoon },
 ];
 

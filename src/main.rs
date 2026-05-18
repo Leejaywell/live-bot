@@ -294,15 +294,31 @@ async fn auto_download_models(
     let vad_exists = vad_out.exists();
     let vad_valid = onnx_file_valid(&vad_out);
     let vad_size = std::fs::metadata(&vad_out).map(|m| m.len()).unwrap_or(0);
-    let _ = app.emit("monitor-log", serde_json::json!(format!(
-        "[诊断] VAD 模型路径: {} | 存在: {} | 有效: {} | 大小: {} bytes",
-        vad_out.display(), vad_exists, vad_valid, vad_size
-    )));
+    let _ = app.emit(
+        "monitor-log",
+        serde_json::json!(format!(
+            "[诊断] VAD 模型路径: {} | 存在: {} | 有效: {} | 大小: {} bytes",
+            vad_out.display(),
+            vad_exists,
+            vad_valid,
+            vad_size
+        )),
+    );
     if !vad_valid && !cancel.is_cancelled() {
-        let _ = app.emit("monitor-log", serde_json::json!("正在自动下载 VAD 模型（silero_vad.onnx）…"));
+        let _ = app.emit(
+            "monitor-log",
+            serde_json::json!("正在自动下载 VAD 模型（silero_vad.onnx）…"),
+        );
         match dl_silero_vad(app.clone(), cancel.clone()).await {
-            Ok(msg) => { let _ = app.emit("monitor-log", serde_json::json!(msg)); }
-            Err(e)  => { let _ = app.emit("monitor-log", serde_json::json!(format!("VAD 模型下载失败: {e}"))); }
+            Ok(msg) => {
+                let _ = app.emit("monitor-log", serde_json::json!(msg));
+            }
+            Err(e) => {
+                let _ = app.emit(
+                    "monitor-log",
+                    serde_json::json!(format!("VAD 模型下载失败: {e}")),
+                );
+            }
         }
     }
 
@@ -417,7 +433,10 @@ async fn start_monitor(
     let session_memory = state.session_memory.clone();
     let error_app = app.clone();
 
-    let _ = app.emit("monitor-log", serde_json::json!("[start_monitor] 指令已收到，正在启动监听任务..."));
+    let _ = app.emit(
+        "monitor-log",
+        serde_json::json!("[start_monitor] 指令已收到，正在启动监听任务..."),
+    );
 
     tokio::spawn(async move {
         // 自动补全缺失模型后再启动引擎
@@ -683,6 +702,127 @@ async fn query_user_detail(
         .storage
         .user_detail(uid_i64)
         .map_err(|e| e.to_string())
+}
+
+// ── 直播管理 (My Live Control) ─────────────────────────────────────────
+// 用当前连接的 room_id；如未连接则用 config.room_id。所有命令均需登录后的 cookie。
+
+#[cfg(feature = "tauri")]
+fn current_my_room_id(state: &tauri::State<'_, SharedState>) -> Result<i64, String> {
+    let room = state.connected_room.lock().map_err(|e| e.to_string())?;
+    let room_id = match *room {
+        Some(id) => id,
+        None => {
+            AppConfig::load_or_default()
+                .map_err(|e| e.to_string())?
+                .room_id
+        }
+    };
+    if room_id == 0 {
+        return Err("未连接直播间".to_string());
+    }
+    Ok(room_id)
+}
+
+#[cfg(feature = "tauri")]
+#[tauri::command]
+async fn start_live_cmd(
+    state: tauri::State<'_, SharedState>,
+    area_v2: i64,
+) -> Result<api::StartLiveData, String> {
+    let room_id = current_my_room_id(&state)?;
+    let session = token::read_session().map_err(|e| e.to_string())?;
+    state
+        .http
+        .start_live(room_id, area_v2, &session.cookie)
+        .await
+        .map_err(|e| e.to_string())
+}
+
+#[cfg(feature = "tauri")]
+#[tauri::command]
+async fn stop_live_cmd(state: tauri::State<'_, SharedState>) -> Result<(), String> {
+    let room_id = current_my_room_id(&state)?;
+    let session = token::read_session().map_err(|e| e.to_string())?;
+    state
+        .http
+        .stop_live(room_id, &session.cookie)
+        .await
+        .map_err(|e| e.to_string())
+}
+
+#[cfg(feature = "tauri")]
+#[tauri::command]
+async fn update_room_info_cmd(
+    state: tauri::State<'_, SharedState>,
+    title: Option<String>,
+    area_id: Option<i64>,
+    description: Option<String>,
+) -> Result<(), String> {
+    let room_id = current_my_room_id(&state)?;
+    let session = token::read_session().map_err(|e| e.to_string())?;
+    state
+        .http
+        .update_room_info(
+            room_id,
+            title.as_deref(),
+            area_id,
+            description.as_deref(),
+            &session.cookie,
+        )
+        .await
+        .map_err(|e| e.to_string())
+}
+
+#[cfg(feature = "tauri")]
+#[tauri::command]
+async fn get_live_areas(
+    state: tauri::State<'_, SharedState>,
+) -> Result<Vec<api::AreaCategory>, String> {
+    state
+        .http
+        .get_web_area_list()
+        .await
+        .map_err(|e| e.to_string())
+}
+
+#[cfg(feature = "tauri")]
+#[tauri::command]
+async fn get_stream_addr(state: tauri::State<'_, SharedState>) -> Result<api::StreamAddr, String> {
+    let session = token::read_session().map_err(|e| e.to_string())?;
+    state
+        .http
+        .fetch_stream_addr(&session.cookie)
+        .await
+        .map_err(|e| e.to_string())
+}
+
+#[cfg(feature = "tauri")]
+#[tauri::command]
+async fn update_room_news_cmd(
+    state: tauri::State<'_, SharedState>,
+    content: String,
+) -> Result<(), String> {
+    let room_id = current_my_room_id(&state)?;
+    let session = token::read_session().map_err(|e| e.to_string())?;
+    // 公告接口需要主播 uid。从 session 的 cookie 里取 DedeUserID。
+    let uid = api_extract_cookie(&session.cookie, "DedeUserID")
+        .and_then(|s| s.parse::<i64>().ok())
+        .ok_or_else(|| "未能从 cookie 解析 DedeUserID".to_string())?;
+    state
+        .http
+        .update_room_news(room_id, uid, &content, &session.cookie)
+        .await
+        .map_err(|e| e.to_string())
+}
+
+#[cfg(feature = "tauri")]
+fn api_extract_cookie(cookie: &str, name: &str) -> Option<String> {
+    cookie.split(';').find_map(|s| {
+        let s = s.trim();
+        let prefix = format!("{}=", name);
+        s.strip_prefix(&prefix).map(|v| v.to_string())
+    })
 }
 
 #[cfg(feature = "tauri")]
@@ -1822,18 +1962,14 @@ async fn speak_text_cmd(
     let _playback_guard = state.preview_tts_playback.lock().await;
     let mut audio_events = router.voice_session().subscribe();
 
-    router
-        .voice_session()
-        .speak(req)
-        .await
-        .map_err(|e| {
-            let msg = e.to_string();
-            let _ = app.emit(
-                "monitor-log",
-                serde_json::json!(format!("[TTS错误] engine={engine_name} {msg}")),
-            );
-            msg
-        })?;
+    router.voice_session().speak(req).await.map_err(|e| {
+        let msg = e.to_string();
+        let _ = app.emit(
+            "monitor-log",
+            serde_json::json!(format!("[TTS错误] engine={engine_name} {msg}")),
+        );
+        msg
+    })?;
 
     let wait_secs = match engine {
         streamix_voice::TtsEngine::MiniMax { .. } => 15,
@@ -2322,9 +2458,13 @@ async fn stream_to_file(
 /// A file that starts with anything else was not downloaded correctly.
 fn onnx_file_valid(path: &std::path::Path) -> bool {
     use std::io::Read;
-    let Ok(mut f) = std::fs::File::open(path) else { return false };
+    let Ok(mut f) = std::fs::File::open(path) else {
+        return false;
+    };
     let Ok(meta) = f.metadata() else { return false };
-    if meta.len() < 65_536 { return false; }
+    if meta.len() < 65_536 {
+        return false;
+    }
     let mut hdr = [0u8; 1];
     f.read_exact(&mut hdr).is_ok() && hdr[0] == 0x08
 }
@@ -3318,6 +3458,13 @@ fn main() -> Result<()> {
         voice_changer: Arc::new(Mutex::new(None)),
     };
 
+    // 启动粉丝档案 LLM 分析 worker（全局单例，record_and_handle_event 会通过 try_enqueue 触发）
+    {
+        let worker =
+            bot::profile_worker::spawn(state.storage.clone(), state.http.clone(), &state.runtime);
+        bot::profile_worker::install(worker);
+    }
+
     println!("Starting Tauri builder...");
     let storage_for_cleanup = state.storage.clone();
     let gift_storage_for_refresh = state.storage.clone();
@@ -3360,7 +3507,10 @@ fn main() -> Result<()> {
                 .item(&PredefinedMenuItem::paste(app, Some("粘贴"))?)
                 .item(&PredefinedMenuItem::select_all(app, Some("全选"))?)
                 .build()?;
-            MenuBuilder::new(app).item(&app_menu).item(&edit_menu).build()
+            MenuBuilder::new(app)
+                .item(&app_menu)
+                .item(&edit_menu)
+                .build()
         })
         .on_menu_event(|app, event| {
             if event.id().0 == MENU_FORCE_QUIT_ID {
@@ -3463,6 +3613,12 @@ fn main() -> Result<()> {
             get_pk_history,
             send_danmu,
             query_user_detail,
+            start_live_cmd,
+            stop_live_cmd,
+            update_room_info_cmd,
+            get_live_areas,
+            get_stream_addr,
+            update_room_news_cmd,
             send_ai_message,
             open_url,
             open_config_dir,
@@ -3592,13 +3748,17 @@ async fn search_music_candidates(
 
 #[cfg(feature = "tauri")]
 #[tauri::command]
-async fn get_gift_catalog(state: tauri::State<'_, SharedState>) -> Result<Vec<storage::GiftCatalogItem>, String> {
+async fn get_gift_catalog(
+    state: tauri::State<'_, SharedState>,
+) -> Result<Vec<storage::GiftCatalogItem>, String> {
     state.storage.gift_catalog().map_err(|e| e.to_string())
 }
 
 #[cfg(feature = "tauri")]
 #[tauri::command]
-async fn refresh_gift_catalog(state: tauri::State<'_, SharedState>) -> Result<Vec<storage::GiftCatalogItem>, String> {
+async fn refresh_gift_catalog(
+    state: tauri::State<'_, SharedState>,
+) -> Result<Vec<storage::GiftCatalogItem>, String> {
     refresh_gift_catalog_inner(&state).await?;
     state.storage.gift_catalog().map_err(|e| e.to_string())
 }
@@ -3614,7 +3774,10 @@ async fn refresh_gift_catalog_inner(state: &tauri::State<'_, SharedState>) -> Re
         .filter(|id| *id > 0)
         .unwrap_or(23174842);
     let gifts = fetch_gift_catalog(room_id).await?;
-    state.storage.replace_gift_catalog(&gifts).map_err(|e| e.to_string())
+    state
+        .storage
+        .replace_gift_catalog(&gifts)
+        .map_err(|e| e.to_string())
 }
 
 #[cfg(feature = "tauri")]
@@ -3638,7 +3801,10 @@ async fn gift_catalog_refresh_loop(
                 let _ = storage.replace_gift_catalog(&gifts);
             }
         }
-        tokio::time::sleep(std::time::Duration::from_secs(GIFT_CATALOG_MAX_AGE_SECS as u64)).await;
+        tokio::time::sleep(std::time::Duration::from_secs(
+            GIFT_CATALOG_MAX_AGE_SECS as u64,
+        ))
+        .await;
     }
 }
 
@@ -3679,7 +3845,10 @@ fn cache_guard_gift_from_event(storage: &storage::Storage, payload: &serde_json:
     let gift_name = live_event
         .get("gift")
         .and_then(serde_json::Value::as_str)
-        .or_else(|| raw.pointer("/data/gift_name").and_then(serde_json::Value::as_str))
+        .or_else(|| {
+            raw.pointer("/data/gift_name")
+                .and_then(serde_json::Value::as_str)
+        })
         .unwrap_or("舰长");
     let guard_level = raw
         .pointer("/data/guard_level")
@@ -3739,9 +3908,19 @@ async fn fetch_gift_catalog(room_id: i64) -> Result<Vec<storage::GiftCatalogItem
         .ok_or_else(|| "礼物列表格式异常".to_string())?
         .iter()
         .filter_map(|item| {
-            let gift_id = item.get("id").or_else(|| item.get("gift_id")).and_then(serde_json::Value::as_i64)?;
-            let name = item.get("name").and_then(serde_json::Value::as_str)?.trim().to_string();
-            let price = item.get("price").and_then(serde_json::Value::as_i64).unwrap_or(0);
+            let gift_id = item
+                .get("id")
+                .or_else(|| item.get("gift_id"))
+                .and_then(serde_json::Value::as_i64)?;
+            let name = item
+                .get("name")
+                .and_then(serde_json::Value::as_str)?
+                .trim()
+                .to_string();
+            let price = item
+                .get("price")
+                .and_then(serde_json::Value::as_i64)
+                .unwrap_or(0);
             let image = item
                 .get("img_basic")
                 .or_else(|| item.get("img_dynamic"))
@@ -3851,8 +4030,11 @@ async fn pick_plugin_resource(app: AppHandle, kind: String) -> Result<Option<Str
 
 #[cfg(feature = "tauri")]
 #[tauri::command]
-async fn reset_wish_goal(state: tauri::State<'_, SharedState>) -> Result<plugin_settings::PluginSettings, String> {
-    let mut config = plugin_settings::PluginSettings::load_or_default().map_err(|e| e.to_string())?;
+async fn reset_wish_goal(
+    state: tauri::State<'_, SharedState>,
+) -> Result<plugin_settings::PluginSettings, String> {
+    let mut config =
+        plugin_settings::PluginSettings::load_or_default().map_err(|e| e.to_string())?;
     config.reset_wish_goal();
     config.save().map_err(|e| e.to_string())?;
     overlay_server::broadcast_plugin_settings_update(&state.overlay_tx);
@@ -3861,8 +4043,11 @@ async fn reset_wish_goal(state: tauri::State<'_, SharedState>) -> Result<plugin_
 
 #[cfg(feature = "tauri")]
 #[tauri::command]
-async fn simulate_wish_goal(state: tauri::State<'_, SharedState>) -> Result<plugin_settings::PluginSettings, String> {
-    let mut config = plugin_settings::PluginSettings::load_or_default().map_err(|e| e.to_string())?;
+async fn simulate_wish_goal(
+    state: tauri::State<'_, SharedState>,
+) -> Result<plugin_settings::PluginSettings, String> {
+    let mut config =
+        plugin_settings::PluginSettings::load_or_default().map_err(|e| e.to_string())?;
     config.simulate_wish_goal();
     config.save().map_err(|e| e.to_string())?;
     overlay_server::broadcast_plugin_settings_update(&state.overlay_tx);
@@ -3871,8 +4056,11 @@ async fn simulate_wish_goal(state: tauri::State<'_, SharedState>) -> Result<plug
 
 #[cfg(feature = "tauri")]
 #[tauri::command]
-async fn simulate_lottery(state: tauri::State<'_, SharedState>) -> Result<plugin_settings::PluginSettings, String> {
-    let mut config = plugin_settings::PluginSettings::load_or_default().map_err(|e| e.to_string())?;
+async fn simulate_lottery(
+    state: tauri::State<'_, SharedState>,
+) -> Result<plugin_settings::PluginSettings, String> {
+    let mut config =
+        plugin_settings::PluginSettings::load_or_default().map_err(|e| e.to_string())?;
     config.simulate_lottery();
     config.save().map_err(|e| e.to_string())?;
     overlay_server::broadcast_plugin_settings_update(&state.overlay_tx);
@@ -3881,8 +4069,11 @@ async fn simulate_lottery(state: tauri::State<'_, SharedState>) -> Result<plugin
 
 #[cfg(feature = "tauri")]
 #[tauri::command]
-async fn simulate_gift_effect(state: tauri::State<'_, SharedState>) -> Result<plugin_settings::PluginSettings, String> {
-    let mut config = plugin_settings::PluginSettings::load_or_default().map_err(|e| e.to_string())?;
+async fn simulate_gift_effect(
+    state: tauri::State<'_, SharedState>,
+) -> Result<plugin_settings::PluginSettings, String> {
+    let mut config =
+        plugin_settings::PluginSettings::load_or_default().map_err(|e| e.to_string())?;
     config.simulate_gift_effect();
     config.save().map_err(|e| e.to_string())?;
     overlay_server::broadcast_plugin_settings_update(&state.overlay_tx);
@@ -3891,8 +4082,11 @@ async fn simulate_gift_effect(state: tauri::State<'_, SharedState>) -> Result<pl
 
 #[cfg(feature = "tauri")]
 #[tauri::command]
-async fn simulate_recent_gift(state: tauri::State<'_, SharedState>) -> Result<plugin_settings::PluginSettings, String> {
-    let mut config = plugin_settings::PluginSettings::load_or_default().map_err(|e| e.to_string())?;
+async fn simulate_recent_gift(
+    state: tauri::State<'_, SharedState>,
+) -> Result<plugin_settings::PluginSettings, String> {
+    let mut config =
+        plugin_settings::PluginSettings::load_or_default().map_err(|e| e.to_string())?;
     config.simulate_recent_gift();
     config.save().map_err(|e| e.to_string())?;
     overlay_server::broadcast_plugin_settings_update(&state.overlay_tx);
@@ -3901,8 +4095,11 @@ async fn simulate_recent_gift(state: tauri::State<'_, SharedState>) -> Result<pl
 
 #[cfg(feature = "tauri")]
 #[tauri::command]
-async fn simulate_gift_rank(state: tauri::State<'_, SharedState>) -> Result<plugin_settings::PluginSettings, String> {
-    let mut config = plugin_settings::PluginSettings::load_or_default().map_err(|e| e.to_string())?;
+async fn simulate_gift_rank(
+    state: tauri::State<'_, SharedState>,
+) -> Result<plugin_settings::PluginSettings, String> {
+    let mut config =
+        plugin_settings::PluginSettings::load_or_default().map_err(|e| e.to_string())?;
     config.simulate_gift_rank();
     config.save().map_err(|e| e.to_string())?;
     overlay_server::broadcast_plugin_settings_update(&state.overlay_tx);

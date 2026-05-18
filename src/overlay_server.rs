@@ -138,7 +138,10 @@ async fn local_resource_handler(Query(q): Query<ProxyQuery>) -> Response<Body> {
         cfg.wish_goal.custom_sound_path,
         cfg.gift_effect.custom_sound_path,
     ];
-    if !allowed.iter().any(|path| !path.is_empty() && path == &q.url) {
+    if !allowed
+        .iter()
+        .any(|path| !path.is_empty() && path == &q.url)
+    {
         return empty_response(StatusCode::FORBIDDEN);
     }
     let path = std::path::PathBuf::from(&q.url);
@@ -149,7 +152,13 @@ async fn local_resource_handler(Query(q): Query<ProxyQuery>) -> Response<Body> {
         Ok(bytes) => bytes,
         Err(_) => return empty_response(StatusCode::NOT_FOUND),
     };
-    let ct = match path.extension().and_then(|ext| ext.to_str()).unwrap_or("").to_ascii_lowercase().as_str() {
+    let ct = match path
+        .extension()
+        .and_then(|ext| ext.to_str())
+        .unwrap_or("")
+        .to_ascii_lowercase()
+        .as_str()
+    {
         "mp3" => "audio/mpeg",
         "wav" => "audio/wav",
         "ogg" => "audio/ogg",
@@ -164,7 +173,10 @@ async fn local_resource_handler(Query(q): Query<ProxyQuery>) -> Response<Body> {
 }
 
 fn empty_response(status: StatusCode) -> Response<Body> {
-    Response::builder().status(status).body(Body::empty()).unwrap()
+    Response::builder()
+        .status(status)
+        .body(Body::empty())
+        .unwrap()
 }
 
 async fn ws_handler(ws: WebSocketUpgrade, State(tx): State<OverlayTx>) -> impl IntoResponse {

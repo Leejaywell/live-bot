@@ -518,41 +518,381 @@ export function ConstellationEffect() {
   return <canvas ref={ref} className="fixed inset-0 w-full h-full z-0" />;
 }
 
-// ─── 8. 山水层峦 ────────────────────────────────────────────────────────────
+// ─── 8. 千里江山图 ──────────────────────────────────────────────────────────
+// 多层视差青绿山峦（石青/石绿/赭石矿物色）+ 流云穿峰 + 江水倒影 + 涟漪
+// + 孔明灯 + 落英 + 鎏金粒子 + 飞雁 V 字 + 朱砂印章 + 鼠标拨云 + 点击水墨
 export function MountainParallaxEffect() {
   const { theme, primaryColor } = useTheme();
   const t = useRef(0);
+  const initialized = useRef(false);
+  const clouds = useRef<{ x: number; y: number; vx: number; w: number; alpha: number }[]>([]);
+  const ripples = useRef<{ x: number; y: number; r: number; alpha: number }[]>([]);
+  const lanterns = useRef<{ x: number; y: number; vy: number; vx: number; size: number; flicker: number }[]>([]);
+  const petals = useRef<{ x: number; y: number; vy: number; vx: number; rot: number; vr: number; size: number; phase: number }[]>([]);
+  const gold = useRef<{ x: number; y: number; vy: number; size: number; tw: number; tp: number }[]>([]);
+  const geese = useRef<{ x: number; y: number; vx: number; count: number; flap: number }[]>([]);
+  const seals = useRef<{ nx: number; ny: number; size: number; t: number; phase: number; text: string }[]>([]);
+  const mouse = useRef({ x: -9999, y: -9999 });
 
-  const ref = useCanvas((ctx, w, h, dt) => {
-    const isDark = theme === 'dark';
-    t.current += dt * 0.09;
-    const primaryHsl = hexToHsl(primaryColor);
+  const ref = useCanvas(
+    (ctx, w, h, dt) => {
+      const isDark = theme === 'dark';
+      t.current += dt;
+      const pHsl = hexToHsl(primaryColor);
 
-    ctx.fillStyle = isDark ? 'rgba(6,6,15,.74)' : 'rgba(240,241,252,.72)';
-    ctx.fillRect(0, 0, w, h);
-
-    const layers = [
-      { baseY: 0.78, amp: 18, hue: primaryHsl.h, alpha: isDark ? 0.22 : 0.14, speed: 0.4 },
-      { baseY: 0.70, amp: 28, hue: (primaryHsl.h + 12) % 360, alpha: isDark ? 0.18 : 0.11, speed: 0.28 },
-      { baseY: 0.62, amp: 34, hue: (primaryHsl.h + 24) % 360, alpha: isDark ? 0.14 : 0.09, speed: 0.18 },
-    ];
-
-    for (const layer of layers) {
-      ctx.beginPath();
-      ctx.moveTo(0, h);
-      for (let x = 0; x <= w; x += 12) {
-        const nx = x / w;
-        const y = h * layer.baseY
-          + Math.sin(nx * Math.PI * 4 + t.current * layer.speed * 3) * layer.amp
-          + Math.cos(nx * Math.PI * 7 + t.current * layer.speed * 1.8) * layer.amp * 0.45;
-        ctx.lineTo(x, y);
+      // ── 一次性初始化 ──
+      if (!initialized.current) {
+        initialized.current = true;
+        for (let i = 0; i < 7; i++) {
+          clouds.current.push({
+            x: Math.random() * w,
+            y: 0.20 * h + Math.random() * 0.36 * h,
+            vx: 6 + Math.random() * 12,
+            w: 180 + Math.random() * 260,
+            alpha: 0.14 + Math.random() * 0.18,
+          });
+        }
+        for (let i = 0; i < 5; i++) {
+          lanterns.current.push({
+            x: Math.random() * w,
+            y: 0.40 * h + Math.random() * 0.42 * h,
+            vy: -3 - Math.random() * 4,
+            vx: (Math.random() - 0.5) * 6,
+            size: 5 + Math.random() * 4,
+            flicker: Math.random() * Math.PI * 2,
+          });
+        }
+        for (let i = 0; i < 36; i++) {
+          petals.current.push({
+            x: Math.random() * w,
+            y: Math.random() * h,
+            vy: 14 + Math.random() * 20,
+            vx: (Math.random() - 0.5) * 12,
+            rot: Math.random() * Math.PI * 2,
+            vr: (Math.random() - 0.5) * 2,
+            size: 4 + Math.random() * 5,
+            phase: Math.random() * Math.PI * 2,
+          });
+        }
+        for (let i = 0; i < 70; i++) {
+          gold.current.push({
+            x: Math.random() * w,
+            y: Math.random() * h,
+            vy: 3 + Math.random() * 7,
+            size: 0.6 + Math.random() * 1.6,
+            tw: Math.random() * Math.PI * 2,
+            tp: 1.2 + Math.random() * 2.2,
+          });
+        }
+        geese.current.push({ x: -200, y: 0.13 * h, vx: 28, count: 6, flap: 0 });
+        const sealTexts = ['江', '山', '千', '里', '云', '岚', '溪', '远'];
+        for (let i = 0; i < 4; i++) {
+          seals.current.push({
+            nx: 0.08 + Math.random() * 0.84,
+            ny: 0.62 + Math.random() * 0.28,
+            size: 28 + Math.random() * 18,
+            t: Math.random() * 10,
+            phase: Math.random() * Math.PI * 2,
+            text: sealTexts[Math.floor(Math.random() * sealTexts.length)],
+          });
+        }
       }
-      ctx.lineTo(w, h);
-      ctx.closePath();
-      ctx.fillStyle = `hsla(${layer.hue},24%,${isDark ? 48 : 58}%,${layer.alpha})`;
-      ctx.fill();
-    }
-  });
+
+      // ── 天空: 半透明覆盖 ──
+      ctx.fillStyle = isDark ? 'rgba(8,16,24,.78)' : 'rgba(232,238,228,.74)';
+      ctx.fillRect(0, 0, w, h);
+
+      // 远空朝霞 / 月色渐变
+      const skyG = ctx.createLinearGradient(0, 0, 0, h * 0.72);
+      if (isDark) {
+        skyG.addColorStop(0, 'rgba(20,28,52,0.55)');
+        skyG.addColorStop(1, 'rgba(60,80,90,0)');
+      } else {
+        skyG.addColorStop(0, 'rgba(220,230,210,0.6)');
+        skyG.addColorStop(1, 'rgba(240,240,230,0)');
+      }
+      ctx.fillStyle = skyG; ctx.fillRect(0, 0, w, h * 0.72);
+
+      // 日/月轮
+      const moonX = w * (0.74 + Math.sin(t.current * 0.05) * 0.015);
+      const moonY = h * 0.17;
+      const moonR = 90;
+      const moon = ctx.createRadialGradient(moonX, moonY, 0, moonX, moonY, moonR);
+      if (isDark) {
+        moon.addColorStop(0, 'rgba(248,232,200,0.55)');
+        moon.addColorStop(0.35, 'rgba(248,232,200,0.16)');
+      } else {
+        moon.addColorStop(0, 'rgba(255,242,210,0.62)');
+        moon.addColorStop(0.4, 'rgba(255,210,170,0.20)');
+      }
+      moon.addColorStop(1, 'rgba(0,0,0,0)');
+      ctx.fillStyle = moon;
+      ctx.beginPath(); ctx.arc(moonX, moonY, moonR, 0, Math.PI * 2); ctx.fill();
+
+      // ── 多层山峦 ──
+      const drawMountain = (
+        baseY: number, amp: number, freq: number, speed: number,
+        fillTop: string, fillBottom: string, ridgeColor?: string,
+      ) => {
+        const grad = ctx.createLinearGradient(0, baseY * h - amp * 2, 0, h);
+        grad.addColorStop(0, fillTop);
+        grad.addColorStop(1, fillBottom);
+        ctx.fillStyle = grad;
+        ctx.beginPath();
+        ctx.moveTo(0, h);
+        const pts: { x: number; y: number }[] = [];
+        for (let x = 0; x <= w; x += 8) {
+          const nx = x / w;
+          const y = baseY * h
+            + Math.sin(nx * freq + t.current * speed) * amp
+            + Math.cos(nx * freq * 2.3 + t.current * speed * 0.7) * amp * 0.55
+            + Math.sin(nx * freq * 4.7 + t.current * speed * 0.3) * amp * 0.25;
+          pts.push({ x, y });
+          ctx.lineTo(x, y);
+        }
+        ctx.lineTo(w, h);
+        ctx.closePath();
+        ctx.fill();
+
+        if (ridgeColor) {
+          ctx.beginPath();
+          ctx.moveTo(pts[0].x, pts[0].y);
+          for (let i = 1; i < pts.length; i++) ctx.lineTo(pts[i].x, pts[i].y);
+          ctx.strokeStyle = ridgeColor;
+          ctx.lineWidth = 1.3;
+          ctx.stroke();
+        }
+        return pts;
+      };
+
+      // 远山 (赭石冷调)
+      drawMountain(
+        0.44, 18, Math.PI * 2.6, 0.18,
+        isDark ? 'hsla(210,30%,32%,0.55)' : 'hsla(200,30%,72%,0.55)',
+        isDark ? 'hsla(220,40%,20%,0.85)' : 'hsla(210,30%,80%,0.85)',
+      );
+      // 远山 2 (浅石青)
+      drawMountain(
+        0.53, 26, Math.PI * 3.2, 0.22,
+        isDark ? 'hsla(190,55%,28%,0.78)' : 'hsla(185,55%,66%,0.72)',
+        isDark ? 'hsla(195,65%,16%,0.95)' : 'hsla(190,50%,70%,0.94)',
+        isDark ? 'rgba(220,200,150,0.20)' : 'rgba(180,140,80,0.20)',
+      );
+      // 中山 (石绿)
+      drawMountain(
+        0.62, 32, Math.PI * 3.8, 0.27,
+        isDark ? 'hsla(155,60%,26%,0.92)' : 'hsla(150,58%,58%,0.85)',
+        isDark ? 'hsla(160,70%,14%,1)' : 'hsla(155,52%,50%,1)',
+        isDark ? 'rgba(220,190,130,0.36)' : 'rgba(160,120,60,0.30)',
+      );
+
+      // ── 流云带（鼠标可拨动）──
+      for (const c of clouds.current) {
+        c.x += c.vx * dt;
+        const dx = c.x - mouse.current.x;
+        const dy = c.y - mouse.current.y;
+        const dist = Math.hypot(dx, dy);
+        if (dist < 220 && dist > 0.01) {
+          c.x += (dx / dist) * 40 * dt;
+          c.y += (dy / dist) * 22 * dt;
+        }
+        if (c.x - c.w > w) c.x = -c.w;
+        const cg = ctx.createLinearGradient(c.x, c.y - 20, c.x, c.y + 20);
+        cg.addColorStop(0, `rgba(255,255,255,${isDark ? c.alpha * 0.65 : c.alpha})`);
+        cg.addColorStop(1, 'rgba(255,255,255,0)');
+        ctx.fillStyle = cg;
+        ctx.beginPath();
+        ctx.ellipse(c.x, c.y, c.w, 16, 0, 0, Math.PI * 2);
+        ctx.fill();
+      }
+
+      // ── 近山 (石青/石绿 + 金线山脊) ──
+      drawMountain(
+        0.74, 40, Math.PI * 4.4, 0.34,
+        isDark ? 'hsla(180,75%,20%,0.98)' : 'hsla(170,62%,46%,0.94)',
+        isDark ? 'hsla(190,82%,9%,1)' : 'hsla(175,58%,36%,1)',
+        isDark ? 'rgba(248,212,130,0.6)' : 'rgba(180,130,40,0.48)',
+      );
+
+      // ── 江水反射区 ──
+      const waterTop = 0.83 * h;
+      const water = ctx.createLinearGradient(0, waterTop, 0, h);
+      water.addColorStop(0, isDark ? 'rgba(10,30,50,0.5)' : 'rgba(170,210,220,0.5)');
+      water.addColorStop(1, isDark ? 'rgba(4,12,24,0.95)' : 'rgba(220,230,232,0.94)');
+      ctx.fillStyle = water; ctx.fillRect(0, waterTop, w, h - waterTop);
+
+      // 江面横向波纹
+      for (let yy = waterTop; yy < h; yy += 4) {
+        const off = Math.sin((yy - waterTop) * 0.08 + t.current * 1.4) * 0.6;
+        ctx.fillStyle = `rgba(255,255,255,${0.018 + 0.024 * off})`;
+        ctx.fillRect(0, yy, w, 1);
+      }
+      // 月光倒影柱
+      const reflG = ctx.createLinearGradient(moonX, waterTop, moonX, h);
+      reflG.addColorStop(0, isDark ? 'rgba(248,232,200,0.18)' : 'rgba(255,232,200,0.16)');
+      reflG.addColorStop(1, 'rgba(255,232,200,0)');
+      ctx.fillStyle = reflG;
+      ctx.fillRect(moonX - 50, waterTop, 100, h - waterTop);
+
+      // 涟漪
+      for (let i = ripples.current.length - 1; i >= 0; i--) {
+        const r = ripples.current[i];
+        r.r += 28 * dt; r.alpha -= 0.55 * dt;
+        if (r.alpha <= 0) { ripples.current.splice(i, 1); continue; }
+        ctx.beginPath();
+        ctx.ellipse(r.x, r.y, r.r, r.r * 0.32, 0, 0, Math.PI * 2);
+        ctx.strokeStyle = isDark
+          ? `rgba(180,220,240,${r.alpha * 0.55})`
+          : `rgba(120,160,200,${r.alpha * 0.55})`;
+        ctx.lineWidth = 1;
+        ctx.stroke();
+      }
+
+      // ── 孔明灯 ──
+      for (const l of lanterns.current) {
+        l.y += l.vy * dt; l.x += l.vx * dt; l.flicker += dt * 3;
+        if (l.y < -30) {
+          l.y = h - 60 + Math.random() * 40;
+          l.x = Math.random() * w;
+        }
+        const glow = 0.7 + Math.sin(l.flicker) * 0.2;
+        const grd = ctx.createRadialGradient(l.x, l.y, 0, l.x, l.y, l.size * 6.5);
+        grd.addColorStop(0, `rgba(255,180,80,${0.75 * glow})`);
+        grd.addColorStop(0.5, `rgba(255,130,50,${0.22 * glow})`);
+        grd.addColorStop(1, 'rgba(255,100,30,0)');
+        ctx.fillStyle = grd;
+        ctx.beginPath(); ctx.arc(l.x, l.y, l.size * 6.5, 0, Math.PI * 2); ctx.fill();
+        ctx.fillStyle = `rgba(255,165,75,${0.92 * glow})`;
+        ctx.beginPath(); ctx.ellipse(l.x, l.y, l.size * 0.65, l.size * 0.95, 0, 0, Math.PI * 2); ctx.fill();
+        // 灯绳
+        ctx.strokeStyle = `rgba(140,80,40,${0.6 * glow})`;
+        ctx.lineWidth = 0.6;
+        ctx.beginPath(); ctx.moveTo(l.x, l.y + l.size * 0.95); ctx.lineTo(l.x, l.y + l.size * 1.6); ctx.stroke();
+      }
+
+      // ── 飞雁 V 字 ──
+      for (let i = geese.current.length - 1; i >= 0; i--) {
+        const g = geese.current[i];
+        g.x += g.vx * dt; g.flap += dt * 6;
+        if (g.x > w + 200) { geese.current.splice(i, 1); continue; }
+        for (let k = 0; k < g.count; k++) {
+          const side = k === 0 ? 0 : (k % 2 === 0 ? 1 : -1);
+          const rank = Math.ceil(k / 2);
+          const gx = g.x - rank * 20 * (side >= 0 ? 1 : 1);
+          const gy = g.y + rank * 11;
+          const xOff = side * rank * 18;
+          const wing = Math.sin(g.flap + k * 0.6) * 4;
+          ctx.strokeStyle = isDark ? 'rgba(225,225,235,0.6)' : 'rgba(60,60,80,0.6)';
+          ctx.lineWidth = 1.4;
+          ctx.beginPath();
+          ctx.moveTo(gx + xOff - 6, gy + wing);
+          ctx.lineTo(gx + xOff, gy);
+          ctx.lineTo(gx + xOff + 6, gy + wing);
+          ctx.stroke();
+        }
+      }
+      if (Math.random() < 0.0012) {
+        geese.current.push({
+          x: -100, y: 0.10 * h + Math.random() * 0.16 * h,
+          vx: 22 + Math.random() * 14,
+          count: 5 + Math.floor(Math.random() * 4),
+          flap: 0,
+        });
+      }
+
+      // ── 落英缤纷 ──
+      for (const p of petals.current) {
+        p.y += p.vy * dt;
+        p.x += p.vx * dt + Math.sin(p.phase + p.y * 0.01) * 14 * dt;
+        p.rot += p.vr * dt;
+        if (p.y > h + 10) { p.y = -10; p.x = Math.random() * w; }
+        if (p.x > w + 10) p.x = -10;
+        if (p.x < -10) p.x = w + 10;
+        ctx.save();
+        ctx.translate(p.x, p.y);
+        ctx.rotate(p.rot);
+        ctx.fillStyle = isDark ? 'rgba(255,200,210,0.80)' : 'rgba(240,170,180,0.85)';
+        ctx.beginPath();
+        ctx.ellipse(0, 0, p.size, p.size * 0.5, 0, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.restore();
+      }
+
+      // ── 鎏金粒子 ──
+      for (const f of gold.current) {
+        f.y += f.vy * dt; f.tw += dt * f.tp;
+        if (f.y > h + 4) { f.y = -4; f.x = Math.random() * w; }
+        const a = 0.35 + (Math.sin(f.tw) + 1) * 0.34;
+        ctx.beginPath(); ctx.arc(f.x, f.y, f.size, 0, Math.PI * 2);
+        ctx.fillStyle = isDark
+          ? `rgba(255,210,120,${a})`
+          : `rgba(200,160,60,${a * 0.78})`;
+        ctx.fill();
+        if (f.size > 1.2) {
+          const gg = ctx.createRadialGradient(f.x, f.y, 0, f.x, f.y, f.size * 4);
+          gg.addColorStop(0, `rgba(255,220,140,${a * 0.45})`);
+          gg.addColorStop(1, 'rgba(255,200,100,0)');
+          ctx.fillStyle = gg;
+          ctx.beginPath(); ctx.arc(f.x, f.y, f.size * 4, 0, Math.PI * 2); ctx.fill();
+        }
+      }
+
+      // ── 朱砂印章 (淡入淡出循环) ──
+      for (const s of seals.current) {
+        s.t += dt;
+        const pulse = (Math.sin(s.t * 0.4 + s.phase) + 1) / 2;
+        const a = Math.max(0, pulse - 0.55) * 0.7;
+        if (a < 0.01) continue;
+        const sx = w * s.nx, sy = h * s.ny;
+        ctx.save();
+        ctx.translate(sx, sy);
+        ctx.fillStyle = `rgba(186,38,38,${a})`;
+        ctx.fillRect(-s.size / 2, -s.size / 2, s.size, s.size);
+        ctx.strokeStyle = `rgba(255,235,225,${a * 0.7})`;
+        ctx.lineWidth = 2;
+        ctx.strokeRect(-s.size / 2 + 3, -s.size / 2 + 3, s.size - 6, s.size - 6);
+        ctx.fillStyle = `rgba(255,235,225,${a})`;
+        ctx.font = `bold ${s.size * 0.6}px "Songti SC","STSong","SimSun",serif`;
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.fillText(s.text, 0, 2);
+        ctx.restore();
+      }
+
+      // suppress unused-var warning for primaryHsl (color hooks into future tinting)
+      void pHsl;
+    },
+    (canvas) => {
+      const onMove = (e: MouseEvent) => { mouse.current = { x: e.clientX, y: e.clientY }; };
+      const onLeave = () => { mouse.current = { x: -9999, y: -9999 }; };
+      const onClick = (e: MouseEvent) => {
+        const wy = window.innerHeight * 0.84;
+        const y = Math.max(e.clientY, wy);
+        ripples.current.push({ x: e.clientX, y, r: 6, alpha: 1 });
+        ripples.current.push({ x: e.clientX, y, r: 14, alpha: 0.7 });
+        for (let i = 0; i < 14; i++) {
+          petals.current.push({
+            x: e.clientX, y: e.clientY,
+            vy: 30 + Math.random() * 40,
+            vx: (Math.random() - 0.5) * 90,
+            rot: Math.random() * Math.PI * 2,
+            vr: (Math.random() - 0.5) * 5,
+            size: 4 + Math.random() * 5,
+            phase: Math.random() * Math.PI * 2,
+          });
+        }
+        if (petals.current.length > 80) petals.current.splice(0, petals.current.length - 80);
+      };
+      window.addEventListener('mousemove', onMove);
+      window.addEventListener('mouseleave', onLeave);
+      canvas.addEventListener('click', onClick);
+      return () => {
+        window.removeEventListener('mousemove', onMove);
+        window.removeEventListener('mouseleave', onLeave);
+        canvas.removeEventListener('click', onClick);
+      };
+    },
+  );
 
   return <canvas ref={ref} className="fixed inset-0 w-full h-full z-0" />;
 }
@@ -1608,99 +1948,251 @@ export function CoralReefEffect() {
   return <canvas ref={ref} className="fixed inset-0 w-full h-full z-0" />;
 }
 
-// ─── 星空 1. 流星雨夜 ──────────────────────────────────────────────────────────
+// ─── 星空 1. 量子粒子场 ──────────────────────────────────────────────────────
+// 3D 粒子云 + 距离阈值连线 + 鼠标引力井 + 量子涨落 + 纠缠对 + 点击坍缩
+type QParticle = {
+  x: number; y: number; z: number;
+  vx: number; vy: number; vz: number;
+  baseSize: number;
+  hue: number;
+  pulse: number;
+  pulseSpeed: number;
+};
+type QCloud = { x: number; y: number; vx: number; vy: number; r: number; hue: number; alpha: number };
+type Entangle = { a: number; b: number; alpha: number; phase: number };
+type Collapse = { x: number; y: number; r: number; alpha: number };
+
+const Q_PARTICLE_COUNT = 280;
+const Q_LINK_DIST = 110;
+
 export function MeteorShowerEffect() {
   const { theme, primaryColor, accentColor } = useTheme();
   const t = useRef(0);
-  const stars = useRef<{ x: number; y: number; size: number; twinkle: number; tp: number }[]>([]);
-  const meteors = useRef<{ x: number; y: number; vx: number; vy: number; len: number; alpha: number; size: number }[]>([]);
   const initialized = useRef(false);
+  const particles = useRef<QParticle[]>([]);
+  const clouds = useRef<QCloud[]>([]);
+  const entangles = useRef<Entangle[]>([]);
+  const collapses = useRef<Collapse[]>([]);
+  const mouse = useRef({ x: -9999, y: -9999 });
 
   const ref = useCanvas(
     (ctx, w, h, dt) => {
       const isDark = theme === 'dark';
-      const primary = hexToRgb(primaryColor) || { r: 155, g: 142, b: 255 };
-      const gold = hexToRgb(accentColor) || { r: 255, g: 228, b: 160 };
       t.current += dt;
+      const pHsl = hexToHsl(primaryColor);
+      const aHsl = hexToHsl(accentColor);
 
       if (!initialized.current) {
         initialized.current = true;
-        for (let i = 0; i < 180; i++) {
-          stars.current.push({ x: Math.random() * w, y: Math.random() * h, size: 0.4 + Math.random() * 1.8, twinkle: Math.random() * Math.PI * 2, tp: 0.5 + Math.random() * 2.5 });
+        for (let i = 0; i < Q_PARTICLE_COUNT; i++) {
+          particles.current.push({
+            x: Math.random() * w,
+            y: Math.random() * h,
+            z: Math.random(),
+            vx: (Math.random() - 0.5) * 10,
+            vy: (Math.random() - 0.5) * 10,
+            vz: (Math.random() - 0.5) * 0.04,
+            baseSize: 0.6 + Math.random() * 1.6,
+            hue: Math.random() < 0.5 ? pHsl.h : aHsl.h,
+            pulse: Math.random() * Math.PI * 2,
+            pulseSpeed: 0.4 + Math.random() * 1.4,
+          });
+        }
+        for (let i = 0; i < 5; i++) {
+          clouds.current.push({
+            x: Math.random() * w,
+            y: Math.random() * h,
+            vx: (Math.random() - 0.5) * 8,
+            vy: (Math.random() - 0.5) * 6,
+            r: 140 + Math.random() * 220,
+            hue: i % 2 === 0 ? pHsl.h : aHsl.h,
+            alpha: 0.05 + Math.random() * 0.05,
+          });
         }
       }
 
-      // 随机生成流星
-      if (Math.random() < 0.04) {
-        const angle = Math.PI * (0.18 + Math.random() * 0.12);
-        const speed = 320 + Math.random() * 280;
-        meteors.current.push({ x: Math.random() * w * 1.2, y: -20 + Math.random() * h * 0.3, vx: Math.cos(angle) * speed, vy: Math.sin(angle) * speed, len: 80 + Math.random() * 140, alpha: 0.9, size: 1.2 + Math.random() * 1.2 });
-      }
-
-      ctx.fillStyle = isDark ? 'rgba(8,6,15,.92)' : 'rgba(243,241,255,.92)';
+      // ── 深空底色 ──
+      ctx.fillStyle = isDark ? 'rgba(4,6,18,0.92)' : 'rgba(232,238,252,0.88)';
       ctx.fillRect(0, 0, w, h);
 
-      // 星云背景晕
-      const nebula = ctx.createRadialGradient(w * 0.35, h * 0.3, 0, w * 0.35, h * 0.3, w * 0.5);
-      nebula.addColorStop(0, `rgba(${primary.r},${primary.g},${primary.b},${isDark ? 0.06 : 0.03})`);
-      nebula.addColorStop(1, 'rgba(0,0,0,0)');
-      ctx.fillStyle = nebula;
-      ctx.fillRect(0, 0, w, h);
-
-      // 繁星
-      for (const s of stars.current) {
-        s.twinkle += dt * s.tp;
-        const a = (0.3 + Math.sin(s.twinkle) * 0.25) * (isDark ? 1 : 0.55);
-        ctx.beginPath(); ctx.arc(s.x, s.y, s.size, 0, Math.PI * 2);
-        ctx.fillStyle = `rgba(${primary.r + 40},${primary.g + 40},${primary.b + 40},${a})`;
-        ctx.fill();
-        if (s.size > 1.4) {
-          const grd = ctx.createRadialGradient(s.x, s.y, 0, s.x, s.y, s.size * 3.5);
-          grd.addColorStop(0, `rgba(${primary.r + 60},${primary.g + 60},${primary.b + 60},${a * 0.3})`);
-          grd.addColorStop(1, 'rgba(0,0,0,0)');
-          ctx.fillStyle = grd;
-          ctx.beginPath(); ctx.arc(s.x, s.y, s.size * 3.5, 0, Math.PI * 2);
-          ctx.fill();
-        }
-      }
-
-      // 流星
-      for (let i = meteors.current.length - 1; i >= 0; i--) {
-        const m = meteors.current[i];
-        m.x += m.vx * dt; m.y += m.vy * dt;
-        m.alpha -= 1.0 * dt;
-        if (m.alpha <= 0 || m.x > w + 100 || m.y > h + 100) { meteors.current.splice(i, 1); continue; }
-
-        const tailX = m.x - (m.vx / Math.hypot(m.vx, m.vy)) * m.len;
-        const tailY = m.y - (m.vy / Math.hypot(m.vx, m.vy)) * m.len;
-        const trail = ctx.createLinearGradient(tailX, tailY, m.x, m.y);
-        trail.addColorStop(0, `rgba(255,255,255,0)`);
-        trail.addColorStop(0.7, `rgba(${gold.r},${gold.g},${gold.b},${m.alpha * 0.4})`);
-        trail.addColorStop(1, `rgba(255,255,255,${m.alpha})`);
+      // ── 量子云团 (柔光球漂移) ──
+      for (const c of clouds.current) {
+        c.x += c.vx * dt; c.y += c.vy * dt;
+        if (c.x < -c.r) c.x = w + c.r; if (c.x > w + c.r) c.x = -c.r;
+        if (c.y < -c.r) c.y = h + c.r; if (c.y > h + c.r) c.y = -c.r;
+        const pulse = 0.85 + Math.sin(t.current * 0.4 + c.hue * 0.03) * 0.15;
+        const grd = ctx.createRadialGradient(c.x, c.y, 0, c.x, c.y, c.r * pulse);
+        grd.addColorStop(0, `hsla(${c.hue},80%,${isDark ? 55 : 60}%,${c.alpha * 1.8})`);
+        grd.addColorStop(0.4, `hsla(${(c.hue + 30) % 360},75%,${isDark ? 50 : 55}%,${c.alpha})`);
+        grd.addColorStop(1, `hsla(${c.hue},70%,50%,0)`);
+        ctx.fillStyle = grd;
         ctx.beginPath();
-        ctx.moveTo(tailX, tailY);
-        ctx.lineTo(m.x, m.y);
-        ctx.strokeStyle = trail;
-        ctx.lineWidth = m.size;
-        ctx.stroke();
+        ctx.arc(c.x, c.y, c.r * pulse, 0, Math.PI * 2);
+        ctx.fill();
+      }
 
-        // 流星头部光晕
-        const head = ctx.createRadialGradient(m.x, m.y, 0, m.x, m.y, m.size * 4);
-        head.addColorStop(0, `rgba(255,255,255,${m.alpha * 0.9})`);
-        head.addColorStop(1, 'rgba(255,255,255,0)');
-        ctx.fillStyle = head;
-        ctx.beginPath(); ctx.arc(m.x, m.y, m.size * 4, 0, Math.PI * 2); ctx.fill();
+      // ── 粒子运动 + 鼠标引力井 ──
+      const mx = mouse.current.x, my = mouse.current.y;
+      for (const p of particles.current) {
+        // 布朗扰动 + 阻尼
+        p.vx += (Math.random() - 0.5) * 10 * dt;
+        p.vy += (Math.random() - 0.5) * 10 * dt;
+        p.vz += (Math.random() - 0.5) * 0.04 * dt;
+        p.vx *= 0.985; p.vy *= 0.985; p.vz *= 0.99;
+
+        // 鼠标引力井 (半径 240, 力 ~距离反比)
+        if (mx > 0) {
+          const dx = mx - p.x, dy = my - p.y;
+          const distSq = dx * dx + dy * dy;
+          if (distSq < 240 * 240 && distSq > 1) {
+            const dist = Math.sqrt(distSq);
+            const force = 140 * (1 - dist / 240);
+            p.vx += (dx / dist) * force * dt;
+            p.vy += (dy / dist) * force * dt;
+          }
+        }
+
+        p.x += p.vx * dt;
+        p.y += p.vy * dt;
+        p.z += p.vz * dt;
+        p.pulse += p.pulseSpeed * dt;
+        if (p.z < 0.05) { p.z = 0.05; p.vz *= -1; }
+        if (p.z > 1) { p.z = 1; p.vz *= -1; }
+        if (p.x < 0) { p.x = 0; p.vx *= -0.6; }
+        if (p.x > w) { p.x = w; p.vx *= -0.6; }
+        if (p.y < 0) { p.y = 0; p.vy *= -0.6; }
+        if (p.y > h) { p.y = h; p.vy *= -0.6; }
+      }
+
+      // ── 连线 (距离 + z 接近度阈值, O(n²) 但 280 颗可控) ──
+      ctx.lineWidth = 0.6;
+      const arr = particles.current;
+      for (let i = 0; i < arr.length; i++) {
+        const a = arr[i];
+        for (let j = i + 1; j < arr.length; j++) {
+          const b = arr[j];
+          const dx = a.x - b.x, dy = a.y - b.y;
+          const distSq = dx * dx + dy * dy;
+          if (distSq >= Q_LINK_DIST * Q_LINK_DIST) continue;
+          const zDiff = Math.abs(a.z - b.z);
+          if (zDiff >= 0.35) continue;
+          const dist = Math.sqrt(distSq);
+          const alpha = (1 - dist / Q_LINK_DIST) * (1 - zDiff / 0.35) * 0.4;
+          const hue = (a.hue + b.hue) / 2;
+          ctx.strokeStyle = `hsla(${hue},85%,${isDark ? 70 : 45}%,${alpha})`;
+          ctx.beginPath();
+          ctx.moveTo(a.x, a.y);
+          ctx.lineTo(b.x, b.y);
+          ctx.stroke();
+        }
+      }
+
+      // ── 粒子 (z 投影大小 + 脉冲) ──
+      for (const p of particles.current) {
+        const size = p.baseSize * (0.35 + p.z * 1.4) * (1 + Math.sin(p.pulse) * 0.22);
+        const alpha = 0.55 + p.z * 0.45;
+        const grd = ctx.createRadialGradient(p.x, p.y, 0, p.x, p.y, size * 4);
+        grd.addColorStop(0, `hsla(${p.hue},92%,${isDark ? 78 : 55}%,${alpha * 0.55})`);
+        grd.addColorStop(1, `hsla(${p.hue},80%,50%,0)`);
+        ctx.fillStyle = grd;
+        ctx.beginPath(); ctx.arc(p.x, p.y, size * 4, 0, Math.PI * 2); ctx.fill();
+        ctx.fillStyle = `hsla(${p.hue},96%,${isDark ? 90 : 42}%,${alpha})`;
+        ctx.beginPath(); ctx.arc(p.x, p.y, size, 0, Math.PI * 2); ctx.fill();
+      }
+
+      // ── 量子涨落 (随机粒子瞬时爆发) ──
+      if (Math.random() < 0.07) {
+        const p = particles.current[Math.floor(Math.random() * particles.current.length)];
+        const burst = ctx.createRadialGradient(p.x, p.y, 0, p.x, p.y, 44);
+        burst.addColorStop(0, `hsla(${p.hue},100%,88%,0.75)`);
+        burst.addColorStop(1, `hsla(${p.hue},90%,55%,0)`);
+        ctx.fillStyle = burst;
+        ctx.beginPath(); ctx.arc(p.x, p.y, 44, 0, Math.PI * 2); ctx.fill();
+      }
+
+      // ── 纠缠对 (远距离波动连接) ──
+      if (Math.random() < 0.01 && entangles.current.length < 3) {
+        const a = Math.floor(Math.random() * particles.current.length);
+        let b = Math.floor(Math.random() * particles.current.length);
+        if (b === a) b = (b + 1) % particles.current.length;
+        entangles.current.push({ a, b, alpha: 1, phase: 0 });
+      }
+      for (let i = entangles.current.length - 1; i >= 0; i--) {
+        const e = entangles.current[i];
+        e.alpha -= 0.4 * dt;
+        e.phase += dt * 8;
+        if (e.alpha <= 0) { entangles.current.splice(i, 1); continue; }
+        const a = particles.current[e.a], b = particles.current[e.b];
+        if (!a || !b) { entangles.current.splice(i, 1); continue; }
+        ctx.strokeStyle = `hsla(${(a.hue + b.hue) / 2},100%,75%,${e.alpha * 0.7})`;
+        ctx.lineWidth = 1.2;
+        ctx.beginPath();
+        ctx.moveTo(a.x, a.y);
+        const segs = 24;
+        const nxRaw = -(b.y - a.y), nyRaw = b.x - a.x;
+        const nl = Math.hypot(nxRaw, nyRaw) || 1;
+        const nx = nxRaw / nl, ny = nyRaw / nl;
+        for (let k = 1; k <= segs; k++) {
+          const tt = k / segs;
+          const lx = a.x + (b.x - a.x) * tt;
+          const ly = a.y + (b.y - a.y) * tt;
+          const wave = Math.sin(tt * Math.PI * 3 + e.phase) * 10 * Math.sin(tt * Math.PI);
+          ctx.lineTo(lx + nx * wave, ly + ny * wave);
+        }
+        ctx.stroke();
+      }
+
+      // ── 鼠标引力井指示 ──
+      if (mx > 0) {
+        const ring = ctx.createRadialGradient(mx, my, 0, mx, my, 240);
+        ring.addColorStop(0, 'rgba(0,0,0,0)');
+        ring.addColorStop(0.65, `hsla(${aHsl.h},100%,70%,0.06)`);
+        ring.addColorStop(0.92, `hsla(${aHsl.h},100%,75%,0.18)`);
+        ring.addColorStop(1, 'rgba(0,0,0,0)');
+        ctx.fillStyle = ring;
+        ctx.beginPath(); ctx.arc(mx, my, 240, 0, Math.PI * 2); ctx.fill();
+      }
+
+      // ── 量子坍缩 (点击震波) ──
+      for (let i = collapses.current.length - 1; i >= 0; i--) {
+        const c = collapses.current[i];
+        c.r += 700 * dt;
+        c.alpha -= 0.8 * dt;
+        if (c.alpha <= 0) { collapses.current.splice(i, 1); continue; }
+        ctx.strokeStyle = `hsla(${aHsl.h},100%,80%,${c.alpha})`;
+        ctx.lineWidth = 2.4;
+        ctx.beginPath(); ctx.arc(c.x, c.y, c.r, 0, Math.PI * 2); ctx.stroke();
+        ctx.strokeStyle = `hsla(${pHsl.h},100%,75%,${c.alpha * 0.65})`;
+        ctx.lineWidth = 1;
+        ctx.beginPath(); ctx.arc(c.x, c.y, c.r * 0.65, 0, Math.PI * 2); ctx.stroke();
       }
     },
     (canvas) => {
+      const onMove = (e: MouseEvent) => { mouse.current = { x: e.clientX, y: e.clientY }; };
+      const onLeave = () => { mouse.current = { x: -9999, y: -9999 }; };
       const onClick = (e: MouseEvent) => {
-        for (let i = 0; i < 5; i++) {
-          const angle = Math.PI * (0.15 + Math.random() * 0.18);
-          meteors.current.push({ x: e.clientX, y: e.clientY, vx: Math.cos(angle) * (280 + Math.random() * 200), vy: Math.sin(angle) * (280 + Math.random() * 200), len: 60 + Math.random() * 100, alpha: 1, size: 1.5 + Math.random() * 1.5 });
+        collapses.current.push({ x: e.clientX, y: e.clientY, r: 8, alpha: 1 });
+        collapses.current.push({ x: e.clientX, y: e.clientY, r: 4, alpha: 0.75 });
+        // 点击=量子坍缩：把附近粒子向外推
+        for (const p of particles.current) {
+          const dx = p.x - e.clientX, dy = p.y - e.clientY;
+          const distSq = dx * dx + dy * dy;
+          if (distSq < 200 * 200 && distSq > 1) {
+            const dist = Math.sqrt(distSq);
+            const force = 380 * (1 - dist / 200);
+            p.vx += (dx / dist) * force;
+            p.vy += (dy / dist) * force;
+          }
         }
       };
+      window.addEventListener('mousemove', onMove);
+      window.addEventListener('mouseleave', onLeave);
       canvas.addEventListener('click', onClick);
-      return () => canvas.removeEventListener('click', onClick);
+      return () => {
+        window.removeEventListener('mousemove', onMove);
+        window.removeEventListener('mouseleave', onLeave);
+        canvas.removeEventListener('click', onClick);
+      };
     },
   );
   return <canvas ref={ref} className="fixed inset-0 w-full h-full z-0" />;

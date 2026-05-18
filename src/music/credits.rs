@@ -49,7 +49,7 @@ pub fn tier_for_credit(value: i64) -> Option<SongRequestTier> {
 
 #[cfg(test)]
 mod tests {
-    use super::{tier_for_credit, SongRequestTier};
+    use super::{SongRequestTier, tier_for_credit};
 
     #[test]
     fn maps_credit_to_highest_reached_tier() {
