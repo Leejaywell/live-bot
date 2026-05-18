@@ -1,6 +1,7 @@
 mod api;
 mod bot;
 mod config;
+mod music;
 mod obs;
 mod overlay_config;
 mod overlay_server;
