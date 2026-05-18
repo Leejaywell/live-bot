@@ -1,17 +1,27 @@
 import { useEffect, useRef, useState } from 'react';
-import { Check, Copy, Link2, Music2, Play, RefreshCw, Search } from 'lucide-react';
+import { Check, Copy, Link2, ListMusic, Monitor, Music2, Play, Radio, RefreshCw, Search, Settings2, SlidersHorizontal, WalletCards } from 'lucide-react';
 import { toast } from 'sonner';
 import { GlassCard } from '../components/GlassCard';
 import { Button } from '../components/Button';
 import { Input } from '../components/Input';
 import { Toggle } from '../components/Toggle';
-import { api, MusicInteractionSettings, MusicQueueItem, PluginSettings, SearchCandidate } from '../lib/api';
+import { api, MusicInteractionSettings, MusicQueueItem, MusicTierSettings, PluginSettings, SearchCandidate } from '../lib/api';
 import { fallbackConfig } from './WishGoal';
+
+const defaultMusicTiers: MusicTierSettings[] = [
+  { Id: 'ordinary', Name: '普通点歌', MinCredit: 10, BaseScore: 1000, Enabled: true },
+  { Id: 'priority', Name: '优先点歌', MinCredit: 66, BaseScore: 3000, Enabled: true },
+  { Id: 'jump_queue', Name: '插队', MinCredit: 233, BaseScore: 6000, Enabled: true },
+  { Id: 'exclusive', Name: '专属点歌', MinCredit: 520, BaseScore: 9000, Enabled: true },
+  { Id: 'playlist_takeover', Name: '包场歌单', MinCredit: 1999, BaseScore: 12000, Enabled: true },
+];
 
 const fallbackMusicInteraction: MusicInteractionSettings = {
   Enabled: true,
   Skin: 'neon',
   StatsRange: 'session',
+  Player: 'auto',
+  PlaybackMode: 'manual_confirm',
   Transparent: true,
   Width: 720,
   Height: 120,
@@ -19,9 +29,13 @@ const fallbackMusicInteraction: MusicInteractionSettings = {
   ShowRequester: true,
   ShowGiftTier: true,
   ShowQueue: true,
+  ShowNowPlayingPanel: true,
+  ShowQueuePanel: true,
+  ShowRankPanel: true,
   ShowTodayValue: false,
   PrimaryColor: '#8b5cf6',
   FontScale: 1,
+  Tiers: defaultMusicTiers,
 };
 
 const initialConfig: PluginSettings = {
@@ -31,6 +45,8 @@ const initialConfig: PluginSettings = {
 
 const statsRangeOptions = new Set(['session', 'today', 'week', 'month', 'all']);
 const skinOptions = new Set(['neon', 'idol-stage', 'vinyl']);
+const playerOptions = new Set(['auto', 'netease', 'tencent', 'browser']);
+const playbackModeOptions = new Set(['manual_confirm', 'auto_next']);
 
 function isHexColor(value: unknown): value is string {
   return typeof value === 'string' && /^#[0-9a-fA-F]{6}$/.test(value.trim());
@@ -45,6 +61,28 @@ function sanitizeNumber(key: NumericMusicSetting, value: unknown, fallback: numb
   return clampSettingValue(key, String(value)) ?? fallback;
 }
 
+function sanitizeTierNumber(value: unknown, fallback: number, min: number, max: number): number {
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed)) return fallback;
+  return Math.round(Math.min(max, Math.max(min, parsed)));
+}
+
+function sanitizeMusicTiers(value: unknown): MusicTierSettings[] {
+  const source = Array.isArray(value)
+    ? value as Array<Partial<Record<keyof MusicTierSettings, unknown>>>
+    : [];
+  return defaultMusicTiers.map(defaultTier => {
+    const saved = source.find(item => item && item.Id === defaultTier.Id);
+    return {
+      Id: defaultTier.Id,
+      Name: typeof saved?.Name === 'string' && saved.Name.trim() ? saved.Name.trim() : defaultTier.Name,
+      MinCredit: sanitizeTierNumber(saved?.MinCredit, defaultTier.MinCredit, 1, 999999),
+      BaseScore: sanitizeTierNumber(saved?.BaseScore, defaultTier.BaseScore, 0, 999999),
+      Enabled: sanitizeBoolean(saved?.Enabled, defaultTier.Enabled),
+    };
+  });
+}
+
 function sanitizeMusicInteraction(next: MusicInteractionSettings | undefined | null): MusicInteractionSettings {
   const source = next && typeof next === 'object'
     ? next as Partial<Record<keyof MusicInteractionSettings, unknown>>
@@ -55,10 +93,18 @@ function sanitizeMusicInteraction(next: MusicInteractionSettings | undefined | n
   const statsRange = typeof source.StatsRange === 'string' && statsRangeOptions.has(source.StatsRange)
     ? source.StatsRange
     : fallbackMusicInteraction.StatsRange;
+  const player = typeof source.Player === 'string' && playerOptions.has(source.Player)
+    ? source.Player
+    : fallbackMusicInteraction.Player;
+  const playbackMode = typeof source.PlaybackMode === 'string' && playbackModeOptions.has(source.PlaybackMode)
+    ? source.PlaybackMode
+    : fallbackMusicInteraction.PlaybackMode;
   return {
     Enabled: sanitizeBoolean(source.Enabled, fallbackMusicInteraction.Enabled),
     Skin: skin,
     StatsRange: statsRange,
+    Player: player,
+    PlaybackMode: playbackMode,
     Transparent: sanitizeBoolean(source.Transparent, fallbackMusicInteraction.Transparent),
     Width: sanitizeNumber('Width', source.Width, fallbackMusicInteraction.Width),
     Height: sanitizeNumber('Height', source.Height, fallbackMusicInteraction.Height),
@@ -66,9 +112,13 @@ function sanitizeMusicInteraction(next: MusicInteractionSettings | undefined | n
     ShowRequester: sanitizeBoolean(source.ShowRequester, fallbackMusicInteraction.ShowRequester),
     ShowGiftTier: sanitizeBoolean(source.ShowGiftTier, fallbackMusicInteraction.ShowGiftTier),
     ShowQueue: sanitizeBoolean(source.ShowQueue, fallbackMusicInteraction.ShowQueue),
+    ShowNowPlayingPanel: sanitizeBoolean(source.ShowNowPlayingPanel, fallbackMusicInteraction.ShowNowPlayingPanel),
+    ShowQueuePanel: sanitizeBoolean(source.ShowQueuePanel, fallbackMusicInteraction.ShowQueuePanel),
+    ShowRankPanel: sanitizeBoolean(source.ShowRankPanel, fallbackMusicInteraction.ShowRankPanel),
     ShowTodayValue: sanitizeBoolean(source.ShowTodayValue, fallbackMusicInteraction.ShowTodayValue),
     PrimaryColor: isHexColor(source.PrimaryColor) ? source.PrimaryColor.trim() : fallbackMusicInteraction.PrimaryColor,
     FontScale: sanitizeNumber('FontScale', source.FontScale, fallbackMusicInteraction.FontScale),
+    Tiers: sanitizeMusicTiers(source.Tiers),
   };
 }
 
@@ -89,9 +139,70 @@ function candidateKey(candidate: SearchCandidate): string {
   return `${candidate.track.source}-${candidate.track.song_id}`;
 }
 
+function sourceLabel(source: SearchCandidate['track']['source']): string {
+  switch (source) {
+    case 'netease':
+      return '网易云';
+    case 'tencent':
+      return 'QQ 音乐';
+    case 'kugou':
+      return '酷狗';
+    case 'baidu':
+      return '百度音乐';
+    case 'kuwo':
+      return '酷我';
+    default:
+      return '未知来源';
+  }
+}
+
+function tierLabel(tierId: string, tiers: MusicTierSettings[]): string {
+  const configured = tiers.find(tier => tier.Id === tierId);
+  if (configured?.Name.trim()) return configured.Name.trim();
+  switch (tierId) {
+    case 'playlist_takeover':
+      return '包场歌单';
+    case 'exclusive':
+      return '专属点歌';
+    case 'jump_queue':
+      return '插队';
+    case 'priority':
+      return '优先点歌';
+    default:
+      return '普通点歌';
+  }
+}
+
 type NumericMusicSetting = 'Width' | 'Height' | 'FontScale';
+type BooleanMusicSetting =
+  | 'Transparent'
+  | 'ShowCover'
+  | 'ShowRequester'
+  | 'ShowGiftTier'
+  | 'ShowQueue'
+  | 'ShowNowPlayingPanel'
+  | 'ShowQueuePanel'
+  | 'ShowRankPanel'
+  | 'ShowTodayValue';
 type PendingSearchRequest = { keyword: string; userSig: string };
 type SearchUserIdentity = { uid: number; uname: string } | null;
+
+const selectClass = 'h-[32px] w-full rounded-lg border border-[var(--control-border)] bg-[var(--control-bg)] px-3 text-[12px] text-[var(--control-text)] focus:outline-none';
+
+const visualToggleItems: Array<{ label: string; key: BooleanMusicSetting }> = [
+  { label: '透明背景', key: 'Transparent' },
+  { label: '显示封面', key: 'ShowCover' },
+  { label: '显示点歌人', key: 'ShowRequester' },
+  { label: '显示礼物档位', key: 'ShowGiftTier' },
+  { label: '显示金额', key: 'ShowTodayValue' },
+];
+
+const panelToggleItems: Array<{ label: string; key: BooleanMusicSetting }> = [
+  { label: '当前播放', key: 'ShowNowPlayingPanel' },
+  { label: '点歌队列', key: 'ShowQueuePanel' },
+  { label: '点歌排行', key: 'ShowRankPanel' },
+  { label: '卡片内队列', key: 'ShowQueue' },
+];
 
 const numericBounds: Record<NumericMusicSetting, { min: number; max: number; step?: number }> = {
   Width: { min: 240, max: 1200, step: 1 },
@@ -113,7 +224,6 @@ export function MusicInteraction() {
   const [loaded, setLoaded] = useState(false);
   const [url, setUrl] = useState('');
   const [query, setQuery] = useState('');
-  const [manualUid, setManualUid] = useState('');
   const [manualUname, setManualUname] = useState('');
   const [candidates, setCandidates] = useState<SearchCandidate[]>([]);
   const [queue, setQueue] = useState<MusicQueueItem[]>([]);
@@ -143,14 +253,21 @@ export function MusicInteraction() {
   const latestUserSig = useRef('preview');
   const music = config.MusicInteraction;
 
-  const manualUserFrom = (uidValue: string, unameValue: string): SearchUserIdentity => {
-    const uid = Number(uidValue.trim());
-    const uname = unameValue.trim();
-    if (!Number.isInteger(uid) || uid <= 0 || !uname) return null;
-    return { uid, uname };
+  const manualUidFromName = (uname: string): number => {
+    let hash = 0;
+    for (const ch of uname) {
+      hash = (hash * 31 + ch.charCodeAt(0)) >>> 0;
+    }
+    return hash || 1;
   };
 
-  const manualUser = () => manualUserFrom(manualUid, manualUname);
+  const manualUserFrom = (unameValue: string): SearchUserIdentity => {
+    const uname = unameValue.trim();
+    if (!uname) return null;
+    return { uid: manualUidFromName(uname), uname };
+  };
+
+  const manualUser = () => manualUserFrom(manualUname);
   const userSig = (user: SearchUserIdentity) => user ? `${user.uid}:${user.uname}` : 'preview';
 
   const clearCandidateState = () => {
@@ -161,14 +278,8 @@ export function MusicInteraction() {
     setCandidateSearchUser(null);
   };
 
-  const updateManualUid = (value: string) => {
-    latestUserSig.current = userSig(manualUserFrom(value, manualUname));
-    setManualUid(value);
-    clearCandidateState();
-  };
-
   const updateManualUname = (value: string) => {
-    latestUserSig.current = userSig(manualUserFrom(manualUid, value));
+    latestUserSig.current = userSig(manualUserFrom(value));
     setManualUname(value);
     clearCandidateState();
   };
@@ -187,6 +298,12 @@ export function MusicInteraction() {
       const next = { ...prev, MusicInteraction: { ...prev.MusicInteraction, ...patch } };
       latestConfig.current = next;
       return next;
+    });
+  };
+
+  const updateTier = (tierId: string, patch: Partial<MusicTierSettings>) => {
+    updateMusic({
+      Tiers: music.Tiers.map(tier => tier.Id === tierId ? { ...tier, ...patch } : tier),
     });
   };
 
@@ -271,6 +388,18 @@ export function MusicInteraction() {
     }
   };
 
+  const updateQueueItemStatus = async (requestId: number, action: 'finish' | 'skip' | 'fail') => {
+    try {
+      if (action === 'finish') await api.finishMusicRequest(requestId);
+      if (action === 'skip') await api.skipMusicRequest(requestId);
+      if (action === 'fail') await api.failMusicRequest(requestId);
+      toast.success(action === 'finish' ? '已标记播完' : action === 'skip' ? '已跳过' : '已标记失败');
+      await loadQueue();
+    } catch (err) {
+      toast.error(`更新点歌状态失败: ${err}`);
+    }
+  };
+
   const confirmCandidate = async (candidate: SearchCandidate, index: number) => {
     const user = manualUser();
     if (!candidateSearchUser) {
@@ -278,7 +407,7 @@ export function MusicInteraction() {
       return;
     }
     if (!user) {
-      toast.warning('请先填写有效的用户 UID 和昵称');
+      toast.warning('请先填写点歌用户昵称');
       return;
     }
     if (user.uid !== candidateSearchUser.uid || user.uname !== candidateSearchUser.uname) {
@@ -450,97 +579,187 @@ export function MusicInteraction() {
           </section>
 
           <section className="rounded-2xl border border-[var(--surface-border)] bg-[var(--control-bg)] p-4">
-            <div className="mb-3 text-[12px] font-bold">显示设置</div>
-            <div className="grid grid-cols-2 gap-3">
-            <label className="space-y-1.5">
-              <span className="text-[11px] font-bold text-[var(--muted-text)]">皮肤</span>
-              <select value={music.Skin} onChange={e => updateMusic({ Skin: e.target.value })} disabled={!loaded}
-                className="h-[32px] w-full rounded-lg border border-[var(--control-border)] bg-[var(--control-bg)] px-3 text-[12px] text-[var(--control-text)] focus:outline-none">
-                <option value="neon">霓虹</option>
-                <option value="idol-stage">偶像舞台</option>
-                <option value="vinyl">黑胶</option>
-              </select>
-            </label>
-            <label className="space-y-1.5">
-              <span className="text-[11px] font-bold text-[var(--muted-text)]">统计范围</span>
-              <select value={music.StatsRange} onChange={e => updateMusic({ StatsRange: e.target.value })} disabled={!loaded}
-                className="h-[32px] w-full rounded-lg border border-[var(--control-border)] bg-[var(--control-bg)] px-3 text-[12px] text-[var(--control-text)] focus:outline-none">
-                <option value="session">本场</option>
-                <option value="today">今日</option>
-                <option value="week">本周</option>
-                <option value="month">本月</option>
-                <option value="all">全部</option>
-              </select>
-            </label>
-            <label className="space-y-1.5">
-              <span className="text-[11px] font-bold text-[var(--muted-text)]">宽度</span>
-              <Input
-                type="number"
-                min={numericBounds.Width.min}
-                max={numericBounds.Width.max}
-                value={numberDrafts.Width ?? String(music.Width)}
-                onChange={e => updateNumberDraft('Width', e.target.value)}
-                onBlur={() => commitNumberDraft('Width')}
-                onKeyDown={e => { if (e.key === 'Enter') (e.currentTarget as HTMLInputElement).blur(); }}
-                disabled={!loaded}
-              />
-            </label>
-            <label className="space-y-1.5">
-              <span className="text-[11px] font-bold text-[var(--muted-text)]">高度</span>
-              <Input
-                type="number"
-                min={numericBounds.Height.min}
-                max={numericBounds.Height.max}
-                value={numberDrafts.Height ?? String(music.Height)}
-                onChange={e => updateNumberDraft('Height', e.target.value)}
-                onBlur={() => commitNumberDraft('Height')}
-                onKeyDown={e => { if (e.key === 'Enter') (e.currentTarget as HTMLInputElement).blur(); }}
-                disabled={!loaded}
-              />
-            </label>
-            <label className="space-y-1.5">
-              <span className="text-[11px] font-bold text-[var(--muted-text)]">主色</span>
-              <div className="flex gap-2">
-                <Input type="color" value={music.PrimaryColor} onChange={e => { setColorDraft(null); updateMusic({ PrimaryColor: e.target.value }); }} disabled={!loaded} className="w-[44px] px-1" />
-                <Input
-                  value={colorDraft ?? music.PrimaryColor}
-                  onChange={e => setColorDraft(e.target.value)}
-                  onBlur={commitColorDraft}
-                  onKeyDown={e => { if (e.key === 'Enter') (e.currentTarget as HTMLInputElement).blur(); }}
-                  disabled={!loaded}
-                  className="min-w-0 flex-1"
-                />
+            <div className="mb-4 flex items-center justify-between gap-3">
+              <div className="flex items-center gap-2 text-[12px] font-black">
+                <Settings2 className="h-3.5 w-3.5 text-[var(--primary-color)]" />
+                点歌设置
               </div>
-            </label>
-            <label className="space-y-1.5">
-              <span className="text-[11px] font-bold text-[var(--muted-text)]">字号倍率</span>
-              <Input
-                type="number"
-                min={numericBounds.FontScale.min}
-                max={numericBounds.FontScale.max}
-                step={0.05}
-                value={numberDrafts.FontScale ?? String(music.FontScale)}
-                onChange={e => updateNumberDraft('FontScale', e.target.value)}
-                onBlur={() => commitNumberDraft('FontScale')}
-                onKeyDown={e => { if (e.key === 'Enter') (e.currentTarget as HTMLInputElement).blur(); }}
-                disabled={!loaded}
-              />
-            </label>
+              <div className="rounded-full border border-[var(--surface-border)] px-2 py-1 text-[10px] font-black text-[var(--muted-text)]">
+                {music.PlaybackMode === 'auto_next' ? '自动下一首' : '手动播放'}
+              </div>
             </div>
-            <div className="mt-4 grid grid-cols-2 gap-3">
-              {[
-                ['透明背景', 'Transparent'],
-                ['显示封面', 'ShowCover'],
-                ['显示点歌人', 'ShowRequester'],
-                ['显示礼物档位', 'ShowGiftTier'],
-                ['显示队列', 'ShowQueue'],
-                ['显示今日数值', 'ShowTodayValue'],
-              ].map(([label, key]) => (
-                <div key={key} className="flex items-center justify-between gap-2 rounded-xl border border-[var(--surface-border)] bg-[var(--surface-bg)] px-3 py-2">
-                  <span className="text-[11px] font-bold text-[var(--muted-text)]">{label}</span>
-                  <Toggle checked={Boolean(music[key as keyof MusicInteractionSettings])} onChange={v => updateMusic({ [key]: v } as Partial<MusicInteractionSettings>)} disabled={!loaded} />
+
+            <div className="space-y-5">
+              <div>
+                <div className="mb-3 flex items-center gap-2 text-[11px] font-black text-[var(--muted-text)]">
+                  <Radio className="h-3.5 w-3.5" />
+                  播放控制
                 </div>
-              ))}
+                <div className="grid grid-cols-2 gap-3">
+                  <label className="space-y-1.5">
+                    <span className="text-[11px] font-bold text-[var(--muted-text)]">播放方式</span>
+                    <select value={music.Player} onChange={e => updateMusic({ Player: e.target.value })} disabled={!loaded} className={selectClass}>
+                      <option value="auto">按歌曲来源</option>
+                      <option value="netease">网易云音乐</option>
+                      <option value="tencent">QQ 音乐</option>
+                      <option value="browser">浏览器</option>
+                    </select>
+                  </label>
+                  <label className="space-y-1.5">
+                    <span className="text-[11px] font-bold text-[var(--muted-text)]">播放模式</span>
+                    <select value={music.PlaybackMode} onChange={e => updateMusic({ PlaybackMode: e.target.value })} disabled={!loaded} className={selectClass}>
+                      <option value="manual_confirm">必须手动确认</option>
+                      <option value="auto_next">播完后自动下一首</option>
+                    </select>
+                  </label>
+                  <label className="space-y-1.5">
+                    <span className="text-[11px] font-bold text-[var(--muted-text)]">统计范围</span>
+                    <select value={music.StatsRange} onChange={e => updateMusic({ StatsRange: e.target.value })} disabled={!loaded} className={selectClass}>
+                      <option value="session">本场</option>
+                      <option value="today">今日</option>
+                      <option value="week">本周</option>
+                      <option value="month">本月</option>
+                      <option value="all">全部</option>
+                    </select>
+                  </label>
+                  <label className="space-y-1.5">
+                    <span className="text-[11px] font-bold text-[var(--muted-text)]">皮肤</span>
+                    <select value={music.Skin} onChange={e => updateMusic({ Skin: e.target.value })} disabled={!loaded} className={selectClass}>
+                      <option value="neon">霓虹</option>
+                      <option value="idol-stage">偶像舞台</option>
+                      <option value="vinyl">黑胶</option>
+                    </select>
+                  </label>
+                </div>
+              </div>
+
+              <div className="border-t border-[var(--surface-border)] pt-4">
+                <div className="mb-3 flex items-center gap-2 text-[11px] font-black text-[var(--muted-text)]">
+                  <SlidersHorizontal className="h-3.5 w-3.5" />
+                  OBS 外观
+                </div>
+                <div className="grid grid-cols-2 gap-3">
+                  <label className="space-y-1.5">
+                    <span className="text-[11px] font-bold text-[var(--muted-text)]">宽度</span>
+                    <Input
+                      type="number"
+                      min={numericBounds.Width.min}
+                      max={numericBounds.Width.max}
+                      value={numberDrafts.Width ?? String(music.Width)}
+                      onChange={e => updateNumberDraft('Width', e.target.value)}
+                      onBlur={() => commitNumberDraft('Width')}
+                      onKeyDown={e => { if (e.key === 'Enter') (e.currentTarget as HTMLInputElement).blur(); }}
+                      disabled={!loaded}
+                    />
+                  </label>
+                  <label className="space-y-1.5">
+                    <span className="text-[11px] font-bold text-[var(--muted-text)]">高度</span>
+                    <Input
+                      type="number"
+                      min={numericBounds.Height.min}
+                      max={numericBounds.Height.max}
+                      value={numberDrafts.Height ?? String(music.Height)}
+                      onChange={e => updateNumberDraft('Height', e.target.value)}
+                      onBlur={() => commitNumberDraft('Height')}
+                      onKeyDown={e => { if (e.key === 'Enter') (e.currentTarget as HTMLInputElement).blur(); }}
+                      disabled={!loaded}
+                    />
+                  </label>
+                  <label className="space-y-1.5">
+                    <span className="text-[11px] font-bold text-[var(--muted-text)]">字号倍率</span>
+                    <Input
+                      type="number"
+                      min={numericBounds.FontScale.min}
+                      max={numericBounds.FontScale.max}
+                      step={0.05}
+                      value={numberDrafts.FontScale ?? String(music.FontScale)}
+                      onChange={e => updateNumberDraft('FontScale', e.target.value)}
+                      onBlur={() => commitNumberDraft('FontScale')}
+                      onKeyDown={e => { if (e.key === 'Enter') (e.currentTarget as HTMLInputElement).blur(); }}
+                      disabled={!loaded}
+                    />
+                  </label>
+                  <label className="space-y-1.5">
+                    <span className="text-[11px] font-bold text-[var(--muted-text)]">主色</span>
+                    <div className="flex gap-2">
+                      <Input type="color" value={music.PrimaryColor} onChange={e => { setColorDraft(null); updateMusic({ PrimaryColor: e.target.value }); }} disabled={!loaded} className="w-[44px] px-1" />
+                      <Input
+                        value={colorDraft ?? music.PrimaryColor}
+                        onChange={e => setColorDraft(e.target.value)}
+                        onBlur={commitColorDraft}
+                        onKeyDown={e => { if (e.key === 'Enter') (e.currentTarget as HTMLInputElement).blur(); }}
+                        disabled={!loaded}
+                        className="min-w-0 flex-1"
+                      />
+                    </div>
+                  </label>
+                </div>
+                <div className="mt-3 grid grid-cols-2 gap-2">
+                  {visualToggleItems.map(item => (
+                    <div key={item.key} className="flex items-center justify-between gap-2 border-b border-[var(--surface-border)] px-1 py-2">
+                      <span className="text-[11px] font-bold text-[var(--muted-text)]">{item.label}</span>
+                      <Toggle checked={Boolean(music[item.key])} onChange={v => updateMusic({ [item.key]: v } as Partial<MusicInteractionSettings>)} disabled={!loaded} />
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              <div className="border-t border-[var(--surface-border)] pt-4">
+                <div className="mb-3 flex items-center gap-2 text-[11px] font-black text-[var(--muted-text)]">
+                  <Monitor className="h-3.5 w-3.5" />
+                  统一页面面板
+                </div>
+                <div className="grid grid-cols-2 gap-2">
+                  {panelToggleItems.map(item => (
+                    <div key={item.key} className="flex items-center justify-between gap-2 border-b border-[var(--surface-border)] px-1 py-2">
+                      <span className="text-[11px] font-bold text-[var(--muted-text)]">{item.label}</span>
+                      <Toggle checked={Boolean(music[item.key])} onChange={v => updateMusic({ [item.key]: v } as Partial<MusicInteractionSettings>)} disabled={!loaded} />
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              <div className="border-t border-[var(--surface-border)] pt-4">
+                <div className="mb-3 flex items-center justify-between gap-3">
+                  <div className="flex items-center gap-2 text-[11px] font-black text-[var(--muted-text)]">
+                    <WalletCards className="h-3.5 w-3.5" />
+                    礼物金额档位
+                  </div>
+                  <ListMusic className="h-3.5 w-3.5 text-[var(--muted-text)]" />
+                </div>
+                <div className="mb-2 grid grid-cols-[1fr_86px_86px_36px] gap-2 px-1 text-[10px] font-black text-[var(--muted-text)]">
+                  <span>名称</span>
+                  <span>最低</span>
+                  <span>基础分</span>
+                  <span>启用</span>
+                </div>
+                <div className="space-y-2">
+                  {music.Tiers.map(tier => (
+                    <div key={tier.Id} className="grid grid-cols-[1fr_86px_86px_36px] items-center gap-2 border-b border-[var(--surface-border)] px-1 pb-2">
+                      <Input
+                        value={tier.Name}
+                        onChange={e => updateTier(tier.Id, { Name: e.target.value })}
+                        disabled={!loaded}
+                      />
+                      <Input
+                        type="number"
+                        min={1}
+                        value={tier.MinCredit}
+                        onChange={e => updateTier(tier.Id, { MinCredit: sanitizeTierNumber(Number(e.target.value), tier.MinCredit, 1, 999999) })}
+                        disabled={!loaded}
+                      />
+                      <Input
+                        type="number"
+                        min={0}
+                        value={tier.BaseScore}
+                        onChange={e => updateTier(tier.Id, { BaseScore: sanitizeTierNumber(Number(e.target.value), tier.BaseScore, 0, 999999) })}
+                        disabled={!loaded}
+                      />
+                      <Toggle checked={tier.Enabled} onChange={v => updateTier(tier.Id, { Enabled: v })} disabled={!loaded} />
+                    </div>
+                  ))}
+                </div>
+              </div>
             </div>
           </section>
         </div>
@@ -558,37 +777,28 @@ export function MusicInteraction() {
               </div>
             </div>
           )}
-          <div className="mb-4 space-y-3">
-            <div className="grid grid-cols-[minmax(120px,160px)_1fr] gap-2">
-              <Input
-                value={manualUid}
-                onChange={e => updateManualUid(e.target.value)}
-                placeholder="用户 UID"
-              />
-              <Input
-                value={manualUname}
-                onChange={e => updateManualUname(e.target.value)}
-                placeholder="用户昵称"
-              />
-            </div>
-            <div className="flex gap-2">
-              <Input
-                value={query}
-                onChange={e => {
-                  latestQuery.current = e.target.value;
-                  setQuery(e.target.value);
-                  if (searchInFlight.current) {
-                    clearCandidateState();
-                  }
-                }}
-                onKeyDown={e => { if (e.key === 'Enter') searchCandidates(); }}
-                placeholder="搜索歌曲"
-                className="flex-1"
-              />
-              <Button variant="primary" onClick={() => searchCandidates()}>
-                <Search className="h-3.5 w-3.5" />{searching ? '搜索中' : '搜索'}
-              </Button>
-            </div>
+          <div className="mb-4 grid grid-cols-[minmax(92px,128px)_minmax(180px,1fr)_112px] gap-2 max-[760px]:grid-cols-1">
+            <Input
+              value={manualUname}
+              onChange={e => updateManualUname(e.target.value)}
+              placeholder="点歌用户昵称"
+            />
+            <Input
+              value={query}
+              onChange={e => {
+                latestQuery.current = e.target.value;
+                setQuery(e.target.value);
+                if (searchInFlight.current) {
+                  clearCandidateState();
+                }
+              }}
+              onKeyDown={e => { if (e.key === 'Enter') searchCandidates(); }}
+              placeholder="搜索歌曲"
+              className="min-w-0"
+            />
+            <Button variant="primary" onClick={() => searchCandidates()} className="min-w-[112px] whitespace-nowrap max-[760px]:w-full">
+              <Search className="h-3.5 w-3.5" />{searching ? '搜索中' : '搜索'}
+            </Button>
           </div>
 
           <div className="min-h-0 flex-1 overflow-y-auto rounded-2xl border border-[var(--surface-border)] bg-[var(--control-bg)] [scrollbar-width:thin]">
@@ -609,7 +819,7 @@ export function MusicInteraction() {
                     <div className="min-w-0">
                       <div className="truncate text-[13px] font-black text-[var(--foreground)]">{candidate.track.name}</div>
                       <div className="mt-1 truncate text-[11px] font-semibold text-[var(--muted-text)]">
-                        {candidate.track.artists.join(' / ') || '未知歌手'} · {candidate.track.album || '未知专辑'}
+                        {sourceLabel(candidate.track.source)} · {candidate.track.artists.join(' / ') || '未知歌手'} · {candidate.track.album || '未知专辑'}
                       </div>
                       <div className="mt-2 line-clamp-2 text-[11px] text-[var(--muted-text)]">{candidate.reason}</div>
                     </div>
@@ -640,7 +850,7 @@ export function MusicInteraction() {
                 <div className="text-[11px] font-bold text-[var(--muted-text)]">待确认候选</div>
                 <div className="mt-1 truncate text-[13px] font-black text-[var(--foreground)]">{selectedCandidate.track.name}</div>
                 <div className="mt-1 truncate text-[11px] font-semibold text-[var(--muted-text)]">
-                  {selectedCandidate.track.artists.join(' / ') || '未知歌手'} · {selectedCandidate.track.album || '未知专辑'}
+                  {sourceLabel(selectedCandidate.track.source)} · {selectedCandidate.track.artists.join(' / ') || '未知歌手'} · {selectedCandidate.track.album || '未知专辑'}
                 </div>
               </div>
               <Button
@@ -681,7 +891,7 @@ export function MusicInteraction() {
                     </div>
                     <div className="flex items-center gap-2">
                       <div className="text-right text-[11px] font-bold text-[var(--muted-text)]">
-                        <div>{item.tier}</div>
+                        <div>{tierLabel(item.tier, music.Tiers)}</div>
                         <div>{item.status}</div>
                       </div>
                       <Button
@@ -693,6 +903,15 @@ export function MusicInteraction() {
                       >
                         <Play className="h-3.5 w-3.5" />
                         {openingRequestId === item.requestId ? '打开中' : '播放'}
+                      </Button>
+                      <Button size="sm" onClick={() => updateQueueItemStatus(item.requestId, 'finish')}>
+                        播完
+                      </Button>
+                      <Button size="sm" onClick={() => updateQueueItemStatus(item.requestId, 'skip')}>
+                        跳过
+                      </Button>
+                      <Button size="sm" onClick={() => updateQueueItemStatus(item.requestId, 'fail')}>
+                        失败
                       </Button>
                     </div>
                   </div>

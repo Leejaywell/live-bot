@@ -11,7 +11,7 @@ function safeCount(value: unknown): number {
   return Number.isFinite(count) ? Math.max(1, Math.trunc(count)) : 1;
 }
 
-export function GiftEffectOverlay({ settings }: { settings: PluginSettings }) {
+export function GiftEffectView({ settings }: { settings: PluginSettings }) {
   const cfg = settings.GiftEffect;
   const [visible, setVisible] = useState(false);
   const lastNonce = useRef(0);

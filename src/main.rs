@@ -2,9 +2,9 @@ mod ai_client;
 mod api;
 mod bot;
 mod config;
+mod danmaku_chat_server;
 mod music;
 mod obs;
-mod overlay_server;
 mod plugin_settings;
 mod storage;
 mod token;
@@ -62,7 +62,7 @@ struct SharedState {
     /// 全局 AI 会话记忆（机器人 ID 隔离）
     session_memory: Arc<Mutex<bot::memory::SessionMemory>>,
     /// 弹幕聊天 HTTP 服务广播通道
-    overlay_tx: overlay_server::OverlayTx,
+    danmaku_chat_tx: danmaku_chat_server::DanmakuChatTx,
     /// 基础 AI Agent 运行时
     agent_runtime: Arc<bot::agent::AgentRuntime>,
     /// 实时变声器状态
@@ -98,7 +98,7 @@ struct BufferedEmitter {
     handle: AppHandle,
     log_buffer: Arc<Mutex<Vec<String>>>,
     batch_tx: tokio::sync::mpsc::UnboundedSender<String>,
-    overlay_tx: overlay_server::OverlayTx,
+    danmaku_chat_tx: danmaku_chat_server::DanmakuChatTx,
     storage: Arc<storage::Storage>,
 }
 
@@ -132,12 +132,12 @@ impl bot::EventEmitter for BufferedEmitter {
                     || recent_gifts_changed
                     || gift_rank_changed;
                 if changed && settings.save().is_ok() {
-                    overlay_server::broadcast_plugin_settings_update(&self.overlay_tx);
+                    danmaku_chat_server::broadcast_plugin_settings_update(&self.danmaku_chat_tx);
                 }
             }
             cache_guard_gift_from_event(&self.storage, &payload);
             // 同步推送到 HTTP 弹幕聊天 WebSocket 客户端
-            let _ = self.overlay_tx.send(payload.clone());
+            let _ = self.danmaku_chat_tx.send(payload.clone());
         }
 
         tauri::Emitter::emit(&self.handle, event, payload)
@@ -429,7 +429,7 @@ async fn start_monitor(
         handle: app.clone(),
         log_buffer: state.monitor_log_buffer.clone(),
         batch_tx,
-        overlay_tx: state.overlay_tx.clone(),
+        danmaku_chat_tx: state.danmaku_chat_tx.clone(),
         storage: state.storage.clone(),
     };
 
@@ -2249,27 +2249,45 @@ async fn open_music_request(
     state: tauri::State<'_, SharedState>,
     request_id: i64,
 ) -> Result<(), String> {
-    use tauri_plugin_opener::OpenerExt;
-
     if request_id <= 0 {
         return Err("点歌请求 ID 必须大于 0".to_string());
     }
 
     let (session_id, room_id) = active_music_session(&state)?
         .ok_or_else(|| "当前没有直播场次，暂不能打开点歌".to_string())?;
-    let request = state
-        .storage
+    open_music_request_by_id(app, state.storage.clone(), &session_id, room_id, request_id).await
+}
+
+#[cfg(feature = "tauri")]
+async fn open_music_request_by_id(
+    app: AppHandle,
+    storage: Arc<storage::Storage>,
+    session_id: &str,
+    room_id: i64,
+    request_id: i64,
+) -> Result<(), String> {
+    use tauri_plugin_opener::OpenerExt;
+
+    let request = storage
         .with_connection(|conn| {
-            music::storage::openable_song_request(conn, request_id, &session_id, room_id)
+            music::storage::openable_song_request(conn, request_id, session_id, room_id)
         })
         .map_err(|e| e.to_string())?
         .ok_or_else(|| "未找到可打开的点歌请求，只有排队中或播放中的歌曲可以打开".to_string())?;
 
-    let template = match request.source.as_str() {
-        "netease" => "orpheus://song/{song_id}",
-        "tencent" => "qqmusic://song/{song_id}",
-        _ => "https://music.163.com/#/song?id={song_id}",
-    };
+    let player = plugin_settings::PluginSettings::load_or_default()
+        .map(|settings| settings.music_interaction.player)
+        .unwrap_or_else(|_| "auto".to_string());
+    if let Some(source) = music_player_source(&player) {
+        if request.source != source {
+            return Err(format!(
+                "当前播放方式限制为{}，不能打开{}来源的点歌",
+                music_source_label(source),
+                music_source_label(&request.source)
+            ));
+        }
+    }
+    let template = music_open_template(&player, &request.source);
     let url = music::opener::build_open_url(template, &request.url_id)
         .map_err(|_| "点歌播放链接无效，无法安全打开".to_string())?;
 
@@ -2277,17 +2295,125 @@ async fn open_music_request(
         .open_url(url, None::<&str>)
         .map_err(|e| format!("打开播放器失败: {e}"))?;
 
-    state
-        .storage
+    storage
         .with_connection_mut(|conn| {
-            music::storage::mark_song_request_playing(
-                conn,
-                request.request_id,
-                &session_id,
-                room_id,
-            )
+            music::storage::mark_song_request_playing(conn, request.request_id, session_id, room_id)
         })
         .map_err(|e| e.to_string())
+}
+
+#[cfg(feature = "tauri")]
+#[tauri::command]
+async fn finish_music_request(
+    app: AppHandle,
+    state: tauri::State<'_, SharedState>,
+    request_id: i64,
+) -> Result<(), String> {
+    mark_music_request_terminal(app, state, request_id, "finished").await
+}
+
+#[cfg(feature = "tauri")]
+#[tauri::command]
+async fn skip_music_request(
+    app: AppHandle,
+    state: tauri::State<'_, SharedState>,
+    request_id: i64,
+) -> Result<(), String> {
+    mark_music_request_terminal(app, state, request_id, "skipped").await
+}
+
+#[cfg(feature = "tauri")]
+#[tauri::command]
+async fn fail_music_request(
+    app: AppHandle,
+    state: tauri::State<'_, SharedState>,
+    request_id: i64,
+) -> Result<(), String> {
+    mark_music_request_terminal(app, state, request_id, "failed").await
+}
+
+#[cfg(feature = "tauri")]
+async fn mark_music_request_terminal(
+    app: AppHandle,
+    state: tauri::State<'_, SharedState>,
+    request_id: i64,
+    status: &str,
+) -> Result<(), String> {
+    if request_id <= 0 {
+        return Err("点歌请求 ID 必须大于 0".to_string());
+    }
+    let (session_id, room_id) = active_music_session(&state)?
+        .ok_or_else(|| "当前没有直播场次，暂不能更新点歌状态".to_string())?;
+    state
+        .storage
+        .with_connection(|conn| {
+            music::storage::mark_song_request_terminal(
+                conn,
+                request_id,
+                &session_id,
+                room_id,
+                status,
+            )
+        })
+        .map_err(|e| e.to_string())?;
+
+    let auto_next = plugin_settings::PluginSettings::load_or_default()
+        .map(|settings| settings.music_interaction.playback_mode == "auto_next")
+        .unwrap_or(false);
+    if status == "finished" && auto_next {
+        if let Some(next) = state
+            .storage
+            .with_connection(|conn| {
+                music::storage::next_queued_song_request(conn, &session_id, room_id)
+            })
+            .map_err(|e| e.to_string())?
+        {
+            open_music_request_by_id(
+                app,
+                state.storage.clone(),
+                &session_id,
+                room_id,
+                next.request_id,
+            )
+            .await?;
+        }
+    }
+    Ok(())
+}
+
+#[cfg(feature = "tauri")]
+fn music_open_template(player: &str, source: &str) -> &'static str {
+    match player {
+        "netease" => "orpheus://song/{song_id}",
+        "tencent" => "qqmusic://song/{song_id}",
+        "browser" => "https://music.163.com/#/song?id={song_id}",
+        _ => match source {
+            "netease" => "orpheus://song/{song_id}",
+            "tencent" => "qqmusic://song/{song_id}",
+            _ => "https://music.163.com/#/song?id={song_id}",
+        },
+    }
+}
+
+#[cfg(feature = "tauri")]
+fn music_player_source(player: &str) -> Option<&'static str> {
+    match player {
+        "netease" => Some("netease"),
+        "tencent" => Some("tencent"),
+        _ => None,
+    }
+}
+
+#[cfg(feature = "tauri")]
+fn music_source_label(source: &str) -> &'static str {
+    match source {
+        "netease" => "网易云",
+        "tencent" => "QQ 音乐",
+        "kugou" => "酷狗",
+        "baidu" => "百度音乐",
+        "kuwo" => "酷我",
+        _ => "未知平台",
+    }
 }
 
 #[cfg(feature = "tauri")]
@@ -3588,7 +3714,7 @@ fn main() -> Result<()> {
 
     let saved_room = token::read_connected_room();
 
-    let (overlay_tx, _) = overlay_server::new_channel();
+    let (danmaku_chat_tx, _) = danmaku_chat_server::new_channel();
 
     let state = SharedState {
         runtime: Arc::new(Runtime::new()?),
@@ -3597,7 +3723,7 @@ fn main() -> Result<()> {
         storage: Arc::new(storage),
         connected_room: Arc::new(Mutex::new(saved_room)),
         monitor_log_buffer: Arc::new(Mutex::new(Vec::new())),
-        overlay_tx: overlay_tx.clone(),
+        danmaku_chat_tx: danmaku_chat_tx.clone(),
         #[cfg(feature = "tauri")]
         preview_tts: Arc::new(Mutex::new(None)),
         #[cfg(feature = "tauri")]
@@ -3712,10 +3838,10 @@ fn main() -> Result<()> {
             let port = plugin_settings::PluginSettings::load_or_default()
                 .map(|settings| settings.danmaku_chat.port)
                 .unwrap_or(12450);
-            let srv_tx = overlay_tx.clone();
+            let server_tx = danmaku_chat_tx.clone();
             let resource_dir = app.path().resource_dir().ok();
             tauri::async_runtime::spawn(async move {
-                overlay_server::start(port, srv_tx, resource_dir).await;
+                danmaku_chat_server::start(port, server_tx, resource_dir).await;
             });
 
             let handle_for_update = app.handle().clone();
@@ -3777,6 +3903,9 @@ fn main() -> Result<()> {
             send_ai_message,
             open_url,
             open_music_request,
+            finish_music_request,
+            skip_music_request,
+            fail_music_request,
             open_config_dir,
             check_update_cmd,
             install_update,
@@ -3919,6 +4048,7 @@ async fn search_music_candidates(
 
     match service {
         music::service::SongServiceReply::Candidates { candidates } => Ok(candidates),
+        music::service::SongServiceReply::Message(message) => Err(message),
         _ => Ok(Vec::new()),
     }
 }
@@ -4237,7 +4367,7 @@ async fn save_danmaku_chat_config(
     settings.danmaku_chat = config;
     settings.save().map_err(|e| e.to_string())?;
     // 通知所有弹幕聊天网页客户端重新拉取配置
-    overlay_server::broadcast_cfg_update(&state.overlay_tx);
+    danmaku_chat_server::broadcast_cfg_update(&state.danmaku_chat_tx);
     Ok(())
 }
 
@@ -4261,7 +4391,7 @@ async fn save_plugin_settings(
     state: tauri::State<'_, SharedState>,
 ) -> Result<(), String> {
     config.save().map_err(|e| e.to_string())?;
-    overlay_server::broadcast_plugin_settings_update(&state.overlay_tx);
+    danmaku_chat_server::broadcast_plugin_settings_update(&state.danmaku_chat_tx);
     Ok(())
 }
 
@@ -4310,7 +4440,7 @@ async fn reset_wish_goal(
         plugin_settings::PluginSettings::load_or_default().map_err(|e| e.to_string())?;
     config.reset_wish_goal();
     config.save().map_err(|e| e.to_string())?;
-    overlay_server::broadcast_plugin_settings_update(&state.overlay_tx);
+    danmaku_chat_server::broadcast_plugin_settings_update(&state.danmaku_chat_tx);
     Ok(config)
 }
 
@@ -4323,7 +4453,7 @@ async fn simulate_wish_goal(
         plugin_settings::PluginSettings::load_or_default().map_err(|e| e.to_string())?;
     config.simulate_wish_goal();
     config.save().map_err(|e| e.to_string())?;
-    overlay_server::broadcast_plugin_settings_update(&state.overlay_tx);
+    danmaku_chat_server::broadcast_plugin_settings_update(&state.danmaku_chat_tx);
     Ok(config)
 }
 
@@ -4336,7 +4466,7 @@ async fn simulate_lottery(
         plugin_settings::PluginSettings::load_or_default().map_err(|e| e.to_string())?;
     config.simulate_lottery();
     config.save().map_err(|e| e.to_string())?;
-    overlay_server::broadcast_plugin_settings_update(&state.overlay_tx);
+    danmaku_chat_server::broadcast_plugin_settings_update(&state.danmaku_chat_tx);
     Ok(config)
 }
 
@@ -4349,7 +4479,7 @@ async fn simulate_gift_effect(
         plugin_settings::PluginSettings::load_or_default().map_err(|e| e.to_string())?;
     config.simulate_gift_effect();
     config.save().map_err(|e| e.to_string())?;
-    overlay_server::broadcast_plugin_settings_update(&state.overlay_tx);
+    danmaku_chat_server::broadcast_plugin_settings_update(&state.danmaku_chat_tx);
     Ok(config)
 }
 
@@ -4362,7 +4492,7 @@ async fn simulate_recent_gift(
         plugin_settings::PluginSettings::load_or_default().map_err(|e| e.to_string())?;
     config.simulate_recent_gift();
     config.save().map_err(|e| e.to_string())?;
-    overlay_server::broadcast_plugin_settings_update(&state.overlay_tx);
+    danmaku_chat_server::broadcast_plugin_settings_update(&state.danmaku_chat_tx);
     Ok(config)
 }
 
@@ -4375,7 +4505,7 @@ async fn simulate_gift_rank(
         plugin_settings::PluginSettings::load_or_default().map_err(|e| e.to_string())?;
     config.simulate_gift_rank();
     config.save().map_err(|e| e.to_string())?;
-    overlay_server::broadcast_plugin_settings_update(&state.overlay_tx);
+    danmaku_chat_server::broadcast_plugin_settings_update(&state.danmaku_chat_tx);
     Ok(config)
 }
 

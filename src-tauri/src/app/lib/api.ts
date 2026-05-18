@@ -217,6 +217,8 @@ export interface MusicInteractionSettings {
   Enabled: boolean;
   Skin: string;
   StatsRange: string;
+  Player: string;
+  PlaybackMode: string;
   Transparent: boolean;
   Width: number;
   Height: number;
@@ -224,9 +226,21 @@ export interface MusicInteractionSettings {
   ShowRequester: boolean;
   ShowGiftTier: boolean;
   ShowQueue: boolean;
+  ShowNowPlayingPanel: boolean;
+  ShowQueuePanel: boolean;
+  ShowRankPanel: boolean;
   ShowTodayValue: boolean;
   PrimaryColor: string;
   FontScale: number;
+  Tiers: MusicTierSettings[];
+}
+
+export interface MusicTierSettings {
+  Id: string;
+  Name: string;
+  MinCredit: number;
+  BaseScore: number;
+  Enabled: boolean;
 }
 
 export interface MusicTrack {
@@ -498,6 +512,9 @@ export const api = {
     invoke<SearchCandidate[]>('search_music_candidates', { query, uid: uid ?? null, uname: uname ?? null }),
   getMusicQueue: () => invoke<MusicQueueItem[]>('get_music_queue'),
   openMusicRequest: (requestId: number) => invoke<void>('open_music_request', { requestId }),
+  finishMusicRequest: (requestId: number) => invoke<void>('finish_music_request', { requestId }),
+  skipMusicRequest: (requestId: number) => invoke<void>('skip_music_request', { requestId }),
+  failMusicRequest: (requestId: number) => invoke<void>('fail_music_request', { requestId }),
   confirmMusicCandidate: (uid: number, uname: string, index: number) =>
     invoke<string>('confirm_music_candidate', { uid, uname, index }),
   pickPluginResource: (kind: 'sound') => invoke<string | null>('pick_plugin_resource', { kind }),

@@ -1,4 +1,4 @@
-import { MusicInteractionSettings, OverlayRuntimeConfig, OverlayRoute, PluginSettings } from './types';
+import { DanmakuChatRoute, DanmakuChatRuntimeConfig, MusicInteractionSettings, PluginSettings } from './types';
 import { resolveMotion } from './motion';
 
 const HEX = /^#[0-9a-fA-F]{6}$/;
@@ -31,7 +31,7 @@ function settingsScale(settings: MusicInteractionSettings | undefined): number {
   return Math.min(2, Math.max(0.5, scale));
 }
 
-export function parseOverlayConfig(search = window.location.search): OverlayRuntimeConfig {
+export function parseDanmakuChatConfig(search = window.location.search): DanmakuChatRuntimeConfig {
   const params = new URLSearchParams(search);
   const primaryColor = params.get('primaryColor');
   return {
@@ -43,12 +43,12 @@ export function parseOverlayConfig(search = window.location.search): OverlayRunt
   };
 }
 
-export function resolveOverlayConfig(
-  route: OverlayRoute,
+export function resolveDanmakuChatConfig(
+  route: DanmakuChatRoute,
   settings: PluginSettings,
   search = window.location.search,
-): OverlayRuntimeConfig {
-  const config = parseOverlayConfig(search);
+): DanmakuChatRuntimeConfig {
+  const config = parseDanmakuChatConfig(search);
   if (route.plugin !== 'song-request') {
     return config;
   }
@@ -69,7 +69,7 @@ export function resolveOverlayConfig(
   };
 }
 
-export function resolveOverlayRoute(pathname = window.location.pathname): OverlayRoute {
+export function resolveDanmakuChatRoute(pathname = window.location.pathname): DanmakuChatRoute {
   if (pathname === '/') {
     return { plugin: 'danmaku', view: 'default' };
   }
@@ -98,7 +98,7 @@ export function resolveOverlayRoute(pathname = window.location.pathname): Overla
     pathname === '/song-request' ||
     pathname.endsWith('/song-request/playlist')
   ) {
-    return { plugin: 'song-request', view: 'playlist' };
+    return { plugin: 'song-request', view: 'dashboard' };
   }
   return { plugin: 'danmaku', view: 'default' };
 }

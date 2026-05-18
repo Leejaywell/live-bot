@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { ReactNode, createElement, useEffect, useState } from 'react';
 
 function safeString(value: unknown, fallback = ''): string {
   if (typeof value === 'string') {
@@ -10,8 +10,8 @@ function safeString(value: unknown, fallback = ''): string {
   return fallback;
 }
 
-export function DanmakuOverlay() {
-  const [items, setItems] = useState<Array<{ id: number; text: string; kind: string }>>([]);
+export function DanmakuChatView() {
+  const [items, setItems] = useState<Array<{ id: number; user: string; text: string; kind: string; legacyClass: string }>>([]);
 
   useEffect(() => {
     let disposed = false;
@@ -51,7 +51,16 @@ export function DanmakuOverlay() {
           const text = safeString(live.text) || safeString(live.gift) || safeString(live.kind);
           const kind = safeString(live.kind, 'event');
           if (!text) return;
-          setItems(prev => [...prev, { id: Date.now() + Math.random(), text: `${user}: ${text}`, kind }].slice(-80));
+          setItems(prev => [
+            ...prev,
+            {
+              id: Date.now() + Math.random(),
+              user,
+              text,
+              kind,
+              legacyClass: legacyMessageClass(live),
+            },
+          ].slice(-80));
         } catch {
           // Keep OBS quiet on malformed packets.
         }
@@ -81,13 +90,45 @@ export function DanmakuOverlay() {
   }, []);
 
   return (
-    <section className="danmaku-list">
-      <div className="danmaku-spacer" />
-      {items.map(item => (
-        <div className="danmaku-item" data-kind={item.kind} key={item.id}>{item.text}</div>
-      ))}
-    </section>
+    createElement('yt-live-chat-renderer', { id: 'app', className: 'danmaku-list style-scope yt-live-chat-app', 'hide-timestamps': '' },
+      <div className="danmaku-spacer" />,
+      items.map(item => renderLegacyMessage(item)),
+    )
   );
+}
+
+function renderLegacyMessage(item: { id: number; user: string; text: string; kind: string; legacyClass: string }): ReactNode {
+  const tagName =
+    item.legacyClass === 'msg-gift' || item.legacyClass === 'msg-sc'
+      ? 'yt-live-chat-paid-message-renderer'
+      : item.legacyClass === 'msg-guard'
+        ? 'yt-live-chat-membership-item-renderer'
+        : 'yt-live-chat-text-message-renderer';
+
+  return createElement(
+    tagName,
+    {
+      className: `danmaku-item msg ${item.legacyClass} style-scope yt-live-chat-item-list-renderer`,
+      'data-id': 'normal',
+      'data-kind': item.kind,
+      key: item.id,
+    },
+    <span className="uname style-scope yt-live-chat-author-chip">{item.user}</span>,
+    <span className="dtext style-scope yt-live-chat-text-message-renderer" id="message">{item.text}</span>,
+  );
+}
+
+function legacyMessageClass(event: LiveEvent): string {
+  switch (event.type) {
+    case 'Gift':
+      return 'msg-gift';
+    case 'GuardBuy':
+      return 'msg-guard';
+    case 'SuperChat':
+      return 'msg-sc';
+    default:
+      return 'msg-danmu';
+  }
 }
 
 interface LiveEventPayload {
@@ -100,6 +141,7 @@ interface LiveEventPayload {
 }
 
 interface LiveEvent {
+  type?: string;
   kind?: string;
   user?: string;
   text?: string;

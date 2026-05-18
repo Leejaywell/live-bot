@@ -5,6 +5,7 @@ pub enum SongCommand {
     Confirm { index: usize },
     MoreCandidates,
     MyRequest,
+    MyCredit,
     CancelMine,
 }
 
@@ -13,6 +14,9 @@ pub fn parse_song_command(text: &str) -> Option<SongCommand> {
     let value = text.trim();
     if value == "我的点歌" {
         return Some(SongCommand::MyRequest);
+    }
+    if matches!(value, "我的积分" | "点歌积分" | "我的档位" | "点歌档位") {
+        return Some(SongCommand::MyCredit);
     }
     if value == "取消点歌" {
         return Some(SongCommand::CancelMine);
@@ -121,6 +125,10 @@ mod tests {
     #[test]
     fn parses_queue_status_and_cancel() {
         assert_eq!(parse_song_command("我的点歌"), Some(SongCommand::MyRequest));
+        assert_eq!(parse_song_command("我的积分"), Some(SongCommand::MyCredit));
+        assert_eq!(parse_song_command("点歌积分"), Some(SongCommand::MyCredit));
+        assert_eq!(parse_song_command("我的档位"), Some(SongCommand::MyCredit));
+        assert_eq!(parse_song_command("点歌档位"), Some(SongCommand::MyCredit));
         assert_eq!(
             parse_song_command("取消点歌"),
             Some(SongCommand::CancelMine)

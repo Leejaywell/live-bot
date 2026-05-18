@@ -344,6 +344,10 @@ pub struct MusicInteractionSettings {
     pub skin: String,
     #[serde(default = "df_music_stats_range")]
     pub stats_range: String,
+    #[serde(default = "df_music_player")]
+    pub player: String,
+    #[serde(default = "df_music_playback_mode")]
+    pub playback_mode: String,
     #[serde(default = "df_true")]
     pub transparent: bool,
     #[serde(default = "df_music_width")]
@@ -358,12 +362,35 @@ pub struct MusicInteractionSettings {
     pub show_gift_tier: bool,
     #[serde(default = "df_true")]
     pub show_queue: bool,
+    #[serde(default = "df_true")]
+    pub show_now_playing_panel: bool,
+    #[serde(default = "df_true")]
+    pub show_queue_panel: bool,
+    #[serde(default = "df_true")]
+    pub show_rank_panel: bool,
     #[serde(default)]
     pub show_today_value: bool,
     #[serde(default = "df_music_primary_color")]
     pub primary_color: String,
     #[serde(default = "df_font_scale")]
     pub font_scale: f32,
+    #[serde(default = "df_music_tiers")]
+    pub tiers: Vec<MusicTierSettings>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "PascalCase")]
+pub struct MusicTierSettings {
+    #[serde(default)]
+    pub id: String,
+    #[serde(default)]
+    pub name: String,
+    #[serde(default)]
+    pub min_credit: i64,
+    #[serde(default)]
+    pub base_score: i64,
+    #[serde(default = "df_true")]
+    pub enabled: bool,
 }
 
 impl Default for PluginSettings {
@@ -536,6 +563,8 @@ impl Default for MusicInteractionSettings {
             enabled: true,
             skin: df_music_skin(),
             stats_range: df_music_stats_range(),
+            player: df_music_player(),
+            playback_mode: df_music_playback_mode(),
             transparent: true,
             width: df_music_width(),
             height: df_music_height(),
@@ -543,9 +572,13 @@ impl Default for MusicInteractionSettings {
             show_requester: true,
             show_gift_tier: true,
             show_queue: true,
+            show_now_playing_panel: true,
+            show_queue_panel: true,
+            show_rank_panel: true,
             show_today_value: false,
             primary_color: df_music_primary_color(),
             font_scale: df_font_scale(),
+            tiers: df_music_tiers(),
         }
     }
 }
@@ -1030,6 +1063,12 @@ fn df_music_skin() -> String {
 fn df_music_stats_range() -> String {
     "session".to_string()
 }
+fn df_music_player() -> String {
+    "auto".to_string()
+}
+fn df_music_playback_mode() -> String {
+    "manual_confirm".to_string()
+}
 fn df_music_width() -> u32 {
     720
 }
@@ -1038,6 +1077,45 @@ fn df_music_height() -> u32 {
 }
 fn df_music_primary_color() -> String {
     "#8b5cf6".to_string()
+}
+fn df_music_tiers() -> Vec<MusicTierSettings> {
+    vec![
+        MusicTierSettings {
+            id: "ordinary".to_string(),
+            name: "普通点歌".to_string(),
+            min_credit: 10,
+            base_score: 1000,
+            enabled: true,
+        },
+        MusicTierSettings {
+            id: "priority".to_string(),
+            name: "优先点歌".to_string(),
+            min_credit: 66,
+            base_score: 3000,
+            enabled: true,
+        },
+        MusicTierSettings {
+            id: "jump_queue".to_string(),
+            name: "插队".to_string(),
+            min_credit: 233,
+            base_score: 6000,
+            enabled: true,
+        },
+        MusicTierSettings {
+            id: "exclusive".to_string(),
+            name: "专属点歌".to_string(),
+            min_credit: 520,
+            base_score: 9000,
+            enabled: true,
+        },
+        MusicTierSettings {
+            id: "playlist_takeover".to_string(),
+            name: "包场歌单".to_string(),
+            min_credit: 1999,
+            base_score: 12000,
+            enabled: true,
+        },
+    ]
 }
 fn df_font_scale() -> f32 {
     1.0
@@ -1256,5 +1334,15 @@ mod music_interaction_tests {
         assert!(settings.music_interaction.enabled);
         assert_eq!(settings.music_interaction.skin, "neon");
         assert_eq!(settings.music_interaction.stats_range, "session");
+        assert_eq!(settings.music_interaction.player, "auto");
+        assert_eq!(settings.music_interaction.playback_mode, "manual_confirm");
+        assert!(settings.music_interaction.show_now_playing_panel);
+        assert!(settings.music_interaction.show_queue_panel);
+        assert!(settings.music_interaction.show_rank_panel);
+        assert_eq!(settings.music_interaction.tiers.len(), 5);
+        assert_eq!(settings.music_interaction.tiers[0].id, "ordinary");
+        assert_eq!(settings.music_interaction.tiers[0].min_credit, 10);
+        assert_eq!(settings.music_interaction.tiers[4].id, "playlist_takeover");
+        assert_eq!(settings.music_interaction.tiers[4].min_credit, 1999);
     }
 }

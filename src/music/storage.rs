@@ -72,6 +72,7 @@ pub struct OpenableSongRequest {
     pub source: String,
     pub song_id: String,
     pub url_id: String,
+    pub duration_ms: Option<i64>,
 }
 
 pub fn ensure_schema(conn: &Connection) -> Result<()> {
@@ -498,7 +499,17 @@ pub fn list_queue(conn: &Connection, session_id: &str, room_id: i64) -> Result<V
         "select id, uid, uname, song_name, artist_names, tier, credit_value, priority_score, status, created_at
          from song_requests
          where session_id = ?1 and room_id = ?2 and status in ('queued', 'playing')
-         order by case status when 'playing' then 0 else 1 end, priority_score desc, id asc",
+         order by
+           case status when 'playing' then 0 else 1 end,
+           case tier
+             when 'playlist_takeover' then 0
+             when 'exclusive' then 1
+             when 'jump_queue' then 2
+             when 'priority' then 3
+             else 4
+           end,
+           priority_score desc,
+           id asc",
     )?;
     let rows = stmt.query_map(params![session_id, room_id], |row| {
         Ok(QueueItem {
@@ -525,7 +536,7 @@ pub fn openable_song_request(
     room_id: i64,
 ) -> Result<Option<OpenableSongRequest>> {
     conn.query_row(
-        "select id, source, song_id, url_id
+        "select id, source, song_id, url_id, duration_ms
          from song_requests
          where id = ?1
            and session_id = ?2
@@ -538,6 +549,45 @@ pub fn openable_song_request(
                 source: row.get(1)?,
                 song_id: row.get(2)?,
                 url_id: row.get(3)?,
+                duration_ms: row.get(4)?,
+            })
+        },
+    )
+    .optional()
+    .map_err(Into::into)
+}
+
+#[allow(dead_code)]
+pub fn next_queued_song_request(
+    conn: &Connection,
+    session_id: &str,
+    room_id: i64,
+) -> Result<Option<OpenableSongRequest>> {
+    conn.query_row(
+        "select id, source, song_id, url_id, duration_ms
+         from song_requests
+         where session_id = ?1
+           and room_id = ?2
+           and status = 'queued'
+         order by
+           case tier
+             when 'playlist_takeover' then 0
+             when 'exclusive' then 1
+             when 'jump_queue' then 2
+             when 'priority' then 3
+             else 4
+           end,
+           priority_score desc,
+           id asc
+         limit 1",
+        params![session_id, room_id],
+        |row| {
+            Ok(OpenableSongRequest {
+                request_id: row.get(0)?,
+                source: row.get(1)?,
+                song_id: row.get(2)?,
+                url_id: row.get(3)?,
+                duration_ms: row.get(4)?,
             })
         },
     )
@@ -592,6 +642,37 @@ pub fn mark_song_request_playing(
         return Err(anyhow!("song request was not marked playing: {request_id}"));
     }
     tx.commit()?;
+    Ok(())
+}
+
+#[allow(dead_code)]
+pub fn mark_song_request_terminal(
+    conn: &Connection,
+    request_id: i64,
+    session_id: &str,
+    room_id: i64,
+    status: &str,
+) -> Result<()> {
+    if !matches!(status, "finished" | "skipped" | "failed") {
+        return Err(anyhow!(
+            "unsupported terminal song request status: {status}"
+        ));
+    }
+
+    let rows_affected = conn.execute(
+        "update song_requests
+         set status = ?1, updated_at = ?2, finished_at = ?2
+         where id = ?3
+           and session_id = ?4
+           and room_id = ?5
+           and status in ('queued', 'playing')",
+        params![status, now_text(), request_id, session_id, room_id],
+    )?;
+    if rows_affected != 1 {
+        return Err(anyhow!(
+            "song request was not marked {status}: {request_id}"
+        ));
+    }
     Ok(())
 }
 
@@ -896,6 +977,32 @@ mod tests {
             pending_credit_value(&conn, "session-1", 42).expect("pending"),
             0
         );
+    }
+
+    #[test]
+    fn high_value_tiers_sort_above_lower_tiers_even_with_lower_score() {
+        let conn = Connection::open_in_memory().expect("db opens");
+        ensure_schema(&conn).expect("schema");
+
+        let mut ordinary = song_request();
+        ordinary.tier = "ordinary".to_string();
+        ordinary.priority_score = 999_999;
+        let ordinary_id = insert_song_request(&conn, &ordinary).expect("ordinary request");
+
+        let mut jump = song_request();
+        jump.tier = "jump_queue".to_string();
+        jump.priority_score = 1;
+        let jump_id = insert_song_request(&conn, &jump).expect("jump request");
+
+        let mut takeover = song_request();
+        takeover.tier = "playlist_takeover".to_string();
+        takeover.priority_score = 1;
+        let takeover_id = insert_song_request(&conn, &takeover).expect("takeover request");
+
+        let queue = list_queue(&conn, "session-1", 100).expect("queue");
+        assert_eq!(queue[0].request_id, takeover_id);
+        assert_eq!(queue[1].request_id, jump_id);
+        assert_eq!(queue[2].request_id, ordinary_id);
     }
 
     #[test]

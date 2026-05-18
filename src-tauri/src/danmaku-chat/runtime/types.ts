@@ -1,19 +1,20 @@
-export type OverlayMotion = 'full' | 'reduced' | 'off';
+export type DanmakuChatMotion = 'full' | 'reduced' | 'off';
 
-export interface OverlayRuntimeConfig {
+export interface DanmakuChatRuntimeConfig {
   skin: string;
   transparent: boolean;
   scale: number;
-  motion: OverlayMotion;
+  motion: DanmakuChatMotion;
   primaryColor: string | null;
 }
 
-export interface OverlayRoute {
+export interface DanmakuChatRoute {
   plugin: 'danmaku' | 'wish-goal' | 'lottery' | 'gift-effect' | 'recent-gifts' | 'gift-rank' | 'song-request';
-  view: 'default' | 'playlist' | 'now-playing' | 'rank';
+  view: 'default' | 'dashboard' | 'playlist' | 'now-playing' | 'rank';
 }
 
 export interface PluginSettings {
+  DanmakuChat?: DanmakuChatSettings;
   WishGoal?: WishGoalSettings;
   LotteryInteraction?: LotteryInteractionSettings;
   GiftEffect?: GiftEffectSettings;
@@ -22,10 +23,62 @@ export interface PluginSettings {
   MusicInteraction?: MusicInteractionSettings;
 }
 
+export interface DanmakuChatSettings {
+  CustomCss?: string;
+  GlobalScale?: number;
+  FontScale?: number;
+  MessageFont?: string;
+  MsgGap?: number;
+  BgColor?: string;
+  AvatarSize?: number;
+  ShowAvatar?: boolean;
+  ShowUsername?: boolean;
+  UserNameFont?: string;
+  UserNameFontSize?: number;
+  UserNameWeight?: number;
+  UserNameColor?: string;
+  OwnerUserNameColor?: string;
+  ModeratorUserNameColor?: string;
+  MemberUserNameColor?: string;
+  ShowBadges?: boolean;
+  ShowGiftIcon?: boolean;
+  MessageFontSize?: number;
+  MessageWeight?: number;
+  MessageColor?: string;
+  ShowTime?: boolean;
+  TimeFont?: string;
+  TimeFontSize?: number;
+  TimeWeight?: number;
+  TimeColor?: string;
+  BgOpacity?: number;
+  MessageBgColor?: string;
+  OwnerMessageBgColor?: string;
+  ModeratorMessageBgColor?: string;
+  MemberMessageBgColor?: string;
+  FirstLineFontSize?: number;
+  FirstLineWeight?: number;
+  SecondLineFontSize?: number;
+  SecondLineWeight?: number;
+  ScContentFontSize?: number;
+  ScContentWeight?: number;
+  FadeInTime?: number;
+  FadeOutTime?: number;
+  Slide?: boolean;
+  ReverseSlide?: boolean;
+  EffectsEnabled?: boolean;
+  EffectIntensity?: number;
+  ShowOutlines?: boolean;
+  OutlineSize?: number;
+  OutlineColor?: string;
+  BlurryOutline?: boolean;
+}
+
 export interface MusicInteractionSettings {
   Enabled?: boolean;
   Skin?: string;
   StatsRange?: string;
+  Player?: string;
+  PlaybackMode?: string;
   Transparent?: boolean;
   Width?: number;
   Height?: number;
@@ -33,9 +86,21 @@ export interface MusicInteractionSettings {
   ShowRequester?: boolean;
   ShowGiftTier?: boolean;
   ShowQueue?: boolean;
+  ShowNowPlayingPanel?: boolean;
+  ShowQueuePanel?: boolean;
+  ShowRankPanel?: boolean;
   ShowTodayValue?: boolean;
   PrimaryColor?: string;
   FontScale?: number;
+  Tiers?: MusicTierSettings[];
+}
+
+export interface MusicTierSettings {
+  Id?: string;
+  Name?: string;
+  MinCredit?: number;
+  BaseScore?: number;
+  Enabled?: boolean;
 }
 
 export interface WishGoalSettings {

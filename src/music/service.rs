@@ -3,12 +3,12 @@ use chrono::{Duration, Local};
 use std::sync::{Arc, Mutex};
 
 use crate::music::command::{SongCommand, parse_song_command};
-use crate::music::credits::tier_for_credit;
 use crate::music::provider::{MusicProvider, SearchOptions};
-use crate::music::queue::priority_score;
+use crate::music::queue::configured_priority_score;
 use crate::music::search::score_track;
 use crate::music::storage::NewSongRequest;
-use crate::music::types::SearchCandidate;
+use crate::music::types::{MusicSource, SearchCandidate};
+use crate::plugin_settings::{MusicTierSettings, PluginSettings};
 use crate::storage::Storage;
 
 #[allow(dead_code)]
@@ -31,8 +31,9 @@ impl SongServiceReply {
                 let mut lines = vec!["找到候选：".to_string()];
                 for (idx, candidate) in candidates.iter().take(3).enumerate() {
                     lines.push(format!(
-                        "{}. {} - {}",
+                        "{}. [{}] {} - {}",
                         idx + 1,
+                        source_label(&candidate.track.source),
                         candidate.track.name,
                         artists_text(&candidate.track.artists)
                     ));
@@ -107,7 +108,28 @@ impl MusicInteractionService {
                 let mut candidates = Vec::new();
                 let mut searched_any_provider = false;
                 let mut provider_errors = Vec::new();
+                let selected_source = selected_music_source();
+                if selected_source.is_some()
+                    && !self
+                        .providers
+                        .iter()
+                        .any(|provider| Some(provider.source()) == selected_source)
+                {
+                    return Ok(SongServiceReply::Message(format!(
+                        "当前播放方式限制为{}，该平台搜索源尚未接入",
+                        selected_source
+                            .as_ref()
+                            .map(source_label)
+                            .unwrap_or("指定平台")
+                    )));
+                }
                 for provider in &self.providers {
+                    if selected_source
+                        .as_ref()
+                        .is_some_and(|source| provider.source() != *source)
+                    {
+                        continue;
+                    }
                     match provider.search(&query, SearchOptions::default()).await {
                         Ok(tracks) => {
                             searched_any_provider = true;
@@ -147,6 +169,7 @@ impl MusicInteractionService {
             SongCommand::MyRequest => Ok(SongServiceReply::Message(
                 "你当前没有排队中的点歌".to_string(),
             )),
+            SongCommand::MyCredit => self.credit_summary(uid),
             SongCommand::CancelMine => Ok(SongServiceReply::Message(
                 "你当前没有可取消的点歌".to_string(),
             )),
@@ -179,9 +202,13 @@ impl MusicInteractionService {
                     "gift",
                     None,
                 )?;
+                let credit_value = price.saturating_mul(*count as i64);
                 if recorded {
+                    let tier_name = music_tier_for_credit(credit_value)
+                        .map(|tier| tier.name)
+                        .unwrap_or_else(|| "点歌".to_string());
                     Ok(SongServiceReply::Message(format!(
-                        "感谢 {user} 赠送 {gift} x{count}，点歌权益已记录"
+                        "感谢 {user} 赠送 {gift} x{count}，已解锁「{tier_name}」权益"
                     )))
                 } else if storage_ready {
                     Ok(SongServiceReply::Message(format!(
@@ -202,8 +229,11 @@ impl MusicInteractionService {
                 let storage_ready = self.storage.is_some() && self.current_session_id().is_some();
                 let recorded = self.record_credit(*user_id, user, *price, "super_chat", None)?;
                 if recorded {
+                    let tier_name = music_tier_for_credit(*price)
+                        .map(|tier| tier.name)
+                        .unwrap_or_else(|| "点歌".to_string());
                     Ok(SongServiceReply::Message(format!(
-                        "感谢 {user} 的醒目留言，点歌权益已记录（{price}元）"
+                        "感谢 {user} 的醒目留言，已解锁「{tier_name}」权益（{price}元）"
                     )))
                 } else if storage_ready {
                     Ok(SongServiceReply::Message(format!(
@@ -276,14 +306,23 @@ impl MusicInteractionService {
             let Some(candidate) = context.candidates.get(index.saturating_sub(1)) else {
                 return Ok(Err("候选编号不存在".to_string()));
             };
+            if let Some(source) = selected_music_source() {
+                if candidate.track.source != source {
+                    return Ok(Err(format!(
+                        "当前播放方式限制为{}，请重新搜索对应来源歌曲",
+                        source_label(&source)
+                    )));
+                }
+            }
             let Some((credit_id, credit_value, tier)) =
                 crate::music::storage::oldest_pending_credit(conn, &session_id, uid)?
             else {
                 return Ok(Err("还没有可用点歌权益，请先送礼解锁".to_string()));
             };
-            let tier_enum = tier_for_credit(credit_value)
-                .ok_or_else(|| anyhow!("stored credit is below minimum tier: {credit_value}"))?;
-            let score = priority_score(tier_enum, credit_value, 0, 0);
+            let tier_settings = music_tier_by_id(&tier);
+            let score = configured_priority_score(tier_settings.base_score, credit_value, 0, 0);
+            let tier_name = tier_settings.name.clone();
+            let benefit = tier_benefit_text(&tier_settings.id);
             let request_id = crate::music::storage::insert_song_request_and_consume_credit(
                 conn,
                 credit_id,
@@ -308,12 +347,12 @@ impl MusicInteractionService {
                     source_event_id: None,
                 },
             )?;
-            Ok(Ok(request_id))
+            Ok(Ok((request_id, tier_name, benefit)))
         })?;
 
         match request_id {
-            Ok(request_id) => Ok(SongServiceReply::Message(format!(
-                "已加入点歌队列 #{request_id}"
+            Ok((request_id, tier_name, benefit)) => Ok(SongServiceReply::Message(format!(
+                "已加入点歌队列 #{request_id}，{tier_name}{benefit}"
             ))),
             Err(message) => Ok(SongServiceReply::Message(message)),
         }
@@ -333,7 +372,7 @@ impl MusicInteractionService {
         let Some(session_id) = self.current_session_id() else {
             return Ok(false);
         };
-        let Some(tier) = tier_for_credit(credit_value) else {
+        let Some(tier) = music_tier_for_credit(credit_value) else {
             return Ok(false);
         };
         storage.with_connection(|conn| {
@@ -345,7 +384,7 @@ impl MusicInteractionService {
                     uid,
                     uname: uname.to_string(),
                     credit_value,
-                    tier: tier.as_str().to_string(),
+                    tier: tier.id,
                     source_type: source_type.to_string(),
                     source_event_id,
                     expires_at: Self::credit_expires_at(),
@@ -354,6 +393,141 @@ impl MusicInteractionService {
         })?;
         Ok(true)
     }
+
+    fn credit_summary(&self, uid: i64) -> Result<SongServiceReply> {
+        let Some(storage) = &self.storage else {
+            return Ok(SongServiceReply::Message(
+                "点歌积分将在接入存储后可查询".to_string(),
+            ));
+        };
+        let Some(session_id) = self.current_session_id() else {
+            return Ok(SongServiceReply::Message(
+                "当前没有直播场次，暂不能查询点歌积分".to_string(),
+            ));
+        };
+        let pending = storage.with_connection(|conn| {
+            crate::music::storage::pending_credit_value(conn, &session_id, uid)
+        })?;
+        Ok(SongServiceReply::Message(credit_summary_text(pending)))
+    }
+}
+
+fn music_tiers() -> Vec<MusicTierSettings> {
+    let defaults = PluginSettings::default().music_interaction.tiers;
+    let configured = PluginSettings::load_or_default()
+        .map(|settings| settings.music_interaction.tiers)
+        .unwrap_or_default();
+    defaults
+        .into_iter()
+        .map(|default_tier| {
+            if let Some(tier) = configured.iter().find(|tier| tier.id == default_tier.id) {
+                MusicTierSettings {
+                    id: default_tier.id,
+                    name: if tier.name.trim().is_empty() {
+                        default_tier.name
+                    } else {
+                        tier.name.trim().to_string()
+                    },
+                    min_credit: tier.min_credit.max(1),
+                    base_score: tier.base_score.max(0),
+                    enabled: tier.enabled,
+                }
+            } else {
+                default_tier
+            }
+        })
+        .collect()
+}
+
+fn music_tier_for_credit(value: i64) -> Option<MusicTierSettings> {
+    music_tiers()
+        .into_iter()
+        .filter(|tier| tier.enabled && value >= tier.min_credit.max(0))
+        .max_by(|left, right| {
+            left.min_credit
+                .cmp(&right.min_credit)
+                .then_with(|| left.base_score.cmp(&right.base_score))
+        })
+}
+
+fn music_tier_by_id(id: &str) -> MusicTierSettings {
+    music_tiers()
+        .into_iter()
+        .find(|tier| tier.id == id)
+        .or_else(|| {
+            PluginSettings::default()
+                .music_interaction
+                .tiers
+                .into_iter()
+                .find(|tier| tier.id == id)
+        })
+        .unwrap_or(MusicTierSettings {
+            id: id.to_string(),
+            name: id.to_string(),
+            min_credit: 0,
+            base_score: 1000,
+            enabled: true,
+        })
+}
+
+fn selected_music_source() -> Option<MusicSource> {
+    #[cfg(test)]
+    {
+        return None;
+    }
+    #[cfg(not(test))]
+    {
+        let player = PluginSettings::load_or_default()
+            .map(|settings| settings.music_interaction.player)
+            .unwrap_or_else(|_| "auto".to_string());
+        selected_music_source_for_player(&player)
+    }
+}
+
+fn selected_music_source_for_player(player: &str) -> Option<MusicSource> {
+    match player {
+        "netease" => Some(MusicSource::Netease),
+        "tencent" => Some(MusicSource::Tencent),
+        _ => None,
+    }
+}
+
+fn source_label(source: &MusicSource) -> &'static str {
+    match source {
+        MusicSource::Netease => "网易云",
+        MusicSource::Tencent => "QQ 音乐",
+        MusicSource::Kugou => "酷狗",
+        MusicSource::Baidu => "百度音乐",
+        MusicSource::Kuwo => "酷我",
+    }
+}
+
+fn tier_benefit_text(tier_id: &str) -> &'static str {
+    match tier_id {
+        "jump_queue" => "会插到普通点歌前面优先播放",
+        "exclusive" => "享受专属展示并排在插队前面",
+        "playlist_takeover" => "获得包场冠名并排在最高优先级",
+        "priority" => "会优先于普通点歌",
+        _ => "已按普通队列排队",
+    }
+}
+
+fn credit_summary_text(pending: i64) -> String {
+    let tier = music_tier_for_credit(pending);
+    let tier_name = tier
+        .as_ref()
+        .map(|tier| tier.name.as_str())
+        .unwrap_or("未解锁");
+    let next_tier = music_tiers()
+        .into_iter()
+        .filter(|tier| tier.enabled && tier.min_credit > pending)
+        .min_by(|left, right| left.min_credit.cmp(&right.min_credit));
+    let next_text = next_tier
+        .map(|tier| format!("，再送 {} 可到 {}", tier.min_credit - pending, tier.name))
+        .unwrap_or_else(|| "，已达到最高启用档位".to_string());
+    format!(
+        "你当前可用点歌积分 {pending}，当前档位：{tier_name}{next_text}。提醒：连续重复点歌会降低排序，确认点歌会优先消耗可用权益。"
+    )
 }
 
 fn artists_text(artists: &[String]) -> String {
@@ -456,6 +630,21 @@ mod tests {
             .expect("reply");
         assert!(matches!(reply, SongServiceReply::Candidates { .. }));
         assert!(reply.to_danmu_text().contains("点歌 #1"));
+        assert!(reply.to_danmu_text().contains("[网易云] 晴天"));
+    }
+
+    #[test]
+    fn player_setting_maps_to_search_source_filter() {
+        assert_eq!(
+            super::selected_music_source_for_player("netease"),
+            Some(MusicSource::Netease)
+        );
+        assert_eq!(
+            super::selected_music_source_for_player("tencent"),
+            Some(MusicSource::Tencent)
+        );
+        assert_eq!(super::selected_music_source_for_player("auto"), None);
+        assert_eq!(super::selected_music_source_for_player("browser"), None);
     }
 
     #[tokio::test]
@@ -668,6 +857,43 @@ mod tests {
             })
             .expect("pending");
         assert_eq!(pending, 100);
+    }
+
+    #[tokio::test]
+    async fn my_credit_reports_pending_value_tier_and_penalty_notice() {
+        let storage = Arc::new(Storage::open_in_memory().expect("storage"));
+        let service = MusicInteractionService::new_for_tests_with_storage(
+            vec![Box::new(FakeProvider::with_tracks(vec![track(
+                "晴天",
+                &["周杰伦"],
+                "186016",
+            )]))],
+            storage,
+            100,
+            Arc::new(Mutex::new(Some("session-1".to_string()))),
+        );
+        service
+            .handle_live_event(&bilibili_live_protocol::LiveEvent::Gift {
+                user_id: 42,
+                user: "alice".to_string(),
+                gift: "小花花".to_string(),
+                count: 1,
+                price: 100,
+                original_gift_name: None,
+                original_gift_price: 100,
+            })
+            .await
+            .expect("credit");
+
+        let reply = service
+            .handle_danmu(42, "alice", "我的积分")
+            .await
+            .expect("summary");
+        let text = reply.to_danmu_text();
+
+        assert!(text.contains("100"));
+        assert!(text.contains("优先点歌"));
+        assert!(text.contains("连续重复点歌会降低排序"));
     }
 
     #[tokio::test]

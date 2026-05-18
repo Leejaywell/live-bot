@@ -6,7 +6,7 @@ function safeString(value: unknown, fallback: string): string {
   return typeof value === 'string' && value.trim() ? value : fallback;
 }
 
-export function LotteryOverlay({ settings }: { settings: PluginSettings }) {
+export function LotteryView({ settings }: { settings: PluginSettings }) {
   const cfg = settings.LotteryInteraction;
   const [visible, setVisible] = useState(false);
   const lastNonce = useRef(0);

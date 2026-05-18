@@ -39,34 +39,34 @@ use crate::storage::Storage;
 
 const DANMAKU_CHAT_HTML: &str = include_str!("danmaku_chat.html");
 
-pub type OverlayTx = Arc<broadcast::Sender<Value>>;
+pub type DanmakuChatTx = Arc<broadcast::Sender<Value>>;
 
 #[derive(Clone)]
 struct AppState {
-    tx: OverlayTx,
+    tx: DanmakuChatTx,
     asset_roots: Arc<Vec<PathBuf>>,
 }
 
-pub fn new_channel() -> (OverlayTx, broadcast::Receiver<Value>) {
+pub fn new_channel() -> (DanmakuChatTx, broadcast::Receiver<Value>) {
     let (tx, rx) = broadcast::channel(256);
     (Arc::new(tx), rx)
 }
 
 /// 让 main.rs 在 save_danmaku_chat_config 之后调用，通知所有弹幕聊天网页客户端重新拉取配置
-pub fn broadcast_cfg_update(tx: &OverlayTx) {
-    let msg = serde_json::json!({ "_overlay_cfg_update": true });
+pub fn broadcast_cfg_update(tx: &DanmakuChatTx) {
+    let msg = serde_json::json!({ "_danmaku_chat_cfg_update": true });
     let _ = tx.send(msg);
 }
 
-pub fn broadcast_plugin_settings_update(tx: &OverlayTx) {
+pub fn broadcast_plugin_settings_update(tx: &DanmakuChatTx) {
     let msg = serde_json::json!({ "_plugin_settings_update": true });
     let _ = tx.send(msg);
 }
 
-pub async fn start(port: u16, tx: OverlayTx, resource_dir: Option<PathBuf>) {
+pub async fn start(port: u16, tx: DanmakuChatTx, resource_dir: Option<PathBuf>) {
     let state = AppState {
         tx,
-        asset_roots: Arc::new(overlay_asset_roots(resource_dir.as_deref())),
+        asset_roots: Arc::new(danmaku_chat_asset_roots(resource_dir.as_deref())),
     };
 
     let app = Router::new()
@@ -145,7 +145,7 @@ fn danmaku_chat_shell() -> Html<&'static str> {
     Html(DANMAKU_CHAT_HTML)
 }
 
-fn overlay_asset_roots(resource_dir: Option<&FsPath>) -> Vec<PathBuf> {
+fn danmaku_chat_asset_roots(resource_dir: Option<&FsPath>) -> Vec<PathBuf> {
     let mut roots = Vec::new();
     if let Some(resource_dir) = resource_dir {
         roots.push(resource_dir.join("src-tauri/dist/assets"));
@@ -254,15 +254,15 @@ fn observed_music_queue() -> Vec<QueueItem> {
         None => match crate::config::AppConfig::load_or_default() {
             Ok(app) => app.room_id,
             Err(e) => {
-                eprintln!("音乐互动浮层读取配置失败: {e}");
+                eprintln!("音乐互动读取配置失败: {e}");
                 return Vec::new();
             }
         },
     };
-    let storage = match overlay_storage() {
+    let storage = match danmaku_chat_storage() {
         Ok(storage) => storage,
         Err(e) => {
-            eprintln!("音乐互动浮层打开存储失败: {e}");
+            eprintln!("音乐互动打开存储失败: {e}");
             return Vec::new();
         }
     };
@@ -290,7 +290,7 @@ fn observed_music_queue() -> Vec<QueueItem> {
     match result {
         Ok(items) => items,
         Err(e) => {
-            eprintln!("音乐互动浮层读取队列失败: {e}");
+            eprintln!("音乐互动读取队列失败: {e}");
             Vec::new()
         }
     }
@@ -307,7 +307,7 @@ fn observed_song_rank() -> Vec<SongRankItem> {
             }
         },
     };
-    let storage = match overlay_storage() {
+    let storage = match danmaku_chat_storage() {
         Ok(storage) => storage,
         Err(e) => {
             eprintln!("音乐互动排行打开存储失败: {e}");
@@ -390,7 +390,7 @@ fn observed_song_rank() -> Vec<SongRankItem> {
     }
 }
 
-fn overlay_storage() -> anyhow::Result<Arc<Storage>> {
+fn danmaku_chat_storage() -> anyhow::Result<Arc<Storage>> {
     static STORAGE: OnceLock<Arc<Storage>> = OnceLock::new();
     if let Some(storage) = STORAGE.get() {
         return Ok(Arc::clone(storage));

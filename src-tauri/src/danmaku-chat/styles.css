@@ -18,16 +18,16 @@ body {
   color: #fff;
 }
 
-.overlay-frame {
+.danmaku-chat-frame {
   width: 100vw;
   height: 100vh;
   overflow: hidden;
   transform-origin: top left;
-  transform: scale(var(--overlay-scale, 1));
+  transform: scale(var(--danmaku-chat-scale, 1));
   color: #fff;
 }
 
-.overlay-frame.has-background {
+.danmaku-chat-frame.has-background {
   background: rgba(15, 23, 42, 0.72);
 }
 
@@ -90,12 +90,31 @@ body {
   align-items: center;
 }
 
+.song-dashboard {
+  grid-template-columns: minmax(0, 1.35fr) minmax(180px, 0.9fr) minmax(160px, 0.8fr);
+  align-items: stretch;
+}
+
+.song-panel {
+  display: grid;
+  min-width: 0;
+  align-content: start;
+  gap: 8px;
+  padding: 10px;
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.07);
+}
+
+.song-panel-now {
+  align-content: center;
+}
+
 .song-main {
   min-width: 0;
 }
 
 .song-kicker {
-  color: var(--overlay-primary);
+  color: var(--danmaku-chat-primary);
   font-size: 12px;
   font-weight: 900;
 }
@@ -142,7 +161,7 @@ body {
 }
 
 .song-queue em {
-  color: var(--overlay-primary);
+  color: var(--danmaku-chat-primary);
   font-style: normal;
 }
 
@@ -288,6 +307,10 @@ body {
     grid-template-columns: minmax(0, 1fr);
   }
 
+  .song-dashboard {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
   .song-playlist .song-disc {
     display: none;
   }
@@ -378,7 +401,7 @@ body {
 }
 
 .wish-card {
-  border: 2px solid var(--overlay-primary);
+  border: 2px solid var(--danmaku-chat-primary);
   border-radius: 12px;
   background: rgba(30, 34, 40, 0.72);
   backdrop-filter: blur(8px);
@@ -452,7 +475,7 @@ body {
 .wish-bar div {
   height: 100%;
   border-radius: inherit;
-  background: var(--overlay-primary);
+  background: var(--danmaku-chat-primary);
 }
 
 .recent-gifts {
@@ -668,9 +691,11 @@ body {
   display: flex;
   height: 100%;
   flex-direction: column;
-  gap: 3px;
+  gap: var(--msg-gap, 3px);
   overflow: hidden;
   padding: 4px 6px 8px;
+  transform-origin: top left;
+  transform: scale(var(--global-scale, 1));
 }
 
 .danmaku-spacer {
@@ -678,12 +703,30 @@ body {
 }
 
 .danmaku-item {
+  display: flex;
+  align-items: flex-start;
+  gap: 7px;
   flex-shrink: 0;
   border-radius: 6px;
   padding: 5px 8px;
-  background: rgba(0, 0, 0, 0.72);
-  font-size: 13px;
-  font-weight: 700;
+  background: var(--msg-bg, rgba(0, 0, 0, 0.72));
+  color: var(--msg-color, #ffffff);
+  font-family: var(--msg-font, inherit);
+  font-size: calc(var(--msg-font-size, 13px) * var(--font-scale, 1));
+  font-weight: var(--msg-weight, 700);
   line-height: 1.5;
   word-break: break-all;
+}
+
+.danmaku-item .uname {
+  flex-shrink: 0;
+  color: var(--username-color, #effee3);
+  display: var(--username-display, inline);
+  font-family: var(--username-font, inherit);
+  font-size: calc(var(--username-font-size, 13px) * var(--font-scale, 1));
+  font-weight: var(--username-weight, 600);
+}
+
+.danmaku-item .dtext {
+  min-width: 0;
 }

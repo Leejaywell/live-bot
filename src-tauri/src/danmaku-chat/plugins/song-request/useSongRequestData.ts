@@ -60,7 +60,7 @@ function normalizeRankItem(value: unknown): RankResponse['items'][number] | null
   };
 }
 
-export function useSongRequestData(view: 'playlist' | 'now-playing' | 'rank') {
+export function useSongRequestData(view: 'dashboard' | 'playlist' | 'now-playing' | 'rank') {
   const [queue, setQueue] = useState<SongQueueItem[]>([]);
   const [nowPlaying, setNowPlaying] = useState<SongQueueItem | null>(null);
   const [rank, setRank] = useState<RankResponse['items']>([]);
@@ -93,9 +93,14 @@ export function useSongRequestData(view: 'playlist' | 'now-playing' | 'rank') {
         return;
       }
 
-      const data = await fetchJson<SongQueueResponse>('/song-request/api/queue', { items: [] });
+      const [queueData, rankData] = view === 'dashboard'
+        ? await Promise.all([
+          fetchJson<SongQueueResponse>('/song-request/api/queue', { items: [] }),
+          fetchJson<RankResponse>('/song-request/api/rank', { items: [] }),
+        ])
+        : [await fetchJson<SongQueueResponse>('/song-request/api/queue', { items: [] }), null];
       if (disposed) return;
-      const items = responseItems(data).map(normalizeQueueItem).filter(item => item !== null);
+      const items = responseItems(queueData).map(normalizeQueueItem).filter(item => item !== null);
       const nextIds = new Set(items.map(item => item.requestId));
       const newRequestIds = new Set(items.filter(item => !previousIds.current.has(item.requestId)).map(item => item.requestId));
       const playing = items.find(item => item.status === 'playing') || null;
@@ -108,6 +113,7 @@ export function useSongRequestData(view: 'playlist' | 'now-playing' | 'rank') {
       previousPlaying.current = playing?.requestId ?? null;
       setQueue(items);
       setNowPlaying(playing);
+      if (rankData) setRank(responseItems(rankData).map(normalizeRankItem).filter(item => item !== null));
     }
 
     load();

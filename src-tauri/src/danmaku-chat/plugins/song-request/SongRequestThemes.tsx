@@ -3,7 +3,7 @@ import { MarqueeText } from '../../components/MarqueeText';
 import { MusicInteractionSettings } from '../../runtime/types';
 import { RankResponse, SongQueueItem, SongRequestVisualState } from './types';
 
-type SongRequestView = 'playlist' | 'now-playing' | 'rank';
+type SongRequestView = 'dashboard' | 'playlist' | 'now-playing' | 'rank';
 
 export interface ThemeProps {
   view: SongRequestView;
@@ -25,7 +25,13 @@ export function itemText(item: SongQueueItem) {
   return `${item.songName || '未命名歌曲'}${artists}`;
 }
 
-export function tierLabel(tier: string) {
+export function tierLabel(tier: string, settings?: MusicInteractionSettings) {
+  const configured = Array.isArray(settings?.Tiers)
+    ? settings?.Tiers?.find(item => item?.Id === tier)
+    : undefined;
+  if (typeof configured?.Name === 'string' && configured.Name.trim()) {
+    return configured.Name.trim();
+  }
   switch (tier) {
     case 'jump_queue':
       return '插队';
@@ -40,7 +46,12 @@ export function tierLabel(tier: string) {
   }
 }
 
-function QueueList({ queue, visual, showGiftTier }: Pick<ThemeProps, 'queue' | 'visual'> & { showGiftTier: boolean }) {
+function QueueList({
+  queue,
+  visual,
+  showGiftTier,
+  settings,
+}: Pick<ThemeProps, 'queue' | 'visual' | 'settings'> & { showGiftTier: boolean }) {
   return (
     <ol className="song-queue">
       {queue.slice(0, 4).map((item, index) => (
@@ -52,7 +63,7 @@ function QueueList({ queue, visual, showGiftTier }: Pick<ThemeProps, 'queue' | '
         >
           <span>{index + 1}</span>
           <MarqueeText>{itemText(item)}</MarqueeText>
-          {showGiftTier && <em>{tierLabel(item.tier)}</em>}
+          {showGiftTier && <em>{tierLabel(item.tier, settings)}</em>}
         </li>
       ))}
     </ol>
@@ -100,6 +111,39 @@ export function SongRequestTheme({ view, skin, queue, nowPlaying, rank, visual, 
   const showGiftTier = settings?.ShowGiftTier ?? true;
   const showQueue = settings?.ShowQueue ?? true;
   const showTodayValue = settings?.ShowTodayValue === true;
+  const showNowPlayingPanel = settings?.ShowNowPlayingPanel ?? true;
+  const showQueuePanel = settings?.ShowQueuePanel ?? true;
+  const showRankPanel = settings?.ShowRankPanel ?? true;
+
+  if (view === 'dashboard') {
+    return (
+      <section className={`${className} song-dashboard`} style={style}>
+        {showNowPlayingPanel && lead && (
+          <div className="song-panel song-panel-now" data-tier={lead.tier}>
+            <div className="song-kicker">当前播放{showGiftTier ? ` · ${tierLabel(lead.tier, settings)}` : ''}</div>
+            <MarqueeText className="song-title">{itemText(lead)}</MarqueeText>
+            {showRequester && (
+              <div className="song-meta">
+                {lead.uname || '观众'} 点播{showTodayValue ? ` · ${lead.creditValue || 0} 电池` : ''}
+              </div>
+            )}
+          </div>
+        )}
+        {showQueuePanel && queue.length > 0 && (
+          <div className="song-panel">
+            <div className="song-kicker">{showTodayValue ? `本场点歌 ${totalValue} 电池` : '点歌队列'}</div>
+            <QueueList queue={queue} visual={visual} showGiftTier={showGiftTier} settings={settings} />
+          </div>
+        )}
+        {showRankPanel && rank.length > 0 && (
+          <div className="song-panel">
+            <div className="song-kicker">点歌排行</div>
+            <RankList rank={rank} />
+          </div>
+        )}
+      </section>
+    );
+  }
 
   if (view === 'rank') {
     return (
@@ -115,7 +159,7 @@ export function SongRequestTheme({ view, skin, queue, nowPlaying, rank, visual, 
   }
 
   const takeover = lead.tier === 'playlist_takeover';
-  const tierText = showGiftTier ? ` · ${tierLabel(lead.tier)}` : '';
+  const tierText = showGiftTier ? ` · ${tierLabel(lead.tier, settings)}` : '';
   const playlistKicker = showTodayValue ? `本场点歌 ${totalValue} 电池` : '本场点歌';
   const currentCredit = showTodayValue ? ` · ${lead.creditValue || 0} 电池` : '';
 
@@ -145,7 +189,9 @@ export function SongRequestTheme({ view, skin, queue, nowPlaying, rank, visual, 
         )}
         {showGiftTier && takeover && <div className="song-takeover">本段歌单由 {lead.uname || '观众'} 包场</div>}
       </div>
-      {view === 'playlist' && showQueue && <QueueList queue={queue} visual={visual} showGiftTier={showGiftTier} />}
+      {view === 'playlist' && showQueue && (
+        <QueueList queue={queue} visual={visual} showGiftTier={showGiftTier} settings={settings} />
+      )}
     </section>
   );
 }

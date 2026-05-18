@@ -6,7 +6,7 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return Boolean(value) && typeof value === 'object' && !Array.isArray(value);
 }
 
-export function WishGoalOverlay({ settings }: { settings: PluginSettings }) {
+export function WishGoalView({ settings }: { settings: PluginSettings }) {
   const cfg = settings.WishGoal;
   const goals = (Array.isArray(cfg?.Goals) ? cfg.Goals : []).filter(isRecord);
 

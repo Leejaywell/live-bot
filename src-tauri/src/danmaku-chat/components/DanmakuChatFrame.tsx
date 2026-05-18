@@ -1,16 +1,18 @@
 import { ReactNode } from 'react';
 import { motionClass } from '../runtime/motion';
-import { OverlayRuntimeConfig } from '../runtime/types';
+import { DanmakuChatRuntimeConfig } from '../runtime/types';
 
-interface OverlayFrameProps {
-  config: OverlayRuntimeConfig;
+interface DanmakuChatFrameProps {
+  config: DanmakuChatRuntimeConfig;
   plugin: string;
   view: string;
   children: ReactNode;
 }
 
-export function OverlayFrame({ config, plugin, view, children }: OverlayFrameProps) {
+export function DanmakuChatFrame({ config, plugin, view, children }: DanmakuChatFrameProps) {
   const style = {
+    '--danmaku-chat-scale': String(config.scale),
+    '--danmaku-chat-primary': config.primaryColor || '#8b5cf6',
     '--overlay-scale': String(config.scale),
     '--overlay-primary': config.primaryColor || '#8b5cf6',
   } as React.CSSProperties;
@@ -18,6 +20,7 @@ export function OverlayFrame({ config, plugin, view, children }: OverlayFramePro
   return (
     <main
       className={[
+        'danmaku-chat-frame',
         'overlay-frame',
         `plugin-${plugin}`,
         `view-${view}`,

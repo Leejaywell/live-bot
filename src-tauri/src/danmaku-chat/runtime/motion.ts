@@ -1,7 +1,7 @@
-import { OverlayMotion } from './types';
+import { DanmakuChatMotion } from './types';
 
-export function resolveMotion(value: string | null): OverlayMotion {
-  const requested: OverlayMotion =
+export function resolveMotion(value: string | null): DanmakuChatMotion {
+  const requested: DanmakuChatMotion =
     value === 'reduced' || value === 'off' || value === 'full' ? value : 'full';
   if (requested === 'off') return 'off';
   if (typeof window !== 'undefined' && window.matchMedia?.('(prefers-reduced-motion: reduce)').matches) {
@@ -10,6 +10,6 @@ export function resolveMotion(value: string | null): OverlayMotion {
   return requested;
 }
 
-export function motionClass(motion: OverlayMotion): string {
+export function motionClass(motion: DanmakuChatMotion): string {
   return `motion-${motion}`;
 }

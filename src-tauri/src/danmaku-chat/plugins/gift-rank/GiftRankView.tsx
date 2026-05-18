@@ -19,7 +19,7 @@ function resolveRankSkin(skin: unknown) {
   return skin === 'list' || skin === 'podium' ? skin : 'podium';
 }
 
-export function GiftRankOverlay({ settings }: { settings: PluginSettings }) {
+export function GiftRankView({ settings }: { settings: PluginSettings }) {
   const cfg = settings.GiftRank;
   const items = (Array.isArray(cfg?.Items) ? cfg.Items : [])
     .filter(isRecord)

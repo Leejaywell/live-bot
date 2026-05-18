@@ -44,11 +44,11 @@ export function usePluginSettings(): PluginSettings {
       nextSocket.addEventListener('message', (event) => {
         try {
           const message = JSON.parse(event.data);
-          if (message?._plugin_settings_update || message?._overlay_cfg_update) {
+          if (message?._plugin_settings_update || message?._danmaku_chat_cfg_update) {
             load();
           }
         } catch {
-          // OBS overlays should stay quiet when unrelated websocket payloads arrive.
+          // OBS browser sources should stay quiet when unrelated websocket payloads arrive.
         }
       });
 

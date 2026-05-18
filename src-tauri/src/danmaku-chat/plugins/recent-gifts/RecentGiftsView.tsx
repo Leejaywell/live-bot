@@ -7,7 +7,7 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return Boolean(value) && typeof value === 'object' && !Array.isArray(value);
 }
 
-export function RecentGiftsOverlay({ settings }: { settings: PluginSettings }) {
+export function RecentGiftsView({ settings }: { settings: PluginSettings }) {
   const cfg = settings.RecentGifts;
   const items = (Array.isArray(cfg?.Items) ? cfg.Items : [])
     .filter(isRecord)
