@@ -78,7 +78,7 @@ jobs:
             platform: windows-latest
             rust_targets: x86_64-pc-windows-msvc
             args: --target x86_64-pc-windows-msvc --bundles nsis
-            sherpa_archive_suffix: win-x64-shared-MT-Release-lib
+            sherpa_archive_suffix: win-x64-shared-MD-Release-lib
 
     name: Build ${{ matrix.name }}
     runs-on: ${{ matrix.platform }}
