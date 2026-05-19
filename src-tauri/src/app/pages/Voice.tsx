@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { GlassCard } from '../components/GlassCard';
 import { Toggle } from '../components/Toggle';
 import { cn } from '../lib/utils';
-import { api, AppConfig } from '../lib/api';
+import { api, AppConfig, VoiceLatency } from '../lib/api';
 import { Link } from 'react-router-dom';
 import { Mic, MicOff, ChevronDown, Cpu, MessageSquareText, Settings as SettingsIcon, AlertCircle, Volume2 } from 'lucide-react';
 import { toast } from 'sonner';
@@ -82,6 +82,7 @@ interface SubLine {
 }
 
 type LogMicState = 'idle' | 'speaking' | 'settled';
+type ReloadTarget = 'voice' | 'tts';
 
 // ── 工具 ───────────────────────────────────────────────────────────────────────
 
@@ -281,6 +282,7 @@ export function Voice() {
   const [subtitles,   setSubtitles]   = useState<SubLine[]>([]);
   const [voiceLevel,  setVoiceLevel]  = useState(0);
   const [latency,     setLatency]     = useState(0);
+  const [latencyBreakdown, setLatencyBreakdown] = useState<VoiceLatency | null>(null);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [settingsDraft, setSettingsDraft] = useState({ gender: '女AI', prompt: '' });
   const [proMode, setProMode] = useState(false);
@@ -289,8 +291,10 @@ export function Voice() {
   const [modelStatus, setModelStatus] = useState<{ model_dir: string; models: Record<string, boolean> } | null>(null);
 
   const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const pendingReloads = useRef<Set<ReloadTarget>>(new Set());
   const micVisualTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const monitorRestarting = useRef(false);
+  const vadEnabledRef = useRef(false);
 
   // ── 加载 ────────────────────────────────────────────────────────────────────
 
@@ -300,6 +304,7 @@ export function Voice() {
       api.checkModels().catch(() => null),
     ]).then(([cfg, models]) => {
       setConfig(cfg);
+      vadEnabledRef.current = Boolean(cfg.VadEnabled);
       setModelStatus(models);
       // LLM: 优先用已保存的 active_provider_id，否则找第一个启用的
       const llm = cfg.AiProviders.find(p => p.Id === cfg.ActiveProviderId)
@@ -316,18 +321,35 @@ export function Voice() {
       if (cfg.TtsVoice) setTtsVoice(cfg.TtsVoice);
       if (cfg.TtsSpeed) setTtsSpeed(cfg.TtsSpeed);
       setTtsEnabled(Boolean(cfg.TtsEnabled));
-      setMicState(cfg.VadEnabled ? 'listening' : 'off');
-      setVoiceStatus(cfg.VadEnabled ? '麦克风已开启，等待说话' : '麦克风未开启');
-      setVoiceDetail(cfg.VadEnabled ? '等待语音链路事件' : '麦克风关闭中');
+      setMicState('off');
+      setVoiceStatus('麦克风未开启');
+      setVoiceDetail(cfg.VadEnabled ? '等待监听线程状态' : '麦克风关闭中');
     }).catch(console.error).finally(() => setLoading(false));
   }, []);
 
-  const scheduleSave = useCallback((patch: Partial<AppConfig>) => {
+  const scheduleSave = useCallback((patch: Partial<AppConfig>, reloadTarget?: ReloadTarget) => {
+    if (reloadTarget) pendingReloads.current.add(reloadTarget);
     setConfig(prev => {
       if (!prev) return prev;
       const next = { ...prev, ...patch };
+      if ('VadEnabled' in patch && typeof patch.VadEnabled === 'boolean') {
+        vadEnabledRef.current = patch.VadEnabled;
+      }
       if (saveTimer.current) clearTimeout(saveTimer.current);
-      saveTimer.current = setTimeout(() => api.saveConfig(next).catch(console.error), 600);
+      saveTimer.current = setTimeout(async () => {
+        try {
+          await api.saveConfig(next);
+          const reloads = new Set(pendingReloads.current);
+          pendingReloads.current.clear();
+          if (reloads.size === 0) return;
+          const running = await api.getMonitorStatus().catch(() => false);
+          if (!running) return;
+          if (reloads.has('voice')) await api.reloadMonitorVoice();
+          if (reloads.has('tts')) await api.reloadMonitorTts();
+        } catch (err) {
+          console.error(err);
+        }
+      }, 600);
       return next;
     });
   }, []);
@@ -342,8 +364,8 @@ export function Voice() {
     }
   }, [settingsOpen]);
 
-  const onLlmChange    = (id: string) => { setLlmId(id);  scheduleSave({ ActiveProviderId: id }); };
-  const onAsrChange    = (id: string) => { setAsrId(id); scheduleSave({ ActiveAsrProviderId: id }); };
+  const onLlmChange    = (id: string) => { setLlmId(id);  scheduleSave({ ActiveProviderId: id }, 'voice'); };
+  const onAsrChange    = (id: string) => { setAsrId(id); scheduleSave({ ActiveAsrProviderId: id }, 'voice'); };
   const restartMonitorIfRunning = useCallback(async () => {
     const running = await api.getMonitorStatus().catch(() => false);
     if (!running) return;
@@ -397,7 +419,7 @@ export function Voice() {
       toast.error(`音色切换失败: ${e}`);
     }
   };
-  const onSpeedChange  = (v: number)  => { setTtsSpeed(v); scheduleSave({ TtsSpeed: v }); };
+  const onSpeedChange  = (v: number)  => { setTtsSpeed(v); scheduleSave({ TtsSpeed: v }, 'tts'); };
 
   // ── 监控同步 ────────────────────────────────────────────────────────────────
 
@@ -408,6 +430,11 @@ export function Voice() {
         setMicState('listening');
         setVoiceStatus('麦克风已开启，等待说话');
         setVoiceDetail('等待语音链路事件');
+      } else {
+        setMicState('off');
+        setVoiceStatus('麦克风未开启');
+        setVoiceDetail(config?.VadEnabled ? '监听线程未运行' : '麦克风关闭中');
+        setVoiceLevel(0);
       }
     }).catch(() => {});
     api.onMonitorStatus(s => {
@@ -426,6 +453,7 @@ export function Voice() {
         setVoiceDetail('监听线程已停止');
         setVoiceLevel(0);
         setLatency(0);
+        setLatencyBreakdown(null);
       }
     }).then(f => { unl = f; });
     return () => unl?.();
@@ -437,6 +465,15 @@ export function Voice() {
 
   useEffect(() => {
     const applyLog = (text: string) => {
+      if (!vadEnabledRef.current && (
+        text.includes('[VAD]') ||
+        text.includes('[ASR]') ||
+        text.includes('[麦克风]') ||
+        text.includes('麦克风输入流') ||
+        text.includes('麦克风设备')
+      )) {
+        return;
+      }
       setVoiceDetail(text);
       const micLogState = classifyMicLog(text);
       const statusText = describeVoiceLog(text);
@@ -505,12 +542,13 @@ export function Voice() {
     return () => clearInterval(timer);
   }, []);
 
-  // ── 延迟模拟 ────────────────────────────────────────────────────────────────
+  // ── 链路延迟 ────────────────────────────────────────────────────────────────
 
   useEffect(() => {
     let unl: (() => void) | undefined;
-    api.onSessionSummary(() => {
-      setLatency(p => Math.max(55, Math.min(480, p + (Math.random() > 0.5 ? 1 : -1) * Math.floor(Math.random() * 22))));
+    api.onVoiceLatency((data) => {
+      setLatency(data.total_ms);
+      setLatencyBreakdown(data);
     }).then(f => { unl = f; });
     return () => unl?.();
   }, []);
@@ -540,6 +578,7 @@ export function Voice() {
     const nextVad = !config.VadEnabled;
     const wasRunning = await api.getMonitorStatus().catch(() => false);
     const updated = { ...config, VadEnabled: nextVad };
+    vadEnabledRef.current = nextVad;
     setConfig(updated);
     monitorRestarting.current = true;
     try {
@@ -547,13 +586,14 @@ export function Voice() {
       if (wasRunning) {
         await api.reloadMonitorVoice();
       }
-      setMicState(nextVad ? 'listening' : 'off');
-      if (!nextVad) setVoiceLevel(0);
+      setMicState(nextVad && wasRunning ? 'listening' : 'off');
+      if (!nextVad || !wasRunning) setVoiceLevel(0);
       monitorRestarting.current = false;
       toast.success(nextVad
         ? (wasRunning ? '麦克风已开启' : '麦克风配置已开启，不会启动弹幕监听')
         : '麦克风已关闭');
     } catch (e) {
+      vadEnabledRef.current = config.VadEnabled;
       monitorRestarting.current = false;
       setMicState(config.VadEnabled ? 'listening' : 'off');
       toast.error(`操作失败: ${e}`);
@@ -730,7 +770,16 @@ export function Voice() {
               <div className="flex items-center gap-2 min-w-0">
                 <div className={`w-2 h-2 rounded-full transition-colors ${micActive ? 'bg-[var(--primary-color)] animate-pulse' : 'bg-gray-300'}`} />
                 <span className="text-[12px] font-bold text-gray-600 dark:text-gray-300 shrink-0">实时字幕</span>
-                {micActive && latency > 0 && <span className="text-[10px] text-gray-400 ml-2">{latency}ms</span>}
+                {micActive && latency > 0 && (
+                  <span
+                    className="text-[10px] text-gray-400 ml-2"
+                    title={latencyBreakdown
+                      ? `ASR ${latencyBreakdown.asr_ms}ms · 首字 ${latencyBreakdown.ai_first_chunk_ms ?? '-'}ms · AI完成 ${latencyBreakdown.ai_total_ms}ms`
+                      : undefined}
+                  >
+                    {latency}ms
+                  </span>
+                )}
               </div>
               <button onClick={() => setSubtitles([])} className="h-7 px-3 rounded-full border border-gray-200 dark:border-white/15 text-[10px] font-bold text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 hover:bg-white/60 transition-all">清空</button>
             </div>
@@ -810,19 +859,19 @@ export function Voice() {
                 <ProSlider label="麦克风增益" hint="放大麦克风输入（1.0 = 原始）"
                   value={config.VoiceMicGain ?? 1.0} min={0.5} max={4.0} step={0.1}
                   format={v => v.toFixed(1) + '×'}
-                  onChange={v => scheduleSave({ VoiceMicGain: v })} />
+                  onChange={v => scheduleSave({ VoiceMicGain: v }, 'voice')} />
                 <ProSlider label="灵敏度" hint="越低越灵敏"
                   value={config.VadThreshold} min={0.1} max={0.9} step={0.05}
                   format={v => v.toFixed(2)}
-                  onChange={v => scheduleSave({ VadThreshold: v })} />
+                  onChange={v => scheduleSave({ VadThreshold: v }, 'voice')} />
                 <ProSlider label="最短语音" hint="秒"
                   value={config.VadMinSpeechDuration} min={0.04} max={0.5} step={0.01}
                   format={v => v.toFixed(2) + 's'}
-                  onChange={v => scheduleSave({ VadMinSpeechDuration: v })} />
+                  onChange={v => scheduleSave({ VadMinSpeechDuration: v }, 'voice')} />
                 <ProSlider label="静音判停" hint="秒"
                   value={config.VadMinSilenceDuration} min={0.2} max={1.5} step={0.05}
                   format={v => v.toFixed(2) + 's'}
-                  onChange={v => scheduleSave({ VadMinSilenceDuration: v })} />
+                  onChange={v => scheduleSave({ VadMinSilenceDuration: v }, 'voice')} />
               </div>
 
               {/* ASR */}
@@ -830,7 +879,7 @@ export function Voice() {
                 <p className="text-[10px] font-black tracking-widest text-gray-400 uppercase">ASR 识别</p>
                 <div>
                   <p className="text-[10px] text-gray-500 mb-1.5">识别语言</p>
-                  <select value={config.AsrLanguage ?? 'zh'} onChange={e => scheduleSave({ AsrLanguage: e.target.value })}
+                  <select value={config.AsrLanguage ?? 'zh'} onChange={e => scheduleSave({ AsrLanguage: e.target.value }, 'voice')}
                     className="w-full h-8 rounded-xl text-[11px] px-2.5 bg-white/60 dark:bg-white/8 border border-gray-200 dark:border-white/15 text-gray-700 dark:text-gray-100 focus:outline-none">
                     <option value="zh">普通话</option>
                     <option value="yue">粤语</option>
@@ -848,7 +897,7 @@ export function Voice() {
                 <ProSlider label="Temperature" hint="越高越随机创意"
                   value={config.VoiceTemperature ?? 0.7} min={0.0} max={2.0} step={0.05}
                   format={v => v.toFixed(2)}
-                  onChange={v => scheduleSave({ VoiceTemperature: v })} />
+                  onChange={v => scheduleSave({ VoiceTemperature: v }, 'voice')} />
                 <div className="space-y-1">
                   <div className="flex items-center justify-between">
                     <span className="text-[10px] font-semibold text-gray-600 dark:text-gray-300">最大字数</span>
@@ -858,7 +907,7 @@ export function Voice() {
                   </div>
                   <input type="range" min={0} max={300} step={10}
                     value={config.VoiceReplyMaxChars ?? 120}
-                    onChange={e => scheduleSave({ VoiceReplyMaxChars: Number(e.target.value) })}
+                    onChange={e => scheduleSave({ VoiceReplyMaxChars: Number(e.target.value) }, 'voice')}
                     className="w-full h-1 cursor-pointer rounded-full accent-[var(--primary-color)]" />
                   <p className="text-[9px] text-gray-400">0 = 不限制，防止长篇回复拖慢 TTS</p>
                 </div>
@@ -874,7 +923,7 @@ export function Voice() {
                 <ProSlider label="音调" hint="-1 ~ +1"
                   value={config.TtsPitch ?? 0} min={-1} max={1} step={0.1}
                   format={v => (v >= 0 ? '+' : '') + v.toFixed(1)}
-                  onChange={v => scheduleSave({ TtsPitch: v })} />
+                  onChange={v => scheduleSave({ TtsPitch: v }, 'tts')} />
               </div>
 
             </div>
@@ -943,6 +992,8 @@ export function Voice() {
             try {
               await api.saveConfig(next);
               setConfig(next);
+              const running = await api.getMonitorStatus().catch(() => false);
+              if (running) await api.reloadMonitorVoice();
               toast.success('保存成功');
               setSettingsOpen(false);
             } catch (err) {

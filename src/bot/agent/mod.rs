@@ -189,6 +189,38 @@ pub async fn call_ai_voice_streaming(
     memory: &Arc<std::sync::Mutex<SessionMemory>>,
     chunk_tx: tokio::sync::mpsc::UnboundedSender<String>,
 ) -> String {
+    call_ai_voice_streaming_inner(http, config, bot_id, prompt, memory, Some(chunk_tx), true).await
+}
+
+pub async fn call_ai_voice_draft(
+    http: &BiliApi,
+    config: &AppConfig,
+    bot_id: &str,
+    prompt: &str,
+    memory: &Arc<std::sync::Mutex<SessionMemory>>,
+) -> String {
+    call_ai_voice_streaming_inner(http, config, bot_id, prompt, memory, None, false).await
+}
+
+pub fn remember_ai_voice_reply(
+    bot_id: &str,
+    prompt: &str,
+    reply: &str,
+    memory: &Arc<std::sync::Mutex<SessionMemory>>,
+) {
+    let mut mem = memory.lock().unwrap_or_else(|e| e.into_inner());
+    mem.push_turn(bot_id, prompt.to_string(), reply.to_string());
+}
+
+async fn call_ai_voice_streaming_inner(
+    http: &BiliApi,
+    config: &AppConfig,
+    bot_id: &str,
+    prompt: &str,
+    memory: &Arc<std::sync::Mutex<SessionMemory>>,
+    chunk_tx: Option<tokio::sync::mpsc::UnboundedSender<String>>,
+    remember: bool,
+) -> String {
     let Some(bot) = config.ai_bots.iter().find(|b| b.id == bot_id) else {
         eprintln!("[AI voice] bot {bot_id} not found");
         return String::new();
@@ -234,9 +266,12 @@ pub async fn call_ai_voice_streaming(
                 })
                 .unwrap_or_default();
             if !reply.is_empty() {
-                let _ = chunk_tx.send(reply.clone());
-                let mut mem = memory.lock().unwrap_or_else(|e| e.into_inner());
-                mem.push_turn(bot_id, prompt.to_string(), reply.clone());
+                if let Some(tx) = chunk_tx.as_ref() {
+                    let _ = tx.send(reply.clone());
+                }
+                if remember {
+                    remember_ai_voice_reply(bot_id, prompt, &reply, memory);
+                }
             }
             return reply;
         }
@@ -256,7 +291,9 @@ pub async fn call_ai_voice_streaming(
         speak_buf.push_str(&delta);
         if should_flush_voice_chunk(&speak_buf, reply.chars().count()) {
             let chunk = prepare_voice_tts_chunk(&mut speak_buf, false);
-            let _ = chunk_tx.send(chunk);
+            if let Some(tx) = chunk_tx.as_ref() {
+                let _ = tx.send(chunk);
+            }
         }
         if config.voice_reply_max_chars > 0
             && reply.chars().count() >= config.voice_reply_max_chars as usize
@@ -267,7 +304,9 @@ pub async fn call_ai_voice_streaming(
 
     if !speak_buf.trim().is_empty() {
         let chunk = prepare_voice_tts_chunk(&mut speak_buf, true);
-        let _ = chunk_tx.send(chunk);
+        if let Some(tx) = chunk_tx.as_ref() {
+            let _ = tx.send(chunk);
+        }
     }
 
     let reply = if config.voice_reply_max_chars > 0 {
@@ -278,9 +317,8 @@ pub async fn call_ai_voice_streaming(
     } else {
         reply
     };
-    {
-        let mut mem = memory.lock().unwrap_or_else(|e| e.into_inner());
-        mem.push_turn(bot_id, prompt.to_string(), reply.clone());
+    if remember {
+        remember_ai_voice_reply(bot_id, prompt, &reply, memory);
     }
     reply
 }
@@ -300,8 +338,8 @@ fn should_flush_voice_chunk(text: &str, total_chars: usize) -> bool {
     }
 
     let soft_boundary = trimmed.chars().last().is_some_and(is_voice_soft_boundary);
-    let threshold = if total_chars <= 28 { 22 } else { 28 };
-    char_count >= threshold && (soft_boundary || char_count >= threshold + 8)
+    let threshold = if total_chars <= 28 { 14 } else { 24 };
+    char_count >= threshold && (soft_boundary || char_count >= threshold + 6)
 }
 
 fn prepare_voice_tts_chunk(buf: &mut String, is_final: bool) -> String {

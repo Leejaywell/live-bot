@@ -258,6 +258,10 @@ pub struct AiProvider {
     pub model: String,
     #[serde(rename = "APIUrl", default)]
     pub api_url: String,
+    /// TTS HTTPS endpoint. For TTS providers, realtime danmu announce prefers this URL
+    /// when set; voice companion keeps using APIUrl as the WSS endpoint.
+    #[serde(rename = "TtsHttpUrl", default)]
+    pub tts_http_url: String,
     #[serde(rename = "APIKey", default)]
     pub api_key: String,
     /// 旧版字段，新版 bot 的 system_prompt/nickname 移至 AiBot，保留用于向后兼容
@@ -372,6 +376,7 @@ impl Default for AppConfig {
                 name: "OpenAI".to_string(),
                 model: "gpt-4o-mini".to_string(),
                 api_url: "https://api.openai.com/v1".to_string(),
+                tts_http_url: String::new(),
                 api_key: "sk-...".to_string(),
                 system_prompt: String::new(),
                 trigger_command: String::new(),

@@ -8,6 +8,7 @@ export interface AiProvider {
   Name: string;
   Model: string;
   APIUrl: string;
+  TtsHttpUrl?: string;
   APIKey: string;
   SystemPrompt: string;
   TriggerCommand: string;
@@ -453,6 +454,8 @@ export interface KnownUser {
   nickname: string;
   alias: string;
   notes: string;
+  tts_provider_id: string;
+  tts_voice_id: string;
   danmu_count: number;
   gift_value: number;
   session_count: number;
@@ -474,6 +477,13 @@ export interface VoiceChangerState {
   processed_frames: number;
   output_latency_ms: number;
   last_error: string | null;
+}
+
+export interface VoiceLatency {
+  asr_ms: number;
+  ai_first_chunk_ms: number | null;
+  ai_total_ms: number;
+  total_ms: number;
 }
 
 export const api = {
@@ -501,6 +511,8 @@ export const api = {
   onMonitorStatus: (callback: (status: string) => void) => listen<string>('monitor-status', (event) => callback(event.payload)),
   onMonitorLog: (callback: (log: string) => void) => listen<string>('monitor-log', (event) => callback(event.payload)),
   onMonitorLogs: (callback: (logs: string[]) => void) => listen<string[]>('monitor-logs', (event) => callback(event.payload)),
+  onVoiceLatency: (callback: (data: VoiceLatency) => void) =>
+    listen<VoiceLatency>('voice-latency', (event) => callback(event.payload)),
   getDanmakuChatUrl: () => invoke<string>('get_danmaku_chat_url'),
   getWishGoalUrl: () => invoke<string>('get_wish_goal_url'),
   getLotteryUrl: () => invoke<string>('get_lottery_url'),
@@ -598,10 +610,12 @@ export const api = {
 
   // Audience / tracked users
   getTrackedUsers: (limit: number) => invoke<KnownUser[]>('get_tracked_users', { limit }),
-  checkTrackedUser: (uid: number) => invoke<{ status: string; nickname: string; alias: string; notes: string } | null>('check_tracked_user', { uid }),
+  checkTrackedUser: (uid: number) => invoke<{ status: string; nickname: string; alias: string; notes: string; tts_provider_id: string; tts_voice_id: string } | null>('check_tracked_user', { uid }),
   addTrackedUser: (uid: number, nickname: string, alias: string, notes: string) => invoke<void>('add_tracked_user', { uid, nickname, alias, notes }),
   restoreTrackedUser: (uid: number, alias: string, notes: string) => invoke<void>('restore_tracked_user', { uid, alias, notes }),
   updateTrackedUser: (uid: number, alias: string, notes: string) => invoke<void>('update_tracked_user', { uid, alias, notes }),
+  updateTrackedUserTtsVoice: (uid: number, ttsProviderId: string, ttsVoiceId: string) =>
+    invoke<void>('update_tracked_user_tts_voice', { uid, ttsProviderId, ttsVoiceId }),
   softDeleteTrackedUser: (uid: number) => invoke<void>('soft_delete_tracked_user', { uid }),
 
   // Voice Changer

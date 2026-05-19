@@ -70,6 +70,8 @@ pub struct CheckUserResult {
     pub nickname: String,
     pub alias: String,
     pub notes: String,
+    pub tts_provider_id: String,
+    pub tts_voice_id: String,
 }
 
 #[derive(Debug, Clone, serde::Serialize)]
@@ -78,6 +80,8 @@ pub struct KnownUser {
     pub nickname: String,
     pub alias: String,
     pub notes: String,
+    pub tts_provider_id: String,
+    pub tts_voice_id: String,
     pub danmu_count: i64,
     pub gift_value: i64,
     pub session_count: i64,
@@ -205,6 +209,8 @@ impl Storage {
                 nickname text not null default '',
                 alias text not null default '',
                 notes text not null default '',
+                tts_provider_id text not null default '',
+                tts_voice_id text not null default '',
                 status text not null default 'active',
                 auto_tracked integer not null default 0,
                 created_at text not null,
@@ -263,6 +269,18 @@ impl Storage {
         ensure_column(&conn, "interaction_records", "pk_match_room_id", "integer")?;
         ensure_column(&conn, "interaction_records", "pk_winner_room_id", "integer")?;
         ensure_column(&conn, "interaction_records", "popularity_value", "integer")?;
+        ensure_column(
+            &conn,
+            "tracked_users",
+            "tts_provider_id",
+            "text not null default ''",
+        )?;
+        ensure_column(
+            &conn,
+            "tracked_users",
+            "tts_voice_id",
+            "text not null default ''",
+        )?;
         crate::music::storage::ensure_schema(&conn)?;
         Ok(Self {
             conn: Mutex::new(conn),
@@ -1230,6 +1248,8 @@ impl Storage {
                 t.nickname,
                 t.alias,
                 t.notes,
+                coalesce(t.tts_provider_id, ''),
+                coalesce(t.tts_voice_id, ''),
                 coalesce(s.danmu_count, 0),
                 coalesce(s.gift_value, 0),
                 coalesce(s.session_count, 0),
@@ -1256,10 +1276,12 @@ impl Storage {
                 nickname: row.get(1)?,
                 alias: row.get(2)?,
                 notes: row.get(3)?,
-                danmu_count: row.get(4)?,
-                gift_value: row.get(5)?,
-                session_count: row.get(6)?,
-                last_seen: row.get(7)?,
+                tts_provider_id: row.get(4)?,
+                tts_voice_id: row.get(5)?,
+                danmu_count: row.get(6)?,
+                gift_value: row.get(7)?,
+                session_count: row.get(8)?,
+                last_seen: row.get(9)?,
             })
         })?;
         let mut result = Vec::new();
@@ -1272,7 +1294,7 @@ impl Storage {
     pub fn check_tracked_user(&self, uid: i64) -> Result<Option<CheckUserResult>> {
         let conn = self.conn.lock().expect("storage mutex poisoned");
         conn.query_row(
-            "select status, nickname, alias, notes from tracked_users where uid = ?1",
+            "select status, nickname, alias, notes, coalesce(tts_provider_id, ''), coalesce(tts_voice_id, '') from tracked_users where uid = ?1",
             params![uid],
             |row| {
                 Ok(CheckUserResult {
@@ -1280,6 +1302,8 @@ impl Storage {
                     nickname: row.get(1)?,
                     alias: row.get(2)?,
                     notes: row.get(3)?,
+                    tts_provider_id: row.get(4)?,
+                    tts_voice_id: row.get(5)?,
                 })
             },
         )
@@ -1318,6 +1342,25 @@ impl Storage {
         conn.execute(
             "update tracked_users set alias = ?2, notes = ?3, updated_at = ?4 where uid = ?1",
             params![uid, alias, notes, Local::now().to_rfc3339()],
+        )?;
+        Ok(())
+    }
+
+    pub fn update_tracked_user_tts_voice(
+        &self,
+        uid: i64,
+        tts_provider_id: &str,
+        tts_voice_id: &str,
+    ) -> Result<()> {
+        let conn = self.conn.lock().expect("storage mutex poisoned");
+        conn.execute(
+            "update tracked_users set tts_provider_id = ?2, tts_voice_id = ?3, updated_at = ?4 where uid = ?1",
+            params![
+                uid,
+                tts_provider_id.trim(),
+                tts_voice_id.trim(),
+                Local::now().to_rfc3339()
+            ],
         )?;
         Ok(())
     }

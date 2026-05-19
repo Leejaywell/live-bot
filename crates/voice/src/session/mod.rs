@@ -87,6 +87,18 @@ pub enum TtsEngine {
         voice_id: String,
         model: String,
         ws_url: String,
+        speed: Option<f64>,
+        vol: Option<f64>,
+        pitch: Option<i32>,
+    },
+    MiniMaxHttp {
+        api_key: String,
+        voice_id: String,
+        model: String,
+        http_url: String,
+        speed: Option<f64>,
+        vol: Option<f64>,
+        pitch: Option<i32>,
     },
     Azure {
         subscription_key: String,
@@ -120,6 +132,8 @@ pub enum SessionEvent {
     SpeechInterrupted,
     /// TTS 合成失败
     SpeechError { message: String },
+    /// TTS 已降级但仍继续播放
+    SpeechWarning { message: String },
     /// ASR 转写结果
     Transcript { text: String, is_final: bool },
     /// Session 已关闭
@@ -197,6 +211,10 @@ pub struct SessionConfig {
     pub audio_buffer: usize,
     /// Edge TTS 声音名称（如 "zh-CN-XiaoxiaoNeural"）
     pub tts_voice: String,
+    /// 默认 SSML prosody 语速（如 "+10%"），单条请求可覆盖。
+    pub tts_rate: Option<String>,
+    /// 默认 SSML prosody 音高（如 "+5Hz"），单条请求可覆盖。
+    pub tts_pitch: Option<String>,
 }
 
 impl Default for SessionConfig {
@@ -205,6 +223,8 @@ impl Default for SessionConfig {
             session_id: uuid::Uuid::new_v4().to_string(),
             audio_buffer: 32,
             tts_voice: "zh-CN-XiaoxiaoNeural".to_string(),
+            tts_rate: None,
+            tts_pitch: None,
         }
     }
 }
@@ -290,16 +310,17 @@ impl SessionActor {
 
         let priority = req.priority;
         let text = req.text.clone();
+        let engine = req.engine.clone();
+        let rate = req.rate.clone().or_else(|| self.config.tts_rate.clone());
+        let pitch = req.pitch.clone().or_else(|| self.config.tts_pitch.clone());
+        let volume = req.volume.clone();
         let event_tx = self.event_tx.clone();
         let cmd_tx = self.cmd_tx.clone();
         #[cfg(feature = "tts")]
         let edge_client = {
-            if req.rate.is_some() || req.pitch.is_some() || req.volume.is_some() {
-                self.edge_client.with_prosody_override(
-                    req.rate.clone(),
-                    req.pitch.clone(),
-                    req.volume.clone(),
-                )
+            if rate.is_some() || pitch.is_some() || volume.is_some() {
+                self.edge_client
+                    .with_prosody_override(rate.clone(), pitch.clone(), volume.clone())
             } else {
                 self.edge_client.clone()
             }
@@ -311,18 +332,18 @@ impl SessionActor {
             #[cfg(feature = "tts")]
             Self::run_tts(
                 text,
-                req.engine,
+                engine,
                 edge_client,
-                req.rate,
-                req.pitch,
-                req.volume,
+                rate,
+                pitch,
+                volume,
                 cancel_token,
                 event_tx,
             )
             .await;
             #[cfg(not(feature = "tts"))]
             {
-                let _ = (text, req.engine, cancel_token);
+                let _ = (text, engine, cancel_token);
                 let _ = event_tx.send(SessionEvent::SpeechEnd);
             }
             // 通知 Actor 自然结束，重置 current_priority
@@ -365,7 +386,19 @@ impl SessionActor {
         cancel_token: CancellationToken,
         event_tx: tokio::sync::broadcast::Sender<SessionEvent>,
     ) {
-        let sentences = split_sentences(&text);
+        let sentences = if should_synthesize_as_single_stream(&engine) {
+            vec![text.clone()]
+        } else {
+            split_sentences(&text)
+        };
+        let fallback_edge_client = {
+            let client = crate::tts::EdgeTtsClient::with_defaults();
+            if rate.is_some() || pitch.is_some() || volume.is_some() {
+                client.with_prosody_override(rate.clone(), pitch.clone(), volume.clone())
+            } else {
+                client
+            }
+        };
 
         for sentence in sentences {
             if cancel_token.is_cancelled() {
@@ -379,13 +412,55 @@ impl SessionActor {
                         debug!("tts interrupted mid-sentence");
                         return;
                     }
-                    result = synthesize_edge_sentence(&sentence, &edge_client, event_tx.clone()) => result,
+                    result = synthesize_edge_sentence_buffered(&sentence, &edge_client, event_tx.clone()) => result,
                 };
                 if let Err(e) = result {
                     error!("tts error: {}", e);
                     let _ = event_tx.send(SessionEvent::SpeechError { message: e });
                     let _ = event_tx.send(SessionEvent::SpeechEnd);
                     return;
+                }
+                continue;
+            }
+
+            if can_stream_tts_engine(&engine) {
+                let result = tokio::select! {
+                    _ = cancel_token.cancelled() => {
+                        debug!("tts interrupted mid-sentence");
+                        return;
+                    }
+                    result = synthesize_sentence_streaming(
+                        &sentence,
+                        &engine,
+                        rate.as_deref(),
+                        pitch.as_deref(),
+                        event_tx.clone(),
+                    ) => result,
+                };
+                if let Err(e) = result {
+                    error!("tts error: {}", e);
+                    let fallback_message = format!("{e}；已自动降级 Edge TTS 播放本句");
+                    tracing::warn!("{fallback_message}");
+                    let _ = event_tx.send(SessionEvent::SpeechWarning {
+                        message: fallback_message,
+                    });
+                    let fallback = tokio::select! {
+                        _ = cancel_token.cancelled() => {
+                            debug!("tts interrupted before fallback");
+                            return;
+                        }
+                        result = synthesize_edge_sentence_buffered(&sentence, &fallback_edge_client, event_tx.clone()) => result,
+                    };
+                    if let Err(fallback_error) = fallback {
+                        error!("edge tts fallback error: {}", fallback_error);
+                        let _ = event_tx.send(SessionEvent::SpeechError {
+                            message: format!(
+                                "云端 TTS 失败: {e}；Edge fallback 失败: {fallback_error}"
+                            ),
+                        });
+                        let _ = event_tx.send(SessionEvent::SpeechEnd);
+                        return;
+                    }
                 }
                 continue;
             }
@@ -422,34 +497,51 @@ impl SessionActor {
     }
 }
 
+fn can_stream_tts_engine(engine: &TtsEngine) -> bool {
+    matches!(
+        engine,
+        TtsEngine::MiniMax { .. } | TtsEngine::MiniMaxHttp { .. } | TtsEngine::VolcEngine { .. }
+    )
+}
+
+fn should_synthesize_as_single_stream(engine: &TtsEngine) -> bool {
+    // 火山 BidirectionalTTS 协议天然支持长文本一次合成；其他流式引擎按句子切，
+    // 让第一句尽早开播以降低 TTFB。
+    matches!(engine, TtsEngine::VolcEngine { .. })
+}
+
 #[cfg(feature = "tts")]
-async fn synthesize_edge_sentence(
+fn minimax_voice_setting(
+    speed: Option<f64>,
+    vol: Option<f64>,
+    pitch: Option<i32>,
+) -> crate::tts::VoiceSetting {
+    crate::tts::VoiceSetting {
+        voice_id: None,
+        speed,
+        vol,
+        pitch,
+        emotion: None,
+        english_normalization: None,
+        latex_read: None,
+    }
+}
+
+#[cfg(feature = "tts")]
+async fn synthesize_edge_sentence_buffered(
     text: &str,
     edge_client: &crate::tts::EdgeTtsClient,
     event_tx: tokio::sync::broadcast::Sender<SessionEvent>,
 ) -> Result<(), String> {
-    use futures_util::StreamExt as _;
-
-    let mut stream = edge_client
-        .synthesize(text, None)
+    let chunk = edge_client
+        .synthesize_buffered(text, None)
         .await
         .map_err(|e| e.to_string())?;
-
-    while let Some(chunk) = stream.next().await {
-        match chunk {
-            Ok(c) => {
-                if c.is_final {
-                    break;
-                }
-                if !c.data.is_empty() {
-                    let _ = event_tx.send(SessionEvent::AudioReady(AudioFrame::new_pcm16(
-                        bytes::Bytes::from(c.data),
-                        c.sample_rate,
-                    )));
-                }
-            }
-            Err(e) => return Err(e.to_string()),
-        }
+    if !chunk.data.is_empty() {
+        let _ = event_tx.send(SessionEvent::AudioReady(AudioFrame::new_pcm16(
+            bytes::Bytes::from(chunk.data),
+            chunk.sample_rate,
+        )));
     }
 
     Ok(())
@@ -483,9 +575,256 @@ fn split_sentences(text: &str) -> Vec<String> {
     sentences
 }
 
-fn rate_to_minimax_speed(rate: &str) -> Option<f64> {
-    let value = rate.trim().trim_end_matches('%').parse::<f64>().ok()?;
-    Some((1.0 + value / 100.0).clamp(0.5, 2.0))
+#[cfg(feature = "tts")]
+async fn synthesize_sentence_streaming(
+    text: &str,
+    engine: &TtsEngine,
+    _rate: Option<&str>,
+    _pitch: Option<&str>,
+    event_tx: tokio::sync::broadcast::Sender<SessionEvent>,
+) -> Result<(), String> {
+    use futures_util::StreamExt as _;
+
+    match engine {
+        TtsEngine::MiniMax {
+            api_key,
+            voice_id,
+            model,
+            ws_url,
+            speed,
+            vol,
+            pitch,
+        } => {
+            let config = crate::tts::MiniMaxConfig::new(
+                Some(ws_url.clone()),
+                None,
+                Some(model.clone()),
+                None,
+            );
+            let client = crate::tts::MiniMaxWsTtsClient::new(config);
+            let voice_setting = minimax_voice_setting(*speed, *vol, *pitch);
+            let audio_setting = crate::tts::AudioSetting {
+                sample_rate: Some(32000),
+                bitrate: Some(128000),
+                format: Some("mp3".to_string()),
+                channel: Some(1),
+            };
+            let mut stream = client
+                .synthesize_direct(
+                    api_key,
+                    voice_id,
+                    text,
+                    Some(voice_setting),
+                    Some(audio_setting),
+                )
+                .map_err(|e: crate::tts::MiniMaxError| e.to_string())?;
+
+            let mut decoder = crate::tts::edge::mp3_decoder::Mp3Decoder::new();
+            let mut received_audio = false;
+            let mut decoded_audio = false;
+            let mut sample_rate = 44100u32;
+
+            while let Some(chunk) = stream.next().await {
+                let chunk = chunk.map_err(|e| e.to_string())?;
+                if chunk.is_final {
+                    break;
+                }
+                if chunk.data.is_empty() {
+                    continue;
+                }
+                received_audio = true;
+                sample_rate = chunk.sample_rate;
+                let pcm = decoder.decode(&chunk.data).map_err(|e| e.to_string())?;
+                if !pcm.is_empty() {
+                    decoded_audio = true;
+                    let decoded_rate = decoder.sample_rate().unwrap_or(sample_rate as i32) as u32;
+                    let _ = event_tx.send(SessionEvent::AudioReady(AudioFrame::new_pcm16(
+                        bytes::Bytes::from(pcm),
+                        decoded_rate,
+                    )));
+                }
+            }
+
+            let pcm = decoder.flush().map_err(|e| e.to_string())?;
+            if !pcm.is_empty() {
+                decoded_audio = true;
+                let decoded_rate = decoder.sample_rate().unwrap_or(sample_rate as i32) as u32;
+                let _ = event_tx.send(SessionEvent::AudioReady(AudioFrame::new_pcm16(
+                    bytes::Bytes::from(pcm),
+                    decoded_rate,
+                )));
+            }
+
+            if received_audio && !decoded_audio {
+                return Err("MiniMax WebSocket 返回了 mp3 音频，但本地解码为空".to_string());
+            }
+
+            Ok(())
+        }
+        TtsEngine::MiniMaxHttp {
+            api_key,
+            voice_id,
+            model,
+            http_url,
+            speed,
+            vol,
+            pitch,
+        } => {
+            let config = crate::tts::MiniMaxConfig::new(
+                None,
+                Some(http_url.clone()),
+                Some(model.clone()),
+                None,
+            );
+            let client = crate::tts::MiniMaxHttpTtsClient::new(config);
+            let voice_setting = minimax_voice_setting(*speed, *vol, *pitch);
+            // PCM 直接送播放器，省掉 MP3 解码；24k 单声道与下游播放管线一致。
+            let audio_setting = crate::tts::AudioSetting {
+                sample_rate: Some(24000),
+                bitrate: None,
+                format: Some("pcm".to_string()),
+                channel: Some(1),
+            };
+            play_minimax_http_stream(
+                &client,
+                api_key,
+                voice_id,
+                model,
+                text,
+                Some(voice_setting),
+                Some(audio_setting),
+                crate::tts::MiniMaxHttpOptions {
+                    stream: true,
+                    exclude_aggregated_audio: Some(true),
+                    ..Default::default()
+                },
+                event_tx,
+            )
+            .await
+        }
+        TtsEngine::VolcEngine {
+            app_id,
+            access_key,
+            resource_id,
+            speaker,
+        } => {
+            use crate::tts::{VolcEngineConfig, VolcEngineRequest, VolcEngineWsTtsClient};
+
+            let config = VolcEngineConfig {
+                endpoint: "wss://openspeech.bytedance.com/api/v3/tts/bidirection".to_string(),
+                app_id: app_id.clone(),
+                access_key: access_key.clone(),
+                resource_id: resource_id.clone(),
+                default_speaker: Some(speaker.clone()),
+                default_model: None,
+                default_namespace: Some("BidirectionalTTS".to_string()),
+                default_audio_format: "pcm".to_string(),
+                default_sample_rate: 24000,
+            };
+
+            let client = VolcEngineWsTtsClient::new(config);
+            let request = VolcEngineRequest::from_text(text);
+            let mut stream = client
+                .synthesize(request)
+                .map_err(|e: anyhow::Error| e.to_string())?;
+
+            while let Some(chunk) = stream.next().await {
+                let chunk = chunk.map_err(|e| e.to_string())?;
+                if chunk.is_final {
+                    break;
+                }
+                if chunk.data.is_empty() {
+                    continue;
+                }
+                let _ = event_tx.send(SessionEvent::AudioReady(AudioFrame::new_pcm16(
+                    bytes::Bytes::from(chunk.data),
+                    chunk.sample_rate,
+                )));
+            }
+
+            Ok(())
+        }
+        _ => Err("engine does not support streaming synthesis".to_string()),
+    }
+}
+
+#[cfg(feature = "tts")]
+#[allow(clippy::too_many_arguments)]
+async fn play_minimax_http_stream(
+    client: &crate::tts::MiniMaxHttpTtsClient,
+    api_key: &str,
+    voice_id: &str,
+    model: &str,
+    text: &str,
+    voice_setting: Option<crate::tts::VoiceSetting>,
+    audio_setting: Option<crate::tts::AudioSetting>,
+    options: crate::tts::MiniMaxHttpOptions,
+    event_tx: tokio::sync::broadcast::Sender<SessionEvent>,
+) -> Result<(), String> {
+    use futures_util::StreamExt as _;
+
+    // PCM 字节可能恰好以 0xFF 开头并被 looks_like_mp3 误判，需要先按声明格式锚定。
+    let declared_format = audio_setting
+        .as_ref()
+        .and_then(|s| s.format.clone())
+        .unwrap_or_else(|| "mp3".to_string());
+    let format_is_pcm = declared_format.eq_ignore_ascii_case("pcm");
+
+    let mut stream = client
+        .synthesize_direct(
+            api_key,
+            voice_id,
+            model,
+            text,
+            voice_setting,
+            audio_setting,
+            options,
+        )
+        .await
+        .map_err(|e: crate::tts::MiniMaxError| e.to_string())?;
+
+    let mut decoder = crate::tts::edge::mp3_decoder::Mp3Decoder::new();
+    let mut audio_is_mp3: Option<bool> = if format_is_pcm { Some(false) } else { None };
+    let mut sample_rate = 44100u32;
+
+    while let Some(chunk) = stream.next().await {
+        let chunk = chunk.map_err(|e| e.to_string())?;
+        if !chunk.data.is_empty() {
+            sample_rate = chunk.sample_rate;
+            let is_mp3 = *audio_is_mp3.get_or_insert_with(|| looks_like_mp3(&chunk.data));
+            if is_mp3 {
+                let pcm = decoder.decode(&chunk.data).map_err(|e| e.to_string())?;
+                if !pcm.is_empty() {
+                    let decoded_rate = decoder.sample_rate().unwrap_or(sample_rate as i32) as u32;
+                    let _ = event_tx.send(SessionEvent::AudioReady(AudioFrame::new_pcm16(
+                        bytes::Bytes::from(pcm),
+                        decoded_rate,
+                    )));
+                }
+            } else {
+                let _ = event_tx.send(SessionEvent::AudioReady(AudioFrame::new_pcm16(
+                    bytes::Bytes::from(chunk.data),
+                    sample_rate,
+                )));
+            }
+        }
+        if chunk.is_final {
+            break;
+        }
+    }
+
+    if audio_is_mp3.unwrap_or(false) {
+        let pcm = decoder.flush().map_err(|e| e.to_string())?;
+        if !pcm.is_empty() {
+            let decoded_rate = decoder.sample_rate().unwrap_or(sample_rate as i32) as u32;
+            let _ = event_tx.send(SessionEvent::AudioReady(AudioFrame::new_pcm16(
+                bytes::Bytes::from(pcm),
+                decoded_rate,
+            )));
+        }
+    }
+
+    Ok(())
 }
 
 /// 单句 TTS 合成：收集流式 PCM 块后合并为一个 AudioFrame
@@ -494,7 +833,7 @@ async fn synthesize_sentence(
     text: &str,
     engine: &TtsEngine,
     edge_client: &crate::tts::EdgeTtsClient,
-    rate: Option<&str>,
+    _rate: Option<&str>,
     _pitch: Option<&str>,
     _volume: Option<&str>,
 ) -> Result<AudioFrame, String> {
@@ -530,6 +869,9 @@ async fn synthesize_sentence(
             voice_id,
             model,
             ws_url,
+            speed,
+            vol,
+            pitch,
         } => {
             let config = crate::tts::MiniMaxConfig::new(
                 Some(ws_url.clone()),
@@ -538,10 +880,7 @@ async fn synthesize_sentence(
                 None,
             );
             let client = crate::tts::MiniMaxWsTtsClient::new(config);
-            let mut voice_setting = crate::tts::VoiceSetting::default();
-            if let Some(speed) = rate.and_then(rate_to_minimax_speed) {
-                voice_setting.speed = Some(speed);
-            }
+            let voice_setting = minimax_voice_setting(*speed, *vol, *pitch);
             let audio_setting = crate::tts::AudioSetting {
                 sample_rate: Some(32000),
                 bitrate: Some(128000),
@@ -574,19 +913,21 @@ async fn synthesize_sentence(
                 }
             }
 
-            let pcm = if looks_like_mp3(&audio_bytes) {
-                let mut decoder = crate::tts::edge::mp3_decoder::Mp3Decoder::new();
-                let mut pcm = decoder.decode(&audio_bytes).map_err(|e| e.to_string())?;
-                pcm.extend_from_slice(&decoder.flush().map_err(|e| e.to_string())?);
-                if let Some(decoded_rate) = decoder.sample_rate() {
-                    sample_rate = decoded_rate as u32;
-                }
-                pcm
-            } else {
-                audio_bytes
-            };
+            let mut decoder = crate::tts::edge::mp3_decoder::Mp3Decoder::new();
+            let pcm = decoder
+                .decode_all(&audio_bytes)
+                .map_err(|e| e.to_string())?;
+            if let Some(decoded_rate) = decoder.sample_rate() {
+                sample_rate = decoded_rate as u32;
+            }
+            if !audio_bytes.is_empty() && pcm.is_empty() {
+                return Err("MiniMax WebSocket 返回了 mp3 音频，但本地解码为空".to_string());
+            }
 
             Ok(AudioFrame::new_pcm16(bytes::Bytes::from(pcm), sample_rate))
+        }
+        TtsEngine::MiniMaxHttp { .. } => {
+            Err("MiniMax HTTP requires streaming synthesis".to_string())
         }
         TtsEngine::VolcEngine {
             app_id,

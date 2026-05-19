@@ -505,49 +505,40 @@ async fn reload_monitor_tts(
     app: AppHandle,
     state: tauri::State<'_, SharedState>,
 ) -> Result<(), String> {
-    let (monitor_cancel, tts_cancel, tts_router) = {
+    let (command_tx, tts_router) = {
         let monitor = state.monitor.lock().map_err(|e| e.to_string())?;
         let Some(handle) = monitor.as_ref() else {
             return Ok(());
         };
-        (
-            handle.cancel.clone(),
-            handle.tts_cancel.clone(),
-            handle.tts_router.clone(),
-        )
+        (handle.command_tx.clone(), handle.tts_router.clone())
     };
 
-    let config = AppConfig::load_or_default().map_err(|e| e.to_string())?;
-    let next_cancel = monitor_cancel.child_token();
-    let old_cancel = {
-        let mut guard = tts_cancel.lock().map_err(|e| e.to_string())?;
-        let old = guard.clone();
-        *guard = next_cancel.clone();
-        old
-    };
-    old_cancel.cancel();
-    bot::monitor::replace_tts_router(&tts_router, &config, &model_dir(&app), next_cancel);
-    let _ = app.emit(
-        "monitor-log",
-        serde_json::json!(if config.tts_enabled {
-            "语音播报已刷新，弹幕监听保持连接"
-        } else {
-            "语音播报已关闭，弹幕监听保持连接"
-        }),
-    );
+    if let Some(router) = tts_router.lock().ok().and_then(|router| router.clone()) {
+        let _ = router.voice_session().interrupt().await;
+    }
+    command_tx
+        .send(bot::monitor::MonitorCommand::ReloadTts)
+        .map_err(|e| e.to_string())?;
+    let _ = app.emit("monitor-log", serde_json::json!("语音播报正在刷新..."));
     Ok(())
 }
 
 #[cfg(feature = "tauri")]
 #[tauri::command]
 async fn reload_monitor_voice(state: tauri::State<'_, SharedState>) -> Result<(), String> {
-    let command_tx = {
+    let (command_tx, tts_router) = {
         let monitor = state.monitor.lock().map_err(|e| e.to_string())?;
         let Some(handle) = monitor.as_ref() else {
             return Ok(());
         };
-        handle.command_tx.clone()
+        (handle.command_tx.clone(), handle.tts_router.clone())
     };
+    let config = AppConfig::load_or_default().map_err(|e| e.to_string())?;
+    if !config.vad_enabled
+        && let Some(router) = tts_router.lock().ok().and_then(|router| router.clone())
+    {
+        let _ = router.voice_session().interrupt().await;
+    }
     command_tx
         .send(bot::monitor::MonitorCommand::ReloadVoice)
         .map_err(|e| e.to_string())
@@ -683,6 +674,20 @@ async fn update_tracked_user(
     state
         .storage
         .update_tracked_user(uid, &alias, &notes)
+        .map_err(|e| e.to_string())
+}
+
+#[cfg(feature = "tauri")]
+#[tauri::command]
+async fn update_tracked_user_tts_voice(
+    state: tauri::State<'_, SharedState>,
+    uid: i64,
+    tts_provider_id: String,
+    tts_voice_id: String,
+) -> Result<(), String> {
+    state
+        .storage
+        .update_tracked_user_tts_voice(uid, &tts_provider_id, &tts_voice_id)
         .map_err(|e| e.to_string())
 }
 
@@ -1962,37 +1967,22 @@ async fn speak_text_cmd(
 
     // 从 config 解析当前 TTS 引擎
     let cfg = AppConfig::load_or_default().map_err(|e| e.to_string())?;
-    let engine =
-        resolve_tts_engine_for_preview(&cfg, &model_dir(&app), provider_id.as_deref(), &voice);
+    let engine = resolve_tts_engine_for_preview(
+        &cfg,
+        &model_dir(&app),
+        provider_id.as_deref(),
+        &voice,
+        speed,
+    );
     let engine_name = match &engine {
         streamix_voice::TtsEngine::Edge => "edge",
         streamix_voice::TtsEngine::MiniMax { .. } => "minimax",
+        streamix_voice::TtsEngine::MiniMaxHttp { .. } => "minimax-http",
         streamix_voice::TtsEngine::Azure { .. } => "azure",
         streamix_voice::TtsEngine::VolcEngine { .. } => "volcengine",
         #[cfg(feature = "local-tts")]
         streamix_voice::TtsEngine::LocalTts { .. } => "local",
     };
-    let engine_detail = match &engine {
-        streamix_voice::TtsEngine::MiniMax {
-            voice_id,
-            model,
-            ws_url,
-            ..
-        } => format!(" model={model} ws_url={ws_url} voice_id={voice_id}"),
-        _ => String::new(),
-    };
-    let _ = app.emit(
-        "monitor-log",
-        serde_json::json!(format!(
-            "[TTS诊断] engine={engine_name} provider={} voice={}{} text_len={} text={}",
-            provider_id.as_deref().unwrap_or(""),
-            voice,
-            engine_detail,
-            text.chars().count(),
-            text
-        )),
-    );
-
     let router = {
         let mut guard = state.preview_tts.lock().map_err(|e| e.to_string())?;
         let provider_key = provider_id.clone().unwrap_or_default();
@@ -2014,17 +2004,20 @@ async fn speak_text_cmd(
                 engine.clone(),
                 cancel.clone(),
             );
-            *guard = Some((router.clone(), voice, provider_key, cancel));
+            *guard = Some((router.clone(), voice.clone(), provider_key, cancel));
             router
         } else {
             guard.as_ref().unwrap().0.clone()
         }
     };
 
+    let speech_text = text.clone();
     let mut req = SpeakRequest::new(text)
         .with_engine(engine.clone())
         .with_priority(PRIORITY_SYSTEM);
-    if let Some(speed) = speed {
+    if matches!(engine, streamix_voice::TtsEngine::Edge)
+        && let Some(speed) = speed
+    {
         let clamped = speed.clamp(0.5, 2.0);
         let delta = ((clamped - 1.0) * 100.0).round() as i32;
         req = req.with_rate(format!("{delta:+}%"));
@@ -2043,17 +2036,26 @@ async fn speak_text_cmd(
     })?;
 
     let wait_secs = match engine {
-        streamix_voice::TtsEngine::MiniMax { .. } => 15,
+        streamix_voice::TtsEngine::MiniMax { .. }
+        | streamix_voice::TtsEngine::MiniMaxHttp { .. } => 15,
         _ => 6,
     };
+    let mut speech_error: Option<String> = None;
     let wait_result = tokio::time::timeout(std::time::Duration::from_secs(wait_secs), async {
         loop {
             match audio_events.recv().await {
+                Ok(streamix_voice::SessionEvent::SpeechWarning { message }) => {
+                    let _ = app.emit(
+                        "monitor-log",
+                        serde_json::json!(format!("[TTS警告] engine={engine_name} {message}")),
+                    );
+                }
                 Ok(streamix_voice::SessionEvent::SpeechError { message }) => {
                     let _ = app.emit(
                         "monitor-log",
                         serde_json::json!(format!("[TTS错误] engine={engine_name} {message}")),
                     );
+                    speech_error = Some(message);
                     break;
                 }
                 Ok(streamix_voice::SessionEvent::SpeechEnd)
@@ -2071,7 +2073,59 @@ async fn speak_text_cmd(
             serde_json::json!(format!("[TTS错误] engine={engine_name} 播放等待超时")),
         );
     }
+    if speech_error.is_some() && voice != "zh-CN-XiaoxiaoNeural" {
+        drop(_playback_guard);
+        let _ = app.emit(
+            "monitor-log",
+            serde_json::json!("[TTS错误] 粉丝专属音色失败，已回退 Edge 默认音色"),
+        );
+        play_edge_default_preview(&state, speech_text, speed).await?;
+    }
 
+    Ok(())
+}
+
+#[cfg(feature = "tauri")]
+async fn play_edge_default_preview(
+    state: &tauri::State<'_, SharedState>,
+    text: String,
+    speed: Option<f32>,
+) -> Result<(), String> {
+    use streamix_voice::{PRIORITY_SYSTEM, SessionConfig, SpeakRequest, SpeakerRouter, TtsEngine};
+
+    let cancel = CancellationToken::new();
+    let session_cfg = SessionConfig {
+        tts_voice: "zh-CN-XiaoxiaoNeural".to_string(),
+        ..Default::default()
+    };
+    let router = SpeakerRouter::spawn_with_audio_and_engine(session_cfg, TtsEngine::Edge, cancel);
+    let mut events = router.voice_session().subscribe();
+    let mut req = SpeakRequest::new(text)
+        .with_engine(TtsEngine::Edge)
+        .with_priority(PRIORITY_SYSTEM);
+    if let Some(speed) = speed {
+        let clamped = speed.clamp(0.5, 2.0);
+        let delta = ((clamped - 1.0) * 100.0).round() as i32;
+        req = req.with_rate(format!("{delta:+}%"));
+    }
+    let _playback_guard = state.preview_tts_playback.lock().await;
+    router
+        .voice_session()
+        .speak(req)
+        .await
+        .map_err(|e| e.to_string())?;
+    let _ = tokio::time::timeout(std::time::Duration::from_secs(6), async {
+        loop {
+            match events.recv().await {
+                Ok(streamix_voice::SessionEvent::SpeechEnd)
+                | Ok(streamix_voice::SessionEvent::SpeechInterrupted)
+                | Ok(streamix_voice::SessionEvent::Closed)
+                | Err(_) => break,
+                _ => {}
+            }
+        }
+    })
+    .await;
     Ok(())
 }
 
@@ -2081,7 +2135,9 @@ fn resolve_tts_engine_for_preview(
     model_dir: &std::path::Path,
     provider_id: Option<&str>,
     selected_voice: &str,
+    speed: Option<f32>,
 ) -> streamix_voice::TtsEngine {
+    let tts_speed = speed.unwrap_or(config.tts_speed).clamp(0.5, 2.0);
     let tts_provider = provider_id
         .filter(|id| !id.is_empty())
         .and_then(|id| {
@@ -2108,21 +2164,49 @@ fn resolve_tts_engine_for_preview(
     let name_lower = provider.name.to_lowercase();
 
     if name_lower.contains("minimax") {
-        streamix_voice::TtsEngine::MiniMax {
-            api_key: provider.api_key.clone(),
-            voice_id: if !selected_voice.is_empty() {
-                selected_voice.to_string()
-            } else if !config.tts_voice.is_empty() {
-                config.tts_voice.clone()
-            } else {
-                "zh_female_wanwanxiaohe_moon_bigtts".to_string()
-            },
-            model: if provider.model.is_empty() {
-                "speech-2.8-turbo".to_string()
-            } else {
-                provider.model.clone()
-            },
-            ws_url: normalize_minimax_ws_url(&provider.api_url),
+        let voice_id = if !selected_voice.is_empty() {
+            selected_voice.to_string()
+        } else if !config.tts_voice.is_empty() {
+            config.tts_voice.clone()
+        } else {
+            "zh_female_wanwanxiaohe_moon_bigtts".to_string()
+        };
+        let model = if provider.model.is_empty() {
+            "speech-2.8-turbo".to_string()
+        } else {
+            provider.model.clone()
+        };
+        let api_url = provider.api_url.trim_start();
+        if !provider.tts_http_url.trim().is_empty() {
+            streamix_voice::TtsEngine::MiniMaxHttp {
+                api_key: provider.api_key.clone(),
+                voice_id,
+                model,
+                http_url: normalize_minimax_http_url(&provider.tts_http_url),
+                speed: Some(tts_speed as f64),
+                vol: Some(1.0),
+                pitch: Some(0),
+            }
+        } else if api_url.starts_with("http://") || api_url.starts_with("https://") {
+            streamix_voice::TtsEngine::MiniMaxHttp {
+                api_key: provider.api_key.clone(),
+                voice_id,
+                model,
+                http_url: normalize_minimax_http_url(&provider.api_url),
+                speed: Some(tts_speed as f64),
+                vol: Some(1.0),
+                pitch: Some(0),
+            }
+        } else {
+            streamix_voice::TtsEngine::MiniMax {
+                api_key: provider.api_key.clone(),
+                voice_id,
+                model,
+                ws_url: normalize_minimax_ws_url(&provider.api_url),
+                speed: Some(tts_speed as f64),
+                vol: Some(1.0),
+                pitch: Some(0),
+            }
         }
     } else if name_lower.contains("火山")
         || name_lower.contains("volcengine")
@@ -2162,7 +2246,7 @@ fn resolve_tts_engine_for_preview(
         }
     } else {
         #[cfg(feature = "local-tts")]
-        if let Some(engine) = try_resolve_local_tts(&name_lower, model_dir, config.tts_speed) {
+        if let Some(engine) = try_resolve_local_tts(&name_lower, model_dir, tts_speed) {
             return engine;
         }
         streamix_voice::TtsEngine::Edge
@@ -2171,7 +2255,7 @@ fn resolve_tts_engine_for_preview(
 
 fn normalize_minimax_ws_url(url: &str) -> String {
     let trimmed = url.trim();
-    if trimmed.is_empty() {
+    if trimmed.is_empty() || trimmed.starts_with("http://") || trimmed.starts_with("https://") {
         return "wss://api.minimaxi.com/ws/v1/t2a_v2".to_string();
     }
     let mut out = trimmed
@@ -2179,6 +2263,20 @@ fn normalize_minimax_ws_url(url: &str) -> String {
         .replace("http://", "ws://");
     if !out.contains("/ws/v1/t2a_v2") && out.ends_with("/v1/t2a_v2") {
         out = out.replace("/v1/t2a_v2", "/ws/v1/t2a_v2");
+    }
+    out
+}
+
+fn normalize_minimax_http_url(url: &str) -> String {
+    let trimmed = url.trim();
+    if trimmed.is_empty() {
+        return "https://api.minimaxi.com/v1/t2a_v2".to_string();
+    }
+    let mut out = trimmed
+        .replace("wss://", "https://")
+        .replace("ws://", "http://");
+    if !out.contains("/v1/t2a_v2") && out.ends_with("/ws/v1/t2a_v2") {
+        out = out.replace("/ws/v1/t2a_v2", "/v1/t2a_v2");
     }
     out
 }
@@ -3889,6 +3987,7 @@ fn main() -> Result<()> {
             add_tracked_user,
             restore_tracked_user,
             update_tracked_user,
+            update_tracked_user_tts_voice,
             soft_delete_tracked_user,
             get_pk_summary,
             get_pk_history,

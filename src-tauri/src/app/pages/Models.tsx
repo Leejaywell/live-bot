@@ -43,15 +43,15 @@ const ASR_LANGUAGES = [
 ];
 
 const TTS_PROVIDERS = [
-  { value: 'edge',           label: 'Edge TTS（免费）',     desc: '微软免费音色，稳定可靠',          providerId: 'edge_tts' },
-  { value: 'minimax-tts',    label: 'MiniMax TTS（云端）',  desc: '云端高保真合成，丰富音色库',      providerId: 'minimax_tts' },
-  { value: 'kokoro',         label: 'Kokoro（本地）',       desc: '本地多语言合成，音质自然流畅',    providerId: '' },
-  { value: 'melo-tts',       label: 'MeloTTS（本地）',      desc: '本地中英双语合成，轻量极速',      providerId: '' },
-  { value: 'piper-zh',       label: 'Piper（本地）',        desc: '本地中文合成，资源消耗最低',      providerId: '' },
-  { value: 'cosyvoice',      label: 'CosyVoice（本地）',    desc: '本地零成本合成，情感表达丰富',    providerId: '' },
-  { value: 'fish-speech',    label: 'Fish Speech（本地）',  desc: '本地开源合成，音色可定制',        providerId: '' },
-  { value: 'volcengine-tts', label: '火山 TTS（云端）',     desc: '云端低延迟，大厂品质保证',        providerId: 'volcano_engine' },
-  { value: 'azure',          label: 'Azure TTS',            desc: '微软神经网络，多语言自然语音',    providerId: '' },
+  { value: 'edge',           label: 'Edge TTS（免费）',     desc: '微软免费音色，稳定可靠',          providerId: 'edge_tts',       wsUrl: '',                                             httpUrl: '',                                      model: 'zh-CN-XiaoxiaoNeural' },
+  { value: 'minimax-tts',    label: 'MiniMax TTS（云端）',  desc: '云端高保真合成，丰富音色库',      providerId: 'minimax_tts',    wsUrl: 'wss://api.minimaxi.com/ws/v1/t2a_v2',          httpUrl: 'https://api.minimaxi.com/v1/t2a_v2',   model: 'speech-2.8-turbo' },
+  { value: 'kokoro',         label: 'Kokoro（本地）',       desc: '本地多语言合成，音质自然流畅',    providerId: '',               wsUrl: '',                                             httpUrl: '',                                      model: '' },
+  { value: 'melo-tts',       label: 'MeloTTS（本地）',      desc: '本地中英双语合成，轻量极速',      providerId: '',               wsUrl: '',                                             httpUrl: '',                                      model: '' },
+  { value: 'piper-zh',       label: 'Piper（本地）',        desc: '本地中文合成，资源消耗最低',      providerId: '',               wsUrl: '',                                             httpUrl: '',                                      model: '' },
+  { value: 'cosyvoice',      label: 'CosyVoice（本地）',    desc: '本地零成本合成，情感表达丰富',    providerId: '',               wsUrl: '',                                             httpUrl: '',                                      model: '' },
+  { value: 'fish-speech',    label: 'Fish Speech（本地）',  desc: '本地开源合成，音色可定制',        providerId: '',               wsUrl: '',                                             httpUrl: '',                                      model: '' },
+  { value: 'volcengine-tts', label: '火山 TTS（云端）',     desc: '云端低延迟，大厂品质保证',        providerId: 'volcano_engine', wsUrl: 'wss://openspeech.bytedance.com/api/v3/tts/bidirection', httpUrl: '',                             model: 'seed-tts-2.0' },
+  { value: 'azure',          label: 'Azure TTS',            desc: '微软神经网络，多语言自然语音',    providerId: '',               wsUrl: '',                                             httpUrl: '',                                      model: '' },
 ];
 
 const EDGE_VOICES = [
@@ -333,7 +333,7 @@ function TtsFields({ p, set, usedProviders, errors, modelState }: {
 
   const updateTtsProvider = (val: string) => {
     const info = TTS_PROVIDERS.find(tp => tp.value === val);
-    if (info) set({ Name: info.label, APIUrl: '', Model: '' });
+    if (info) set({ Name: info.label, APIUrl: info.wsUrl, TtsHttpUrl: info.httpUrl, Model: info.model });
   };
   const availableTtsProviders = TTS_PROVIDERS.filter(tp =>
     !usedProviders.some(name => name.includes(tp.label.split('（')[0]))
@@ -384,12 +384,21 @@ function TtsFields({ p, set, usedProviders, errors, modelState }: {
       )}
 
       {isCloud && (
-        <div>
-          <label className="text-[11px] text-gray-500 mb-1.5 block">API URL <span className="text-red-400">*</span></label>
+        <div className="space-y-2">
+          <div>
+          <label className="text-[11px] text-gray-500 mb-1.5 block">WSS URL <span className="text-red-400">*</span></label>
           <Input mono value={p.APIUrl} onChange={e => set({ APIUrl: e.target.value })}
             className={`w-full h-9${errors['APIUrl'] ? ' ring-2 ring-red-400/60 border-red-400' : ''}`}
-            placeholder="https://api.example.com/v1" />
-          {errors['APIUrl'] && <p className="text-[10px] text-red-400 mt-0.5">必填</p>}
+            placeholder="wss://api.example.com/ws/v1/t2a_v2" />
+          </div>
+          <div>
+            <label className="text-[11px] text-gray-500 mb-1.5 block">HTTPS URL（实时弹幕优先）</label>
+            <Input mono value={p.TtsHttpUrl ?? ''} onChange={e => set({ TtsHttpUrl: e.target.value })}
+              className="w-full h-9"
+              placeholder="https://api.example.com/v1/t2a_v2" />
+          </div>
+          {errors['APIUrl'] && <p className="text-[10px] text-red-400 mt-0.5">WSS URL 必填</p>}
+          <p className="text-[10px] text-gray-400">语音陪伴使用 WSS；实时弹幕播报优先使用 HTTPS，未填 HTTPS 时回退 WSS。</p>
         </div>
       )}
       {isCloud && (
@@ -580,7 +589,7 @@ function getProviderWarnings(p: AiProvider, config: AppConfig, modelState: Recor
   if (type === 'llm' && !p.APIKey.trim()) warnings.push('缺少 API Key');
   if (type === 'asr' && p.Model === 'sensevoice' && !modelState.sensevoice) warnings.push('SenseVoice 模型未下载');
   if (type === 'asr' && p.Model !== 'sensevoice' && !p.APIUrl.trim()) warnings.push('未配置 WebSocket 地址');
-  if (type === 'tts' && !p.Name.includes('Edge') && !p.Name.includes('本地') && !p.APIUrl.trim()) warnings.push('未配置 API URL');
+  if (type === 'tts' && !p.Name.includes('Edge') && !p.Name.includes('本地') && !p.APIUrl.trim()) warnings.push('未配置 WSS 地址');
   if (type === 'tts' && !p.Name.includes('Edge') && !p.Name.includes('本地') && !p.APIKey.trim()) warnings.push('缺少 API Key');
   if (type === 'tts') {
     const sherpa = SHERPA_LOCAL_TTS.find(s => p.Name.includes(s.nameKey));
@@ -855,13 +864,13 @@ function PipelineView({
 function blankProvider(type: ProviderType, nth: number): AiProvider {
   if (type === 'asr') {
     const def = ASR_PROVIDERS[0];
-    return { Id: `asr-${Date.now()}`, ProviderType: 'asr', Name: def.label, Model: def.value, APIUrl: def.wsUrl, APIKey: '', SystemPrompt: '', TriggerCommand: 'zh', FuzzyMatch: false, Nickname: `ASR${nth}`, Enabled: true };
+    return { Id: `asr-${Date.now()}`, ProviderType: 'asr', Name: def.label, Model: def.value, APIUrl: def.wsUrl, TtsHttpUrl: '', APIKey: '', SystemPrompt: '', TriggerCommand: 'zh', FuzzyMatch: false, Nickname: `ASR${nth}`, Enabled: true };
   }
   if (type === 'tts') {
-    return { Id: `tts-${Date.now()}`, ProviderType: 'tts', Name: 'Edge TTS（免费）', Model: 'zh-CN-XiaoxiaoNeural', APIUrl: '', APIKey: '', SystemPrompt: '', TriggerCommand: '1.0', FuzzyMatch: false, Nickname: `TTS${nth}`, Enabled: true };
+    return { Id: `tts-${Date.now()}`, ProviderType: 'tts', Name: 'Edge TTS（免费）', Model: 'zh-CN-XiaoxiaoNeural', APIUrl: '', TtsHttpUrl: '', APIKey: '', SystemPrompt: '', TriggerCommand: '1.0', FuzzyMatch: false, Nickname: `TTS${nth}`, Enabled: true };
   }
   const def = LLM_PROVIDERS[0];
-  return { Id: `llm-${Date.now()}`, ProviderType: 'llm', Name: def.label, Model: def.model, APIUrl: def.apiUrl, APIKey: '', SystemPrompt: '', TriggerCommand: '', FuzzyMatch: false, Nickname: '', Enabled: true };
+  return { Id: `llm-${Date.now()}`, ProviderType: 'llm', Name: def.label, Model: def.model, APIUrl: def.apiUrl, TtsHttpUrl: '', APIKey: '', SystemPrompt: '', TriggerCommand: '', FuzzyMatch: false, Nickname: '', Enabled: true };
 }
 
 // ── 主组件 ─────────────────────────────────────────────────────────────────────

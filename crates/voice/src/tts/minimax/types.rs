@@ -489,9 +489,16 @@ impl BaseResponse {
 
     /// 获取错误信息
     pub fn error_message(&self) -> String {
-        match &self.status_msg {
+        let message = match &self.status_msg {
             Some(msg) => format!("状态码 {}: {}", self.status_code, msg),
             None => format!("状态码: {}", self.status_code),
+        };
+        if self.status_code == 2056 {
+            format!(
+                "{message}。MiniMax 返回的是 Token Plan 配额限制；如果平台 Playground 正常，请检查本地配置的 API Key 是否和 Playground 使用的是同一个接口密钥。"
+            )
+        } else {
+            message
         }
     }
 }

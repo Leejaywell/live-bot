@@ -228,18 +228,20 @@ async fn flush(
 /// AI 回复专用 flush：对每条文本检测情绪并附加 prosody 参数
 async fn flush_ai(session: &VoiceSession, queue: &mut VecDeque<String>, engine: &TtsEngine) {
     while let Some(text) = queue.pop_front() {
-        let prosody = detect_prosody(&text);
         let mut req = SpeakRequest::new(text)
             .with_engine(engine.clone())
             .with_priority(PRIORITY_AI);
-        if let Some(rate) = prosody.rate {
-            req = req.with_rate(rate);
-        }
-        if let Some(pitch) = prosody.pitch {
-            req = req.with_pitch(pitch);
-        }
-        if let Some(volume) = prosody.volume {
-            req = req.with_volume(volume);
+        if matches!(engine, TtsEngine::Edge) {
+            let prosody = detect_prosody(&req.text);
+            if let Some(rate) = prosody.rate {
+                req = req.with_rate(rate);
+            }
+            if let Some(pitch) = prosody.pitch {
+                req = req.with_pitch(pitch);
+            }
+            if let Some(volume) = prosody.volume {
+                req = req.with_volume(volume);
+            }
         }
         if session.speak(req).await.is_err() {
             break;

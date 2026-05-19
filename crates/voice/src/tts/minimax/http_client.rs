@@ -219,6 +219,8 @@ impl MiniMaxHttpTtsClient {
             .as_deref()
             .map(|s| normalize_minimax_lang(Some(s)));
 
+        let output_sample_rate = requested_sample_rate(&audio_setting);
+
         let request_body = HttpTtsRequest {
             model,
             text: text.to_string(),
@@ -297,13 +299,24 @@ impl MiniMaxHttpTtsClient {
                         debug!("MiniMax HTTP 收到音频块: status={}, bytes={}, final={}", status, audio_bytes.len(), is_final);
 
                         // 🔧 通过 exclude_aggregated_audio=true，API 已确保不会重复发送拼接音频
-                        // 使用从 voice_library 获取的增益值，MiniMax 输出 44100Hz
-                        let chunk = AudioChunk::new_with_gain(audio_bytes, sequence_id, is_final, gain_db);
+                        let chunk = AudioChunk::new_with_gain_and_sample_rate(
+                            audio_bytes,
+                            sequence_id,
+                            is_final,
+                            gain_db,
+                            output_sample_rate,
+                        );
                         sequence_id = sequence_id.saturating_add(1);
                         yield chunk;
                     } else if status == 2 {
                         debug!("MiniMax HTTP 收到最终块但无音频数据，补发空控制块");
-                        let chunk = AudioChunk::new_with_gain(Vec::new(), sequence_id, true, gain_db);
+                        let chunk = AudioChunk::new_with_gain_and_sample_rate(
+                            Vec::new(),
+                            sequence_id,
+                            true,
+                            gain_db,
+                            output_sample_rate,
+                        );
                         sequence_id = sequence_id.saturating_add(1);
                         yield chunk;
                     }
@@ -321,8 +334,143 @@ impl MiniMaxHttpTtsClient {
 
             // 为了保持与 WS 客户端一致，追加 session 级别的 final 控制块
             debug!("MiniMax HTTP 补发会话级 final 控制块");
-            let final_chunk = AudioChunk::new_with_gain(Vec::new(), u64::MAX, true, gain_db);
+            let final_chunk = AudioChunk::new_with_gain_and_sample_rate(
+                Vec::new(),
+                u64::MAX,
+                true,
+                gain_db,
+                output_sample_rate,
+            );
             yield final_chunk;
+        };
+
+        Ok(Box::pin(stream))
+    }
+
+    /// 直接使用调用方提供的 API Key 与 voice_id 通过 HTTP 合成。
+    #[allow(clippy::too_many_arguments)]
+    pub async fn synthesize_direct(
+        &self,
+        api_key: &str,
+        voice_id: &str,
+        model: &str,
+        text: &str,
+        voice_setting: Option<VoiceSetting>,
+        audio_setting: Option<AudioSetting>,
+        options: MiniMaxHttpOptions,
+    ) -> Result<
+        Pin<Box<dyn Stream<Item = Result<AudioChunk, MiniMaxError>> + Send + '_>>,
+        MiniMaxError,
+    > {
+        if text.trim().is_empty() {
+            return Err(MiniMaxError::Config("文本内容不能为空".to_string()));
+        }
+        if api_key.trim().is_empty() {
+            return Err(MiniMaxError::Config("MiniMax API Key 不能为空".to_string()));
+        }
+        if voice_id.trim().is_empty() {
+            return Err(MiniMaxError::Config(
+                "MiniMax voice_id 不能为空".to_string(),
+            ));
+        }
+
+        let mut voice_setting = voice_setting.unwrap_or_default();
+        voice_setting.voice_id = Some(voice_id.to_string());
+
+        let stream_options = if options.exclude_aggregated_audio.is_some() {
+            Some(StreamOptions {
+                exclude_aggregated_audio: options.exclude_aggregated_audio,
+            })
+        } else {
+            None
+        };
+
+        let output_sample_rate = requested_sample_rate(&audio_setting);
+
+        let request_body = HttpTtsRequest {
+            model: if model.trim().is_empty() {
+                self.config.model.clone()
+            } else {
+                model.to_string()
+            },
+            text: text.to_string(),
+            stream: options.stream,
+            voice_setting,
+            audio_setting,
+            pronunciation_dict: None,
+            timbre_weights: None,
+            language_boost: None,
+            voice_modify: options.voice_modify,
+            subtitle_enable: options.subtitle_enable,
+            output_format: options.output_format,
+            aigc_watermark: options.aigc_watermark,
+            stream_options,
+        };
+
+        let mut headers = HeaderMap::new();
+        headers.insert(CONTENT_TYPE, HeaderValue::from_static("application/json"));
+        headers.insert(
+            "Authorization",
+            HeaderValue::from_str(&format!("Bearer {}", api_key))
+                .map_err(|err| MiniMaxError::Auth(err.to_string()))?,
+        );
+
+        let response = self
+            .http_client
+            .post(&self.config.http_url)
+            .headers(headers)
+            .json(&request_body)
+            .timeout(self.config.timeout())
+            .send()
+            .await?
+            .error_for_status()?;
+
+        let body_text = response.text().await?;
+        let response_items = parse_http_response_items(&body_text)?;
+
+        let stream = try_stream! {
+            let mut sequence_id: u64 = 0;
+
+            for item in response_items {
+                if !item.base_resp.is_success() {
+                    let message = item.base_resp.error_message();
+                    warn!("MiniMax HTTP direct 音频块返回错误: {}", message);
+                    Err(MiniMaxError::Api(message))?;
+                }
+
+                if let Some(data) = item.data {
+                    let status = data.status.unwrap_or_default();
+                    if let Some(audio_hex) = data.audio {
+                        let audio_bytes = decode_hex_audio(&audio_hex)?;
+                        let is_final = status == 2;
+                        yield AudioChunk::new_with_gain_and_sample_rate(
+                            audio_bytes,
+                            sequence_id,
+                            is_final,
+                            0.0,
+                            output_sample_rate,
+                        );
+                        sequence_id = sequence_id.saturating_add(1);
+                    } else if status == 2 {
+                        yield AudioChunk::new_with_gain_and_sample_rate(
+                            Vec::new(),
+                            sequence_id,
+                            true,
+                            0.0,
+                            output_sample_rate,
+                        );
+                        sequence_id = sequence_id.saturating_add(1);
+                    }
+                }
+            }
+
+            yield AudioChunk::new_with_gain_and_sample_rate(
+                Vec::new(),
+                u64::MAX,
+                true,
+                0.0,
+                output_sample_rate,
+            );
         };
 
         Ok(Box::pin(stream))
@@ -421,6 +569,14 @@ impl MiniMaxHttpTtsClient {
         info!("🔥 MiniMax 连接并发预热完成");
         Ok(())
     }
+}
+
+fn requested_sample_rate(audio_setting: &Option<AudioSetting>) -> u32 {
+    audio_setting
+        .as_ref()
+        .and_then(|setting| setting.sample_rate)
+        .or_else(|| AudioSetting::default().sample_rate)
+        .unwrap_or(44100)
 }
 
 fn decode_hex_audio(hex_str: &str) -> Result<Vec<u8>, MiniMaxError> {
@@ -550,4 +706,26 @@ struct HttpTtsResponseData {
     audio: Option<String>,
     #[serde(default)]
     status: Option<i32>,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn requested_sample_rate_uses_declared_audio_setting() {
+        let audio_setting = Some(AudioSetting {
+            sample_rate: Some(24000),
+            bitrate: None,
+            format: Some("pcm".to_string()),
+            channel: Some(1),
+        });
+
+        assert_eq!(requested_sample_rate(&audio_setting), 24000);
+    }
+
+    #[test]
+    fn requested_sample_rate_falls_back_to_default() {
+        assert_eq!(requested_sample_rate(&None), 44100);
+    }
 }

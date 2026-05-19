@@ -6,6 +6,8 @@ import {
 } from 'lucide-react';
 import { GlassCard } from '../components/GlassCard';
 import { api, type KnownUser } from '../lib/api';
+import { VoicePicker } from '../components/VoicePicker';
+import { availableProviders, detectProvider, findVoice, PROVIDER_META, type TtsProvider } from '../lib/voices';
 import { toast } from 'sonner';
 
 const AVATAR_COLORS = [
@@ -130,7 +132,7 @@ function RestorePrompt({ existing, newAlias, newNotes, onRestore, onCancel }: Re
 
 // ── main page ────────────────────────────────────────────────────────────────
 
-interface EditState { uid: number; alias: string; notes: string }
+interface EditState { uid: number; alias: string; notes: string; ttsProviderId: string; ttsVoiceId: string }
 interface AddState { uid: string; alias: string; notes: string }
 interface DeleteTarget { user: KnownUser }
 interface RestoreTarget { existing: { nickname: string; alias: string; notes: string }; newAlias: string; newNotes: string; uid: number }
@@ -147,6 +149,8 @@ export function Audience() {
   const [sortAsc, setSortAsc] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState<DeleteTarget | null>(null);
   const [restoreTarget, setRestoreTarget] = useState<RestoreTarget | null>(null);
+  const [voiceOpen, setVoiceOpen] = useState(false);
+  const [ttsProviders, setTtsProviders] = useState<Awaited<ReturnType<typeof api.loadConfig>>['AiProviders']>([]);
   const aliasInputRef = useRef<HTMLInputElement>(null);
 
   const load = async () => {
@@ -160,6 +164,11 @@ export function Audience() {
   };
 
   useEffect(() => { load(); }, []);
+  useEffect(() => {
+    api.loadConfig()
+      .then(c => setTtsProviders((c.AiProviders ?? []).filter(p => p.ProviderType === 'tts' && p.Enabled)))
+      .catch(console.error);
+  }, []);
   useEffect(() => { if (editing) setTimeout(() => aliasInputRef.current?.focus(), 50); }, [editing]);
 
   const filtered = useMemo(() => {
@@ -181,6 +190,19 @@ export function Audience() {
   }, [users, search, sortKey, sortAsc]);
 
   const aliasCount = users.filter(u => u.alias).length;
+  const voiceProviders = useMemo(() => availableProviders(ttsProviders.map(p => p.Name)), [ttsProviders]);
+
+  const providerIdForVoice = (provider: TtsProvider) =>
+    ttsProviders.find(p => detectProvider(p.Name) === provider)?.Id ?? '';
+
+  const voiceLabel = (providerId: string, voiceId: string) => {
+    if (!voiceId) return '默认';
+    const provider = ttsProviders.find(p => p.Id === providerId);
+    const providerKey = provider ? detectProvider(provider.Name) : null;
+    const voice = providerKey ? findVoice(providerKey, voiceId) : undefined;
+    const providerName = providerKey ? PROVIDER_META[providerKey].label : (provider?.Name || providerId);
+    return voice ? `${voice.name} · ${providerName}` : `${voiceId} · ${providerName || '未知服务'}`;
+  };
 
   const handleSort = (key: typeof sortKey) => {
     if (sortKey === key) setSortAsc(a => !a);
@@ -192,7 +214,14 @@ export function Audience() {
     if (!editing) return;
     try {
       await api.updateTrackedUser(editing.uid, editing.alias, editing.notes);
-      setUsers(prev => prev.map(u => u.uid === editing.uid ? { ...u, alias: editing.alias, notes: editing.notes } : u));
+      await api.updateTrackedUserTtsVoice(editing.uid, editing.ttsProviderId, editing.ttsVoiceId);
+      setUsers(prev => prev.map(u => u.uid === editing.uid ? {
+        ...u,
+        alias: editing.alias,
+        notes: editing.notes,
+        tts_provider_id: editing.ttsProviderId,
+        tts_voice_id: editing.ttsVoiceId,
+      } : u));
       setEditing(null);
       toast.success('已保存');
     } catch (e) { toast.error(`保存失败: ${e}`); }
@@ -357,11 +386,12 @@ export function Audience() {
 
       {/* table */}
       <GlassCard className="overflow-hidden">
-        <div className="grid grid-cols-[auto_1fr_1fr_80px_80px_80px_64px] gap-4 items-center
+        <div className="grid grid-cols-[auto_1fr_1fr_1fr_80px_80px_80px_64px] gap-4 items-center
                         px-4 py-2.5 border-b border-black/5 dark:border-white/5">
           <div className="w-8" />
           <span className="text-[10px] font-black uppercase tracking-wider text-gray-400">昵称 / 别名</span>
           <span className="text-[10px] font-black uppercase tracking-wider text-gray-400">备注</span>
+          <span className="text-[10px] font-black uppercase tracking-wider text-gray-400">播报音色</span>
           <SortBtn col="danmu_count" label="弹幕" />
           <SortBtn col="gift_value" label="礼物" />
           <SortBtn col="last_seen" label="最近" />
@@ -382,7 +412,7 @@ export function Audience() {
           return (
             <div
               key={user.uid}
-              className="grid grid-cols-[auto_1fr_1fr_80px_80px_80px_64px] gap-4 items-center
+              className="grid grid-cols-[auto_1fr_1fr_1fr_80px_80px_80px_64px] gap-4 items-center
                          px-4 py-3 border-b border-black/4 dark:border-white/4 last:border-0
                          hover:bg-black/2 dark:hover:bg-white/2 transition-colors group"
             >
@@ -438,6 +468,40 @@ export function Audience() {
                 )}
               </div>
 
+              {/* tts */}
+              <div className="min-w-0">
+                {isEditing ? (
+                  <div className="flex items-center gap-1">
+                    <button
+                      type="button"
+                      onClick={() => setVoiceOpen(true)}
+                      className="min-w-0 flex-1 px-2 py-1 rounded-lg border border-[var(--primary-color)]/30
+                                 bg-white/80 dark:bg-white/10 text-left text-[11px] truncate hover:bg-[var(--primary-color)]/5"
+                    >
+                      {voiceLabel(editing.ttsProviderId, editing.ttsVoiceId)}
+                    </button>
+                    {(editing.ttsProviderId || editing.ttsVoiceId) && (
+                      <button
+                        type="button"
+                        onClick={() => setEditing(s => s && { ...s, ttsProviderId: '', ttsVoiceId: '' })}
+                        className="w-6 h-6 rounded-lg flex items-center justify-center text-gray-400 hover:bg-black/5 dark:hover:bg-white/10"
+                        title="使用默认播报音色"
+                      >
+                        <X className="w-3.5 h-3.5" />
+                      </button>
+                    )}
+                  </div>
+                ) : (
+                  <div className="text-[10px] text-gray-400 truncate">
+                    {user.tts_provider_id && user.tts_voice_id ? (
+                      <div className="truncate font-bold text-gray-500 dark:text-gray-300">
+                        {voiceLabel(user.tts_provider_id, user.tts_voice_id)}
+                      </div>
+                    ) : '默认'}
+                  </div>
+                )}
+              </div>
+
               {/* danmu */}
               <div className="flex items-center gap-1 text-[12px] font-bold text-gray-600 dark:text-gray-300">
                 <MessageSquare className="w-3 h-3 text-gray-400 shrink-0" />
@@ -480,7 +544,13 @@ export function Audience() {
                 ) : (
                   <>
                     <button
-                      onClick={() => setEditing({ uid: user.uid, alias: user.alias, notes: user.notes })}
+                      onClick={() => setEditing({
+                        uid: user.uid,
+                        alias: user.alias,
+                        notes: user.notes,
+                        ttsProviderId: user.tts_provider_id,
+                        ttsVoiceId: user.tts_voice_id,
+                      })}
                       className="w-6 h-6 rounded-lg flex items-center justify-center opacity-0 group-hover:opacity-100
                                  text-gray-400 hover:text-[var(--primary-color)] hover:bg-[var(--primary-color)]/10 transition-all"
                     >
@@ -500,6 +570,16 @@ export function Audience() {
           );
         })}
       </GlassCard>
+      <VoicePicker
+        open={voiceOpen}
+        onClose={() => setVoiceOpen(false)}
+        providers={voiceProviders}
+        currentVoice={editing?.ttsVoiceId || ''}
+        onSelect={(voiceId, provider) => {
+          const providerId = providerIdForVoice(provider);
+          setEditing(s => s && { ...s, ttsProviderId: providerId, ttsVoiceId: voiceId });
+        }}
+      />
     </div>
   );
 }

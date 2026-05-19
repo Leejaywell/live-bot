@@ -13,7 +13,7 @@ use std::pin::Pin;
 
 use async_stream::try_stream;
 use futures_util::{SinkExt, Stream, StreamExt};
-use tokio_tungstenite::tungstenite::Message;
+use tokio_tungstenite::tungstenite::{Message, client::IntoClientRequest};
 use tracing::{debug, warn};
 
 use super::AudioChunk;
@@ -91,11 +91,16 @@ impl MiniMaxWsTtsClient {
 
         let stream = try_stream! {
             // 1. 建立 WebSocket 连接
-            let request = tokio_tungstenite::tungstenite::http::Request::builder()
-                .uri(&ws_url)
-                .header("Authorization", format!("Bearer {}", api_key))
-                .body(())
+            let mut request = ws_url
+                .as_str()
+                .into_client_request()
                 .map_err(|e| MiniMaxError::WebSocket(format!("构建请求失败: {e}")))?;
+            request.headers_mut().insert(
+                "Authorization",
+                format!("Bearer {}", api_key)
+                    .parse()
+                    .map_err(|e| MiniMaxError::Auth(format!("Authorization header 无效: {e}")))?,
+            );
 
             let (ws_stream, _) = tokio_tungstenite::connect_async(request)
                 .await
@@ -332,11 +337,16 @@ impl MiniMaxWsTtsClient {
         let api_key = api_key.to_string();
 
         let stream = try_stream! {
-            let request = tokio_tungstenite::tungstenite::http::Request::builder()
-                .uri(&ws_url)
-                .header("Authorization", format!("Bearer {}", api_key))
-                .body(())
+            let mut request = ws_url
+                .as_str()
+                .into_client_request()
                 .map_err(|e| MiniMaxError::WebSocket(format!("构建请求失败: {e}")))?;
+            request.headers_mut().insert(
+                "Authorization",
+                format!("Bearer {}", api_key)
+                    .parse()
+                    .map_err(|e| MiniMaxError::Auth(format!("Authorization header 无效: {e}")))?,
+            );
 
             let (ws_stream, _) = tokio_tungstenite::connect_async(request)
                 .await

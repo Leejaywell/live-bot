@@ -371,6 +371,86 @@ impl EdgeTtsClient {
 
         Ok(Box::pin(stream))
     }
+
+    /// 可靠性优先的合成路径：收齐全部 MP3 后一次性解码，避免增量解码在 chunk 边界吞字。
+    pub async fn synthesize_buffered(
+        &self,
+        text: &str,
+        voice: Option<&str>,
+    ) -> Result<AudioChunk, EdgeTtsError> {
+        let voice = voice.unwrap_or(&self.config.default_voice).to_string();
+        let text = text.to_string();
+        let config = self.config.clone();
+        let request_id = Uuid::new_v4().to_string().replace("-", "");
+
+        info!(voice = %voice, text_len = text.len(), "Edge TTS 开始 buffered 合成");
+
+        let PrewarmedConnection {
+            mut writer,
+            mut reader,
+            ..
+        } = self.get_connection().await?;
+
+        let ssml_msg = build_ssml_message(
+            &request_id,
+            &voice,
+            &text,
+            config.rate.as_deref(),
+            config.pitch.as_deref(),
+            config.volume.as_deref(),
+        );
+        writer
+            .send(Message::Text(ssml_msg.into()))
+            .await
+            .map_err(|e| EdgeTtsError::WebSocket(format!("发送 SSML 失败: {}", e)))?;
+
+        let mut mp3 = Vec::new();
+        while let Some(msg_result) = reader.next().await {
+            match msg_result {
+                Ok(Message::Binary(data)) => {
+                    if let Some(audio_data) = extract_audio_data(&data) {
+                        mp3.extend_from_slice(&audio_data);
+                    }
+                }
+                Ok(Message::Text(text)) => {
+                    if text.contains("Path:turn.end") {
+                        break;
+                    }
+                }
+                Ok(Message::Close(_)) => break,
+                Err(e) => return Err(EdgeTtsError::WebSocket(e.to_string())),
+                _ => {}
+            }
+        }
+
+        if mp3.is_empty() {
+            return Ok(AudioChunk::new_with_sample_rate(
+                Vec::new(),
+                0,
+                true,
+                SAMPLE_RATE_16000,
+            ));
+        }
+
+        let mut decoder = Mp3Decoder::new();
+        let pcm = decoder.decode_all(&mp3)?;
+        let sample_rate = decoder.sample_rate().unwrap_or(24000);
+        let resampled = resample_to_16k(&pcm, sample_rate);
+        info!(
+            mp3_bytes = mp3.len(),
+            pcm_bytes = pcm.len(),
+            resampled_bytes = resampled.len(),
+            sample_rate,
+            "Edge TTS buffered 合成完成"
+        );
+
+        Ok(AudioChunk::new_with_sample_rate(
+            resampled,
+            0,
+            true,
+            SAMPLE_RATE_16000,
+        ))
+    }
 }
 
 /// 构建配置消息
@@ -397,6 +477,7 @@ fn build_ssml_message(
     let timestamp = Utc::now().format("%Y-%m-%dT%H:%M:%S%.3fZ");
 
     let escaped_text = html_escape::encode_text(text);
+    let lang = edge_voice_lang(voice);
 
     let rate_attr = rate.map(|r| format!(" rate=\"{}\"", r)).unwrap_or_default();
     let pitch_attr = pitch
@@ -420,27 +501,26 @@ fn build_ssml_message(
          Content-Type:application/ssml+xml\r\n\
          X-Timestamp:{}\r\n\
          Path:ssml\r\n\r\n\
-         <speak version='1.0' xmlns='http://www.w3.org/2001/10/synthesis' xml:lang='en-US'>\
+         <speak version='1.0' xmlns='http://www.w3.org/2001/10/synthesis' xml:lang='{}'>\
          <voice name='{}'>{}</voice></speak>",
-        request_id, timestamp, voice, content
+        request_id, timestamp, lang, voice, content
     )
+}
+
+fn edge_voice_lang(voice: &str) -> &str {
+    let mut parts = voice.split('-');
+    match (parts.next(), parts.next()) {
+        (Some(language), Some(region)) if language.len() == 2 && region.len() == 2 => {
+            &voice[..language.len() + 1 + region.len()]
+        }
+        _ => "zh-CN",
+    }
 }
 
 /// 从二进制消息中提取音频数据
 fn extract_audio_data(data: &[u8]) -> Option<Vec<u8>> {
     if data.len() < 2 {
         return None;
-    }
-
-    let header_marker = b"Path:audio\r\n";
-    if let Some(pos) = data
-        .windows(header_marker.len())
-        .position(|w| w == header_marker)
-    {
-        let after_header = &data[pos + header_marker.len()..];
-        if let Some(body_start) = after_header.windows(2).position(|w| w == b"\r\n") {
-            return Some(after_header[body_start + 2..].to_vec());
-        }
     }
 
     let header_len = u16::from_be_bytes([data[0], data[1]]) as usize;
@@ -450,6 +530,20 @@ fn extract_audio_data(data: &[u8]) -> Option<Vec<u8>> {
             if header_str.contains("Path:audio") {
                 return Some(data[2 + header_len..].to_vec());
             }
+        }
+    }
+
+    let header_marker = b"Path:audio\r\n";
+    if let Some(pos) = data
+        .windows(header_marker.len())
+        .position(|w| w == header_marker)
+    {
+        let after_marker = &data[pos + header_marker.len()..];
+        if let Some(body_start) = after_marker.windows(4).position(|w| w == b"\r\n\r\n") {
+            return Some(after_marker[body_start + 4..].to_vec());
+        }
+        if let Some(body_start) = after_marker.windows(2).position(|w| w == b"\r\n") {
+            return Some(after_marker[body_start + 2..].to_vec());
         }
     }
 
@@ -499,6 +593,18 @@ mod tests {
 
         let audio = extract_audio_data(&data);
         assert!(audio.is_some());
+        assert_eq!(audio.unwrap(), b"MP3_AUDIO_DATA");
+    }
+
+    #[test]
+    fn test_extract_audio_data_prefers_length_prefixed_header() {
+        let header = b"Path:audio\r\nX-RequestId:test\r\nContent-Type:audio/mpeg\r\n\r\n";
+        let mut data = Vec::new();
+        data.extend_from_slice(&(header.len() as u16).to_be_bytes());
+        data.extend_from_slice(header);
+        data.extend_from_slice(b"MP3_AUDIO_DATA");
+
+        let audio = extract_audio_data(&data);
         assert_eq!(audio.unwrap(), b"MP3_AUDIO_DATA");
     }
 }

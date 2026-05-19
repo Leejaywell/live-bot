@@ -193,6 +193,12 @@ impl Mp3Decoder {
 
         Ok(pcm_output)
     }
+
+    /// 一次性解码完整 MP3 数据。用于可靠性优先的 fallback 路径，避免增量 chunk 边界丢帧。
+    pub fn decode_all(&mut self, mp3_data: &[u8]) -> Result<Vec<u8>, EdgeTtsError> {
+        self.buffer.extend_from_slice(mp3_data);
+        self.flush()
+    }
 }
 
 impl Default for Mp3Decoder {

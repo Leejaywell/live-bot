@@ -6,6 +6,7 @@ build = "build.rs"
 
 [workspace]
 members = ["crates/bilibili-live-protocol", "crates/voice"]
+exclude = ["third_party/RealtimeAPI/server"]
 
 [dependencies]
 anyhow = "1.0.100"

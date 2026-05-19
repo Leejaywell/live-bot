@@ -33,6 +33,7 @@ interface LogEntry {
   id: number;
   type: LogType;
   text: string;
+  uid?: number;
   user?: string;
   content?: string;
   time: string;
@@ -67,6 +68,9 @@ function parseMonitorLog(text: string): LogEntry | null {
   if (text.startsWith('禁言 ') || text.startsWith('PK ') || text.startsWith('红包 ') || text.startsWith('天选 ')) {
     return { id, type: 'other', text, time };
   }
+  if (text.startsWith('[TTS警告]') || text.startsWith('[TTS错误]')) {
+    return { id, type: 'other', text, time };
+  }
   if (text.startsWith('人气 ')) return null;
   return { id, type: 'system', text, time };
 }
@@ -86,13 +90,14 @@ const SPEECH_DEDUP_MS = 1800;
 const ENTRY_DEDUP_MS = 2500;
 
 function buildDanmuSpeechText(user?: string, content?: string): string | null {
+  const safeUser = user?.replace(/\s+/g, ' ').trim();
   const safeContent = content
     ?.replace(/\s+/g, ' ')
     .replace(/[~～]+/g, '。')
     .trim();
-  if (!user?.trim() || !safeContent) return null;
+  if (!safeUser || !safeContent) return null;
   const normalized = /[。！？!?]$/.test(safeContent) ? safeContent : `${safeContent}。`;
-  return normalized;
+  return `${safeUser}说，${normalized}`;
 }
 
 export function Danmu() {
@@ -126,6 +131,7 @@ export function Danmu() {
   const [voiceOpen, setVoiceOpen] = useState(false);
   const spokenRef = useRef<Map<string, number>>(new Map());
   const seenEntriesRef = useRef<Map<string, number>>(new Map());
+  const profileByUidRef = useRef<Map<number, { providerId: string; voiceId: string; displayName: string }>>(new Map());
 
   // Keep refs in sync with state; auto-scroll and clear badge on resume
   useEffect(() => {
@@ -145,6 +151,18 @@ export function Danmu() {
       setConfig(c);
       const enabled = (c.AiProviders ?? []).filter(p => p.ProviderType === 'tts' && p.Enabled);
       setTtsProviders(enabled);
+      api.getTrackedUsers(1000)
+        .then(users => {
+          profileByUidRef.current = new Map(users.map(u => [
+            u.uid,
+            {
+              providerId: u.tts_provider_id,
+              voiceId: u.tts_voice_id,
+              displayName: u.alias || u.nickname,
+            },
+          ]));
+        })
+        .catch(console.error);
       const saved = c.DanmuAnnounceTtsProviderId && enabled.find(p => p.Id === c.DanmuAnnounceTtsProviderId);
       setTtsProviderId(saved ? saved.Id : (enabled[0]?.Id ?? ''));
       if (!ttsVoice) {
@@ -173,7 +191,9 @@ export function Danmu() {
 
   const speakDanmu = useCallback((entry: LogEntry) => {
     if (!isTtsEnabledRef.current || !ttsVoiceRef.current || entry.type !== 'danmu') return;
-    const text = buildDanmuSpeechText(entry.user, entry.content);
+    const profile = entry.uid ? profileByUidRef.current.get(entry.uid) : undefined;
+    const speakerName = profile?.displayName || entry.user;
+    const text = buildDanmuSpeechText(speakerName, entry.content);
     if (!text) return;
 
     const now = Date.now();
@@ -185,13 +205,15 @@ export function Danmu() {
     if (lastSpokenAt && now - lastSpokenAt < SPEECH_DEDUP_MS) return;
     spokenRef.current.set(dedupKey, now);
 
-    const currentProviderId = ttsProviderId && ttsProviders.some(p => p.Id === ttsProviderId)
+    const currentProviderId = profile?.providerId
+      || (ttsProviderId && ttsProviders.some(p => p.Id === ttsProviderId)
       ? ttsProviderId
-      : '';
+      : '');
+    const voiceId = profile?.voiceId || ttsVoiceRef.current;
 
     api.speakText(
       text,
-      ttsVoiceRef.current,
+      voiceId,
       currentProviderId || undefined,
       danmuAnnounceSpeedRef.current,
     ).catch(console.error);
@@ -258,6 +280,7 @@ export function Danmu() {
     const flushTimer = setInterval(flushLogs, 200);
 
     let unlistenLiveEvents: (() => void) | undefined;
+    let unlistenSingleLog: (() => void) | undefined;
     let unlistenLog: (() => void) | undefined;
     let unlistenStatus: (() => void) | undefined;
 
@@ -271,8 +294,11 @@ export function Danmu() {
             switch (ev.type) {
               case 'Danmu': {
                 const { user, text } = ev;
+                const uid = Number(ev.user_id ?? ev.userId ?? ev.uid ?? 0) || undefined;
                 line = `弹幕 ${user}: ${text}`;
-                break;
+                const entry = parseMonitorLog(line);
+                if (entry) pushEntry({ ...entry, uid }, true);
+                continue;
               }
               case 'Gift': {
                 const { user, gift, count } = ev;
@@ -315,6 +341,10 @@ export function Danmu() {
         };
 
         unlistenLiveEvents = await api.onLiveEvents(handleBatch);
+        unlistenSingleLog = await api.onMonitorLog((text) => {
+          const entry = parseMonitorLog(text);
+          if (entry) pushEntry(entry, true);
+        });
         unlistenLog = await api.onMonitorLogs((texts) => {
           for (const text of texts) {
             const entry = parseMonitorLog(text);
@@ -333,6 +363,7 @@ export function Danmu() {
     return () => {
       clearInterval(flushTimer);
       if (unlistenLiveEvents) unlistenLiveEvents();
+      if (unlistenSingleLog) unlistenSingleLog();
       if (unlistenLog) unlistenLog();
       if (unlistenStatus) unlistenStatus();
     };

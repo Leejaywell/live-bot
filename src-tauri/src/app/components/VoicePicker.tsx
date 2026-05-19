@@ -10,7 +10,7 @@ interface Props {
   onClose: () => void;
   providers: TtsProvider[];
   currentVoice: string;
-  onSelect: (voiceId: string) => void;
+  onSelect: (voiceId: string, provider: TtsProvider) => void;
 }
 
 export function VoicePicker({ open, onClose, providers, currentVoice, onSelect }: Props) {
@@ -109,7 +109,7 @@ export function VoicePicker({ open, onClose, providers, currentVoice, onSelect }
           ) : (
             voices.map(v => (
               <button key={v.id}
-                onClick={() => { onSelect(v.id); onClose(); }}
+                onClick={() => { onSelect(v.id, provider); onClose(); }}
                 className={cn(
                   'w-full flex items-center gap-2.5 px-3 py-2 rounded-lg text-left transition-colors hover:bg-black/5 dark:hover:bg-white/8',
                   currentVoice === v.id ? 'bg-[var(--primary-color)]/8 border border-[var(--primary-color)]/20' : 'border border-transparent',
