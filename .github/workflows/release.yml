@@ -174,6 +174,22 @@ jobs:
 
           echo "SHERPA_ONNX_LIB_DIR=${GITHUB_WORKSPACE}/${lib_dir}" >> "${GITHUB_ENV}"
 
+      - name: Stage Windows runtime DLLs for bundling
+        if: runner.os == 'Windows'
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          if [ -z "${SHERPA_ONNX_LIB_DIR:-}" ]; then
+            echo "SHERPA_ONNX_LIB_DIR is not set" >&2
+            exit 1
+          fi
+
+          runtime_dir="src-tauri/runtime-libs"
+          rm -rf "${runtime_dir}"
+          mkdir -p "${runtime_dir}"
+          cp "${SHERPA_ONNX_LIB_DIR}"/*.dll "${runtime_dir}/"
+
       - name: Build and upload (non-Windows)
         if: runner.os != 'Windows'
         uses: tauri-apps/tauri-action@v0

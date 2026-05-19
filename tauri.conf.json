@@ -45,6 +45,16 @@
       "icons/icon.icns",
       "icons/icon.ico"
     ],
-    "resources": ["src-tauri/dist/**/*"]
+    "resources": [
+      "src-tauri/dist/**/*",
+      {
+        "src-tauri/runtime-libs/*": "windows-runtime/"
+      }
+    ],
+    "windows": {
+      "nsis": {
+        "installerHooks": "./src-tauri/windows/hooks.nsh"
+      }
+    }
   }
 }
