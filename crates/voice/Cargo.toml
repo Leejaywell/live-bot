@@ -84,9 +84,6 @@ lingua = { version = "1.7", optional = true }
 # 音频播放（可选，需要系统音频设备）
 cpal = { version = "0.15", optional = true }
 
-# sherpa-onnx — SenseVoice VAD + ASR（替换 ort + Silero）
-sherpa-onnx = { version = "1.12", optional = true }
-
 # GTCRN 频域降噪（denoiser feature）
 ort = { version = "2.0.0-rc.12", optional = true }
 ndarray = { version = "0.17", optional = true }
@@ -94,3 +91,11 @@ rustfft = { version = "6", optional = true }
 
 # HuggingFace Hub 模型下载（model-hub feature）
 hf-hub = { version = "0.3", features = ["tokio"], optional = true }
+
+[target.'cfg(not(windows))'.dependencies]
+# sherpa-onnx — SenseVoice VAD + ASR（替换 ort + Silero）
+sherpa-onnx = { version = "1.12", optional = true }
+
+[target.'cfg(windows)'.dependencies]
+# Windows 下与 ort 保持 shared/MD 运行时一致，避免 CRT 冲突
+sherpa-onnx = { version = "1.12", default-features = false, features = ["shared"], optional = true }
