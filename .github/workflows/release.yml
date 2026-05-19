@@ -72,6 +72,7 @@ jobs:
             rust_targets: aarch64-apple-darwin
             args: --target aarch64-apple-darwin --bundles app,dmg
             sherpa_archive_suffix: osx-arm64-static-lib
+            sherpa_env_mode: archive
 
           # Windows x86_64
           - name: windows-x64
@@ -79,6 +80,7 @@ jobs:
             rust_targets: x86_64-pc-windows-msvc
             args: --target x86_64-pc-windows-msvc --bundles nsis
             sherpa_archive_suffix: win-x64-shared-MD-Release-lib
+            sherpa_env_mode: libdir
 
     name: Build ${{ matrix.name }}
     runs-on: ${{ matrix.platform }}
@@ -143,6 +145,35 @@ jobs:
         working-directory: src-tauri
         run: npm pkg set scripts.build="vite build"
 
+      - name: Prepare sherpa-onnx lib dir for Windows
+        if: matrix.sherpa_env_mode == 'libdir'
+        shell: bash
+        env:
+          SHERPA_ARCHIVE_SUFFIX: ${{ matrix.sherpa_archive_suffix }}
+        run: |
+          set -euo pipefail
+
+          version="$(awk '
+            $0 == "[[package]]" { in_package = 1; found = 0; next }
+            in_package && $1 == "name" && $3 == "\"sherpa-onnx-sys\"" { found = 1; next }
+            in_package && found && $1 == "version" { gsub(/"/, "", $3); print $3; exit }
+          ' Cargo.lock
+          )"
+
+          archive="sherpa-onnx-v${version}-${SHERPA_ARCHIVE_SUFFIX}.tar.bz2"
+          extract_root=".sherpa-onnx-cache/extracted"
+          rm -rf "${extract_root}"
+          mkdir -p "${extract_root}"
+          tar -xjf ".sherpa-onnx-cache/${archive}" -C "${extract_root}"
+
+          lib_dir="$(find "${extract_root}" -type d -path '*/lib' | head -n 1)"
+          if [ -z "${lib_dir}" ]; then
+            echo "Unable to locate sherpa-onnx lib directory after extracting ${archive}" >&2
+            exit 1
+          fi
+
+          echo "SHERPA_ONNX_LIB_DIR=${GITHUB_WORKSPACE}/${lib_dir}" >> "${GITHUB_ENV}"
+
       - name: Build and upload
         uses: tauri-apps/tauri-action@v0
         env:
@@ -150,6 +181,7 @@ jobs:
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
           SHERPA_ONNX_ARCHIVE_DIR: ${{ github.workspace }}/.sherpa-onnx-cache
+          SHERPA_ONNX_LIB_DIR: ${{ env.SHERPA_ONNX_LIB_DIR }}
         with:
           releaseId: ${{ needs.create-release.outputs.release_id }}
           tagName: ${{ github.ref_name }}
