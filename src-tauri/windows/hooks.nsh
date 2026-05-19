@@ -1,5 +1,5 @@
 !macro NSIS_HOOK_POSTINSTALL
-  IfFileExists "$INSTDIR\resources\windows-runtime\*.dll" 0 done
-    CopyFiles /SILENT "$INSTDIR\resources\windows-runtime\*.dll" "$INSTDIR"
+  IfFileExists "$INSTDIR\resources\src-tauri\runtime-libs\*.dll" 0 done
+    CopyFiles /SILENT "$INSTDIR\resources\src-tauri\runtime-libs\*.dll" "$INSTDIR"
   done:
 !macroend

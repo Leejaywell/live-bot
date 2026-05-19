@@ -47,9 +47,7 @@
     ],
     "resources": [
       "src-tauri/dist/**/*",
-      {
-        "src-tauri/runtime-libs/*": "windows-runtime/"
-      }
+      "src-tauri/runtime-libs/*"
     ],
     "windows": {
       "nsis": {
