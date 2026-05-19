@@ -24,10 +24,6 @@ use tokio_util::sync::CancellationToken;
 use tauri::{AppHandle, Emitter, Manager};
 
 #[cfg(feature = "tauri")]
-const MENU_FORCE_QUIT_ID: &str = "force_quit";
-#[cfg(feature = "tauri")]
-const MENU_CLOSE_MAIN_ID: &str = "close_main";
-#[cfg(feature = "tauri")]
 static MAIN_CLOSE_PROMPT_OPEN: AtomicBool = AtomicBool::new(false);
 
 #[cfg(feature = "tauri")]
@@ -3848,6 +3844,7 @@ fn main() -> Result<()> {
     let gift_storage_for_refresh = state.storage.clone();
     let gift_room_for_refresh = state.connected_room.clone();
     tauri::Builder::default()
+        .enable_macos_default_menu(false)
         .plugin(tauri_plugin_shell::init())
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_updater::Builder::new().build())
@@ -3855,50 +3852,6 @@ fn main() -> Result<()> {
         .plugin(tauri_plugin_process::init())
         .plugin(tauri_plugin_dialog::init())
         .manage(state)
-        .menu(|app| {
-            use tauri::menu::{MenuBuilder, MenuItem, PredefinedMenuItem, SubmenuBuilder};
-
-            let close = MenuItem::with_id(
-                app,
-                MENU_CLOSE_MAIN_ID,
-                "关闭窗口",
-                true,
-                Some("CmdOrCtrl+W"),
-            )?;
-            let quit = MenuItem::with_id(
-                app,
-                MENU_FORCE_QUIT_ID,
-                "退出流光",
-                true,
-                Some("CmdOrCtrl+Q"),
-            )?;
-            let app_menu = SubmenuBuilder::new(app, "流光")
-                .item(&close)
-                .item(&quit)
-                .build()?;
-            let edit_menu = SubmenuBuilder::new(app, "编辑")
-                .item(&PredefinedMenuItem::undo(app, Some("撤销"))?)
-                .item(&PredefinedMenuItem::redo(app, Some("重做"))?)
-                .separator()
-                .item(&PredefinedMenuItem::cut(app, Some("剪切"))?)
-                .item(&PredefinedMenuItem::copy(app, Some("复制"))?)
-                .item(&PredefinedMenuItem::paste(app, Some("粘贴"))?)
-                .item(&PredefinedMenuItem::select_all(app, Some("全选"))?)
-                .build()?;
-            MenuBuilder::new(app)
-                .item(&app_menu)
-                .item(&edit_menu)
-                .build()
-        })
-        .on_menu_event(|app, event| {
-            if event.id().0 == MENU_FORCE_QUIT_ID {
-                app.exit(0);
-            } else if event.id().0 == MENU_CLOSE_MAIN_ID {
-                if let Some(window) = app.get_webview_window("main") {
-                    let _ = window.close();
-                }
-            }
-        })
         .on_window_event(|window, event| {
             if window.label() != "main" {
                 return;
