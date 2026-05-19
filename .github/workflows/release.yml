@@ -56,7 +56,9 @@ jobs:
                 ref: `tags/${tag}`
               });
             } catch (error) {
-              if (error.status !== 404) {
+              const missingRef = error.status === 404 ||
+                (error.status === 422 && error.message === 'Reference does not exist');
+              if (!missingRef) {
                 throw error;
               }
             }
