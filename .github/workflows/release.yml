@@ -1,5 +1,10 @@
 name: Release
 
+env:
+  PUBLIC_RELEASE_OWNER: Leejaywell
+  PUBLIC_RELEASE_REPO: streamix
+  PUBLIC_RELEASE_COMMITISH: main
+
 on:
   push:
     tags:
@@ -18,15 +23,35 @@ jobs:
 
       - uses: actions/github-script@v8
         id: create
+        env:
+          RELEASE_TAG: ${{ github.ref_name }}
         with:
+          github-token: ${{ secrets.PUBLIC_RELEASES_TOKEN }}
           script: |
-            const tag = context.ref.replace('refs/tags/', '');
+            const tag = process.env.RELEASE_TAG;
+            const owner = process.env.PUBLIC_RELEASE_OWNER;
+            const repo = process.env.PUBLIC_RELEASE_REPO;
+
+            try {
+              const { data } = await github.rest.repos.getReleaseByTag({
+                owner,
+                repo,
+                tag
+              });
+              return data.id;
+            } catch (error) {
+              if (error.status !== 404) {
+                throw error;
+              }
+            }
+
             const { data } = await github.rest.repos.createRelease({
-              owner: context.repo.owner,
-              repo: context.repo.repo,
+              owner,
+              repo,
               tag_name: tag,
               name: tag,
-              body: '## 更新内容\n\n请查看 [CHANGELOG](https://github.com/Leejaywell/live-bot/blob/master/CHANGELOG.md)',
+              target_commitish: process.env.PUBLIC_RELEASE_COMMITISH,
+              body: 'Public release assets for Streamix.',
               draft: true,
               prerelease: false
             });
@@ -121,13 +146,16 @@ jobs:
       - name: Build and upload
         uses: tauri-apps/tauri-action@v0
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_TOKEN: ${{ secrets.PUBLIC_RELEASES_TOKEN }}
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
           SHERPA_ONNX_ARCHIVE_DIR: ${{ github.workspace }}/.sherpa-onnx-cache
         with:
           releaseId: ${{ needs.create-release.outputs.release_id }}
           tagName: ${{ github.ref_name }}
+          owner: ${{ env.PUBLIC_RELEASE_OWNER }}
+          repo: ${{ env.PUBLIC_RELEASE_REPO }}
+          releaseCommitish: ${{ env.PUBLIC_RELEASE_COMMITISH }}
           releaseDraft: true
           includeUpdaterJson: true
           args: ${{ matrix.args }}
@@ -143,10 +171,11 @@ jobs:
     steps:
       - uses: actions/github-script@v8
         with:
+          github-token: ${{ secrets.PUBLIC_RELEASES_TOKEN }}
           script: |
             await github.rest.repos.updateRelease({
-              owner: context.repo.owner,
-              repo: context.repo.repo,
+              owner: process.env.PUBLIC_RELEASE_OWNER,
+              repo: process.env.PUBLIC_RELEASE_REPO,
               release_id: ${{ needs.create-release.outputs.release_id }},
               draft: false
             });

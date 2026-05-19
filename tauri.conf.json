@@ -29,8 +29,8 @@
     "updater": {
       "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDZBQzQ3RUI3NjFFRUVDMkUKUldRdTdPNWh0MzdFYWdUL1JoUmNRS3pSQnBqNHVUd1BONmdMNGpPckhLK2cwejh6UkxuWFE1YUsK",
       "endpoints": [
-        "https://ghproxy.com/https://github.com/Leejaywell/live-bot/releases/latest/download/latest.json",
-        "https://github.com/Leejaywell/live-bot/releases/latest/download/latest.json"
+        "https://ghproxy.com/https://github.com/Leejaywell/streamix/releases/latest/download/latest.json",
+        "https://github.com/Leejaywell/streamix/releases/latest/download/latest.json"
       ],
       "dialog": false
     }
