@@ -174,7 +174,28 @@ jobs:
 
           echo "SHERPA_ONNX_LIB_DIR=${GITHUB_WORKSPACE}/${lib_dir}" >> "${GITHUB_ENV}"
 
-      - name: Build and upload
+      - name: Build and upload (non-Windows)
+        if: runner.os != 'Windows'
+        uses: tauri-apps/tauri-action@v0
+        env:
+          GITHUB_TOKEN: ${{ secrets.PUBLIC_RELEASES_TOKEN }}
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+          SHERPA_ONNX_ARCHIVE_DIR: ${{ github.workspace }}/.sherpa-onnx-cache
+        with:
+          releaseId: ${{ needs.create-release.outputs.release_id }}
+          tagName: ${{ github.ref_name }}
+          owner: ${{ env.PUBLIC_RELEASE_OWNER }}
+          repo: ${{ env.PUBLIC_RELEASE_REPO }}
+          releaseCommitish: ${{ env.PUBLIC_RELEASE_COMMITISH }}
+          releaseDraft: true
+          includeUpdaterJson: true
+          args: ${{ matrix.args }}
+          updaterJsonPreferNsis: true
+          retryAttempts: 2
+
+      - name: Build and upload (Windows)
+        if: runner.os == 'Windows'
         uses: tauri-apps/tauri-action@v0
         env:
           GITHUB_TOKEN: ${{ secrets.PUBLIC_RELEASES_TOKEN }}
