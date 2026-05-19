@@ -5,7 +5,7 @@
   "build": {
     "frontendDist": "src-tauri/dist",
     "devUrl": "http://localhost:5173",
-    "beforeDevCommand": { "script": "npm run dev", "cwd": "src-tauri" },
+    "beforeDevCommand": { "script": "npm run dev:tauri", "cwd": "src-tauri" },
     "beforeBuildCommand": { "script": "npm run build", "cwd": "src-tauri" }
   },
   "app": {

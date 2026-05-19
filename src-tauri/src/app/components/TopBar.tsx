@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
 import { createPortal } from 'react-dom';
-import { Bell, User, LogIn, X, RefreshCw, Unplug, Play, Square, Copy } from 'lucide-react';
+import { Bell, User, LogIn, X, RefreshCw, Unplug, Play, Square, Copy, Radio } from 'lucide-react';
 import { IconButton } from './IconButton';
 import { Button } from './Button';
 import { UserInfo, RoomInfo, AnchorInfo, api } from '../lib/api';
@@ -26,6 +26,7 @@ interface TopBarProps {
   autoRoom?: { roomId: string; liveStatus: number; liveTime: string } | null;
   onAutoRoomConsumed?: () => void;
   onDisconnect: () => void;
+  onOpenRoomModal: () => void;
   onRefreshUserInfo: () => Promise<UserInfo | null>;
   unreadCount?: number;
 }
@@ -237,7 +238,19 @@ export function TopBar({ onToggleNotifications, isLoggedIn, userInfo, userRoom, 
                 </button>
               </div>
             </>
-          ) : null}
+          ) : (
+            isLoggedIn && (
+              <Button
+                size="sm"
+                variant="primary"
+                onClick={onOpenRoomModal}
+                className="font-bold shadow-sm"
+              >
+                <Radio className="w-3.5 h-3.5" />
+                连接房间
+              </Button>
+            )
+          )}
         </div>
 
         <div className="flex items-center gap-3">

@@ -156,11 +156,6 @@ jobs:
         working-directory: src-tauri
         run: npm ci
 
-      - name: Normalize frontend build script on Windows
-        if: runner.os == 'Windows'
-        working-directory: src-tauri
-        run: npm pkg set scripts.build="vite build"
-
       - name: Prepare sherpa-onnx lib dir for Windows
         if: matrix.sherpa_env_mode == 'libdir'
         shell: bash

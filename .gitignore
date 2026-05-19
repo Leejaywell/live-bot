@@ -5,6 +5,8 @@
 # Frontend / Tauri build output
 **/node_modules/
 **/dist/
+!src-tauri/dist/
+!src-tauri/dist/**
 **/dist-tauri/
 **/build/
 **/.vite/

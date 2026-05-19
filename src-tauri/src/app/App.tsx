@@ -357,6 +357,7 @@ function AppContent() {
               autoRoom={autoRoom}
               onAutoRoomConsumed={() => setAutoRoom(null)}
               onDisconnect={handleDisconnect}
+              onOpenRoomModal={() => setShowRoomModal(true)}
               onRefreshUserInfo={refreshUserInfo}
               unreadCount={unreadCount}
             />

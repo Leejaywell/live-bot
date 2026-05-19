@@ -34,9 +34,10 @@ function settingsScale(settings: MusicInteractionSettings | undefined): number {
 export function parseDanmakuChatConfig(search = window.location.search): DanmakuChatRuntimeConfig {
   const params = new URLSearchParams(search);
   const primaryColor = params.get('primaryColor');
+  const demoMode = params.get('demo') === '1';
   return {
     skin: params.get('skin') || 'default',
-    transparent: parseBoolean(params.get('transparent'), true),
+    transparent: parseBoolean(params.get('transparent'), !demoMode),
     scale: parseScale(params.get('scale')),
     motion: resolveMotion(params.get('motion')),
     primaryColor: primaryColor && HEX.test(primaryColor) ? primaryColor : null,

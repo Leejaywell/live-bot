@@ -891,7 +891,7 @@ export function DanmakuChat() {
   const openDemoPreview = () => {
     if (!chatUrl) return;
     const joiner = chatUrl.includes('?') ? '&' : '?';
-    api.openUrl(`${chatUrl}${joiner}demo=1`).then(() => {
+    api.openUrl(`${chatUrl}${joiner}demo=1&transparent=0`).then(() => {
       setDemoOpened(true);
       setTimeout(() => setDemoOpened(false), 1800);
     }).catch(() => {});

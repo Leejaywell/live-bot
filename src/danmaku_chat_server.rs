@@ -12,6 +12,7 @@
 //! GET /song-request/api/now-playing → 当前播放歌曲（JSON）
 //! GET /song-request/api/rank → 音乐互动排行（JSON）
 //! GET /plugin-settings → 插件配置（JSON）
+//! GET /recent-events → 最近事件（JSON）
 //! GET /ws      → WebSocket，推送 live-event 事件流 + 配置变更通知
 //! GET /proxy   → 图片代理，绕过 B站 CDN CORS 限制
 
@@ -88,6 +89,7 @@ pub async fn start(port: u16, tx: DanmakuChatTx, resource_dir: Option<PathBuf>) 
         )
         .route("/song-request/api/rank", get(song_rank_handler))
         .route("/plugin-settings", get(plugin_settings_handler))
+        .route("/recent-events", get(recent_events_handler))
         .route("/local-resource", get(local_resource_handler))
         .route(
             "/danmaku-chat-assets/{*path}",
@@ -203,6 +205,15 @@ async fn cfg_handler() -> impl IntoResponse {
 async fn plugin_settings_handler() -> impl IntoResponse {
     let cfg = PluginSettings::load_or_default().unwrap_or_default();
     Json(cfg)
+}
+
+#[derive(Deserialize)]
+struct RecentEventsQuery {
+    limit: Option<usize>,
+}
+
+async fn recent_events_handler(Query(query): Query<RecentEventsQuery>) -> impl IntoResponse {
+    Json(observed_recent_events(query.limit.unwrap_or(20)))
 }
 
 #[derive(Serialize)]
@@ -385,6 +396,91 @@ fn observed_song_rank() -> Vec<SongRankItem> {
         Ok(items) => items,
         Err(e) => {
             eprintln!("音乐互动排行读取失败: {e}");
+            Vec::new()
+        }
+    }
+}
+
+fn observed_recent_events(limit: usize) -> Vec<Value> {
+    let room_id = match crate::token::read_connected_room() {
+        Some(room_id) => room_id,
+        None => match crate::config::AppConfig::load_or_default() {
+            Ok(app) => app.room_id,
+            Err(e) => {
+                eprintln!("弹幕聊天读取房间配置失败: {e}");
+                return Vec::new();
+            }
+        },
+    };
+    let storage = match danmaku_chat_storage() {
+        Ok(storage) => storage,
+        Err(e) => {
+            eprintln!("弹幕聊天打开存储失败: {e}");
+            return Vec::new();
+        }
+    };
+    let limit = limit.clamp(1, 80) as i64;
+
+    let result = storage.with_connection(|conn| {
+        let mut stmt = conn.prepare(
+            "select event_type, uname, text, gift_name, gift_count, gift_price
+             from interaction_records
+             where room_id = ?1
+               and event_type in ('danmu', 'gift', 'super_chat', 'guard_buy')
+             order by occurred_at desc
+             limit ?2",
+        )?;
+        let rows = stmt.query_map(params![room_id, limit], |row| {
+            let event_type: String = row.get(0)?;
+            let uname: Option<String> = row.get(1)?;
+            let text: Option<String> = row.get(2)?;
+            let gift_name: Option<String> = row.get(3)?;
+            let gift_count: Option<i64> = row.get(4)?;
+            let gift_price: Option<i64> = row.get(5)?;
+            let value = match event_type.as_str() {
+                "danmu" => serde_json::json!({
+                    "type": "Danmu",
+                    "user": uname.unwrap_or_else(|| "观众".to_string()),
+                    "text": text.unwrap_or_default(),
+                }),
+                "gift" => serde_json::json!({
+                    "type": "Gift",
+                    "user": uname.unwrap_or_else(|| "观众".to_string()),
+                    "gift": gift_name.unwrap_or_else(|| "礼物".to_string()),
+                    "count": gift_count.unwrap_or(1),
+                    "price": gift_price.unwrap_or(0),
+                }),
+                "super_chat" => serde_json::json!({
+                    "type": "SuperChat",
+                    "user": uname.unwrap_or_else(|| "观众".to_string()),
+                    "text": text.unwrap_or_default(),
+                    "price": gift_price.unwrap_or(0),
+                }),
+                "guard_buy" => serde_json::json!({
+                    "type": "GuardBuy",
+                    "user": uname.unwrap_or_else(|| "观众".to_string()),
+                    "gift": gift_name.unwrap_or_else(|| "大航海".to_string()),
+                }),
+                _ => serde_json::json!(null),
+            };
+            Ok(value)
+        })?;
+
+        let mut items = Vec::new();
+        for row in rows {
+            let value = row?;
+            if !value.is_null() {
+                items.push(value);
+            }
+        }
+        items.reverse();
+        Ok(items)
+    });
+
+    match result {
+        Ok(items) => items,
+        Err(e) => {
+            eprintln!("弹幕聊天读取最近事件失败: {e}");
             Vec::new()
         }
     }

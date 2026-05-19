@@ -4,8 +4,11 @@
   "version": "0.1.0",
   "type": "module",
   "scripts": {
-    "build": "NODE_OPTIONS=--no-deprecation vite build",
-    "dev": "vite"
+    "build": "npm run ensure:dist && npm run build:dist",
+    "build:dist": "node ./scripts/build-dist.mjs",
+    "dev": "vite",
+    "dev:tauri": "npm run ensure:dist && vite",
+    "ensure:dist": "node ./scripts/ensure-dist.mjs"
   },
   "dependencies": {
     "@emotion/react": "11.14.0",
