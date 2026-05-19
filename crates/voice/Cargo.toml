@@ -1,6 +1,6 @@
 [package]
 name = "streamix-voice"
-version = "0.1.0"
+version = "0.0.1"
 edition = "2024"
 description = "TTS / ASR / VAD pipeline for Streamix, ported from SquadyAI/RealtimeAPI (Apache-2.0)"
 
