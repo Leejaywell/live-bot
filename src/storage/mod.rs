@@ -1,7 +1,7 @@
 use anyhow::Result;
 use bilibili_live_protocol::{InteractKind, LiveEvent, ParsedLiveEvent, PkEventKind};
 use chrono::{DateTime, Datelike, Local, Timelike};
-use rusqlite::{Connection, OptionalExtension, params};
+use rusqlite::{params, Connection, OptionalExtension};
 use std::sync::Mutex;
 
 use crate::live_platform::types::{PlatformEvent, PlatformEventEnvelope};
@@ -379,6 +379,7 @@ impl Storage {
             "create index if not exists idx_user_profiles_platform_user on user_profiles(platform_id, platform_user_id)",
             [],
         )?;
+        cleanup_polluted_tracked_users(&conn)?;
         // 一次性迁移：将 interaction_records 里满足条件的历史用户播种到 tracked_users。
         // 仅播种明确属于 Bilibili 的历史记录，避免其他平台的纯数字 platform_user_id
         // 在重启时被错误映射成默认 Bilibili tracked user。
@@ -2009,7 +2010,9 @@ fn platform_event_user(event: &PlatformEvent) -> (Option<String>, Option<String>
     }
 }
 
-fn legacy_uid_for_platform_user(user: &crate::live_platform::types::PlatformUserRef) -> Option<i64> {
+fn legacy_uid_for_platform_user(
+    user: &crate::live_platform::types::PlatformUserRef,
+) -> Option<i64> {
     (user.platform_id.as_str() == crate::live_platform::types::PlatformId::BILIBILI)
         .then(|| user.numeric_id())
         .flatten()
@@ -2206,6 +2209,34 @@ fn latest_optional_i64(conn: &Connection, uid: i64, column: &str) -> Result<Opti
         .optional()?)
 }
 
+fn cleanup_polluted_tracked_users(conn: &Connection) -> Result<()> {
+    conn.execute(
+        "delete from tracked_users
+          where uid in (
+                select t.uid
+                  from tracked_users t
+                 where t.auto_tracked = 1
+                   and coalesce(nullif(t.platform_id, ''), 'bilibili') = 'bilibili'
+                   and nullif(t.platform_user_id, '') = cast(t.uid as text)
+                   and t.platform_user_id not glob '*[^0-9]*'
+                   and not exists (
+                        select 1
+                          from interaction_records ir
+                         where coalesce(nullif(ir.platform_id, ''), 'bilibili') = 'bilibili'
+                           and coalesce(nullif(ir.platform_user_id, ''), cast(ir.uid as text)) = t.platform_user_id
+                   )
+                   and exists (
+                        select 1
+                          from interaction_records ir
+                         where coalesce(nullif(ir.platform_id, ''), 'bilibili') != 'bilibili'
+                           and ir.platform_user_id = t.platform_user_id
+                   )
+            )",
+        [],
+    )?;
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use bilibili_live_protocol::{InteractKind, LiveEvent, ParsedLiveEvent, PkEventKind};
@@ -2315,10 +2346,7 @@ mod tests {
     fn insert_platform_interaction_record_isolates_legacy_uid_to_bilibili() {
         let storage = Storage::open_in_memory().unwrap();
         let session_id = storage
-            .start_observed_live_session(
-                123,
-                Local.with_ymd_and_hms(2026, 5, 1, 20, 0, 0).unwrap(),
-            )
+            .start_observed_live_session(123, Local.with_ymd_and_hms(2026, 5, 1, 20, 0, 0).unwrap())
             .unwrap();
 
         let bili_event = crate::live_platform::types::PlatformEventEnvelope {
@@ -2664,6 +2692,192 @@ mod tests {
         assert_eq!(detail.uname.as_deref(), Some("alice"));
         assert_eq!(detail.danmu_count, 1);
         assert_eq!(detail.recent_danmu.as_deref(), Some("bili hello"));
+
+        std::fs::remove_file(path).unwrap();
+    }
+
+    #[test]
+    fn startup_cleanup_removes_polluted_tracked_user_and_allows_real_bilibili_retrack() {
+        let unique = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+        let path =
+            std::env::temp_dir().join(format!("live-bot-storage-polluted-tracked-{unique}.sqlite"));
+        let path_str = path.to_string_lossy().to_string();
+        let seeded_at = Local
+            .with_ymd_and_hms(2026, 5, 2, 10, 0, 0)
+            .unwrap()
+            .to_rfc3339();
+
+        {
+            let conn = rusqlite::Connection::open(&path).unwrap();
+            conn.execute_batch(
+                "
+                create table interaction_records (
+                    id integer primary key autoincrement,
+                    session_id text not null,
+                    platform_id text,
+                    platform_room_id text,
+                    platform_user_id text,
+                    room_id integer not null,
+                    event_type text not null,
+                    uid integer,
+                    uname text,
+                    text text,
+                    gift_count integer,
+                    gift_price integer,
+                    raw_json text not null,
+                    occurred_at text not null
+                );
+                create table tracked_users (
+                    uid integer primary key,
+                    platform_id text not null default 'bilibili',
+                    platform_user_id text,
+                    nickname text not null default '',
+                    alias text not null default '',
+                    notes text not null default '',
+                    tts_provider_id text not null default '',
+                    tts_voice_id text not null default '',
+                    status text not null default 'active',
+                    auto_tracked integer not null default 0,
+                    created_at text not null,
+                    updated_at text not null
+                );
+                ",
+            )
+            .unwrap();
+
+            for idx in 0..3 {
+                conn.execute(
+                    "insert into interaction_records (
+                        session_id,
+                        platform_id,
+                        platform_room_id,
+                        platform_user_id,
+                        room_id,
+                        event_type,
+                        uid,
+                        uname,
+                        text,
+                        raw_json,
+                        occurred_at
+                    ) values (?1, 'douyin', 'dy-room', '42', 200, 'danmu', 42, 'mallory', 'dy hello', '{}', ?2)",
+                    params![
+                        format!("legacy-douyin-session-{idx}"),
+                        Local
+                            .with_ymd_and_hms(2026, 5, 2, 10, idx as u32, 0)
+                            .unwrap()
+                            .to_rfc3339()
+                    ],
+                )
+                .unwrap();
+            }
+
+            conn.execute(
+                "insert into tracked_users (
+                    uid,
+                    platform_id,
+                    platform_user_id,
+                    nickname,
+                    alias,
+                    notes,
+                    status,
+                    auto_tracked,
+                    created_at,
+                    updated_at
+                ) values (42, 'bilibili', '42', 'mallory', '', '', 'active', 1, ?1, ?1)",
+                params![seeded_at.clone()],
+            )
+            .unwrap();
+            conn.execute(
+                "insert into tracked_users (
+                    uid,
+                    platform_id,
+                    platform_user_id,
+                    nickname,
+                    alias,
+                    notes,
+                    status,
+                    auto_tracked,
+                    created_at,
+                    updated_at
+                ) values (84, 'bilibili', '84', 'manual-user', 'vip', 'keep', 'active', 0, ?1, ?1)",
+                params![seeded_at.clone()],
+            )
+            .unwrap();
+        }
+
+        let storage = Storage::open(&path_str).unwrap();
+        storage
+            .with_connection(|conn| {
+                let rows = conn
+                    .prepare(
+                        "select uid, nickname, auto_tracked
+                         from tracked_users
+                         order by uid",
+                    )?
+                    .query_map([], |row| {
+                        Ok((
+                            row.get::<_, i64>(0)?,
+                            row.get::<_, String>(1)?,
+                            row.get::<_, i64>(2)?,
+                        ))
+                    })?
+                    .collect::<rusqlite::Result<Vec<_>>>()?;
+
+                assert_eq!(rows, vec![(84, "manual-user".to_string(), 0)]);
+                Ok(())
+            })
+            .unwrap();
+
+        storage
+            .with_connection(|conn| {
+                for idx in 0..3 {
+                    conn.execute(
+                        "insert into interaction_records (
+                            session_id,
+                            platform_id,
+                            platform_room_id,
+                            platform_user_id,
+                            room_id,
+                            event_type,
+                            uid,
+                            uname,
+                            text,
+                            raw_json,
+                            occurred_at
+                        ) values (?1, 'bilibili', '100', '42', 100, 'danmu', 42, 'alice', 'bili hello', '{}', ?2)",
+                        params![
+                            format!("real-bili-session-{idx}"),
+                            Local
+                                .with_ymd_and_hms(2026, 5, 3, 20, idx as u32, 0)
+                                .unwrap()
+                                .to_rfc3339()
+                        ],
+                    )?;
+                }
+                Ok(())
+            })
+            .unwrap();
+
+        storage
+            .auto_track_platform_user("bilibili", "42", Some(42), "alice", "danmu")
+            .unwrap();
+
+        storage
+            .with_connection(|conn| {
+                let row: (String, String, i64) = conn.query_row(
+                    "select platform_id, nickname, auto_tracked
+                     from tracked_users
+                     where uid = 42",
+                    [],
+                    |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
+                )?;
+                assert_eq!(row, ("bilibili".to_string(), "alice".to_string(), 1));
+                Ok(())
+            })
+            .unwrap();
 
         std::fs::remove_file(path).unwrap();
     }
