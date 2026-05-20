@@ -12,6 +12,7 @@ use bilibili_live_protocol::{LiveEvent, ParsedLiveEvent};
 use chrono::{DateTime, Local};
 
 use crate::bot::engine::BotEngine;
+use crate::live_platform::types::{PlatformEvent, PlatformEventEnvelope};
 use crate::storage::Storage;
 
 pub trait EventEmitter: Send + Sync + 'static {
@@ -46,6 +47,22 @@ pub fn record_and_handle_event(
         try_trigger_profile_analysis(storage, &parsed.event);
     }
     Ok(engine.handle_event(&parsed.event, Some(storage)))
+}
+
+#[allow(dead_code)]
+pub fn record_and_handle_platform_event(
+    storage: &Storage,
+    session_id: &str,
+    parsed: &PlatformEventEnvelope,
+    engine: &BotEngine,
+    should_record: bool,
+) -> Result<Vec<String>> {
+    if should_record {
+        storage.insert_platform_interaction_record(session_id, parsed)?;
+        try_auto_track_platform(storage, &parsed.event);
+        try_trigger_profile_analysis_platform(storage, &parsed.event);
+    }
+    Ok(engine.handle_platform_event(&parsed.event, Some(storage)))
 }
 
 /// 弹幕事件触发的粉丝档案分析：
@@ -107,6 +124,56 @@ fn try_auto_track(storage: &Storage, event: &LiveEvent) {
         return;
     }
     if let Err(e) = storage.auto_track_user(uid, uname, event_type) {
+        eprintln!("[warn] auto_track_user uid={uid}: {e}");
+    }
+}
+
+fn try_trigger_profile_analysis_platform(storage: &Storage, event: &PlatformEvent) {
+    let user = match event {
+        PlatformEvent::Message(value) => &value.user,
+        _ => return,
+    };
+    if user.platform_id.as_str() != "bilibili" {
+        return;
+    }
+    let Some(uid) = user.numeric_id() else {
+        return;
+    };
+    let profile = match storage.get_user_profile(uid) {
+        Ok(Some(p)) => p,
+        _ => return,
+    };
+    let count = profile.total_danmu_count;
+    let should = match count {
+        5 => profile.ai_summary.is_empty(),
+        n if n > 5 && n % 50 == 0 => is_summary_stale(&profile, 7),
+        _ => false,
+    };
+    if should {
+        crate::bot::profile_worker::try_enqueue(uid);
+    }
+}
+
+fn try_auto_track_platform(storage: &Storage, event: &PlatformEvent) {
+    let (user, event_type) = match event {
+        PlatformEvent::Message(value) => (&value.user, "danmu"),
+        PlatformEvent::Gift(value) => (&value.user, "gift"),
+        PlatformEvent::GuardOrMember(value) => (&value.user, "guard_buy"),
+        PlatformEvent::PaidMessage(value) => (&value.user, "super_chat"),
+        PlatformEvent::Follow(value) => (&value.user, "follow"),
+        PlatformEvent::Share(value) => (&value.user, "share"),
+        _ => return,
+    };
+    if user.platform_id.as_str() != "bilibili" {
+        return;
+    }
+    let Some(uid) = user.numeric_id() else {
+        return;
+    };
+    if uid == 0 {
+        return;
+    }
+    if let Err(e) = storage.auto_track_user(uid, &user.display_name, event_type) {
         eprintln!("[warn] auto_track_user uid={uid}: {e}");
     }
 }
