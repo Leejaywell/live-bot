@@ -468,17 +468,6 @@ export interface SystemInfo {
   db_path: string;
 }
 
-export interface VoiceChangerState {
-  running: boolean;
-  model_id: string;
-  input_gain: number;
-  wet_mix: number;
-  frame_ms: number;
-  processed_frames: number;
-  output_latency_ms: number;
-  last_error: string | null;
-}
-
 export interface VoiceLatency {
   asr_ms: number;
   ai_first_chunk_ms: number | null;
@@ -618,14 +607,4 @@ export const api = {
     invoke<void>('update_tracked_user_tts_voice', { uid, ttsProviderId, ttsVoiceId }),
   softDeleteTrackedUser: (uid: number) => invoke<void>('soft_delete_tracked_user', { uid }),
 
-  // Voice Changer
-  startVoiceChanger: (modelId: string, inputGain: number, wetMix: number, frameMs: number) =>
-    invoke<void>('start_voice_changer', { modelId, inputGain, wetMix, frameMs }),
-  switchVoiceChangerModel: (modelId: string, inputGain: number, wetMix: number, frameMs: number) =>
-    invoke<void>('switch_voice_changer_model', { modelId, inputGain, wetMix, frameMs }),
-  stopVoiceChanger: () => invoke<void>('stop_voice_changer'),
-  getVoiceChangerStatus: () => invoke<boolean>('get_voice_changer_status'),
-  getVoiceChangerState: () => invoke<VoiceChangerState>('get_voice_changer_state'),
-  searchRvcModels: (query: string) => invoke<any[]>('search_rvc_models', { query }),
-  convertRvcPthToOnnx: (modelId: string) => invoke<string>('convert_rvc_pth_to_onnx', { modelId }),
 };

@@ -13,7 +13,6 @@ import {
   Plug,
   Moon,
   Sun,
-  Sparkles,
 } from 'lucide-react';
 import logoUrl from '../../assets/logo.svg?url';
 import { IconButton } from './IconButton';
@@ -38,7 +37,6 @@ const navItems = [
   { path: '/monitor', label: '实时弹幕', icon: Radio, requiresRoom: true },
   { path: '/ai', label: '智能助手', icon: Bot },
   { path: '/voice', label: '语音陪伴', icon: Mic },
-  { path: '/voice-changer', label: '语音变声', icon: Sparkles },
   { path: '/models', label: '模型管理', icon: Cpu },
   {
     path: '/plugins/danmaku-chat',

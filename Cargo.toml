@@ -14,7 +14,7 @@ async-trait = "0.1"
 dirs = "5"
 base64 = "0.22"
 bilibili-live-protocol = { path = "crates/bilibili-live-protocol" }
-streamix-voice = { path = "crates/voice", features = ["vad", "voice-changer", "local-tts"] }
+streamix-voice = { path = "crates/voice", features = ["vad", "local-tts"] }
 chrono = { version = "0.4.42", default-features = false, features = ["clock"] }
 cron = "0.16.0"
 rand = "0.10.1"
@@ -60,5 +60,6 @@ vad = ["streamix-voice/vad"]
 asr = ["streamix-voice/asr"]
 playback = ["streamix-voice/playback"]
 local-tts = ["streamix-voice/local-tts"]
+voice-changer = ["streamix-voice/voice-changer"]
 tauri-plugin-notification = ["dep:tauri-plugin-notification"]
 tauri-plugin-opener = ["dep:tauri-plugin-opener"]

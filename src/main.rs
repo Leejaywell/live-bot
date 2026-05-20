@@ -66,7 +66,7 @@ struct SharedState {
     /// 基础 AI Agent 运行时
     agent_runtime: Arc<bot::agent::AgentRuntime>,
     /// 实时变声器状态
-    #[cfg(feature = "tauri")]
+    #[cfg(all(feature = "tauri", feature = "voice-changer"))]
     voice_changer: Arc<Mutex<Option<streamix_voice::VoiceChanger>>>,
 }
 
@@ -79,7 +79,7 @@ struct MonitorHandle {
     danmaku_buffer: Arc<Mutex<Vec<String>>>,
 }
 
-#[cfg(feature = "tauri")]
+#[cfg(all(feature = "tauri", feature = "voice-changer"))]
 #[derive(Clone, Copy)]
 struct RvcCatalogItem {
     id: &'static str,
@@ -901,14 +901,14 @@ fn api_extract_cookie(cookie: &str, name: &str) -> Option<String> {
     })
 }
 
-#[cfg(feature = "tauri")]
+#[cfg(all(feature = "tauri", feature = "voice-changer"))]
 #[tauri::command]
 async fn get_voice_changer_status(state: tauri::State<'_, SharedState>) -> Result<bool, String> {
     let vc = state.voice_changer.lock().unwrap();
     Ok(vc.as_ref().map(|v| v.status().running).unwrap_or(false))
 }
 
-#[cfg(feature = "tauri")]
+#[cfg(all(feature = "tauri", feature = "voice-changer"))]
 #[tauri::command]
 async fn get_voice_changer_state(
     state: tauri::State<'_, SharedState>,
@@ -930,7 +930,7 @@ async fn get_voice_changer_state(
     }
 }
 
-#[cfg(feature = "tauri")]
+#[cfg(all(feature = "tauri", feature = "voice-changer"))]
 #[tauri::command]
 async fn start_voice_changer(
     state: tauri::State<'_, SharedState>,
@@ -1044,7 +1044,7 @@ async fn start_voice_changer(
     Ok(())
 }
 
-#[cfg(feature = "tauri")]
+#[cfg(all(feature = "tauri", feature = "voice-changer"))]
 #[tauri::command]
 async fn switch_voice_changer_model(
     state: tauri::State<'_, SharedState>,
@@ -1065,7 +1065,7 @@ async fn switch_voice_changer_model(
     start_voice_changer(state, app, model_id, input_gain, wet_mix, frame_ms).await
 }
 
-#[cfg(feature = "tauri")]
+#[cfg(all(feature = "tauri", feature = "voice-changer"))]
 #[tauri::command]
 async fn stop_voice_changer(
     state: tauri::State<'_, SharedState>,
@@ -1080,7 +1080,7 @@ async fn stop_voice_changer(
     Ok(())
 }
 
-#[cfg(feature = "tauri")]
+#[cfg(all(feature = "tauri", feature = "voice-changer"))]
 #[tauri::command]
 async fn search_rvc_models(app: AppHandle, query: String) -> Result<serde_json::Value, String> {
     let base = model_dir(&app).join("rvc");
@@ -1171,7 +1171,7 @@ async fn search_rvc_models(app: AppHandle, query: String) -> Result<serde_json::
     Ok(serde_json::json!(filtered))
 }
 
-#[cfg(feature = "tauri")]
+#[cfg(all(feature = "tauri", feature = "voice-changer"))]
 fn rvc_catalog() -> &'static [RvcCatalogItem] {
     &[
         // ── 原神·少女 ─────────────────────────────────────────────
@@ -1755,12 +1755,12 @@ fn rvc_catalog() -> &'static [RvcCatalogItem] {
     ]
 }
 
-#[cfg(feature = "tauri")]
+#[cfg(all(feature = "tauri", feature = "voice-changer"))]
 fn rvc_catalog_item(id: &str) -> Option<&'static RvcCatalogItem> {
     rvc_catalog().iter().find(|item| item.id == id)
 }
 
-#[cfg(feature = "tauri")]
+#[cfg(all(feature = "tauri", feature = "voice-changer"))]
 fn has_voice_changer_model_asset(dir: &std::path::Path) -> bool {
     if dir.join("model.onnx").exists()
         || dir.join("model.pth").exists()
@@ -1782,7 +1782,7 @@ fn has_voice_changer_model_asset(dir: &std::path::Path) -> bool {
         })
 }
 
-#[cfg(feature = "tauri")]
+#[cfg(all(feature = "tauri", feature = "voice-changer"))]
 fn is_voice_changer_model_onnx_ready(dir: &std::path::Path) -> bool {
     if dir.join("model.onnx").exists() {
         return true;
@@ -1794,7 +1794,7 @@ fn is_voice_changer_model_onnx_ready(dir: &std::path::Path) -> bool {
         .any(|entry| entry.path().extension().and_then(|ext| ext.to_str()) == Some("onnx"))
 }
 
-#[cfg(feature = "tauri")]
+#[cfg(all(feature = "tauri", feature = "voice-changer"))]
 fn resolve_voice_changer_model_path(
     base: &std::path::Path,
     model_id: &str,
@@ -1812,7 +1812,7 @@ fn resolve_voice_changer_model_path(
         .find(|p| p.extension().and_then(|x| x.to_str()) == Some("onnx"))
 }
 
-#[cfg(feature = "tauri")]
+#[cfg(all(feature = "tauri", feature = "voice-changer"))]
 fn resolve_voice_changer_runtime_model_path(
     base: &std::path::Path,
     model_id: &str,
@@ -1821,7 +1821,7 @@ fn resolve_voice_changer_runtime_model_path(
         .or_else(|| resolve_voice_changer_model_path(base, model_id))
 }
 
-#[cfg(feature = "tauri")]
+#[cfg(all(feature = "tauri", feature = "voice-changer"))]
 fn resolve_voice_changer_pth_model_path(
     base: &std::path::Path,
     model_id: &str,
@@ -2856,12 +2856,15 @@ fn check_models(app: AppHandle) -> Result<serde_json::Value, String> {
 #[tauri::command]
 async fn delete_model(app: AppHandle, model_id: String) -> Result<String, String> {
     let base = model_dir(&app);
-    if let Some(item) = rvc_catalog_item(&model_id) {
-        let dir = base.join("rvc").join(item.id);
-        if dir.exists() {
-            std::fs::remove_dir_all(&dir).map_err(|e| e.to_string())?;
+    #[cfg(feature = "voice-changer")]
+    {
+        if let Some(item) = rvc_catalog_item(&model_id) {
+            let dir = base.join("rvc").join(item.id);
+            if dir.exists() {
+                std::fs::remove_dir_all(&dir).map_err(|e| e.to_string())?;
+            }
+            return Ok(format!("{} 已删除", item.name));
         }
-        return Ok(format!("{} 已删除", item.name));
     }
     match model_id.as_str() {
         "silero-vad" => {
@@ -2962,7 +2965,7 @@ fn fix_flat_extract(base: &std::path::Path, target: &std::path::Path, check: &st
     }
 }
 
-#[cfg(feature = "tauri")]
+#[cfg(all(feature = "tauri", feature = "voice-changer"))]
 async fn ensure_rvc_hubert(app: &AppHandle, cancel: &CancellationToken) -> Result<(), String> {
     let base = model_dir(app).join("rvc");
     let hubert_path = base.join("hubert_base.onnx");
@@ -3008,7 +3011,7 @@ async fn ensure_rvc_hubert(app: &AppHandle, cancel: &CancellationToken) -> Resul
     Ok(())
 }
 
-#[cfg(feature = "tauri")]
+#[cfg(all(feature = "tauri", feature = "voice-changer"))]
 async fn dl_rvc_model(
     app: AppHandle,
     cancel: CancellationToken,
@@ -3089,7 +3092,7 @@ async fn dl_rvc_model(
     Ok(format!("{} 下载完成", item.name))
 }
 
-#[cfg(feature = "tauri")]
+#[cfg(all(feature = "tauri", feature = "voice-changer"))]
 fn extract_zip_model(zip_path: &std::path::Path, dest_dir: &std::path::Path) -> Result<(), String> {
     let file = std::fs::File::open(zip_path).map_err(|e| e.to_string())?;
     let mut archive = zip::ZipArchive::new(file).map_err(|e| e.to_string())?;
@@ -3119,12 +3122,13 @@ fn extract_zip_model(zip_path: &std::path::Path, dest_dir: &std::path::Path) -> 
     Ok(())
 }
 
-#[cfg(feature = "tauri")]
+#[cfg(all(feature = "tauri", feature = "voice-changer"))]
 #[tauri::command]
 async fn convert_rvc_pth_to_onnx(app: AppHandle, model_id: String) -> Result<String, String> {
     convert_rvc_pth_to_onnx_inner(&app, &model_id)
 }
 
+#[cfg(all(feature = "tauri", feature = "voice-changer"))]
 fn convert_rvc_pth_to_onnx_inner(app: &AppHandle, model_id: &str) -> Result<String, String> {
     let base = model_dir(&app).join("rvc");
     let model_dir_path = base.join(model_id);
@@ -3206,6 +3210,7 @@ fn convert_rvc_pth_to_onnx_inner(app: &AppHandle, model_id: &str) -> Result<Stri
     }
 }
 
+#[cfg(all(feature = "tauri", feature = "voice-changer"))]
 fn has_rvc_pth_model(dir: &std::path::Path) -> bool {
     dir.join("model.pth").exists()
         || std::fs::read_dir(dir)
@@ -3756,26 +3761,38 @@ async fn download_model(
         .unwrap()
         .insert(model_id.clone(), cancel.clone());
 
+    #[cfg(feature = "voice-changer")]
     let result = if let Some(item) = rvc_catalog_item(&model_id) {
         dl_rvc_model(app, cancel, item).await
     } else {
-        match model_id.as_str() {
-            "silero-vad" => dl_silero_vad(app, cancel).await,
-            "sensevoice" => dl_sensevoice(app, cancel).await,
-            "paraformer" => dl_paraformer(app, cancel).await,
-            "whisper-tiny" => dl_whisper(app, cancel, "tiny").await,
-            "whisper-small" => dl_whisper(app, cancel, "small").await,
-            "whisper-medium" => dl_whisper(app, cancel, "medium").await,
-            "kokoro" => dl_kokoro(app, cancel).await,
-            "kokoro-sherpa" => dl_kokoro_sherpa(app, cancel).await,
-            "melo-tts" => dl_melo_tts(app, cancel).await,
-            "piper-zh" => dl_piper_zh(app, cancel).await,
-            _ => Err(format!("未知模型: {}", model_id)),
-        }
+        download_builtin_model(app, cancel, &model_id).await
     };
+    #[cfg(not(feature = "voice-changer"))]
+    let result = download_builtin_model(app, cancel, &model_id).await;
 
     state.model_dl_cancels.lock().unwrap().remove(&model_id);
     result
+}
+
+#[cfg(feature = "tauri")]
+async fn download_builtin_model(
+    app: AppHandle,
+    cancel: CancellationToken,
+    model_id: &str,
+) -> Result<String, String> {
+    match model_id {
+        "silero-vad" => dl_silero_vad(app, cancel).await,
+        "sensevoice" => dl_sensevoice(app, cancel).await,
+        "paraformer" => dl_paraformer(app, cancel).await,
+        "whisper-tiny" => dl_whisper(app, cancel, "tiny").await,
+        "whisper-small" => dl_whisper(app, cancel, "small").await,
+        "whisper-medium" => dl_whisper(app, cancel, "medium").await,
+        "kokoro" => dl_kokoro(app, cancel).await,
+        "kokoro-sherpa" => dl_kokoro_sherpa(app, cancel).await,
+        "melo-tts" => dl_melo_tts(app, cancel).await,
+        "piper-zh" => dl_piper_zh(app, cancel).await,
+        _ => Err(format!("未知模型: {}", model_id)),
+    }
 }
 
 #[cfg(feature = "tauri")]
@@ -3835,7 +3852,7 @@ fn main() -> Result<()> {
         model_dl_cancels: Arc::new(Mutex::new(std::collections::HashMap::new())),
         session_memory: Arc::new(Mutex::new(bot::memory::SessionMemory::new())),
         agent_runtime: Arc::new(bot::agent::AgentRuntime::new()),
-        #[cfg(feature = "tauri")]
+        #[cfg(all(feature = "tauri", feature = "voice-changer"))]
         voice_changer: Arc::new(Mutex::new(None)),
     };
 
@@ -3975,19 +3992,12 @@ fn main() -> Result<()> {
             get_monitor_logs,
             speak_text_cmd,
             get_recent_danmaku,
-            get_voice_changer_status,
-            get_voice_changer_state,
-            start_voice_changer,
-            switch_voice_changer_model,
-            stop_voice_changer,
-            search_rvc_models,
             check_models,
             download_model,
             cancel_model_download,
             delete_model,
             open_folder,
             force_quit,
-            convert_rvc_pth_to_onnx,
             get_gift_catalog,
             refresh_gift_catalog,
             get_danmaku_chat_url,

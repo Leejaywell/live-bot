@@ -23,7 +23,6 @@ import { Danmu } from './pages/Danmu';
 import { AutoReply } from './pages/AutoReply';
 import { AI } from './pages/AI';
 import { Voice } from './pages/Voice';
-import { VoiceChanger } from './pages/VoiceChanger';
 import { Models } from './pages/Models';
 import { Stats } from './pages/Stats';
 import { DanmakuChat } from './pages/DanmakuChat';
@@ -461,7 +460,6 @@ function AnimatedRoutes() {
         <Route path="/auto-reply" element={<AutoReply />} />
         <Route path="/ai" element={<AI />} />
         <Route path="/voice" element={<Voice />} />
-        <Route path="/voice-changer" element={<VoiceChanger />} />
         <Route path="/models" element={<Models />} />
         <Route path="/stats" element={<Stats />} />
         <Route path="/plugins" element={<Navigate to="/plugins/danmaku-chat" replace />} />
