@@ -480,6 +480,7 @@ async fn get_room_by_uid(
 #[cfg(feature = "tauri")]
 #[tauri::command]
 async fn logout(state: tauri::State<'_, SharedState>) -> Result<(), String> {
+    let default_platform_id = default_platform_id();
     {
         let mut monitor = state.monitor.lock().map_err(|e| e.to_string())?;
         if let Some(handle) = monitor.take() {
@@ -493,10 +494,15 @@ async fn logout(state: tauri::State<'_, SharedState>) -> Result<(), String> {
     }
     {
         let mut connected_room = state.connected_room.lock().map_err(|e| e.to_string())?;
-        *connected_room = None;
+        if connected_room
+            .as_ref()
+            .is_some_and(|room| room.platform_id == default_platform_id)
+        {
+            *connected_room = None;
+        }
     }
-    token::delete_connected_platform_room();
-    token::delete_all_platform_sessions().map_err(|e| e.to_string())
+    token::delete_connected_platform_room_for_platform(default_platform_id.as_str());
+    token::delete_platform_session(default_platform_id.as_str()).map_err(|e| e.to_string())
 }
 
 #[cfg(feature = "tauri")]
@@ -4651,7 +4657,10 @@ fn guard_catalog_items(now: String) -> Vec<storage::GiftCatalogItem> {
 #[cfg(feature = "tauri")]
 fn cache_guard_gift_from_event(storage: &storage::Storage, payload: &serde_json::Value) {
     let live_event = payload.get("event").unwrap_or(payload);
-    if live_event.get("type").and_then(serde_json::Value::as_str) != Some("GuardBuy") {
+    let Some(event_type) = live_event.get("type").and_then(serde_json::Value::as_str) else {
+        return;
+    };
+    if event_type != "GuardBuy" && event_type != "GuardOrMember" {
         return;
     }
     let raw = payload.get("raw").unwrap_or(payload);

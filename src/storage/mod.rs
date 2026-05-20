@@ -780,11 +780,16 @@ impl Storage {
         let guard_level = extract_guard_level(parsed);
         let wealth_level = extract_wealth_level(parsed);
         let platform_room_id = room_id.to_string();
-        let platform_user_id = uid.filter(|value| *value > 0).map(|value| value.to_string());
+        let platform_user_id = uid
+            .filter(|value| *value > 0)
+            .map(|value| value.to_string());
+        let conn = self.conn.lock().expect("storage mutex poisoned");
+        if let (Some(uid_val), Some(platform_user_id)) = (uid, platform_user_id.as_deref()) {
+            repair_bilibili_numeric_identity_binding(&conn, uid_val, platform_user_id)?;
+        }
         let event_kind = Some(event_type);
         let event_action = event_subtype;
         let occurred_at = Local::now().to_rfc3339();
-        let conn = self.conn.lock().expect("storage mutex poisoned");
         conn.execute(
             "
             insert into interaction_records
@@ -886,6 +891,14 @@ impl Storage {
         let (event_kind, event_action, event_type, event_subtype) =
             platform_event_classification(&envelope.event);
         let (platform_user_id, uname, uid) = platform_event_user(&envelope.event);
+        if let (Some(uid_val), Some(platform_user_id)) = (uid, platform_user_id.as_deref()) {
+            if uid_val > 0
+                && envelope.platform_id.as_str() == "bilibili"
+                && platform_user_id.parse::<i64>().ok() == Some(uid_val)
+            {
+                repair_bilibili_numeric_identity_binding(&conn, uid_val, platform_user_id)?;
+            }
+        }
         let room_id = envelope.room.platform_room_id.parse::<i64>().unwrap_or(0);
         let (text, gift_name, gift_count, gift_price, popularity_value) = match &envelope.event {
             PlatformEvent::Message(value) => (Some(value.text.clone()), None, None, None, None),
@@ -1662,6 +1675,7 @@ impl Storage {
 
     pub fn auto_track_user(&self, uid: i64, uname: &str, event_type: &str) -> Result<()> {
         let conn = self.conn.lock().expect("storage mutex poisoned");
+        repair_bilibili_numeric_identity_binding(&conn, uid, &uid.to_string())?;
         let existing: Option<String> = conn
             .query_row(
                 "select status from tracked_users where uid = ?1",
@@ -1749,6 +1763,7 @@ impl Storage {
         if platform_id != "bilibili" || platform_user_id.parse::<i64>().ok() != Some(uid) {
             return Ok(());
         }
+        repair_bilibili_numeric_identity_binding(&conn, uid, platform_user_id)?;
         let existing_by_uid: Option<String> = conn
             .query_row(
                 "select status from tracked_users where uid = ?1",
@@ -2219,6 +2234,157 @@ fn upsert_user_profile_stats(
         ],
     )?;
     Ok(())
+}
+
+fn repair_bilibili_numeric_identity_binding(
+    conn: &Connection,
+    uid: i64,
+    platform_user_id: &str,
+) -> Result<()> {
+    if uid <= 0 || platform_user_id.parse::<i64>().ok() != Some(uid) {
+        return Ok(());
+    }
+
+    let tracked_polluted = is_clearly_polluted_tracked_user(conn, uid, platform_user_id)?;
+    let profile_polluted = is_clearly_polluted_user_profile(conn, uid, platform_user_id)?;
+    let tracked_exists = tracked_user_exists(conn, uid)?;
+    let profile_exists = user_profile_exists(conn, uid)?;
+
+    if tracked_polluted && (!profile_exists || profile_polluted) {
+        conn.execute("delete from tracked_users where uid = ?1", params![uid])?;
+    }
+    if profile_polluted && (!tracked_exists || tracked_polluted) {
+        conn.execute("delete from user_profiles where uid = ?1", params![uid])?;
+    }
+
+    Ok(())
+}
+
+fn tracked_user_exists(conn: &Connection, uid: i64) -> Result<bool> {
+    conn.query_row(
+        "select exists(select 1 from tracked_users where uid = ?1)",
+        params![uid],
+        |row| row.get(0),
+    )
+    .map_err(Into::into)
+}
+
+fn user_profile_exists(conn: &Connection, uid: i64) -> Result<bool> {
+    conn.query_row(
+        "select exists(select 1 from user_profiles where uid = ?1)",
+        params![uid],
+        |row| row.get(0),
+    )
+    .map_err(Into::into)
+}
+
+fn is_clearly_polluted_tracked_user(
+    conn: &Connection,
+    uid: i64,
+    platform_user_id: &str,
+) -> Result<bool> {
+    conn.query_row(
+        "select exists(
+            select 1
+              from tracked_users t
+             where t.uid = ?1
+               and t.auto_tracked = 1
+               and t.status = 'active'
+               and coalesce(nullif(t.platform_id, ''), 'bilibili') = 'bilibili'
+               and nullif(t.platform_user_id, '') = ?2
+               and t.platform_user_id not glob '*[^0-9]*'
+               and coalesce(t.alias, '') = ''
+               and coalesce(t.notes, '') = ''
+               and coalesce(t.tts_provider_id, '') = ''
+               and coalesce(t.tts_voice_id, '') = ''
+               and t.created_at = t.updated_at
+               and not exists (
+                    select 1
+                      from interaction_records ir
+                     where coalesce(nullif(ir.platform_id, ''), 'bilibili') = 'bilibili'
+                       and coalesce(nullif(ir.platform_user_id, ''), cast(ir.uid as text)) = ?2
+               )
+               and exists (
+                    select 1
+                      from interaction_records ir
+                     where coalesce(nullif(ir.platform_id, ''), 'bilibili') != 'bilibili'
+                       and ir.platform_user_id = ?2
+               )
+        )",
+        params![uid, platform_user_id],
+        |row| row.get(0),
+    )
+    .map_err(Into::into)
+}
+
+fn is_clearly_polluted_user_profile(
+    conn: &Connection,
+    uid: i64,
+    platform_user_id: &str,
+) -> Result<bool> {
+    conn.query_row(
+        "select exists(
+            select 1
+              from user_profiles up
+              join (
+                    select ir.platform_user_id,
+                           min(ir.occurred_at) as first_seen_at,
+                           max(ir.occurred_at) as last_seen_at,
+                           count(case when ir.event_type = 'danmu' then 1 end) as total_danmu_count,
+                           coalesce(sum(
+                               case
+                                   when ir.event_type = 'gift'
+                                   then coalesce(ir.gift_count, 0) * coalesce(ir.gift_price, 0)
+                                   else 0
+                               end
+                           ), 0) as total_gift_value,
+                           coalesce(sum(
+                               case
+                                   when ir.event_type = 'super_chat'
+                                   then coalesce(ir.gift_price, 0)
+                                   else 0
+                               end
+                           ), 0) as total_sc_value,
+                           count(
+                               case
+                                   when ir.event_type = 'interact'
+                                    and ir.event_subtype = 'entry'
+                                   then 1
+                               end
+                           ) as enter_count
+                      from interaction_records ir
+                     where coalesce(nullif(ir.platform_id, ''), 'bilibili') != 'bilibili'
+                       and ir.platform_user_id = ?2
+                     group by ir.platform_user_id
+              ) non_bili on non_bili.platform_user_id = ?2
+             where up.uid = ?1
+               and coalesce(nullif(up.platform_id, ''), 'bilibili') = 'bilibili'
+               and nullif(up.platform_user_id, '') = ?2
+               and up.platform_user_id not glob '*[^0-9]*'
+               and not exists (
+                    select 1
+                      from interaction_records ir
+                     where coalesce(nullif(ir.platform_id, ''), 'bilibili') = 'bilibili'
+                       and coalesce(nullif(ir.platform_user_id, ''), cast(ir.uid as text)) = ?2
+               )
+               and up.first_seen_at = non_bili.first_seen_at
+               and up.last_seen_at = non_bili.last_seen_at
+               and up.total_danmu_count = non_bili.total_danmu_count
+               and up.total_gift_value = non_bili.total_gift_value
+               and up.total_sc_value = non_bili.total_sc_value
+               and up.enter_count = non_bili.enter_count
+               and coalesce(up.fan_level, 0) = 0
+               and coalesce(up.is_guard, 0) = 0
+               and coalesce(up.ai_summary, '') = ''
+               and coalesce(up.ai_tags, '') = ''
+               and coalesce(up.ai_topics, '') = ''
+               and up.ai_summary_updated_at is null
+               and coalesce(up.ai_summary_version, 0) = 0
+        )",
+        params![uid, platform_user_id],
+        |row| row.get(0),
+    )
+    .map_err(Into::into)
 }
 
 fn opponent_room_id(record: &PkHistoryRecord, home_room_id: i64) -> Option<i64> {
@@ -3145,6 +3311,119 @@ mod tests {
     }
 
     #[test]
+    fn write_time_repair_replaces_surviving_polluted_bilibili_identity() {
+        let first_seen = Local
+            .with_ymd_and_hms(2026, 5, 8, 9, 0, 0)
+            .unwrap()
+            .to_rfc3339();
+        let last_seen = Local
+            .with_ymd_and_hms(2026, 5, 8, 9, 2, 0)
+            .unwrap()
+            .to_rfc3339();
+
+        let storage = Storage::open_in_memory().unwrap();
+        storage
+            .with_connection(|conn| {
+                for idx in 0..3 {
+                    conn.execute(
+                        "insert into interaction_records (
+                            session_id,
+                            platform_id,
+                            platform_room_id,
+                            platform_user_id,
+                            room_id,
+                            event_type,
+                            uid,
+                            uname,
+                            text,
+                            raw_json,
+                            occurred_at
+                        ) values (?1, 'douyin', 'dy-room', '42', 200, 'danmu', 42, 'mallory', 'dy hello', '{}', ?2)",
+                        params![
+                            format!("legacy-douyin-session-{idx}"),
+                            Local
+                                .with_ymd_and_hms(2026, 5, 8, 9, idx as u32, 0)
+                                .unwrap()
+                                .to_rfc3339()
+                        ],
+                    )?;
+                }
+
+                conn.execute(
+                    "insert into tracked_users (
+                        uid, platform_id, platform_user_id, nickname, alias, notes,
+                        tts_provider_id, tts_voice_id, status, auto_tracked, created_at, updated_at
+                    ) values (42, 'bilibili', '42', 'mallory', '', '', '', '', 'active', 1, ?1, ?1)",
+                    params![first_seen.clone()],
+                )?;
+                conn.execute(
+                    "insert into user_profiles (
+                        uid, platform_id, platform_user_id, first_seen_at, last_seen_at,
+                        total_danmu_count, total_gift_value, total_sc_value, enter_count,
+                        active_hours, fan_level, is_guard, ai_summary, ai_tags, ai_topics,
+                        ai_summary_updated_at, ai_summary_version
+                    ) values (42, 'bilibili', '42', ?1, ?2, 3, 0, 0, 0, '{\"9\":3}', 0, 0, '', '', '', null, 0)",
+                    params![first_seen.clone(), last_seen.clone()],
+                )?;
+                assert!(super::is_clearly_polluted_tracked_user(conn, 42, "42")?);
+                assert!(super::is_clearly_polluted_user_profile(conn, 42, "42")?);
+                Ok(())
+            })
+            .unwrap();
+
+        let session_id = storage
+            .start_observed_live_session(100, Local.with_ymd_and_hms(2026, 5, 8, 20, 0, 0).unwrap())
+            .unwrap();
+
+        storage
+            .record_interaction(
+                &session_id,
+                100,
+                &ParsedLiveEvent {
+                    event: LiveEvent::Danmu {
+                        user_id: 42,
+                        user: "alice".to_string(),
+                        text: "hello".to_string(),
+                    },
+                    raw: json!({
+                        "cmd": "DANMU_MSG",
+                        "info": [[], "hello", [42, "alice"]]
+                    }),
+                },
+            )
+            .unwrap();
+        storage
+            .auto_track_platform_user("bilibili", "42", Some(42), "alice", "follow")
+            .unwrap();
+
+        storage
+            .with_connection(|conn| {
+                let tracked_row: (String, String, i64) = conn.query_row(
+                    "select platform_id, nickname, auto_tracked
+                     from tracked_users
+                     where uid = 42",
+                    [],
+                    |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
+                )?;
+                assert_eq!(tracked_row, ("bilibili".to_string(), "alice".to_string(), 1));
+
+                let profile_row: (String, String, i64, String, String) = conn.query_row(
+                    "select platform_id, platform_user_id, total_danmu_count, first_seen_at, last_seen_at
+                     from user_profiles
+                     where uid = 42",
+                    [],
+                    |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?, row.get(3)?, row.get(4)?)),
+                )?;
+                assert_eq!(profile_row.0, "bilibili".to_string());
+                assert_eq!(profile_row.1, "42".to_string());
+                assert_eq!(profile_row.2, 1);
+                assert_eq!(profile_row.3, profile_row.4);
+                Ok(())
+            })
+            .unwrap();
+    }
+
+    #[test]
     fn startup_cleanup_keeps_legit_bilibili_auto_tracked_user_after_history_pruning() {
         let unique = SystemTime::now()
             .duration_since(UNIX_EPOCH)
@@ -3414,8 +3693,9 @@ mod tests {
             .duration_since(UNIX_EPOCH)
             .unwrap()
             .as_nanos();
-        let path =
-            std::env::temp_dir().join(format!("live-bot-storage-profile-ambiguous-{unique}.sqlite"));
+        let path = std::env::temp_dir().join(format!(
+            "live-bot-storage-profile-ambiguous-{unique}.sqlite"
+        ));
         let path_str = path.to_string_lossy().to_string();
         let first_seen = Local
             .with_ymd_and_hms(2026, 5, 7, 9, 0, 0)

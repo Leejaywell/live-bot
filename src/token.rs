@@ -148,6 +148,7 @@ pub fn delete_platform_session(platform_id: &str) -> Result<()> {
     Ok(())
 }
 
+#[allow(dead_code)]
 fn delete_persisted_platform_sessions_in_dir(dir: &Path) -> Result<()> {
     if !dir.exists() {
         return Ok(());
@@ -167,6 +168,7 @@ fn delete_persisted_platform_sessions_in_dir(dir: &Path) -> Result<()> {
     Ok(())
 }
 
+#[allow(dead_code)]
 pub fn delete_all_platform_sessions() -> Result<()> {
     delete_session()?;
     delete_persisted_platform_sessions_in_dir(&auth_dir())
@@ -228,6 +230,23 @@ pub fn write_connected_platform_room(room: &StoredPlatformRoom) -> Result<()> {
 pub fn delete_connected_platform_room() {
     let _ = std::fs::remove_file(connected_platform_room_path());
     delete_connected_room();
+}
+
+#[allow(dead_code)]
+pub fn delete_connected_platform_room_for_platform(platform_id: &str) -> bool {
+    let room = read_connected_platform_room();
+    if !should_delete_connected_platform_room_for_platform(room.as_ref(), platform_id) {
+        return false;
+    }
+    delete_connected_platform_room();
+    true
+}
+
+fn should_delete_connected_platform_room_for_platform(
+    room: Option<&StoredPlatformRoom>,
+    platform_id: &str,
+) -> bool {
+    room.is_some_and(|room| room.platform_id == platform_id)
 }
 
 // ── Cookie parsing ────────────────────────────────────────────────────────────
@@ -302,5 +321,26 @@ mod tests {
         assert!(dir.join("connected_room.json").exists());
 
         std::fs::remove_dir_all(dir).unwrap();
+    }
+
+    #[test]
+    fn delete_connected_platform_room_for_platform_is_scoped() {
+        let room = StoredPlatformRoom {
+            platform_id: "douyin".to_string(),
+            platform_room_id: "dy-room".to_string(),
+            display_id: Some("dy-room".to_string()),
+        };
+
+        assert!(!should_delete_connected_platform_room_for_platform(
+            Some(&room),
+            "bilibili"
+        ));
+        assert!(should_delete_connected_platform_room_for_platform(
+            Some(&room),
+            "douyin"
+        ));
+        assert!(!should_delete_connected_platform_room_for_platform(
+            None, "bilibili"
+        ));
     }
 }

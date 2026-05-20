@@ -648,6 +648,10 @@ fn event_gift_price(payload: &Value) -> i64 {
         .unwrap_or(0)
 }
 
+fn is_gift_like_event_type(event_type: &str) -> bool {
+    matches!(event_type, "Gift" | "GuardBuy" | "GuardOrMember")
+}
+
 impl PluginSettings {
     pub fn load_or_default() -> Result<Self> {
         let path = plugin_settings_path();
@@ -695,7 +699,7 @@ impl PluginSettings {
         let mut changed = false;
         for goal in &mut self.wish_goal.goals {
             let delta = match goal.match_kind.as_str() {
-                "gift" if event_type == "Gift" || event_type == "GuardBuy" => {
+                "gift" if is_gift_like_event_type(event_type) => {
                     let gift = event_gift_name(payload);
                     let original = event_original_gift_name(payload);
                     if !goal.gift_name.is_empty()
@@ -727,7 +731,7 @@ impl PluginSettings {
         let Some(event_type) = payload.get("type").and_then(Value::as_str) else {
             return false;
         };
-        if event_type != "Gift" && event_type != "GuardBuy" {
+        if !is_gift_like_event_type(event_type) {
             return false;
         }
         let gift = event_gift_name(payload);
@@ -752,7 +756,7 @@ impl PluginSettings {
         let Some(event_type) = payload.get("type").and_then(Value::as_str) else {
             return false;
         };
-        if event_type != "Gift" && event_type != "GuardBuy" {
+        if !is_gift_like_event_type(event_type) {
             return false;
         }
         let gift = event_gift_name(payload);
@@ -777,7 +781,7 @@ impl PluginSettings {
         let Some(event_type) = payload.get("type").and_then(Value::as_str) else {
             return false;
         };
-        if event_type != "Gift" && event_type != "GuardBuy" {
+        if !is_gift_like_event_type(event_type) {
             return false;
         }
         let gift = match event_gift_name(payload) {
@@ -812,7 +816,7 @@ impl PluginSettings {
         let Some(event_type) = payload.get("type").and_then(Value::as_str) else {
             return false;
         };
-        if event_type != "Gift" && event_type != "GuardBuy" {
+        if !is_gift_like_event_type(event_type) {
             return false;
         }
         let today = Local::now().format("%Y-%m-%d").to_string();
@@ -1381,5 +1385,39 @@ mod music_interaction_tests {
         assert_eq!(settings.recent_gifts.items[0].gift, "小花花");
         assert_eq!(settings.gift_rank.items[0].user, "Alice");
         assert_eq!(settings.gift_rank.items[0].value, 200);
+    }
+
+    #[test]
+    fn plugin_events_accept_guard_or_member_payload() {
+        let mut settings = PluginSettings::default();
+        settings.wish_goal.goals[0].gift_name = "舰长".to_string();
+        settings.lottery_interaction.gift_name = "舰长".to_string();
+        settings.gift_effect.gift_name = "舰长".to_string();
+
+        let payload = json!({
+            "event": {
+                "type": "GuardOrMember",
+                "user": {
+                    "platform_id": "bilibili",
+                    "platform_user_id": "42",
+                    "display_name": "Alice"
+                },
+                "gift": "舰长",
+                "count": 1,
+                "price": 198000
+            }
+        });
+
+        assert!(settings.apply_wish_goal_event(&payload));
+        assert!(settings.apply_lottery_event(&payload));
+        assert!(settings.apply_gift_effect_event(&payload));
+        assert!(settings.apply_recent_gifts_event(&payload));
+        assert!(settings.apply_gift_rank_event(&payload));
+
+        assert_eq!(settings.wish_goal.goals[0].current, 1);
+        assert_eq!(settings.lottery_interaction.last_winner, "Alice");
+        assert_eq!(settings.gift_effect.last_gift, "舰长");
+        assert_eq!(settings.recent_gifts.items[0].gift, "舰长");
+        assert_eq!(settings.gift_rank.items[0].value, 198000);
     }
 }
