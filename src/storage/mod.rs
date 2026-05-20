@@ -263,20 +263,6 @@ impl Storage {
             create index if not exists idx_user_profiles_platform_user on user_profiles(platform_id, platform_user_id);
             ",
         )?;
-        // 一次性迁移：将 interaction_records 里满足条件的历史用户播种到 tracked_users
-        conn.execute_batch(
-            "
-            insert or ignore into tracked_users (uid, nickname, alias, notes, status, auto_tracked, created_at, updated_at)
-            select uid, max(uname), '', '', 'active', 1, datetime('now'), datetime('now')
-            from interaction_records
-            where uid is not null and uid != 0
-            group by uid
-            having
-                sum(gift_count * gift_price) > 0
-                or count(case when event_type = 'danmu' then 1 end) >= 3
-                or count(case when event_type in ('guard_buy', 'follow', 'share', 'super_chat') then 1 end) > 0;
-            ",
-        )?;
         ensure_column(&conn, "interaction_records", "event_subtype", "text")?;
         ensure_column(
             &conn,
@@ -374,6 +360,46 @@ impl Storage {
         conn.execute(
             "create index if not exists idx_user_profiles_platform_user on user_profiles(platform_id, platform_user_id)",
             [],
+        )?;
+        // 一次性迁移：将 interaction_records 里满足条件的历史用户播种到 tracked_users。
+        // 仅播种明确属于 Bilibili 的历史记录，避免其他平台的纯数字 platform_user_id
+        // 在重启时被错误映射成默认 Bilibili tracked user。
+        conn.execute_batch(
+            "
+            insert or ignore into tracked_users (
+                uid,
+                platform_id,
+                platform_user_id,
+                nickname,
+                alias,
+                notes,
+                status,
+                auto_tracked,
+                created_at,
+                updated_at
+            )
+            select
+                uid,
+                'bilibili',
+                cast(uid as text),
+                max(uname),
+                '',
+                '',
+                'active',
+                1,
+                datetime('now'),
+                datetime('now')
+            from interaction_records
+            where uid is not null
+              and uid != 0
+              and coalesce(platform_id, 'bilibili') = 'bilibili'
+              and coalesce(platform_user_id, cast(uid as text)) = cast(uid as text)
+            group by uid
+            having
+                coalesce(sum(coalesce(gift_count, 0) * coalesce(gift_price, 0)), 0) > 0
+                or count(case when event_type = 'danmu' then 1 end) >= 3
+                or count(case when event_type in ('guard_buy', 'follow', 'share', 'super_chat') then 1 end) > 0;
+            ",
         )?;
         crate::music::storage::ensure_schema(&conn)?;
         Ok(Self {
@@ -2162,6 +2188,7 @@ mod tests {
     use chrono::{Local, TimeZone};
     use rusqlite::params;
     use serde_json::json;
+    use std::time::{SystemTime, UNIX_EPOCH};
 
     use super::Storage;
 
@@ -2297,6 +2324,165 @@ mod tests {
             )
             .unwrap();
         assert_eq!(row, ("bilibili".to_string(), "42".to_string()));
+    }
+
+    #[test]
+    fn startup_seed_only_migrates_legacy_bilibili_numeric_users() {
+        let unique = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+        let path = std::env::temp_dir().join(format!("live-bot-storage-seed-{unique}.sqlite"));
+        let path_str = path.to_string_lossy().to_string();
+
+        {
+            let conn = rusqlite::Connection::open(&path).unwrap();
+            conn.execute_batch(
+                "
+                create table interaction_records (
+                    id integer primary key autoincrement,
+                    session_id text not null,
+                    platform_id text,
+                    platform_room_id text,
+                    platform_user_id text,
+                    room_id integer not null,
+                    event_type text not null,
+                    uid integer,
+                    uname text,
+                    gift_count integer,
+                    gift_price integer,
+                    raw_json text not null,
+                    occurred_at text not null
+                );
+                ",
+            )
+            .unwrap();
+
+            for _ in 0..3 {
+                conn.execute(
+                    "insert into interaction_records (
+                        session_id,
+                        platform_id,
+                        platform_user_id,
+                        room_id,
+                        event_type,
+                        uid,
+                        uname,
+                        raw_json,
+                        occurred_at
+                    ) values ('legacy-session', null, null, 100, 'danmu', 7, 'legacy-bili', '{}', ?1)",
+                    params![Local::now().to_rfc3339()],
+                )
+                .unwrap();
+                conn.execute(
+                    "insert into interaction_records (
+                        session_id,
+                        platform_id,
+                        platform_user_id,
+                        room_id,
+                        event_type,
+                        uid,
+                        uname,
+                        raw_json,
+                        occurred_at
+                    ) values ('multi-platform-session', 'douyin', '42', 200, 'danmu', 42, 'mallory', '{}', ?1)",
+                    params![Local::now().to_rfc3339()],
+                )
+                .unwrap();
+            }
+        }
+
+        let storage = Storage::open(&path_str).unwrap();
+        storage
+            .with_connection(|conn| {
+                let seeded_users = conn
+                    .prepare(
+                        "select uid, platform_id, platform_user_id, nickname
+                         from tracked_users
+                         order by uid",
+                    )?
+                    .query_map([], |row| {
+                        Ok((
+                            row.get::<_, i64>(0)?,
+                            row.get::<_, String>(1)?,
+                            row.get::<_, String>(2)?,
+                            row.get::<_, String>(3)?,
+                        ))
+                    })?
+                    .collect::<rusqlite::Result<Vec<_>>>()?;
+
+                assert_eq!(
+                    seeded_users,
+                    vec![(
+                        7,
+                        "bilibili".to_string(),
+                        "7".to_string(),
+                        "legacy-bili".to_string()
+                    )]
+                );
+                Ok(())
+            })
+            .unwrap();
+
+        std::fs::remove_file(path).unwrap();
+    }
+
+    #[test]
+    fn user_profile_conflict_update_preserves_platform_keys() {
+        let storage = Storage::open_in_memory().unwrap();
+        let conn = storage.conn.lock().unwrap();
+
+        super::upsert_user_profile_stats(
+            &conn,
+            42,
+            "douyin",
+            "abc-42",
+            "danmu",
+            None,
+            None,
+            None,
+            None,
+            Some(3),
+            false,
+            &Local::now().to_rfc3339(),
+            9,
+        )
+        .unwrap();
+        super::upsert_user_profile_stats(
+            &conn,
+            42,
+            "douyin",
+            "abc-42",
+            "gift",
+            None,
+            Some(2),
+            Some(100),
+            None,
+            None,
+            true,
+            &Local::now().to_rfc3339(),
+            10,
+        )
+        .unwrap();
+
+        let row: (String, String, i64, i64, i64) = conn
+            .query_row(
+                "select platform_id, platform_user_id, total_danmu_count, total_gift_value, is_guard
+                 from user_profiles
+                 where uid = 42",
+                [],
+                |row| {
+                    Ok((
+                        row.get(0)?,
+                        row.get(1)?,
+                        row.get(2)?,
+                        row.get(3)?,
+                        row.get(4)?,
+                    ))
+                },
+            )
+            .unwrap();
+        assert_eq!(row, ("douyin".to_string(), "abc-42".to_string(), 1, 200, 1));
     }
 
     #[test]
