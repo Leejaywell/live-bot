@@ -543,10 +543,25 @@ impl Storage {
         conn.execute(
             "
             insert or ignore into live_sessions
-                (id, room_id, started_at, start_source, created_at, updated_at)
-            values (?1, ?2, ?3, 'observed', ?4, ?4)
+                (
+                    id,
+                    platform_id,
+                    platform_room_id,
+                    room_id,
+                    started_at,
+                    start_source,
+                    created_at,
+                    updated_at
+                )
+            values (?1, 'bilibili', ?2, ?3, ?4, 'observed', ?5, ?5)
             ",
-            params![session_id, room_id, started_at.to_rfc3339(), now],
+            params![
+                session_id,
+                room_id.to_string(),
+                room_id,
+                started_at.to_rfc3339(),
+                now
+            ],
         )?;
         Ok(session_id)
     }
@@ -763,6 +778,10 @@ impl Storage {
         let medal_level = extract_medal_level(&parsed.raw);
         let guard_level = extract_guard_level(parsed);
         let wealth_level = extract_wealth_level(parsed);
+        let platform_room_id = room_id.to_string();
+        let platform_user_id = uid.filter(|value| *value > 0).map(|value| value.to_string());
+        let event_kind = Some(event_type);
+        let event_action = event_subtype;
         let occurred_at = Local::now().to_rfc3339();
         let conn = self.conn.lock().expect("storage mutex poisoned");
         conn.execute(
@@ -770,6 +789,11 @@ impl Storage {
             insert into interaction_records
                 (
                     session_id,
+                    platform_id,
+                    platform_room_id,
+                    platform_user_id,
+                    event_kind,
+                    event_action,
                     room_id,
                     event_type,
                     event_subtype,
@@ -790,10 +814,14 @@ impl Storage {
                     raw_json,
                     occurred_at
                 )
-            values (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17, ?18, ?19, ?20)
+            values (?1, 'bilibili', ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17, ?18, ?19, ?20, ?21, ?22, ?23, ?24)
             ",
             params![
                 session_id,
+                platform_room_id,
+                platform_user_id,
+                event_kind,
+                event_action,
                 room_id,
                 event_type,
                 event_subtype,
@@ -2306,6 +2334,25 @@ mod tests {
     }
 
     #[test]
+    fn observed_live_session_writes_platform_keys() {
+        let storage = Storage::open_in_memory().unwrap();
+        let started_at = Local.with_ymd_and_hms(2026, 5, 1, 20, 0, 0).unwrap();
+        let session_id = storage
+            .start_observed_live_session(8792912, started_at)
+            .unwrap();
+
+        let conn = storage.conn.lock().unwrap();
+        let row: (String, String) = conn
+            .query_row(
+                "select platform_id, platform_room_id from live_sessions where id = ?1",
+                params![session_id],
+                |row| Ok((row.get(0)?, row.get(1)?)),
+            )
+            .unwrap();
+        assert_eq!(row, ("bilibili".to_string(), "8792912".to_string()));
+    }
+
+    #[test]
     fn storage_creates_platform_columns() {
         let storage = Storage::open_in_memory().unwrap();
         let conn = storage.conn.lock().unwrap();
@@ -2565,6 +2612,33 @@ mod tests {
             .unwrap();
 
         let conn = storage.conn.lock().unwrap();
+        let interaction_row: (String, String, String, String, Option<String>) = conn
+            .query_row(
+                "select platform_id, platform_room_id, platform_user_id, event_kind, event_action
+                 from interaction_records
+                 where session_id = ?1",
+                params![session_id],
+                |row| {
+                    Ok((
+                        row.get(0)?,
+                        row.get(1)?,
+                        row.get(2)?,
+                        row.get(3)?,
+                        row.get(4)?,
+                    ))
+                },
+            )
+            .unwrap();
+        assert_eq!(
+            interaction_row,
+            (
+                "bilibili".to_string(),
+                "8792912".to_string(),
+                "42".to_string(),
+                "danmu".to_string(),
+                None::<String>,
+            )
+        );
         let row: (String, String) = conn
             .query_row(
                 "select platform_id, platform_user_id from user_profiles where uid = 42",

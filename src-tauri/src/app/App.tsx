@@ -179,6 +179,17 @@ function AppContent() {
     }
   }, [isLoggedIn, userInfo?.uid]);
 
+  const performLogoutCleanup = useCallback(async () => {
+    setShowRoomModal(false);
+    setIsLoggedIn(false);
+    setUserInfo(null);
+    setUserRoom(null);
+    setAutoRoom(null);
+    setAnchorInfo(null);
+    setConnected(false);
+    await api.logout().catch(() => {});
+  }, [setConnected]);
+
   // 定期检查 cookie 有效性，失效直接提示重新登录
   useEffect(() => {
     if (!isLoggedIn || !loginChecked) return;
@@ -186,9 +197,7 @@ function AppContent() {
       try {
         const info = await api.getUserInfo();
         if (!info.is_login) {
-          setIsLoggedIn(false);
-          setUserInfo(null);
-          setConnected(false);
+          await performLogoutCleanup();
           setShowLoginModal(true);
           fetchLoginQr();
         }
@@ -197,7 +206,7 @@ function AppContent() {
       }
     }, 60000);
     return () => clearInterval(timer);
-  }, [isLoggedIn, loginChecked]);
+  }, [isLoggedIn, loginChecked, performLogoutCleanup]);
 
   const fetchLoginQr = async () => {
     setLoadingQr(true);
@@ -252,16 +261,9 @@ function AppContent() {
 
   // 退出登录
   const handleLogout = useCallback(async () => {
-    setShowRoomModal(false);
-    setIsLoggedIn(false);
-    setUserInfo(null);
-    setUserRoom(null);
-    setAutoRoom(null);
-    setAnchorInfo(null);
-    setConnected(false);
-    await api.logout().catch(() => {});
+    await performLogoutCleanup();
     window.location.reload();
-  }, []);
+  }, [performLogoutCleanup]);
 
   // 连接房间成功（仅用户主动连接走此路径；启动恢复不进这里，因此自动恢复时不会有 toast）
   const handleRoomConnected = useCallback((roomId: string, liveStatus: number, liveTime: string, roomUid?: number) => {
