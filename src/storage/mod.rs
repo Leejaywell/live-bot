@@ -380,6 +380,7 @@ impl Storage {
             [],
         )?;
         cleanup_polluted_tracked_users(&conn)?;
+        cleanup_polluted_user_profiles(&conn)?;
         // 一次性迁移：将 interaction_records 里满足条件的历史用户播种到 tracked_users。
         // 仅播种明确属于 Bilibili 的历史记录，避免其他平台的纯数字 platform_user_id
         // 在重启时被错误映射成默认 Bilibili tracked user。
@@ -2307,6 +2308,78 @@ fn cleanup_polluted_tracked_users(conn: &Connection) -> Result<()> {
     Ok(())
 }
 
+fn cleanup_polluted_user_profiles(conn: &Connection) -> Result<()> {
+    conn.execute(
+        "delete from user_profiles
+          where uid in (
+                select up.uid
+                  from user_profiles up
+                  join (
+                        select ir.platform_user_id,
+                               min(ir.occurred_at) as first_seen_at,
+                               max(ir.occurred_at) as last_seen_at,
+                               count(case when ir.event_type = 'danmu' then 1 end) as total_danmu_count,
+                               coalesce(sum(
+                                   case
+                                       when ir.event_type = 'gift'
+                                       then coalesce(ir.gift_count, 0) * coalesce(ir.gift_price, 0)
+                                       else 0
+                                   end
+                               ), 0) as total_gift_value,
+                               coalesce(sum(
+                                   case
+                                       when ir.event_type = 'super_chat'
+                                       then coalesce(ir.gift_price, 0)
+                                       else 0
+                                   end
+                               ), 0) as total_sc_value,
+                               count(
+                                   case
+                                       when ir.event_type = 'interact'
+                                        and ir.event_subtype = 'entry'
+                                       then 1
+                                   end
+                               ) as enter_count
+                          from interaction_records ir
+                         where coalesce(nullif(ir.platform_id, ''), 'bilibili') != 'bilibili'
+                           and nullif(ir.platform_user_id, '') is not null
+                         group by ir.platform_user_id
+                  ) non_bili on non_bili.platform_user_id = cast(up.uid as text)
+                 where coalesce(nullif(up.platform_id, ''), 'bilibili') = 'bilibili'
+                   and nullif(up.platform_user_id, '') = cast(up.uid as text)
+                   and up.platform_user_id not glob '*[^0-9]*'
+                   and not exists (
+                        select 1
+                          from interaction_records ir
+                         where coalesce(nullif(ir.platform_id, ''), 'bilibili') = 'bilibili'
+                           and coalesce(nullif(ir.platform_user_id, ''), cast(ir.uid as text)) = up.platform_user_id
+                   )
+                   and not exists (
+                        select 1
+                          from tracked_users tu
+                         where tu.uid = up.uid
+                           and coalesce(nullif(tu.platform_id, ''), 'bilibili') = 'bilibili'
+                           and coalesce(nullif(tu.platform_user_id, ''), cast(tu.uid as text)) = up.platform_user_id
+                   )
+                   and up.first_seen_at = non_bili.first_seen_at
+                   and up.last_seen_at = non_bili.last_seen_at
+                   and up.total_danmu_count = non_bili.total_danmu_count
+                   and up.total_gift_value = non_bili.total_gift_value
+                   and up.total_sc_value = non_bili.total_sc_value
+                   and up.enter_count = non_bili.enter_count
+                   and coalesce(up.fan_level, 0) = 0
+                   and coalesce(up.is_guard, 0) = 0
+                   and coalesce(up.ai_summary, '') = ''
+                   and coalesce(up.ai_tags, '') = ''
+                   and coalesce(up.ai_topics, '') = ''
+                   and up.ai_summary_updated_at is null
+                   and coalesce(up.ai_summary_version, 0) = 0
+            )",
+        [],
+    )?;
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use bilibili_live_protocol::{InteractKind, LiveEvent, ParsedLiveEvent, PkEventKind};
@@ -3221,6 +3294,212 @@ mod tests {
                     |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
                 )?;
                 assert_eq!(row, (42, "alice".to_string(), 1));
+                Ok(())
+            })
+            .unwrap();
+
+        std::fs::remove_file(path).unwrap();
+    }
+
+    #[test]
+    fn startup_cleanup_removes_strongly_non_bilibili_user_profiles() {
+        let unique = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+        let path =
+            std::env::temp_dir().join(format!("live-bot-storage-profile-cleanup-{unique}.sqlite"));
+        let path_str = path.to_string_lossy().to_string();
+        let first_seen = Local
+            .with_ymd_and_hms(2026, 5, 6, 8, 0, 0)
+            .unwrap()
+            .to_rfc3339();
+        let last_seen = Local
+            .with_ymd_and_hms(2026, 5, 6, 8, 5, 0)
+            .unwrap()
+            .to_rfc3339();
+
+        {
+            let conn = rusqlite::Connection::open(&path).unwrap();
+            conn.execute_batch(
+                "
+                create table interaction_records (
+                    id integer primary key autoincrement,
+                    session_id text not null,
+                    platform_id text,
+                    platform_room_id text,
+                    platform_user_id text,
+                    room_id integer not null,
+                    event_type text not null,
+                    event_subtype text,
+                    uid integer,
+                    uname text,
+                    text text,
+                    gift_name text,
+                    gift_count integer,
+                    gift_price integer,
+                    raw_json text not null,
+                    occurred_at text not null
+                );
+                create table user_profiles (
+                    uid integer primary key,
+                    platform_id text not null default 'bilibili',
+                    platform_user_id text,
+                    first_seen_at text not null,
+                    last_seen_at text not null,
+                    total_danmu_count integer not null default 0,
+                    total_gift_value integer not null default 0,
+                    total_sc_value integer not null default 0,
+                    enter_count integer not null default 0,
+                    active_hours text not null default '',
+                    fan_level integer not null default 0,
+                    is_guard integer not null default 0,
+                    ai_summary text not null default '',
+                    ai_tags text not null default '',
+                    ai_topics text not null default '',
+                    ai_summary_updated_at text,
+                    ai_summary_version integer not null default 0
+                );
+                ",
+            )
+            .unwrap();
+
+            conn.execute(
+                "insert into interaction_records (
+                    session_id, platform_id, platform_room_id, platform_user_id, room_id,
+                    event_type, event_subtype, uid, uname, text, raw_json, occurred_at
+                ) values ('dy-session-1', 'douyin', 'dy-1', '42', 200, 'danmu', null, 42, 'mallory', 'hello', '{}', ?1)",
+                params![first_seen.clone()],
+            )
+            .unwrap();
+            conn.execute(
+                "insert into interaction_records (
+                    session_id, platform_id, platform_room_id, platform_user_id, room_id,
+                    event_type, event_subtype, uid, uname, gift_name, gift_count, gift_price, raw_json, occurred_at
+                ) values ('dy-session-2', 'douyin', 'dy-1', '42', 200, 'gift', null, 42, 'mallory', 'rose', 2, 100, '{}', ?1)",
+                params![last_seen.clone()],
+            )
+            .unwrap();
+            conn.execute(
+                "insert into user_profiles (
+                    uid, platform_id, platform_user_id, first_seen_at, last_seen_at,
+                    total_danmu_count, total_gift_value, total_sc_value, enter_count,
+                    active_hours, fan_level, is_guard, ai_summary, ai_tags, ai_topics,
+                    ai_summary_updated_at, ai_summary_version
+                ) values (42, 'bilibili', '42', ?1, ?2, 1, 200, 0, 0, '{\"8\":2}', 0, 0, '', '', '', null, 0)",
+                params![first_seen.clone(), last_seen.clone()],
+            )
+            .unwrap();
+        }
+
+        let storage = Storage::open(&path_str).unwrap();
+        storage
+            .with_connection(|conn| {
+                let count: i64 = conn.query_row(
+                    "select count(*) from user_profiles where uid = 42",
+                    [],
+                    |row| row.get(0),
+                )?;
+                assert_eq!(count, 0);
+                Ok(())
+            })
+            .unwrap();
+
+        std::fs::remove_file(path).unwrap();
+    }
+
+    #[test]
+    fn startup_cleanup_keeps_ambiguous_user_profiles() {
+        let unique = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+        let path =
+            std::env::temp_dir().join(format!("live-bot-storage-profile-ambiguous-{unique}.sqlite"));
+        let path_str = path.to_string_lossy().to_string();
+        let first_seen = Local
+            .with_ymd_and_hms(2026, 5, 7, 9, 0, 0)
+            .unwrap()
+            .to_rfc3339();
+        let last_seen = Local
+            .with_ymd_and_hms(2026, 5, 7, 9, 10, 0)
+            .unwrap()
+            .to_rfc3339();
+
+        {
+            let conn = rusqlite::Connection::open(&path).unwrap();
+            conn.execute_batch(
+                "
+                create table interaction_records (
+                    id integer primary key autoincrement,
+                    session_id text not null,
+                    platform_id text,
+                    platform_room_id text,
+                    platform_user_id text,
+                    room_id integer not null,
+                    event_type text not null,
+                    event_subtype text,
+                    uid integer,
+                    uname text,
+                    text text,
+                    gift_name text,
+                    gift_count integer,
+                    gift_price integer,
+                    raw_json text not null,
+                    occurred_at text not null
+                );
+                create table user_profiles (
+                    uid integer primary key,
+                    platform_id text not null default 'bilibili',
+                    platform_user_id text,
+                    first_seen_at text not null,
+                    last_seen_at text not null,
+                    total_danmu_count integer not null default 0,
+                    total_gift_value integer not null default 0,
+                    total_sc_value integer not null default 0,
+                    enter_count integer not null default 0,
+                    active_hours text not null default '',
+                    fan_level integer not null default 0,
+                    is_guard integer not null default 0,
+                    ai_summary text not null default '',
+                    ai_tags text not null default '',
+                    ai_topics text not null default '',
+                    ai_summary_updated_at text,
+                    ai_summary_version integer not null default 0
+                );
+                ",
+            )
+            .unwrap();
+
+            conn.execute(
+                "insert into interaction_records (
+                    session_id, platform_id, platform_room_id, platform_user_id, room_id,
+                    event_type, event_subtype, uid, uname, text, raw_json, occurred_at
+                ) values ('dy-session-1', 'douyin', 'dy-1', '42', 200, 'danmu', null, 42, 'mallory', 'hello', '{}', ?1)",
+                params![first_seen.clone()],
+            )
+            .unwrap();
+            conn.execute(
+                "insert into user_profiles (
+                    uid, platform_id, platform_user_id, first_seen_at, last_seen_at,
+                    total_danmu_count, total_gift_value, total_sc_value, enter_count,
+                    active_hours, fan_level, is_guard, ai_summary, ai_tags, ai_topics,
+                    ai_summary_updated_at, ai_summary_version
+                ) values (42, 'bilibili', '42', ?1, ?2, 2, 0, 0, 0, '{\"9\":1}', 0, 0, '', '', '', null, 0)",
+                params![first_seen.clone(), last_seen.clone()],
+            )
+            .unwrap();
+        }
+
+        let storage = Storage::open(&path_str).unwrap();
+        storage
+            .with_connection(|conn| {
+                let row: (String, i64) = conn.query_row(
+                    "select platform_id, total_danmu_count from user_profiles where uid = 42",
+                    [],
+                    |row| Ok((row.get(0)?, row.get(1)?)),
+                )?;
+                assert_eq!(row, ("bilibili".to_string(), 2));
                 Ok(())
             })
             .unwrap();

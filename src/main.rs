@@ -496,7 +496,7 @@ async fn logout(state: tauri::State<'_, SharedState>) -> Result<(), String> {
         *connected_room = None;
     }
     token::delete_connected_platform_room();
-    token::delete_platform_session(default_platform_id().as_str()).map_err(|e| e.to_string())
+    token::delete_all_platform_sessions().map_err(|e| e.to_string())
 }
 
 #[cfg(feature = "tauri")]

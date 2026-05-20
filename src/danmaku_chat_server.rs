@@ -265,6 +265,11 @@ enum CurrentBilibiliRoom {
     NonBilibili,
 }
 
+struct BilibiliRoomScope {
+    room_id: i64,
+    platform_room_id: String,
+}
+
 async fn song_queue_handler() -> impl IntoResponse {
     Json(QueueResponse {
         items: observed_music_queue(),
@@ -617,8 +622,8 @@ fn observed_gift_catalog() -> BTreeMap<String, String> {
 }
 
 fn observed_recent_gifts_data(limit: usize) -> Vec<Value> {
-    let room_id = match current_or_config_bilibili_room_id("最近礼物读取房间配置失败") {
-        Some(room_id) => room_id,
+    let scope = match current_or_config_bilibili_room_scope("最近礼物读取房间配置失败") {
+        Some(scope) => scope,
         None => return Vec::new(),
     };
     let storage = match danmaku_chat_storage() {
@@ -630,44 +635,7 @@ fn observed_recent_gifts_data(limit: usize) -> Vec<Value> {
     };
     let limit = limit.clamp(1, 20) as i64;
 
-    let result = storage.with_connection(|conn| {
-        let mut stmt = conn.prepare(
-            "select uname, gift_name, gift_count, raw_json, occurred_at
-             from interaction_records
-             where room_id = ?1
-               and event_type in ('gift', 'guard_buy')
-             order by occurred_at desc
-             limit ?2",
-        )?;
-        let rows = stmt.query_map(params![room_id, limit], |row| {
-            let user: Option<String> = row.get(0)?;
-            let gift: Option<String> = row.get(1)?;
-            let count: Option<i64> = row.get(2)?;
-            let raw_json: String = row.get(3)?;
-            let occurred_at: String = row.get(4)?;
-            let raw = serde_json::from_str::<Value>(&raw_json).unwrap_or(Value::Null);
-            let avatar = raw
-                .pointer("/data/face")
-                .or_else(|| raw.pointer("/data/uface"))
-                .or_else(|| raw.pointer("/data/user_info/face"))
-                .and_then(Value::as_str)
-                .unwrap_or_default()
-                .to_string();
-            Ok(serde_json::json!({
-                "User": user.unwrap_or_else(|| "观众".to_string()),
-                "Gift": gift.unwrap_or_else(|| "礼物".to_string()),
-                "Count": count.unwrap_or(1).max(1),
-                "Avatar": avatar,
-                "OccurredAt": occurred_at,
-            }))
-        })?;
-
-        let mut items = Vec::new();
-        for row in rows {
-            items.push(row?);
-        }
-        Ok(items)
-    });
+    let result = storage.with_connection(|conn| load_recent_gifts_data(conn, &scope, limit));
 
     match result {
         Ok(items) => items,
@@ -679,8 +647,8 @@ fn observed_recent_gifts_data(limit: usize) -> Vec<Value> {
 }
 
 fn observed_gift_rank_data(limit: usize) -> Vec<Value> {
-    let room_id = match current_or_config_bilibili_room_id("礼物排行读取房间配置失败") {
-        Some(room_id) => room_id,
+    let scope = match current_or_config_bilibili_room_scope("礼物排行读取房间配置失败") {
+        Some(scope) => scope,
         None => return Vec::new(),
     };
     let storage = match danmaku_chat_storage() {
@@ -692,50 +660,7 @@ fn observed_gift_rank_data(limit: usize) -> Vec<Value> {
     };
     let limit = limit.clamp(1, 20) as i64;
 
-    let result = storage.with_connection(|conn| {
-        let mut stmt = conn.prepare(
-            "select uname,
-                    coalesce(sum(case when gift_price > 0 then gift_count * gift_price else gift_count end), 0) as total_value,
-                    coalesce(sum(gift_count), 0) as total_count,
-                    max(raw_json) as raw_json
-             from interaction_records
-             where room_id = ?1
-               and event_type in ('gift', 'guard_buy')
-               and date(occurred_at, 'localtime') = date('now', 'localtime')
-             group by uname
-             order by total_value desc, total_count desc, max(occurred_at) desc
-             limit ?2",
-        )?;
-        let rows = stmt.query_map(params![room_id, limit], |row| {
-            let user: Option<String> = row.get(0)?;
-            let value: Option<i64> = row.get(1)?;
-            let count: Option<i64> = row.get(2)?;
-            let raw_json: Option<String> = row.get(3)?;
-            let raw = raw_json
-                .as_deref()
-                .and_then(|text| serde_json::from_str::<Value>(text).ok())
-                .unwrap_or(Value::Null);
-            let avatar = raw
-                .pointer("/data/face")
-                .or_else(|| raw.pointer("/data/uface"))
-                .or_else(|| raw.pointer("/data/user_info/face"))
-                .and_then(Value::as_str)
-                .unwrap_or_default()
-                .to_string();
-            Ok(serde_json::json!({
-                "User": user.unwrap_or_else(|| "观众".to_string()),
-                "Value": value.unwrap_or(0).max(0),
-                "Count": count.unwrap_or(0).max(0),
-                "Avatar": avatar,
-            }))
-        })?;
-
-        let mut items = Vec::new();
-        for row in rows {
-            items.push(row?);
-        }
-        Ok(items)
-    });
+    let result = storage.with_connection(|conn| load_gift_rank_data(conn, &scope, limit));
 
     match result {
         Ok(items) => items,
@@ -795,6 +720,109 @@ fn current_or_config_bilibili_room_id(error_context: &str) -> Option<i64> {
             }
         },
     }
+}
+
+fn current_or_config_bilibili_room_scope(error_context: &str) -> Option<BilibiliRoomScope> {
+    current_or_config_bilibili_room_id(error_context).map(|room_id| BilibiliRoomScope {
+        room_id,
+        platform_room_id: room_id.to_string(),
+    })
+}
+
+fn load_recent_gifts_data(
+    conn: &rusqlite::Connection,
+    scope: &BilibiliRoomScope,
+    limit: i64,
+) -> anyhow::Result<Vec<Value>> {
+    let mut stmt = conn.prepare(
+        "select uname, gift_name, gift_count, raw_json, occurred_at
+         from interaction_records
+         where room_id = ?1
+           and coalesce(nullif(platform_id, ''), 'bilibili') = 'bilibili'
+           and coalesce(nullif(platform_room_id, ''), cast(room_id as text)) = ?2
+           and event_type in ('gift', 'guard_buy')
+         order by occurred_at desc
+         limit ?3",
+    )?;
+    let rows = stmt.query_map(params![scope.room_id, scope.platform_room_id, limit], |row| {
+        let user: Option<String> = row.get(0)?;
+        let gift: Option<String> = row.get(1)?;
+        let count: Option<i64> = row.get(2)?;
+        let raw_json: String = row.get(3)?;
+        let occurred_at: String = row.get(4)?;
+        let raw = serde_json::from_str::<Value>(&raw_json).unwrap_or(Value::Null);
+        let avatar = raw
+            .pointer("/data/face")
+            .or_else(|| raw.pointer("/data/uface"))
+            .or_else(|| raw.pointer("/data/user_info/face"))
+            .and_then(Value::as_str)
+            .unwrap_or_default()
+            .to_string();
+        Ok(serde_json::json!({
+            "User": user.unwrap_or_else(|| "观众".to_string()),
+            "Gift": gift.unwrap_or_else(|| "礼物".to_string()),
+            "Count": count.unwrap_or(1).max(1),
+            "Avatar": avatar,
+            "OccurredAt": occurred_at,
+        }))
+    })?;
+
+    let mut items = Vec::new();
+    for row in rows {
+        items.push(row?);
+    }
+    Ok(items)
+}
+
+fn load_gift_rank_data(
+    conn: &rusqlite::Connection,
+    scope: &BilibiliRoomScope,
+    limit: i64,
+) -> anyhow::Result<Vec<Value>> {
+    let mut stmt = conn.prepare(
+        "select uname,
+                coalesce(sum(case when gift_price > 0 then gift_count * gift_price else gift_count end), 0) as total_value,
+                coalesce(sum(gift_count), 0) as total_count,
+                max(raw_json) as raw_json
+         from interaction_records
+         where room_id = ?1
+           and coalesce(nullif(platform_id, ''), 'bilibili') = 'bilibili'
+           and coalesce(nullif(platform_room_id, ''), cast(room_id as text)) = ?2
+           and event_type in ('gift', 'guard_buy')
+           and date(occurred_at, 'localtime') = date('now', 'localtime')
+         group by uname
+         order by total_value desc, total_count desc, max(occurred_at) desc
+         limit ?3",
+    )?;
+    let rows = stmt.query_map(params![scope.room_id, scope.platform_room_id, limit], |row| {
+        let user: Option<String> = row.get(0)?;
+        let value: Option<i64> = row.get(1)?;
+        let count: Option<i64> = row.get(2)?;
+        let raw_json: Option<String> = row.get(3)?;
+        let raw = raw_json
+            .as_deref()
+            .and_then(|text| serde_json::from_str::<Value>(text).ok())
+            .unwrap_or(Value::Null);
+        let avatar = raw
+            .pointer("/data/face")
+            .or_else(|| raw.pointer("/data/uface"))
+            .or_else(|| raw.pointer("/data/user_info/face"))
+            .and_then(Value::as_str)
+            .unwrap_or_default()
+            .to_string();
+        Ok(serde_json::json!({
+            "User": user.unwrap_or_else(|| "观众".to_string()),
+            "Value": value.unwrap_or(0).max(0),
+            "Count": count.unwrap_or(0).max(0),
+            "Avatar": avatar,
+        }))
+    })?;
+
+    let mut items = Vec::new();
+    for row in rows {
+        items.push(row?);
+    }
+    Ok(items)
 }
 
 async fn local_resource_handler(Query(q): Query<ProxyQuery>) -> Response<Body> {
@@ -929,4 +957,96 @@ async fn proxy_handler(Query(q): Query<ProxyQuery>) -> Response<Body> {
         .header(header::CACHE_CONTROL, "public, max-age=3600")
         .body(Body::from(bytes))
         .unwrap()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{BilibiliRoomScope, load_gift_rank_data, load_recent_gifts_data};
+    use crate::storage::Storage;
+    use chrono::{Duration, Local};
+    use rusqlite::params;
+    use serde_json::json;
+
+    #[test]
+    fn recent_gifts_data_only_reads_bilibili_room_scope() {
+        let storage = Storage::open_in_memory().unwrap();
+        let scope = BilibiliRoomScope {
+            room_id: 123,
+            platform_room_id: "123".to_string(),
+        };
+        let now = Local::now();
+
+        storage
+            .with_connection(|conn| {
+                conn.execute(
+                    "insert into interaction_records (
+                        session_id, platform_id, platform_room_id, platform_user_id, room_id,
+                        event_type, uname, gift_name, gift_count, gift_price, raw_json, occurred_at
+                    ) values ('bili', 'bilibili', '123', '7', 123, 'gift', 'alice', 'rose', 2, 100, ?1, ?2)",
+                    params![json!({"data":{"face":"https://example.com/alice.png"}}).to_string(), now.to_rfc3339()],
+                )?;
+                conn.execute(
+                    "insert into interaction_records (
+                        session_id, platform_id, platform_room_id, platform_user_id, room_id,
+                        event_type, uname, gift_name, gift_count, gift_price, raw_json, occurred_at
+                    ) values ('douyin', 'douyin', '123', '7', 123, 'gift', 'mallory', 'rocket', 5, 100, '{}', ?1)",
+                    params![now.to_rfc3339()],
+                )?;
+                Ok(())
+            })
+            .unwrap();
+
+        let items = storage
+            .with_connection(|conn| load_recent_gifts_data(conn, &scope, 10))
+            .unwrap();
+        assert_eq!(items.len(), 1);
+        assert_eq!(items[0]["User"], "alice");
+        assert_eq!(items[0]["Gift"], "rose");
+    }
+
+    #[test]
+    fn gift_rank_data_only_reads_bilibili_room_scope() {
+        let storage = Storage::open_in_memory().unwrap();
+        let scope = BilibiliRoomScope {
+            room_id: 123,
+            platform_room_id: "123".to_string(),
+        };
+        let now = Local::now();
+        let today = now.to_rfc3339();
+        let yesterday = (now - Duration::days(1)).to_rfc3339();
+
+        storage
+            .with_connection(|conn| {
+                conn.execute(
+                    "insert into interaction_records (
+                        session_id, platform_id, platform_room_id, platform_user_id, room_id,
+                        event_type, uname, gift_name, gift_count, gift_price, raw_json, occurred_at
+                    ) values ('bili-1', 'bilibili', '123', '7', 123, 'gift', 'alice', 'rose', 2, 100, ?1, ?2)",
+                    params![json!({"data":{"face":"https://example.com/alice.png"}}).to_string(), today],
+                )?;
+                conn.execute(
+                    "insert into interaction_records (
+                        session_id, platform_id, platform_room_id, platform_user_id, room_id,
+                        event_type, uname, gift_name, gift_count, gift_price, raw_json, occurred_at
+                    ) values ('douyin-1', 'douyin', '123', '7', 123, 'gift', 'mallory', 'rocket', 5, 100, '{}', ?1)",
+                    params![Local::now().to_rfc3339()],
+                )?;
+                conn.execute(
+                    "insert into interaction_records (
+                        session_id, platform_id, platform_room_id, platform_user_id, room_id,
+                        event_type, uname, gift_name, gift_count, gift_price, raw_json, occurred_at
+                    ) values ('bili-old', 'bilibili', '123', '8', 123, 'gift', 'bob', 'heart', 9, 10, '{}', ?1)",
+                    params![yesterday],
+                )?;
+                Ok(())
+            })
+            .unwrap();
+
+        let items = storage
+            .with_connection(|conn| load_gift_rank_data(conn, &scope, 10))
+            .unwrap();
+        assert_eq!(items.len(), 1);
+        assert_eq!(items[0]["User"], "alice");
+        assert_eq!(items[0]["Value"], 200);
+    }
 }

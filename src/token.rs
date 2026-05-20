@@ -4,6 +4,7 @@ use anyhow::Result;
 use reqwest::header::{HeaderMap, SET_COOKIE};
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
+use std::path::Path;
 
 const APP_ID: &str = "com.streamix.app";
 
@@ -147,6 +148,30 @@ pub fn delete_platform_session(platform_id: &str) -> Result<()> {
     Ok(())
 }
 
+fn delete_persisted_platform_sessions_in_dir(dir: &Path) -> Result<()> {
+    if !dir.exists() {
+        return Ok(());
+    }
+
+    for entry in std::fs::read_dir(dir)? {
+        let entry = entry?;
+        if !entry.file_type()?.is_file() {
+            continue;
+        }
+        let name = entry.file_name();
+        let name = name.to_string_lossy();
+        if name.starts_with("session-") && name.ends_with(".json") {
+            let _ = std::fs::remove_file(entry.path());
+        }
+    }
+    Ok(())
+}
+
+pub fn delete_all_platform_sessions() -> Result<()> {
+    delete_session()?;
+    delete_persisted_platform_sessions_in_dir(&auth_dir())
+}
+
 // ── Connected room ────────────────────────────────────────────────────────────
 
 pub fn read_connected_room() -> Option<i64> {
@@ -230,6 +255,7 @@ pub fn parse_set_cookie(headers: &HeaderMap) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::time::{SystemTime, UNIX_EPOCH};
 
     #[test]
     fn stored_platform_room_serializes_platform_fields() {
@@ -252,5 +278,29 @@ mod tests {
         let json = serde_json::to_value(&session).unwrap();
         assert_eq!(json["platform_id"], "bilibili");
         assert_eq!(json["payload"]["cookie"], "a=b");
+    }
+
+    #[test]
+    fn delete_all_platform_sessions_only_removes_session_files() {
+        let unique = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+        let dir = std::env::temp_dir().join(format!("live-bot-token-{unique}"));
+        std::fs::create_dir_all(&dir).unwrap();
+
+        std::fs::write(dir.join("session-bilibili.json"), "{}").unwrap();
+        std::fs::write(dir.join("session-douyin.json"), "{}").unwrap();
+        std::fs::write(dir.join("session.json"), "{}").unwrap();
+        std::fs::write(dir.join("connected_room.json"), "{}").unwrap();
+
+        delete_persisted_platform_sessions_in_dir(&dir).unwrap();
+
+        assert!(!dir.join("session-bilibili.json").exists());
+        assert!(!dir.join("session-douyin.json").exists());
+        assert!(dir.join("session.json").exists());
+        assert!(dir.join("connected_room.json").exists());
+
+        std::fs::remove_dir_all(dir).unwrap();
     }
 }
