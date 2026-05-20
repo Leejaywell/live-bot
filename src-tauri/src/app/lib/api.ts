@@ -431,8 +431,8 @@ export interface LoginChallenge {
 }
 
 export interface StartLoginChallenge extends LoginUrl {
-  platform_id?: PlatformId;
-  challenge_id?: string;
+  platform_id: PlatformId;
+  challenge_id: string;
 }
 
 export interface LoginPollPending {
