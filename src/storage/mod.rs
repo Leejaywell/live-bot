@@ -1,7 +1,7 @@
 use anyhow::Result;
 use bilibili_live_protocol::{InteractKind, LiveEvent, ParsedLiveEvent, PkEventKind};
 use chrono::{DateTime, Datelike, Local, Timelike};
-use rusqlite::{params, Connection, OptionalExtension};
+use rusqlite::{Connection, OptionalExtension, params};
 use std::sync::Mutex;
 
 use crate::live_platform::types::{PlatformEvent, PlatformEventEnvelope};
@@ -929,6 +929,35 @@ impl Storage {
                 occurred_at,
             ],
         )?;
+
+        if let (Some(uid_val), Some(platform_user_id)) = (uid, platform_user_id.as_deref()) {
+            if uid_val > 0
+                && envelope.platform_id.as_str() == "bilibili"
+                && platform_user_id.parse::<i64>().ok() == Some(uid_val)
+            {
+                let hour = envelope.occurred_at.hour();
+                let sc_price = match &envelope.event {
+                    PlatformEvent::PaidMessage(value) => Some(value.price),
+                    _ => None,
+                };
+                let is_guard_event = matches!(&envelope.event, PlatformEvent::GuardOrMember(_));
+                upsert_user_profile_stats(
+                    &conn,
+                    uid_val,
+                    envelope.platform_id.as_str(),
+                    platform_user_id,
+                    event_type,
+                    event_subtype,
+                    gift_count,
+                    gift_price,
+                    sc_price,
+                    None,
+                    is_guard_event,
+                    &occurred_at,
+                    hour,
+                )?;
+            }
+        }
 
         Ok(())
     }
@@ -2353,6 +2382,79 @@ mod tests {
                 "danmu".to_string()
             )
         );
+    }
+
+    #[test]
+    fn insert_platform_interaction_record_updates_bilibili_user_profiles_only() {
+        let storage = Storage::open_in_memory().unwrap();
+        let session_id = storage
+            .start_observed_live_session(123, Local.with_ymd_and_hms(2026, 5, 1, 20, 0, 0).unwrap())
+            .unwrap();
+
+        let bili_event = crate::live_platform::types::PlatformEventEnvelope {
+            platform_id: crate::live_platform::types::PlatformId::from("bilibili"),
+            room: crate::live_platform::types::PlatformRoomRef::bilibili(123),
+            event_id: None,
+            occurred_at: Local.with_ymd_and_hms(2026, 5, 1, 20, 30, 0).unwrap(),
+            event: crate::live_platform::types::PlatformEvent::Message(
+                crate::live_platform::types::ChatMessageEvent {
+                    user: crate::live_platform::types::PlatformUserRef::bilibili(42, "alice"),
+                    text: "hello".to_string(),
+                },
+            ),
+            raw: json!({"cmd": "DANMU_MSG"}),
+        };
+        let douyin_event = crate::live_platform::types::PlatformEventEnvelope {
+            platform_id: crate::live_platform::types::PlatformId::from("douyin"),
+            room: crate::live_platform::types::PlatformRoomRef {
+                platform_id: crate::live_platform::types::PlatformId::from("douyin"),
+                platform_room_id: "dy-room".to_string(),
+                display_id: Some("dy-room".to_string()),
+            },
+            event_id: None,
+            occurred_at: Local.with_ymd_and_hms(2026, 5, 1, 20, 31, 0).unwrap(),
+            event: crate::live_platform::types::PlatformEvent::Message(
+                crate::live_platform::types::ChatMessageEvent {
+                    user: crate::live_platform::types::PlatformUserRef {
+                        platform_id: crate::live_platform::types::PlatformId::from("douyin"),
+                        platform_user_id: "42".to_string(),
+                        display_name: "mallory".to_string(),
+                    },
+                    text: "nihao".to_string(),
+                },
+            ),
+            raw: json!({"type": "chat"}),
+        };
+
+        storage
+            .insert_platform_interaction_record(&session_id, &bili_event)
+            .unwrap();
+        storage
+            .insert_platform_interaction_record(&session_id, &douyin_event)
+            .unwrap();
+
+        let conn = storage.conn.lock().unwrap();
+        let bili_row: (String, String, i64) = conn
+            .query_row(
+                "select platform_id, platform_user_id, total_danmu_count
+                 from user_profiles
+                 where uid = 42",
+                [],
+                |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
+            )
+            .unwrap();
+        assert_eq!(bili_row, ("bilibili".to_string(), "42".to_string(), 1));
+
+        let non_bili_count: i64 = conn
+            .query_row(
+                "select count(*)
+                 from user_profiles
+                 where platform_id = 'douyin' and platform_user_id = '42'",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(non_bili_count, 0);
     }
 
     #[test]

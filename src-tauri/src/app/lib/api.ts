@@ -623,8 +623,8 @@ export const api = {
   simulateGiftRank: () => invoke<PluginSettings>('simulate_gift_rank'),
 
   // Persistent room connection
-  setConnectedRoom: (roomId: number | null) => invoke<void>('set_connected_room', { roomId }),
-  getConnectedRoom: () => invoke<number | null>('get_connected_room'),
+  setConnectedRoom: (room: PlatformRoomRef | null) => invoke<void>('set_connected_room', { room }),
+  getConnectedRoom: () => invoke<PlatformRoomRef | null>('get_connected_room'),
 
   // Auto update
   installUpdate: () => invoke<void>('install_update'),

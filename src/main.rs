@@ -1,4 +1,7 @@
-#![cfg_attr(all(not(debug_assertions), target_os = "windows"), windows_subsystem = "windows")]
+#![cfg_attr(
+    all(not(debug_assertions), target_os = "windows"),
+    windows_subsystem = "windows"
+)]
 
 mod ai_client;
 mod bot;
@@ -286,9 +289,7 @@ async fn get_user_info(state: tauri::State<'_, SharedState>) -> Result<serde_jso
 
 #[cfg(feature = "tauri")]
 #[tauri::command]
-async fn list_live_platforms(
-    state: tauri::State<'_, SharedState>,
-) -> Result<Vec<String>, String> {
+async fn list_live_platforms(state: tauri::State<'_, SharedState>) -> Result<Vec<String>, String> {
     Ok(state
         .platforms
         .list()
@@ -344,10 +345,9 @@ async fn poll_platform_login(
 
 #[cfg(feature = "tauri")]
 #[tauri::command]
-async fn start_login(
-    state: tauri::State<'_, SharedState>,
-) -> Result<serde_json::Value, String> {
-    let challenge = create_platform_login_challenge(state, default_platform_id().to_string()).await?;
+async fn start_login(state: tauri::State<'_, SharedState>) -> Result<serde_json::Value, String> {
+    let challenge =
+        create_platform_login_challenge(state, default_platform_id().to_string()).await?;
     let platform_id = challenge.platform_id.as_str().to_string();
     let url = challenge.url;
     let challenge_id = challenge.challenge_id;
@@ -385,7 +385,11 @@ async fn poll_login(
             token::write_platform_session(&platform_session_to_stored(&session))
                 .map_err(|err| err.to_string())?;
             let saved_at = token::session_saved_at().unwrap_or(0);
-            if let Some(cookie) = session.payload.get("cookie").and_then(|value| value.as_str()) {
+            if let Some(cookie) = session
+                .payload
+                .get("cookie")
+                .and_then(|value| value.as_str())
+            {
                 if let Ok(info) = state.http.user_info(cookie).await {
                     let mut value = user_info_json(&info, saved_at);
                     value["status"] = serde_json::json!("Success");
@@ -424,8 +428,12 @@ async fn check_room(
     state: tauri::State<'_, SharedState>,
     room_id: i64,
 ) -> Result<bili_api::RoomInfo, String> {
-    let info = resolve_platform_room(state, default_platform_id().to_string(), room_id.to_string())
-        .await?;
+    let info = resolve_platform_room(
+        state,
+        default_platform_id().to_string(),
+        room_id.to_string(),
+    )
+    .await?;
     let canonical_room_id = info
         .room
         .platform_room_id
@@ -439,7 +447,11 @@ async fn check_room(
             .as_deref()
             .and_then(|value| value.parse().ok())
             .unwrap_or(0),
-        uid: info.owner.as_ref().and_then(|u| u.numeric_id()).unwrap_or(0),
+        uid: info
+            .owner
+            .as_ref()
+            .and_then(|u| u.numeric_id())
+            .unwrap_or(0),
         live_status: info.live_status,
         live_time: info.live_time,
         title: info.title,
@@ -468,7 +480,7 @@ async fn get_room_by_uid(
 #[cfg(feature = "tauri")]
 #[tauri::command]
 async fn logout() -> Result<(), String> {
-    token::delete_session().map_err(|e| e.to_string())
+    token::delete_platform_session(default_platform_id().as_str()).map_err(|e| e.to_string())
 }
 
 #[cfg(feature = "tauri")]
@@ -763,7 +775,10 @@ async fn get_stats(
         if let Some(handle) = monitor.as_ref() {
             let session_id = handle.session_id.lock().map_err(|e| e.to_string())?;
             if let Some(id) = session_id.as_ref() {
-                return state.storage.live_session_summary(id).map_err(|e| e.to_string());
+                return state
+                    .storage
+                    .live_session_summary(id)
+                    .map_err(|e| e.to_string());
             }
         }
         return state.storage.periodic_summary(0).map_err(|e| e.to_string());
@@ -995,9 +1010,11 @@ fn current_my_room_id(state: &tauri::State<'_, SharedState>) -> Result<i64, Stri
             .parse::<i64>()
             .map_err(|e| e.to_string())?,
         Some(room) => return Err(format!("平台不支持直播管理: {}", room.platform_id)),
-        None => AppConfig::load_or_default()
-            .map_err(|e| e.to_string())?
-            .room_id,
+        None => {
+            AppConfig::load_or_default()
+                .map_err(|e| e.to_string())?
+                .room_id
+        }
     };
     if room_id == 0 {
         return Err("未连接直播间".to_string());
@@ -2197,11 +2214,11 @@ async fn proxy_image(state: tauri::State<'_, SharedState>, url: String) -> Resul
 #[tauri::command]
 async fn set_connected_room(
     state: tauri::State<'_, SharedState>,
-    room_id: Option<i64>,
+    room: Option<PlatformRoomRef>,
 ) -> Result<(), String> {
-    let mut room = state.connected_room.lock().map_err(|e| e.to_string())?;
-    *room = room_id.map(PlatformRoomRef::bilibili);
-    match room.as_ref() {
+    let mut connected_room = state.connected_room.lock().map_err(|e| e.to_string())?;
+    *connected_room = room;
+    match connected_room.as_ref() {
         Some(room) => token::write_connected_platform_room(&platform_room_to_stored(room))
             .map_err(|e| e.to_string())?,
         None => token::delete_connected_platform_room(),
@@ -2211,15 +2228,11 @@ async fn set_connected_room(
 
 #[cfg(feature = "tauri")]
 #[tauri::command]
-async fn get_connected_room(state: tauri::State<'_, SharedState>) -> Result<Option<i64>, String> {
+async fn get_connected_room(
+    state: tauri::State<'_, SharedState>,
+) -> Result<Option<PlatformRoomRef>, String> {
     let room = state.connected_room.lock().map_err(|e| e.to_string())?;
-    room.as_ref()
-        .map(|room| {
-            room.platform_room_id
-                .parse::<i64>()
-                .map_err(|e| e.to_string())
-        })
-        .transpose()
+    Ok(room.clone())
 }
 
 #[cfg(feature = "tauri")]

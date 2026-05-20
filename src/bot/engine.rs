@@ -69,9 +69,11 @@ impl BotEngine {
         // Special welcome (UID exact match) takes priority
         let uid_str = entry.user.platform_user_id.as_str();
         let user = entry.user.display_name.as_str();
-        for sw in &config.special_welcome_list {
-            if !sw.uid.is_empty() && sw.uid == uid_str {
-                return vec![sw.msg.replace("{user}", user)];
+        if entry.user.platform_id.as_str() == "bilibili" {
+            for sw in &config.special_welcome_list {
+                if !sw.uid.is_empty() && sw.uid == uid_str {
+                    return vec![sw.msg.replace("{user}", user)];
+                }
             }
         }
 
@@ -88,11 +90,7 @@ impl BotEngine {
         Vec::new()
     }
 
-    fn is_permanently_blacklisted_inner(
-        &self,
-        event: &PlatformEvent,
-        config: &AppConfig,
-    ) -> bool {
+    fn is_permanently_blacklisted_inner(&self, event: &PlatformEvent, config: &AppConfig) -> bool {
         let Some(user_ref) = Self::event_user(event) else {
             return false;
         };
@@ -189,7 +187,10 @@ impl BotEngine {
                 out
             }
             PlatformEvent::GuardOrMember(value) if config.thanks_gift => {
-                vec![format!("感谢 {} 的 {}", value.user.display_name, value.gift)]
+                vec![format!(
+                    "感谢 {} 的 {}",
+                    value.user.display_name, value.gift
+                )]
             }
             PlatformEvent::PaidMessage(value) if config.thanks_super_chat => {
                 vec![format!(
@@ -268,11 +269,7 @@ impl BotEngine {
 
         if config.fuzzy_match_cmd {
             if text.contains(&config.talk_robot_cmd) {
-                Some(
-                    text.replace(&config.talk_robot_cmd, "")
-                        .trim()
-                        .to_string(),
-                )
+                Some(text.replace(&config.talk_robot_cmd, "").trim().to_string())
             } else {
                 None
             }
@@ -346,9 +343,7 @@ fn bilibili_event_to_platform(event: &LiveEvent) -> PlatformEvent {
                 }),
             }
         }
-        LiveEvent::EntryEffect {
-            user_id, user, ..
-        } => PlatformEvent::Enter(UserEvent {
+        LiveEvent::EntryEffect { user_id, user, .. } => PlatformEvent::Enter(UserEvent {
             user: PlatformUserRef::bilibili(*user_id, user.clone()),
         }),
         LiveEvent::LikeClick {
@@ -384,9 +379,9 @@ fn bilibili_event_to_platform(event: &LiveEvent) -> PlatformEvent {
             action: "block".to_string(),
         }),
         LiveEvent::System { text } => PlatformEvent::System(SystemEvent { text: text.clone() }),
-        LiveEvent::Popularity { value } => PlatformEvent::Popularity(PopularityEvent {
-            value: *value,
-        }),
+        LiveEvent::Popularity { value } => {
+            PlatformEvent::Popularity(PopularityEvent { value: *value })
+        }
         LiveEvent::Pk { kind } => PlatformEvent::Battle(match kind {
             PkEventKind::Start {
                 init_room_id,
@@ -441,9 +436,10 @@ fn time_key(hour: u32) -> &'static str {
 mod tests {
     use super::{BotEngine, short_name, time_key};
     use crate::bot::testsupport::test_config;
+    use crate::config::SpecialWelcomeEntry;
     use crate::live_platform::types::{
         BattleEvent, ChatMessageEvent, GuardOrMemberEvent, ModerationEvent, PaidMessageEvent,
-        PlatformEvent, PlatformUserRef, UserEvent,
+        PlatformEvent, PlatformId, PlatformUserRef, UserEvent,
     };
 
     fn user(uid: i64, name: &str) -> PlatformUserRef {
@@ -496,6 +492,32 @@ mod tests {
             init_room_id: Some(init_room_id.to_string()),
             match_room_id: Some(match_room_id.to_string()),
         })
+    }
+
+    #[test]
+    fn special_welcome_uid_match_is_bilibili_only() {
+        let mut config = test_config();
+        config.special_welcome_list = vec![SpecialWelcomeEntry {
+            uid: "42".to_string(),
+            msg: "欢迎 {user}".to_string(),
+        }];
+        let engine = BotEngine::new(config);
+        let bili_event = PlatformEvent::Enter(UserEvent {
+            user: PlatformUserRef::bilibili(42, "alice"),
+        });
+        let douyin_event = PlatformEvent::Enter(UserEvent {
+            user: PlatformUserRef {
+                platform_id: PlatformId::from("douyin"),
+                platform_user_id: "42".to_string(),
+                display_name: "mallory".to_string(),
+            },
+        });
+
+        assert_eq!(
+            engine.handle_platform_event(&bili_event, None),
+            vec!["欢迎 alice".to_string()]
+        );
+        assert!(engine.handle_platform_event(&douyin_event, None).is_empty());
     }
 
     #[test]

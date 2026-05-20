@@ -159,8 +159,11 @@ function AppContent() {
     if (isLoggedIn && userInfo?.uid) {
       api.getRoomByUid(userInfo.uid).then(setUserRoom).catch(() => {});
       // 恢复上次连接的房间
-      api.getConnectedRoom().then(async (savedRoomId) => {
-        if (!savedRoomId) return;
+      api.getConnectedRoom().then(async (savedRoom) => {
+        if (!savedRoom) return;
+        if (savedRoom.platform_id !== 'bilibili') return;
+        const savedRoomId = Number(savedRoom.platform_room_id);
+        if (!Number.isFinite(savedRoomId) || savedRoomId <= 0) return;
         try {
           const room = await api.checkRoom(savedRoomId);
           setAutoRoom({ roomId: String(room.room_id), liveStatus: room.live_status, liveTime: room.live_time ?? '' });
@@ -265,7 +268,11 @@ function AppContent() {
     setConnected(true);
     toast.success(`已连接到直播间 ${roomId}`);
     // 持久化已连接的房间
-    api.setConnectedRoom(id).catch(() => {});
+    api.setConnectedRoom({
+      platform_id: 'bilibili',
+      platform_room_id: String(id),
+      display_id: String(id),
+    }).catch(() => {});
     // 拉取主播信息
     if (roomUid) {
       api.getAnchorInfo(roomUid).then(setAnchorInfo).catch(() => {});
