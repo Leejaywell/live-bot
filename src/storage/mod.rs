@@ -570,6 +570,17 @@ impl Storage {
         Ok(session_id)
     }
 
+    pub fn live_session_room_id(&self, session_id: &str) -> Result<Option<i64>> {
+        let conn = self.conn.lock().expect("storage mutex poisoned");
+        conn.query_row(
+            "select room_id from live_sessions where id = ?1",
+            params![session_id],
+            |row| row.get(0),
+        )
+        .optional()
+        .map_err(Into::into)
+    }
+
     #[allow(dead_code)]
     pub fn end_observed_live_session(
         &self,
@@ -2658,6 +2669,24 @@ mod tests {
             )
             .unwrap();
         assert_eq!(row, ("bilibili".to_string(), "8792912".to_string()));
+    }
+
+    #[test]
+    fn live_session_room_id_reads_persisted_metadata() {
+        let storage = Storage::open_in_memory().unwrap();
+        let started_at = Local.with_ymd_and_hms(2026, 5, 1, 20, 0, 0).unwrap();
+        let session_id = storage
+            .start_observed_live_session(8792912, started_at)
+            .unwrap();
+
+        assert_eq!(
+            storage.live_session_room_id(&session_id).unwrap(),
+            Some(8792912)
+        );
+        assert_eq!(
+            storage.live_session_room_id("missing-session").unwrap(),
+            None
+        );
     }
 
     #[test]

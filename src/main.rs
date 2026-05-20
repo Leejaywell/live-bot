@@ -504,7 +504,6 @@ async fn logout(
     mode: Option<LogoutMode>,
 ) -> Result<(), String> {
     let mode = mode.unwrap_or(LogoutMode::Manual);
-    let default_platform_id = default_platform_id();
     {
         let mut monitor = state.monitor.lock().map_err(|e| e.to_string())?;
         if let Some(handle) = monitor.take() {
@@ -519,15 +518,11 @@ async fn logout(
     if mode.should_clear_room() {
         {
             let mut connected_room = state.connected_room.lock().map_err(|e| e.to_string())?;
-            if connected_room
-                .as_ref()
-                .is_some_and(|room| room.platform_id == default_platform_id)
-            {
-                *connected_room = None;
-            }
+            *connected_room = None;
         }
-        token::delete_connected_platform_room_for_platform(default_platform_id.as_str());
+        token::delete_connected_platform_room();
     }
+    let default_platform_id = default_platform_id();
     if mode.should_clear_all_platform_sessions() {
         token::delete_all_platform_sessions().map_err(|e| e.to_string())
     } else {
@@ -4533,10 +4528,11 @@ fn active_music_session(
     let Some(session_id) = session_id else {
         return Ok(None);
     };
-    let room_id = session_id
-        .split_once(':')
-        .and_then(|(room_id, _)| room_id.parse::<i64>().ok())
-        .ok_or_else(|| "当前直播场次格式无效，暂不能处理点歌互动".to_string())?;
+    let room_id = state
+        .storage
+        .live_session_room_id(&session_id)
+        .map_err(|e| e.to_string())?
+        .ok_or_else(|| "当前直播场次缺少房间信息，暂不能处理点歌互动".to_string())?;
     Ok(Some((session_id, room_id)))
 }
 
