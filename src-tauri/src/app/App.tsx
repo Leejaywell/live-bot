@@ -223,14 +223,8 @@ function AppContent() {
             setShowLoginModal(false);
             setLoginUrl('');
             setLoginKey('');
-            if (res.uid) {
-              setUserInfo({
-                uid: res.uid, uname: res.uname, face: res.face,
-                level: res.level ?? 0, vip_status: res.vip_status ?? 0,
-                vip_type: res.vip_type ?? 0, coins: res.coins ?? 0,
-                vip_nickname_color: res.vip_nickname_color ?? '',
-                is_login: true, saved_at: Math.floor(Date.now() / 1000)
-              });
+            if ('uid' in res) {
+              setUserInfo(res);
             }
             setIsLoggedIn(true);
             setConnected(false);

@@ -435,6 +435,22 @@ export interface StartLoginChallenge extends LoginUrl {
   challenge_id?: string;
 }
 
+export interface LoginPollPending {
+  status: 'Scanning';
+  message: string;
+}
+
+export interface LoginPollExpired {
+  status: 'Expired';
+  message: string;
+}
+
+export type LoginPollSuccess =
+  | ({ status: 'Success' } & UserInfo)
+  | { status: 'Success' };
+
+export type LoginPollResult = LoginPollPending | LoginPollExpired | LoginPollSuccess;
+
 export interface RoomInfo {
   room_id: number;
   short_id: number;
@@ -520,12 +536,12 @@ export const api = {
   // User/Login
   getUserInfo: () => invoke<UserInfo>('get_user_info'),
   startLogin: () => invoke<StartLoginChallenge>('start_login'),
-  pollLogin: (key: string) => invoke<any>('poll_login', { key }),
+  pollLogin: (key: string) => invoke<LoginPollResult>('poll_login', { key }),
   listLivePlatforms: () => invoke<PlatformId[]>('list_live_platforms'),
   createPlatformLoginChallenge: (platformId: PlatformId) =>
     invoke<LoginChallenge>('create_platform_login_challenge', { platformId }),
   pollPlatformLogin: (platformId: PlatformId, challengeId: string) =>
-    invoke<any>('poll_platform_login', { platformId, challengeId }),
+    invoke<LoginPollResult>('poll_platform_login', { platformId, challengeId }),
   resolvePlatformRoom: (platformId: PlatformId, roomInput: string) =>
     invoke<LiveRoomInfo>('resolve_platform_room', { platformId, roomInput }),
   logout: () => invoke<void>('logout'),
