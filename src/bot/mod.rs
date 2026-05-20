@@ -296,6 +296,67 @@ mod tests {
             })
             .unwrap();
     }
+
+    #[test]
+    fn auto_track_platform_does_not_overwrite_bilibili_uid_with_non_bilibili_numeric_id() {
+        let storage = Storage::open_in_memory().unwrap();
+        storage
+            .with_connection(|conn| {
+                let now = Local::now().to_rfc3339();
+                conn.execute(
+                    "insert into tracked_users (
+                        uid,
+                        platform_id,
+                        platform_user_id,
+                        nickname,
+                        alias,
+                        notes,
+                        status,
+                        auto_tracked,
+                        created_at,
+                        updated_at
+                    ) values (42, 'bilibili', '42', 'alice', '', '', 'active', 1, ?1, ?1)",
+                    rusqlite::params![now],
+                )?;
+                Ok(())
+            })
+            .unwrap();
+
+        let event = PlatformEvent::Gift(crate::live_platform::types::GiftEvent {
+            user: PlatformUserRef {
+                platform_id: crate::live_platform::types::PlatformId::from("douyin"),
+                platform_user_id: "42".to_string(),
+                display_name: "mallory".to_string(),
+            },
+            gift: "rose".to_string(),
+            count: 1,
+            price: 100,
+            original_gift_name: None,
+            original_gift_price: 0,
+        });
+
+        super::try_auto_track_platform(&storage, &event);
+
+        storage
+            .with_connection(|conn| {
+                let row: (String, String, String, i64) = conn.query_row(
+                    "select platform_id, platform_user_id, nickname, count(*) from tracked_users where uid = 42",
+                    [],
+                    |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?, row.get(3)?)),
+                )?;
+                assert_eq!(
+                    row,
+                    (
+                        "bilibili".to_string(),
+                        "42".to_string(),
+                        "alice".to_string(),
+                        1
+                    )
+                );
+                Ok(())
+            })
+            .unwrap();
+    }
 }
 
 #[cfg(test)]

@@ -780,9 +780,12 @@ impl Storage {
                     LiveEvent::SuperChat { price, .. } => Some(*price),
                     _ => None,
                 };
+                let platform_user_id = uid_val.to_string();
                 upsert_user_profile_stats(
                     &conn,
                     uid_val,
+                    "bilibili",
+                    platform_user_id.as_str(),
                     event_type,
                     event_subtype,
                     gift_count,
@@ -1640,6 +1643,9 @@ impl Storage {
         let Some(uid) = fallback_uid.filter(|uid| *uid > 0) else {
             return Ok(());
         };
+        if platform_id != "bilibili" || platform_user_id.parse::<i64>().ok() != Some(uid) {
+            return Ok(());
+        }
         let existing_by_uid: Option<String> = conn
             .query_row(
                 "select status from tracked_users where uid = ?1",
@@ -2023,6 +2029,8 @@ fn map_user_profile(row: &rusqlite::Row<'_>) -> rusqlite::Result<UserProfile> {
 fn upsert_user_profile_stats(
     conn: &Connection,
     uid: i64,
+    platform_id: &str,
+    platform_user_id: &str,
     event_type: &str,
     event_subtype: Option<&str>,
     gift_count: Option<i64>,
@@ -2058,34 +2066,37 @@ fn upsert_user_profile_stats(
     conn.execute(
         "
         insert into user_profiles (
-            uid, platform_user_id, first_seen_at, last_seen_at,
+            uid, platform_id, platform_user_id, first_seen_at, last_seen_at,
             total_danmu_count, total_gift_value, total_sc_value, enter_count,
             active_hours, fan_level, is_guard
         )
-        values (?1, cast(?1 as text), ?2, ?2, ?3, ?4, ?5, ?6, json_set('{}', ?7, 1), ?8, ?9)
+        values (?1, ?2, ?3, ?4, ?4, ?5, ?6, ?7, ?8, json_set('{}', ?9, 1), ?10, ?11)
         on conflict(uid) do update set
-            platform_user_id = coalesce(user_profiles.platform_user_id, excluded.platform_user_id),
+            platform_id = excluded.platform_id,
+            platform_user_id = excluded.platform_user_id,
             last_seen_at = excluded.last_seen_at,
-            total_danmu_count = total_danmu_count + ?3,
-            total_gift_value  = total_gift_value  + ?4,
-            total_sc_value    = total_sc_value    + ?5,
-            enter_count       = enter_count       + ?6,
+            total_danmu_count = total_danmu_count + ?5,
+            total_gift_value  = total_gift_value  + ?6,
+            total_sc_value    = total_sc_value    + ?7,
+            enter_count       = enter_count       + ?8,
             active_hours = json_set(
                 case when json_valid(active_hours) then active_hours else '{}' end,
-                ?7,
+                ?9,
                 coalesce(
                     json_extract(
                         case when json_valid(active_hours) then active_hours else '{}' end,
-                        ?7
+                        ?9
                     ),
                     0
                 ) + 1
             ),
-            fan_level = case when ?8 > 0 then ?8 else fan_level end,
-            is_guard  = case when ?9 = 1 then 1 else is_guard end
+            fan_level = case when ?10 > 0 then ?10 else fan_level end,
+            is_guard  = case when ?11 = 1 then 1 else is_guard end
         ",
         params![
             uid,
+            platform_id,
+            platform_user_id,
             occurred_at,
             danmu_delta,
             gift_value_delta,
@@ -2247,6 +2258,45 @@ mod tests {
                 "danmu".to_string()
             )
         );
+    }
+
+    #[test]
+    fn record_interaction_persists_user_profile_platform_keys() {
+        let storage = Storage::open_in_memory().unwrap();
+        let session_id = storage
+            .start_observed_live_session(
+                8792912,
+                Local.with_ymd_and_hms(2026, 5, 1, 20, 0, 0).unwrap(),
+            )
+            .unwrap();
+
+        storage
+            .record_interaction(
+                &session_id,
+                8792912,
+                &ParsedLiveEvent {
+                    event: LiveEvent::Danmu {
+                        user_id: 42,
+                        user: "alice".to_string(),
+                        text: "hello".to_string(),
+                    },
+                    raw: json!({
+                        "cmd": "DANMU_MSG",
+                        "info": [[], "hello", [42, "alice"]]
+                    }),
+                },
+            )
+            .unwrap();
+
+        let conn = storage.conn.lock().unwrap();
+        let row: (String, String) = conn
+            .query_row(
+                "select platform_id, platform_user_id from user_profiles where uid = 42",
+                [],
+                |row| Ok((row.get(0)?, row.get(1)?)),
+            )
+            .unwrap();
+        assert_eq!(row, ("bilibili".to_string(), "42".to_string()));
     }
 
     #[test]
