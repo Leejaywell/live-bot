@@ -11,35 +11,43 @@ use crate::storage::Storage;
 
 #[derive(Debug)]
 pub struct BotEngine {
-    pub(crate) config: AppConfig,
+    config: Mutex<AppConfig>,
     repeat_counts: Mutex<BTreeMap<(i64, String), i32>>,
 }
 
 impl BotEngine {
     pub fn new(config: AppConfig) -> Self {
         Self {
-            config,
+            config: Mutex::new(config),
             repeat_counts: Mutex::new(BTreeMap::new()),
         }
     }
 
+    #[cfg(test)]
+    pub fn update_config(&self, next: AppConfig) {
+        if let Ok(mut config) = self.config.lock() {
+            *config = next;
+        }
+    }
+
     pub fn handle_event(&self, event: &LiveEvent, _storage: Option<&Storage>) -> Vec<String> {
-        if self.is_permanently_blacklisted(event) {
+        let config = self.config.lock().expect("config mutex poisoned");
+        if self.is_permanently_blacklisted_inner(event, &config) {
             return Vec::new();
         }
-        if self.is_filtered_danmu(event) {
+        if self.is_filtered_danmu_inner(event, &config) {
             return Vec::new();
         }
 
         let mut out = Vec::new();
-        out.extend(self.welcome(event));
-        out.extend(self.help(event));
-        out.extend(self.thanks(event));
-        out.extend(self.pk_and_activity_notice(event));
+        out.extend(self.welcome_inner(event, &config));
+        out.extend(self.help_inner(event, &config));
+        out.extend(self.thanks_inner(event, &config));
+        out.extend(self.pk_and_activity_notice_inner(event, &config));
         out
     }
 
-    fn welcome(&self, event: &LiveEvent) -> Vec<String> {
+    fn welcome_inner(&self, event: &LiveEvent, config: &AppConfig) -> Vec<String> {
         let LiveEvent::Interact {
             kind: InteractKind::Entry,
             user_id,
@@ -52,15 +60,15 @@ impl BotEngine {
 
         // Special welcome (UID exact match) takes priority
         let uid_str = user_id.to_string();
-        for sw in &self.config.special_welcome_list {
+        for sw in &config.special_welcome_list {
             if !sw.uid.is_empty() && sw.uid == uid_str {
                 return vec![sw.msg.replace("{user}", user)];
             }
         }
 
         // General welcome — random pick from template list
-        if self.config.general_welcome_enabled {
-            let msgs = &self.config.general_welcome_msgs;
+        if config.general_welcome_enabled {
+            let msgs = &config.general_welcome_msgs;
             if !msgs.is_empty() {
                 let mut rng = rand::rng();
                 let tmpl = msgs.choose(&mut rng).unwrap();
@@ -71,7 +79,7 @@ impl BotEngine {
         Vec::new()
     }
 
-    fn is_permanently_blacklisted(&self, event: &LiveEvent) -> bool {
+    fn is_permanently_blacklisted_inner(&self, event: &LiveEvent, config: &AppConfig) -> bool {
         let (user_id, user) = match event {
             LiveEvent::Danmu { user_id, user, .. } => (*user_id, user.as_str()),
             LiveEvent::Interact { user_id, user, .. } => (*user_id, user.as_str()),
@@ -82,33 +90,33 @@ impl BotEngine {
             _ => return false,
         };
 
-        if user_id != 0 && self.config.permanent_blacklist_users.contains(&user_id) {
+        if user_id != 0 && config.permanent_blacklist_users.contains(&user_id) {
             return true;
         }
 
-        self.config
+        config
             .permanent_blacklist_names
             .iter()
             .any(|name| !name.is_empty() && user.contains(name))
     }
 
-    fn is_filtered_danmu(&self, event: &LiveEvent) -> bool {
-        if !self.config.danmu_filter_enable {
+    fn is_filtered_danmu_inner(&self, event: &LiveEvent, config: &AppConfig) -> bool {
+        if !config.danmu_filter_enable {
             return false;
         }
         let LiveEvent::Danmu { user_id, text, .. } = event else {
             return false;
         };
 
-        self.config
+        config
             .danmu_filter_words
             .iter()
             .any(|word| !word.is_empty() && text.contains(word))
-            || self.is_repeated_danmu(*user_id, text)
+            || self.is_repeated_danmu(*user_id, text, config)
     }
 
-    fn is_repeated_danmu(&self, user_id: i64, text: &str) -> bool {
-        if self.config.danmu_filter_repeat_threshold <= 1 {
+    fn is_repeated_danmu(&self, user_id: i64, text: &str, config: &AppConfig) -> bool {
+        if config.danmu_filter_repeat_threshold <= 1 {
             return false;
         }
         let Ok(mut counts) = self.repeat_counts.lock() else {
@@ -116,45 +124,44 @@ impl BotEngine {
         };
         let count = counts.entry((user_id, text.to_string())).or_insert(0);
         *count += 1;
-        *count >= self.config.danmu_filter_repeat_threshold
+        *count >= config.danmu_filter_repeat_threshold
     }
 
-    fn help(&self, event: &LiveEvent) -> Vec<String> {
+    fn help_inner(&self, event: &LiveEvent, config: &AppConfig) -> Vec<String> {
         let LiveEvent::Danmu { text, .. } = event else {
             return Vec::new();
         };
-        match text.as_str() {
-            "@帮助" => {
-                let mut out = Vec::new();
-                if self.config.talk_robot_cmd.is_empty() {
-                    out.push("互动聊天已禁用...".to_string());
+
+        if text == "帮助" || text == "功能" || text == "help" {
+            let mut out = vec![format!(
+                "我是 {}，您的 AI 助手!",
+                if config.robot_name.is_empty() {
+                    "Streamix"
                 } else {
-                    out.push(format!(
-                        "发送带有 {} 的弹幕和我互动",
-                        self.config.talk_robot_cmd
-                    ));
-                    out.push("请尽情调戏我吧!".to_string());
+                    &config.robot_name
                 }
-                out.push("本软件为永久免费软件".to_string());
-                out
+            )];
+            if !config.talk_robot_cmd.is_empty() {
+                out.push(format!("输入「{}」即可与我对话", config.talk_robot_cmd));
             }
-            "@我是谁" => vec!["本程序作者为@超凶一只花酱酱".to_string()],
-            _ => Vec::new(),
+            return out;
         }
+
+        Vec::new()
     }
 
-    fn thanks(&self, event: &LiveEvent) -> Vec<String> {
+    fn thanks_inner(&self, event: &LiveEvent, config: &AppConfig) -> Vec<String> {
         match event {
             LiveEvent::Interact {
                 kind: InteractKind::Follow | InteractKind::MutualFollow,
                 user,
                 ..
-            } if self.config.thanks_focus => {
+            } if config.thanks_focus => {
                 let mut out = vec![format!(
                     "感谢 {} 的关注!",
-                    short_name(user, 8, self.config.danmu_len)
+                    short_name(user, 8, config.danmu_len)
                 )];
-                if let Some(extra) = choose(&self.config.focus_danmu) {
+                if let Some(extra) = choose(&config.focus_danmu) {
                     out.push(extra);
                 }
                 out
@@ -163,29 +170,29 @@ impl BotEngine {
                 kind: InteractKind::Share,
                 user,
                 ..
-            } if self.config.thanks_share => {
+            } if config.thanks_share => {
                 let mut out = vec![format!(
                     "感谢 {} 的分享!",
-                    short_name(user, 8, self.config.danmu_len)
+                    short_name(user, 8, config.danmu_len)
                 )];
-                if let Some(extra) = choose(&self.config.focus_danmu) {
+                if let Some(extra) = choose(&config.focus_danmu) {
                     out.push(extra);
                 }
                 out
             }
-            LiveEvent::GuardBuy { user, gift, .. } if self.config.thanks_gift => {
+            LiveEvent::GuardBuy { user, gift, .. } if config.thanks_gift => {
                 vec![format!("感谢 {user} 的 {gift}")]
             }
             LiveEvent::SuperChat {
                 user, text, price, ..
-            } if self.config.thanks_super_chat => {
+            } if config.thanks_super_chat => {
                 vec![format!("感谢 {user} 的 SC (¥{price})：{text}")]
             }
             _ => Vec::new(),
         }
     }
 
-    fn pk_and_activity_notice(&self, event: &LiveEvent) -> Vec<String> {
+    fn pk_and_activity_notice_inner(&self, event: &LiveEvent, config: &AppConfig) -> Vec<String> {
         match event {
             LiveEvent::Pk {
                 kind:
@@ -193,19 +200,19 @@ impl BotEngine {
                         init_room_id,
                         match_room_id,
                     },
-            } if self.config.pk_notice => {
+            } if config.pk_notice => {
                 vec![format!(
                     "PK开始，对手直播间候选: {init_room_id}/{match_room_id}"
                 )]
             }
             LiveEvent::Pk {
                 kind: PkEventKind::End,
-            } if self.config.pk_notice => {
+            } if config.pk_notice => {
                 vec!["PK结束".to_string()]
             }
             LiveEvent::Pk {
                 kind: PkEventKind::Other(command),
-            } if self.config.pk_notice => {
+            } if config.pk_notice => {
                 vec![format!("检测到PK事件: {command}")]
             }
             LiveEvent::RedPocket {
@@ -214,7 +221,7 @@ impl BotEngine {
                         user, gift, price, ..
                     },
             } => {
-                if self.config.thanks_gift {
+                if config.thanks_gift {
                     vec![format!("感谢 {user} {price}电池的 {gift}")]
                 } else {
                     Vec::new()
@@ -232,7 +239,7 @@ impl BotEngine {
             } => {
                 vec![format!("检测到天选事件: {command}")]
             }
-            LiveEvent::Block { user } if self.config.show_block_msg => {
+            LiveEvent::Block { user } if config.show_block_msg => {
                 vec![format!("{user} 被禁言")]
             }
             _ => Vec::new(),
@@ -241,26 +248,27 @@ impl BotEngine {
 
     #[allow(dead_code)]
     pub fn ai_prompt(&self, event: &LiveEvent) -> Option<String> {
+        let config = self.config.lock().expect("config mutex poisoned");
         let LiveEvent::Danmu { text, .. } = event else {
             return None;
         };
 
-        if self.config.talk_robot_cmd.is_empty() {
+        if config.talk_robot_cmd.is_empty() {
             return None;
         }
 
-        if self.config.fuzzy_match_cmd {
-            if text.contains(&self.config.talk_robot_cmd) {
+        if config.fuzzy_match_cmd {
+            if text.contains(&config.talk_robot_cmd) {
                 Some(
-                    text.replace(&self.config.talk_robot_cmd, "")
+                    text.replace(&config.talk_robot_cmd, "")
                         .trim()
                         .to_string(),
                 )
             } else {
                 None
             }
-        } else if text.starts_with(&self.config.talk_robot_cmd) {
-            Some(text[self.config.talk_robot_cmd.len()..].trim().to_string())
+        } else if text.starts_with(&config.talk_robot_cmd) {
+            Some(text[config.talk_robot_cmd.len()..].trim().to_string())
         } else {
             None
         }
@@ -595,7 +603,7 @@ mod tests {
         );
 
         config.thanks_gift = true;
-        let engine = BotEngine::new(config.clone());
+        engine.update_config(config.clone());
         assert!(
             !engine.handle_event(&event, None).is_empty(),
             "Thanks gift should be enabled for GuardBuy"

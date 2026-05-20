@@ -16,7 +16,7 @@ use crossbeam_queue::SegQueue;
 use sherpa_onnx::{VadModelConfig, VoiceActivityDetector};
 use tokio::sync::{broadcast, mpsc};
 use tokio_util::sync::CancellationToken;
-use tracing::{error, info, warn};
+use tracing::{debug, error, info, warn};
 
 use crate::asr::backend::AsrBackend;
 use crate::asr::sherpa::SherpaAsrBackend;
@@ -162,7 +162,16 @@ impl SherpaPipeline {
     pub fn subscribe(&self) -> broadcast::Receiver<TurnEvent> {
         self.events_tx.subscribe()
     }
+
+    /// 发送一个空哨兵块，通知 VAD 循环清空历史缓冲区。
+    /// 在 TTS 播放结束、麦克风门控解锁后调用，防止 TTS 回声污染下一句识别。
+    pub fn flush_history(&self) {
+        // An empty Vec is the sentinel; run_loop detects it and clears history_buffer.
+        let _ = self.audio_tx.send(Vec::new());
+    }
 }
+
+
 
 /// VAD + 可选 ASR 主循环（在 spawn_blocking 线程里运行）
 ///
@@ -186,6 +195,10 @@ fn run_loop(
         // Log at 3s, 10s, then every 30s (at 16kHz / 512 samples per chunk ≈ 31 chunks/s)
         let checkpoints: &[u64] = &[93, 310, 930, 1860, 2790];
         let mut next_checkpoint_idx = 0;
+        let mut was_speech = false;
+        // 预留约 500ms 的历史音频，补齐 VAD 触发前被吞掉的字头
+        // 16kHz × 500ms = 8000 samples
+        let mut history_buffer = std::collections::VecDeque::with_capacity(8000);
 
         loop {
             tokio::select! {
@@ -193,34 +206,72 @@ fn run_loop(
                 chunk = audio_rx.recv() => {
                     let Some(samples) = chunk else { break };
 
+                    // Empty chunk = flush sentinel from flush_history() — clear the history
+                    // buffer so post-TTS echo doesn't contaminate the next ASR utterance.
+                    if samples.is_empty() {
+                        history_buffer.clear();
+                        was_speech = false;
+                        continue;
+                    }
+
                     chunk_count += 1;
                     if next_checkpoint_idx < checkpoints.len() && chunk_count == checkpoints[next_checkpoint_idx] {
                         info!("[VAD] 已接收 {} 块音频（约 {}s），VAD 运行正常", chunk_count, chunk_count / 31);
                         next_checkpoint_idx += 1;
                     }
 
+                    // 更新历史缓冲区
+                    for &s in &samples {
+                        if history_buffer.len() >= 8000 {
+                            history_buffer.pop_front();
+                        }
+                        history_buffer.push_back(s);
+                    }
+
+
                     vad.accept_waveform(&samples);
+
+                    // 实时检测：如果 VAD 状态变为正在说话，立即发送 SpeechStart 事件
+                    // 这样 UI 可以在用户刚开口时就给出反馈，而不是等整句说完
+                    let is_speech_now = vad.detected();
+                    if is_speech_now && !was_speech {
+                        let _ = events.send(TurnEvent::SpeechStart);
+                        was_speech = true;
+                    } else if !is_speech_now && was_speech {
+                        // VAD 认为说话结束，重置状态以便下一次开口能再次触发 Start
+                        was_speech = false;
+                    }
 
                     // 每次 accept_waveform 后轮询所有就绪的完整语音段
                     while let Some(seg) = vad.front() {
-                        let seg_samples = seg.samples().to_vec();
+                        let mut seg_samples = seg.samples().to_vec();
                         vad.pop();
 
                         if seg_samples.is_empty() {
                             continue;
                         }
 
-                        info!("[VAD] 语音段就绪 ({}ms)", seg_samples.len() / 16);
-                        let _ = events.send(TurnEvent::SpeechStart);
+                        // 补全前面的吞字：将历史缓冲区的内容加到段首
+                        // 注意：history_buffer 包含了最近 200ms，可能与 seg 有重叠，但 ASR 通常能处理这种冗余
+                        let mut padded_samples = Vec::with_capacity(history_buffer.len() + seg_samples.len());
+                        padded_samples.extend(history_buffer.iter());
+                        padded_samples.append(&mut seg_samples);
+                        let seg_samples = padded_samples;
+
+                        debug!("[VAD] 语音段就绪 ({}ms)", seg_samples.len() / 16);
+                        // SpeechStart 已在实时检测阶段发送，此处不再重复发送
 
                         let asr_text = if let Some(ref mut asr) = asr {
                             match asr.streaming_recognition(&seg_samples, true, true).await {
                                 Ok(Some(vt)) => {
-                                    info!("[ASR] {}", vt.content);
+                                    debug!("[ASR] 识别完成，文本长度={}", vt.content.chars().count());
                                     Some(vt.content)
                                 }
                                 Ok(None) => None,
-                                Err(e) => { warn!("[ASR] 推理失败: {e}"); None }
+                                Err(e) => {
+                                    warn!("[ASR] 推理失败: {e}");
+                                    None
+                                }
                             }
                         } else {
                             None

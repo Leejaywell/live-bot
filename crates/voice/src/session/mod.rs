@@ -248,6 +248,8 @@ struct SessionActor {
     current_generation: Option<GenerationHandle>,
     /// 当前正在播放的 TTS 优先级（用于抢占判断）
     current_priority: u8,
+    /// 同优先级排队队列（用于流式 AI 或连续播报）
+    speak_queue: std::collections::VecDeque<SpeakRequest>,
     #[cfg(feature = "tts")]
     edge_client: crate::tts::EdgeTtsClient,
 }
@@ -271,6 +273,7 @@ impl SessionActor {
             interrupt: InterruptEngine::new(),
             current_generation: None,
             current_priority: 0,
+            speak_queue: std::collections::VecDeque::new(),
             #[cfg(feature = "tts")]
             edge_client,
         }
@@ -285,8 +288,14 @@ impl SessionActor {
                 SessionCommand::Interrupt => self.handle_interrupt(),
                 SessionCommand::Frame(frame) => self.handle_frame(frame).await,
                 SessionCommand::SpeechFinished => {
-                    self.current_generation = None;
-                    self.current_priority = 0;
+                    if let Some(next_req) = self.speak_queue.pop_front() {
+                        self.start_generation(next_req);
+                    } else {
+                        self.current_generation = None;
+                        self.current_priority = 0;
+                        // 只有队列彻底清空时才发送 SpeechEnd，触发麦克风解锁
+                        let _ = self.event_tx.send(SessionEvent::SpeechEnd);
+                    }
                 }
                 SessionCommand::Shutdown => {
                     info!("session {} shutting down", self.config.session_id);
@@ -298,16 +307,34 @@ impl SessionActor {
     }
 
     fn handle_speak(&mut self, req: SpeakRequest) {
-        // 优先级抢占：只有更高优先级才允许打断。
-        // 同优先级重复请求丢弃，避免同一条弹幕从多个前端事件源重复进入时切断正文。
-        if self.current_generation.is_some() && req.priority <= self.current_priority {
-            debug!(
-                "speak request priority {} <= current {}, discarded",
-                req.priority, self.current_priority
-            );
+        // 优先级抢占：更高优先级直接打断当前及排队
+        if req.priority > self.current_priority {
+            debug!("high priority {} preempting {}, clearing queue", req.priority, self.current_priority);
+            self.handle_interrupt(); // 内部会清空 handle，但我们需要额外清空队列
+            self.speak_queue.clear();
+            self.start_generation(req);
             return;
         }
 
+        // 同优先级：排队（支持流式 AI 句子追赶）
+        if req.priority == self.current_priority && self.current_priority > 0 {
+            if self.speak_queue.len() < 10 {
+                self.speak_queue.push_back(req);
+            } else {
+                debug!("speak queue full for priority {}, discarding", req.priority);
+            }
+            return;
+        }
+
+        // 低优先级或当前空闲
+        if self.current_generation.is_none() {
+            self.start_generation(req);
+        } else {
+            debug!("low priority {} <= current {}, discarded", req.priority, self.current_priority);
+        }
+    }
+
+    fn start_generation(&mut self, req: SpeakRequest) {
         let priority = req.priority;
         let text = req.text.clone();
         let engine = req.engine.clone();
@@ -316,6 +343,7 @@ impl SessionActor {
         let volume = req.volume.clone();
         let event_tx = self.event_tx.clone();
         let cmd_tx = self.cmd_tx.clone();
+
         #[cfg(feature = "tts")]
         let edge_client = {
             if rate.is_some() || pitch.is_some() || volume.is_some() {
@@ -344,9 +372,9 @@ impl SessionActor {
             #[cfg(not(feature = "tts"))]
             {
                 let _ = (text, engine, cancel_token);
-                let _ = event_tx.send(SessionEvent::SpeechEnd);
+                // 这里不再发送 SpeechEnd，统一由 Actor 处理
             }
-            // 通知 Actor 自然结束，重置 current_priority
+            // 通知 Actor 任务完成，尝试处理队列
             let _ = cmd_tx.try_send(SessionCommand::SpeechFinished);
         });
 
@@ -356,8 +384,9 @@ impl SessionActor {
 
     fn handle_interrupt(&mut self) {
         if self.current_generation.is_some() {
-            debug!("session interrupt: dropping generation handle");
+            debug!("session interrupt: dropping generation handle and clearing queue");
             self.current_generation = None; // drop = abort
+            self.speak_queue.clear();
             self.current_priority = 0;
             let _ = self.event_tx.send(SessionEvent::SpeechInterrupted);
         }
@@ -412,12 +441,11 @@ impl SessionActor {
                         debug!("tts interrupted mid-sentence");
                         return;
                     }
-                    result = synthesize_edge_sentence_buffered(&sentence, &edge_client, event_tx.clone()) => result,
+                    result = synthesize_edge_sentence_streaming(&sentence, &edge_client, event_tx.clone()) => result,
                 };
                 if let Err(e) = result {
                     error!("tts error: {}", e);
                     let _ = event_tx.send(SessionEvent::SpeechError { message: e });
-                    let _ = event_tx.send(SessionEvent::SpeechEnd);
                     return;
                 }
                 continue;
@@ -458,7 +486,6 @@ impl SessionActor {
                                 "云端 TTS 失败: {e}；Edge fallback 失败: {fallback_error}"
                             ),
                         });
-                        let _ = event_tx.send(SessionEvent::SpeechEnd);
                         return;
                     }
                 }
@@ -485,15 +512,12 @@ impl SessionActor {
                         Err(e) => {
                             error!("tts error: {}", e);
                             let _ = event_tx.send(SessionEvent::SpeechError { message: e });
-                            let _ = event_tx.send(SessionEvent::SpeechEnd);
                             return;
                         }
                     }
                 }
             }
         }
-
-        let _ = event_tx.send(SessionEvent::SpeechEnd);
     }
 }
 
@@ -525,6 +549,31 @@ fn minimax_voice_setting(
         english_normalization: None,
         latex_read: None,
     }
+}
+
+#[cfg(feature = "tts")]
+async fn synthesize_edge_sentence_streaming(
+    text: &str,
+    edge_client: &crate::tts::EdgeTtsClient,
+    event_tx: tokio::sync::broadcast::Sender<SessionEvent>,
+) -> Result<(), String> {
+    use futures_util::StreamExt as _;
+    let mut stream = edge_client
+        .synthesize(text, None)
+        .await
+        .map_err(|e| e.to_string())?;
+
+    while let Some(chunk_result) = stream.next().await {
+        let chunk = chunk_result.map_err(|e| e.to_string())?;
+        if !chunk.data.is_empty() {
+            let _ = event_tx.send(SessionEvent::AudioReady(AudioFrame::new_pcm16(
+                bytes::Bytes::from(chunk.data),
+                chunk.sample_rate,
+            )));
+        }
+    }
+
+    Ok(())
 }
 
 #[cfg(feature = "tts")]

@@ -348,6 +348,8 @@ pub struct MusicInteractionSettings {
     pub player: String,
     #[serde(default = "df_music_playback_mode")]
     pub playback_mode: String,
+    #[serde(default)]
+    pub unlimited_requests: bool,
     #[serde(default = "df_true")]
     pub transparent: bool,
     #[serde(default = "df_music_width")]
@@ -565,6 +567,7 @@ impl Default for MusicInteractionSettings {
             stats_range: df_music_stats_range(),
             player: df_music_player(),
             playback_mode: df_music_playback_mode(),
+            unlimited_requests: false,
             transparent: true,
             width: df_music_width(),
             height: df_music_height(),

@@ -67,6 +67,7 @@ struct SharedState {
     agent_runtime: Arc<bot::agent::AgentRuntime>,
     /// 实时变声器状态
     #[cfg(all(feature = "tauri", feature = "voice-changer"))]
+    #[allow(dead_code)]
     voice_changer: Arc<Mutex<Option<streamix_voice::VoiceChanger>>>,
 }
 
@@ -81,6 +82,7 @@ struct MonitorHandle {
 
 #[cfg(all(feature = "tauri", feature = "voice-changer"))]
 #[derive(Clone, Copy)]
+#[allow(dead_code)]
 struct RvcCatalogItem {
     id: &'static str,
     name: &'static str,
@@ -153,8 +155,20 @@ async fn load_config() -> Result<AppConfig, String> {
 
 #[cfg(feature = "tauri")]
 #[tauri::command]
-async fn save_config(config: AppConfig) -> Result<(), String> {
-    config.save().map_err(|e| e.to_string())
+async fn save_config(
+    state: tauri::State<'_, SharedState>,
+    config: AppConfig,
+) -> Result<(), String> {
+    config.save().map_err(|e| e.to_string())?;
+
+    let monitor = state.monitor.lock().map_err(|e| e.to_string())?;
+    if let Some(handle) = monitor.as_ref() {
+        let _ = handle
+            .command_tx
+            .send(bot::monitor::MonitorCommand::UpdateConfig(()));
+    }
+
+    Ok(())
 }
 
 fn user_info_json(info: &api::UserInfo, saved_at: i64) -> serde_json::Value {
@@ -557,6 +571,16 @@ async fn get_stats(
     state: tauri::State<'_, SharedState>,
     days: i64,
 ) -> Result<storage::LiveSessionSummary, String> {
+    if days == -1 {
+        let monitor = state.monitor.lock().map_err(|e| e.to_string())?;
+        if let Some(handle) = monitor.as_ref() {
+            let session_id = handle.session_id.lock().map_err(|e| e.to_string())?;
+            if let Some(id) = session_id.as_ref() {
+                return state.storage.live_session_summary(id).map_err(|e| e.to_string());
+            }
+        }
+        return state.storage.periodic_summary(0).map_err(|e| e.to_string());
+    }
     state
         .storage
         .periodic_summary(days)
@@ -903,6 +927,7 @@ fn api_extract_cookie(cookie: &str, name: &str) -> Option<String> {
 
 #[cfg(all(feature = "tauri", feature = "voice-changer"))]
 #[tauri::command]
+#[allow(dead_code)]
 async fn get_voice_changer_status(state: tauri::State<'_, SharedState>) -> Result<bool, String> {
     let vc = state.voice_changer.lock().unwrap();
     Ok(vc.as_ref().map(|v| v.status().running).unwrap_or(false))
@@ -910,6 +935,7 @@ async fn get_voice_changer_status(state: tauri::State<'_, SharedState>) -> Resul
 
 #[cfg(all(feature = "tauri", feature = "voice-changer"))]
 #[tauri::command]
+#[allow(dead_code)]
 async fn get_voice_changer_state(
     state: tauri::State<'_, SharedState>,
 ) -> Result<serde_json::Value, String> {
@@ -932,6 +958,7 @@ async fn get_voice_changer_state(
 
 #[cfg(all(feature = "tauri", feature = "voice-changer"))]
 #[tauri::command]
+#[allow(dead_code)]
 async fn start_voice_changer(
     state: tauri::State<'_, SharedState>,
     app: AppHandle,
@@ -1046,6 +1073,7 @@ async fn start_voice_changer(
 
 #[cfg(all(feature = "tauri", feature = "voice-changer"))]
 #[tauri::command]
+#[allow(dead_code)]
 async fn switch_voice_changer_model(
     state: tauri::State<'_, SharedState>,
     app: AppHandle,
@@ -1067,6 +1095,7 @@ async fn switch_voice_changer_model(
 
 #[cfg(all(feature = "tauri", feature = "voice-changer"))]
 #[tauri::command]
+#[allow(dead_code)]
 async fn stop_voice_changer(
     state: tauri::State<'_, SharedState>,
     app: AppHandle,
@@ -1082,6 +1111,7 @@ async fn stop_voice_changer(
 
 #[cfg(all(feature = "tauri", feature = "voice-changer"))]
 #[tauri::command]
+#[allow(dead_code)]
 async fn search_rvc_models(app: AppHandle, query: String) -> Result<serde_json::Value, String> {
     let base = model_dir(&app).join("rvc");
     let all_models = rvc_catalog();
@@ -1171,6 +1201,7 @@ async fn search_rvc_models(app: AppHandle, query: String) -> Result<serde_json::
     Ok(serde_json::json!(filtered))
 }
 
+#[cfg(feature = "tauri")]
 #[cfg(all(feature = "tauri", feature = "voice-changer"))]
 fn rvc_catalog() -> &'static [RvcCatalogItem] {
     &[
@@ -1752,15 +1783,84 @@ fn rvc_catalog() -> &'static [RvcCatalogItem] {
             path: "Shota/shota_cute_400_epochs_48k_v2.zip",
             avatar: "⭐",
         },
+        RvcCatalogItem {
+            id: "rvc-rem",
+            name: "蕾姆 (Rem)",
+            author: "orhay1",
+            description: "《从零开始的异世界生活》蕾姆，嗓音温柔清澈，带有治愈感。",
+            tags: &["热门", "动漫", "女声", "治愈"],
+            size: "312MB",
+            repo: "orhay1/RVC_Rem_Inori_Minase",
+            path: "Rem.zip",
+            avatar: "💙",
+        },
+        RvcCatalogItem {
+            id: "rvc-kizuna-ai",
+            name: "绊爱 (Kizuna AI)",
+            author: "megaaziib",
+            description: "初代虚拟 YouTuber，声音元气十足，充满感染力。",
+            tags: &["热门", "VTuber", "女声", "元气"],
+            size: "50MB",
+            repo: "megaaziib/my-rvc-models-collection",
+            path: "kizuna-ai.zip",
+            avatar: "🎀",
+        },
+        RvcCatalogItem {
+            id: "rvc-miku",
+            name: "初音未来 (Hatsune Miku)",
+            author: "javinfamous",
+            description: "世界第一的公主殿下，声音极具辨识度的电音少女感。",
+            tags: &["热门", "Vocaloid", "女声", "可爱"],
+            size: "52MB",
+            repo: "javinfamous/infamous_miku_v2",
+            path: "infamous_miku_v2.zip",
+            avatar: "🎤",
+        },
+        RvcCatalogItem {
+            id: "rvc-gura",
+            name: "Gawr Gura",
+            author: "rayzox57",
+            description: "Hololive 顶流小鲨鱼，声音调皮可爱，极具表现力。",
+            tags: &["热门", "Hololive", "女声", "可爱"],
+            size: "60MB",
+            repo: "rayzox57/GawrGura_RVC",
+            path: "GawrGura_Sing_v2_400e.zip",
+            avatar: "🔱",
+        },
+        RvcCatalogItem {
+            id: "rvc-pekora",
+            name: "兔田佩克拉 (Pekora)",
+            author: "megaaziib",
+            description: "Hololive 屑兔，笑声魔性，嗓音极具特色，非常适合搞怪。",
+            tags: &["热门", "Hololive", "女声", "魔性"],
+            size: "50MB",
+            repo: "megaaziib/my-rvc-models-collection",
+            path: "pekora.zip",
+            avatar: "👯",
+        },
+        RvcCatalogItem {
+            id: "rvc-asuka",
+            name: "惣流·明日香·兰格雷",
+            author: "megaaziib",
+            description: "EVA 二号机驾驶员，嗓音带有一丝傲娇与强势，性格鲜明。",
+            tags: &["经典", "动漫", "女声", "傲娇"],
+            size: "51MB",
+            repo: "megaaziib/my-rvc-models-collection",
+            path: "asuka.zip",
+            avatar: "🔴",
+        },
     ]
 }
 
+#[cfg(feature = "tauri")]
 #[cfg(all(feature = "tauri", feature = "voice-changer"))]
 fn rvc_catalog_item(id: &str) -> Option<&'static RvcCatalogItem> {
     rvc_catalog().iter().find(|item| item.id == id)
 }
 
+#[cfg(feature = "tauri")]
 #[cfg(all(feature = "tauri", feature = "voice-changer"))]
+#[allow(dead_code)]
 fn has_voice_changer_model_asset(dir: &std::path::Path) -> bool {
     if dir.join("model.onnx").exists()
         || dir.join("model.pth").exists()
@@ -1782,6 +1882,7 @@ fn has_voice_changer_model_asset(dir: &std::path::Path) -> bool {
         })
 }
 
+#[cfg(feature = "tauri")]
 #[cfg(all(feature = "tauri", feature = "voice-changer"))]
 fn is_voice_changer_model_onnx_ready(dir: &std::path::Path) -> bool {
     if dir.join("model.onnx").exists() {
@@ -1794,7 +1895,9 @@ fn is_voice_changer_model_onnx_ready(dir: &std::path::Path) -> bool {
         .any(|entry| entry.path().extension().and_then(|ext| ext.to_str()) == Some("onnx"))
 }
 
+#[cfg(feature = "tauri")]
 #[cfg(all(feature = "tauri", feature = "voice-changer"))]
+#[allow(dead_code)]
 fn resolve_voice_changer_model_path(
     base: &std::path::Path,
     model_id: &str,
@@ -1812,16 +1915,20 @@ fn resolve_voice_changer_model_path(
         .find(|p| p.extension().and_then(|x| x.to_str()) == Some("onnx"))
 }
 
+#[cfg(feature = "tauri")]
 #[cfg(all(feature = "tauri", feature = "voice-changer"))]
+#[allow(dead_code)]
 fn resolve_voice_changer_runtime_model_path(
     base: &std::path::Path,
     model_id: &str,
 ) -> Option<std::path::PathBuf> {
-    resolve_voice_changer_pth_model_path(base, model_id)
-        .or_else(|| resolve_voice_changer_model_path(base, model_id))
+    resolve_voice_changer_model_path(base, model_id)
+        .or_else(|| resolve_voice_changer_pth_model_path(base, model_id))
 }
 
+#[cfg(feature = "tauri")]
 #[cfg(all(feature = "tauri", feature = "voice-changer"))]
+#[allow(dead_code)]
 fn resolve_voice_changer_pth_model_path(
     base: &std::path::Path,
     model_id: &str,
@@ -1944,7 +2051,6 @@ async fn get_recent_danmaku(state: tauri::State<'_, SharedState>) -> Result<Vec<
             Vec::new()
         } else {
             let drained: Vec<String> = buf.drain(..).collect();
-            println!("[Monitor] Polled: Drained {} lines", drained.len());
             drained
         }
     } else {
@@ -2965,6 +3071,7 @@ fn fix_flat_extract(base: &std::path::Path, target: &std::path::Path, check: &st
     }
 }
 
+#[cfg(feature = "tauri")]
 #[cfg(all(feature = "tauri", feature = "voice-changer"))]
 async fn ensure_rvc_hubert(app: &AppHandle, cancel: &CancellationToken) -> Result<(), String> {
     let base = model_dir(app).join("rvc");
@@ -3011,6 +3118,7 @@ async fn ensure_rvc_hubert(app: &AppHandle, cancel: &CancellationToken) -> Resul
     Ok(())
 }
 
+#[cfg(feature = "tauri")]
 #[cfg(all(feature = "tauri", feature = "voice-changer"))]
 async fn dl_rvc_model(
     app: AppHandle,
@@ -3020,51 +3128,58 @@ async fn dl_rvc_model(
     let base = model_dir(&app).join("rvc");
     let target_dir = base.join(item.id);
     std::fs::create_dir_all(&target_dir).map_err(|e| e.to_string())?;
-    ensure_rvc_hubert(&app, &cancel).await?;
 
-    let file_name = item.path.rsplit('/').next().unwrap_or("model.bin");
-    let is_china = detect_china_ip().await;
-    let hf = if is_china {
-        "https://hf-mirror.com"
-    } else {
-        "https://huggingface.co"
+    // Parallelize Hubert and Model download if Hubert is missing.
+    let hubert_fut = ensure_rvc_hubert(&app, &cancel);
+
+    let download_fut = async {
+        let file_name = item.path.rsplit('/').next().unwrap_or("model.bin");
+        let is_china = detect_china_ip().await;
+        let hf = if is_china {
+            "https://hf-mirror.com"
+        } else {
+            "https://huggingface.co"
+        };
+        let url = format!("{hf}/{}/resolve/main/{}", item.repo, item.path);
+
+        let model_target = if file_name.ends_with(".onnx") {
+            target_dir.join("model.onnx")
+        } else if file_name.ends_with(".pth") {
+            target_dir.join("model.pth")
+        } else if file_name.ends_with(".zip") {
+            target_dir.join("model.zip")
+        } else {
+            target_dir.join(file_name)
+        };
+
+        let client = reqwest::Client::builder()
+            .timeout(std::time::Duration::from_secs(1800))
+            .build()
+            .map_err(|e| e.to_string())?;
+        let resp = client
+            .get(url)
+            .send()
+            .await
+            .map_err(|e| format!("下载失败: {e}"))?;
+        if !resp.status().is_success() {
+            return Err(format!("下载失败: HTTP {}", resp.status()));
+        }
+        let total = resp.content_length().unwrap_or(0);
+        let mut overall = 0u64;
+        stream_to_file(
+            &app,
+            item.id,
+            resp,
+            &model_target,
+            &cancel,
+            &mut overall,
+            total,
+        )
+        .await?;
+        Ok(model_target)
     };
-    let url = format!("{hf}/{}/resolve/main/{}", item.repo, item.path);
 
-    let model_target = if file_name.ends_with(".onnx") {
-        target_dir.join("model.onnx")
-    } else if file_name.ends_with(".pth") {
-        target_dir.join("model.pth")
-    } else if file_name.ends_with(".zip") {
-        target_dir.join("model.zip")
-    } else {
-        target_dir.join(file_name)
-    };
-
-    let client = reqwest::Client::builder()
-        .timeout(std::time::Duration::from_secs(1800))
-        .build()
-        .map_err(|e| e.to_string())?;
-    let resp = client
-        .get(url)
-        .send()
-        .await
-        .map_err(|e| format!("下载失败: {e}"))?;
-    if !resp.status().is_success() {
-        return Err(format!("下载失败: HTTP {}", resp.status()));
-    }
-    let total = resp.content_length().unwrap_or(0);
-    let mut overall = 0u64;
-    stream_to_file(
-        &app,
-        item.id,
-        resp,
-        &model_target,
-        &cancel,
-        &mut overall,
-        total,
-    )
-    .await?;
+    let (_, model_target) = tokio::try_join!(hubert_fut, download_fut)?;
 
     // If the downloaded file is a zip, extract it in-place then remove the archive.
     if model_target.extension().and_then(|e| e.to_str()) == Some("zip") {
@@ -3092,6 +3207,7 @@ async fn dl_rvc_model(
     Ok(format!("{} 下载完成", item.name))
 }
 
+#[cfg(feature = "tauri")]
 #[cfg(all(feature = "tauri", feature = "voice-changer"))]
 fn extract_zip_model(zip_path: &std::path::Path, dest_dir: &std::path::Path) -> Result<(), String> {
     let file = std::fs::File::open(zip_path).map_err(|e| e.to_string())?;
@@ -3124,6 +3240,7 @@ fn extract_zip_model(zip_path: &std::path::Path, dest_dir: &std::path::Path) -> 
 
 #[cfg(all(feature = "tauri", feature = "voice-changer"))]
 #[tauri::command]
+#[allow(dead_code)]
 async fn convert_rvc_pth_to_onnx(app: AppHandle, model_id: String) -> Result<String, String> {
     convert_rvc_pth_to_onnx_inner(&app, &model_id)
 }

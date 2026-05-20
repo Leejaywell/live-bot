@@ -53,6 +53,7 @@ pub struct MusicInteractionService {
     storage: Option<Arc<Storage>>,
     room_id: i64,
     session_id: Option<Arc<Mutex<Option<String>>>>,
+    unlimited_requests_override: Option<bool>,
 }
 
 #[allow(dead_code)]
@@ -63,6 +64,7 @@ impl MusicInteractionService {
             storage: None,
             room_id: 0,
             session_id: None,
+            unlimited_requests_override: None,
         }
     }
 
@@ -77,6 +79,7 @@ impl MusicInteractionService {
             storage: Some(storage),
             room_id,
             session_id: Some(session_id),
+            unlimited_requests_override: None,
         }
     }
 
@@ -91,6 +94,12 @@ impl MusicInteractionService {
         session_id: Arc<Mutex<Option<String>>>,
     ) -> Self {
         Self::new_with_storage(providers, storage, room_id, session_id)
+    }
+
+    #[cfg(test)]
+    pub fn with_unlimited_requests_for_tests(mut self, enabled: bool) -> Self {
+        self.unlimited_requests_override = Some(enabled);
+        self
     }
 
     pub async fn handle_danmu(
@@ -297,6 +306,7 @@ impl MusicInteractionService {
             ));
         };
 
+        let unlimited_requests = self.unlimited_requests_enabled();
         let request_id = storage.with_connection_mut(|conn| {
             let Some(context) =
                 crate::music::storage::latest_search_context(conn, &session_id, uid)?
@@ -313,6 +323,38 @@ impl MusicInteractionService {
                         source_label(&source)
                     )));
                 }
+            }
+            if unlimited_requests {
+                let tier_settings = music_tier_by_id("ordinary");
+                let score = configured_priority_score(tier_settings.base_score, 0, 0, 0);
+                let request_id = crate::music::storage::insert_song_request(
+                    conn,
+                    &NewSongRequest {
+                        session_id: session_id.clone(),
+                        room_id: self.room_id,
+                        uid,
+                        uname: uname.to_string(),
+                        source: candidate.track.source.as_str().to_string(),
+                        song_id: candidate.track.song_id.clone(),
+                        song_name: candidate.track.name.clone(),
+                        artist_names: artists_text(&candidate.track.artists),
+                        album_name: Some(candidate.track.album.clone()),
+                        pic_url: None,
+                        lyric_id: candidate.track.lyric_id.clone(),
+                        url_id: candidate.track.url_id.clone(),
+                        duration_ms: candidate.track.duration_ms,
+                        requested_text: format!("确认 #{index}"),
+                        tier: tier_settings.id,
+                        credit_value: 0,
+                        priority_score: score,
+                        source_event_id: None,
+                    },
+                )?;
+                return Ok(Ok((
+                    request_id,
+                    "无限制点歌".to_string(),
+                    "已按普通队列排队",
+                )));
             }
             let Some((credit_id, credit_value, tier)) =
                 crate::music::storage::oldest_pending_credit(conn, &session_id, uid)?
@@ -409,6 +451,15 @@ impl MusicInteractionService {
             crate::music::storage::pending_credit_value(conn, &session_id, uid)
         })?;
         Ok(SongServiceReply::Message(credit_summary_text(pending)))
+    }
+
+    fn unlimited_requests_enabled(&self) -> bool {
+        if let Some(enabled) = self.unlimited_requests_override {
+            return enabled;
+        }
+        PluginSettings::load_or_default()
+            .map(|settings| settings.music_interaction.unlimited_requests)
+            .unwrap_or(false)
     }
 }
 
@@ -988,5 +1039,57 @@ mod tests {
             })
             .expect("pending");
         assert_eq!(pending, 0);
+    }
+
+    #[tokio::test]
+    async fn unlimited_requests_confirm_without_consuming_existing_credit() {
+        let storage = Arc::new(Storage::open_in_memory().expect("storage"));
+        let session = Arc::new(Mutex::new(Some("session-1".to_string())));
+        let service = MusicInteractionService::new_for_tests_with_storage(
+            vec![Box::new(FakeProvider::with_tracks(vec![track(
+                "晴天",
+                &["周杰伦"],
+                "186016",
+            )]))],
+            storage.clone(),
+            100,
+            session,
+        )
+        .with_unlimited_requests_for_tests(true);
+        service
+            .handle_danmu(42, "alice", "点歌 晴天")
+            .await
+            .expect("search");
+        service
+            .handle_live_event(&bilibili_live_protocol::LiveEvent::Gift {
+                user_id: 42,
+                user: "alice".to_string(),
+                gift: "小花花".to_string(),
+                count: 1,
+                price: 66,
+                original_gift_name: None,
+                original_gift_price: 66,
+            })
+            .await
+            .expect("credit");
+
+        let reply = service
+            .handle_danmu(42, "alice", "确认 #1")
+            .await
+            .expect("confirm");
+
+        assert!(reply.to_danmu_text().contains("无限制点歌"));
+        let queue = storage
+            .with_connection(|conn| crate::music::storage::list_queue(conn, "session-1", 100))
+            .expect("queue");
+        assert_eq!(queue.len(), 1);
+        assert_eq!(queue[0].song_name, "晴天");
+        assert_eq!(queue[0].credit_value, 0);
+        let pending = storage
+            .with_connection(|conn| {
+                crate::music::storage::pending_credit_value(conn, "session-1", 42)
+            })
+            .expect("pending");
+        assert_eq!(pending, 66);
     }
 }

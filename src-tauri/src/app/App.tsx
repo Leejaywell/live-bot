@@ -4,7 +4,7 @@ import { LogIn, Home, Radio } from 'lucide-react';
 import { Toaster } from 'sonner';
 import { ThemeProvider, useTheme } from './context/ThemeContext';
 import { ConfigProvider, useConfig } from './context/ConfigContext';
-import { LoginContext } from './context/LoginContext';
+import { LoginContext, useLogin } from './context/LoginContext';
 import { RoomProvider, useRoom } from './context/RoomContext';
 import { BackgroundManager } from './components/BackgroundEffects';
 import { CursorEffect } from './components/CursorEffect';
@@ -334,15 +334,18 @@ function AppContent() {
         <ClickRippleEffect />
         <CursorEffect />
         <DanmuOverlay />
-        {loginChecked && <div
-          className="w-full h-screen overflow-hidden flex relative z-[1]"
-        >
-          <Sidebar
-            mode={sidebarMode}
-            onToggleThemePanel={() => setThemePanelOpen(!themePanelOpen)}
-            onToggleSidebar={() => setSidebarMode(m => m === 'expanded' ? 'icon' : 'expanded')}
-            onToggleSettings={() => setSettingsPanelOpen(!settingsPanelOpen)}
-          />
+        {loginChecked && (
+          <div className="w-full h-screen overflow-hidden flex relative z-[1]">
+            <KeyboardShortcutHandler
+              sidebarMode={sidebarMode}
+              onToggleSidebar={() => setSidebarMode(m => m === 'expanded' ? 'icon' : 'expanded')}
+            />
+              <Sidebar
+                mode={sidebarMode}
+                onToggleThemePanel={() => setThemePanelOpen(!themePanelOpen)}
+                onToggleSidebar={() => setSidebarMode(m => m === 'expanded' ? 'icon' : 'expanded')}
+                onToggleSettings={() => setSettingsPanelOpen(!settingsPanelOpen)}
+              />
 
           <div className="flex-1 flex flex-col overflow-hidden relative">
             <TopBar
@@ -434,12 +437,97 @@ function AppContent() {
               </Button>
             </div>
           </Modal>
-        </div>}
+        </div>
+      )}
       </HashRouter>
       </ConfigProvider>
       </LoginContext.Provider>
     </>
   );
+}
+
+function KeyboardShortcutHandler({ sidebarMode, onToggleSidebar }: { sidebarMode: string; onToggleSidebar: () => void }) {
+  const location = useLocation();
+  const { connected } = useRoom();
+  const { isLoggedIn } = useLogin();
+
+  useEffect(() => {
+    const handleKeyDown = async (e: KeyboardEvent) => {
+      const isMod = e.metaKey || e.ctrlKey;
+      const target = e.target as HTMLElement;
+      const isInput = target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable;
+
+      // 1. Cmd/Ctrl + B: Toggle Sidebar (Global)
+      if (isMod && e.key === 'b') {
+        e.preventDefault();
+        onToggleSidebar();
+        return;
+      }
+
+      // 2. Cmd/Ctrl + C: Copy logic
+      if (isMod && e.key === 'c') {
+        const selection = window.getSelection()?.toString();
+
+        // If there is selected text, manually copy it to clipboard (needed when system menu is disabled)
+        if (selection) {
+          // No preventDefault here to allow potential native behavior if it works,
+          // but we manually write to be sure.
+          await navigator.clipboard.writeText(selection);
+          return;
+        }
+
+        // If no selection and NOT in an input field, trigger OBS URL copy
+        if (!isInput && isLoggedIn) {
+          let url = '';
+          let label = '';
+
+          try {
+            if (location.pathname === '/plugins/danmaku-chat') {
+              url = await api.getDanmakuChatUrl();
+              label = '弹幕列表';
+            } else if (location.pathname === '/plugins/music-interaction') {
+              url = await api.getMusicInteractionUrl();
+              label = '点歌机';
+            } else if (location.pathname === '/plugins/wish-goal') {
+              url = await api.getWishGoalUrl();
+              label = '心愿目标';
+            } else if (location.pathname === '/plugins/lottery') {
+              url = await api.getLotteryUrl();
+              label = '抽奖互动';
+            } else if (location.pathname === '/plugins/gift-effect') {
+              url = await api.getGiftEffectUrl();
+              label = '礼物特效';
+            } else if (location.pathname === '/plugins/recent-gifts') {
+              url = await api.getRecentGiftsUrl();
+              label = '最近礼物';
+            } else if (location.pathname === '/plugins/gift-rank') {
+              url = await api.getGiftRankUrl();
+              label = '礼物排行';
+            }
+
+            if (url) {
+              e.preventDefault();
+              await navigator.clipboard.writeText(url);
+              toast.success(`${label} OBS 链接已复制`);
+            }
+          } catch (err) {
+            console.error('Failed to copy URL:', err);
+          }
+        }
+      }
+
+      // 3. Cmd/Ctrl + A: Select All (Manual handling for inputs)
+      if (isMod && e.key === 'a' && isInput) {
+        // Native behavior might work, but we can force it
+        (target as HTMLInputElement).select?.();
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [location.pathname, isLoggedIn, onToggleSidebar]);
+
+  return null;
 }
 
 // 带页面过渡的路由容器（按 themeFamily 选择不同转场）
@@ -564,7 +652,7 @@ function RoomConnectForm({ userRoom, onSuccess }: { userRoom: RoomInfo | null; o
                 我的直播间
               </button>
             )}
-          </div>
+            </div>
         </div>
       </div>
       <div className="mt-6">

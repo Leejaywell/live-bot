@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, type DependencyList } from 'react';
 import { hexToHsl, hexToRgb, hslToHex, useTheme } from '../context/ThemeContext';
 import { useConfig } from '../context/ConfigContext';
 import { BackgroundBlobs } from './BackgroundBlobs';
@@ -7,8 +7,17 @@ import { BackgroundBlobs } from './BackgroundBlobs';
 function useCanvas(
   draw: (ctx: CanvasRenderingContext2D, w: number, h: number, dt: number) => void,
   setup?: (canvas: HTMLCanvasElement) => () => void,
+  deps: DependencyList = [],
 ) {
   const ref = useRef<HTMLCanvasElement>(null);
+  const drawRef = useRef(draw);
+  const setupRef = useRef(setup);
+
+  useEffect(() => {
+    drawRef.current = draw;
+    setupRef.current = setup;
+  });
+
   useEffect(() => {
     const canvas = ref.current!;
     const ctx = canvas.getContext('2d')!;
@@ -18,12 +27,12 @@ function useCanvas(
     const resize = () => { canvas.width = window.innerWidth; canvas.height = window.innerHeight; };
     resize();
     window.addEventListener('resize', resize);
-    const cleanupSetup = setup?.(canvas);
+    const cleanupSetup = setupRef.current?.(canvas);
 
     const loop = (ts: number) => {
       const dt = Math.min((ts - last) / 1000, 0.05);
       last = ts;
-      draw(ctx, canvas.width, canvas.height, dt);
+      drawRef.current(ctx, canvas.width, canvas.height, dt);
       raf = requestAnimationFrame(loop);
     };
     raf = requestAnimationFrame(loop);
@@ -33,7 +42,7 @@ function useCanvas(
       window.removeEventListener('resize', resize);
       cleanupSetup?.();
     };
-  });
+  }, deps);
   return ref;
 }
 

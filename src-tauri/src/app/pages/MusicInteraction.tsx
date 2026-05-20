@@ -22,6 +22,7 @@ const fallbackMusicInteraction: MusicInteractionSettings = {
   StatsRange: 'session',
   Player: 'auto',
   PlaybackMode: 'manual_confirm',
+  UnlimitedRequests: false,
   Transparent: true,
   Width: 720,
   Height: 120,
@@ -101,6 +102,7 @@ function sanitizeMusicInteraction(next: MusicInteractionSettings | undefined | n
     : fallbackMusicInteraction.PlaybackMode;
   return {
     Enabled: sanitizeBoolean(source.Enabled, fallbackMusicInteraction.Enabled),
+    UnlimitedRequests: sanitizeBoolean(source.UnlimitedRequests, fallbackMusicInteraction.UnlimitedRequests),
     Skin: skin,
     StatsRange: statsRange,
     Player: player,
@@ -175,6 +177,7 @@ function tierLabel(tierId: string, tiers: MusicTierSettings[]): string {
 
 type NumericMusicSetting = 'Width' | 'Height' | 'FontScale';
 type BooleanMusicSetting =
+  | 'UnlimitedRequests'
   | 'Transparent'
   | 'ShowCover'
   | 'ShowRequester'
@@ -630,6 +633,19 @@ export function MusicInteraction() {
                       <option value="vinyl">黑胶</option>
                     </select>
                   </label>
+                </div>
+                <div className="mt-3 flex items-center justify-between gap-3 rounded-xl border border-[var(--surface-border)] bg-[var(--surface-subtle)] px-3 py-2.5">
+                  <div className="min-w-0">
+                    <div className="text-[11px] font-black text-[var(--control-text)]">无限制点歌</div>
+                    <div className="mt-0.5 text-[10px] font-medium text-[var(--muted-text)]">
+                      开启后新点歌无需礼物权益，已排队歌曲不受影响
+                    </div>
+                  </div>
+                  <Toggle
+                    checked={music.UnlimitedRequests}
+                    onChange={v => updateMusic({ UnlimitedRequests: v })}
+                    disabled={!loaded}
+                  />
                 </div>
               </div>
 

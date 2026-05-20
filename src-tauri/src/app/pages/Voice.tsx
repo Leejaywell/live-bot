@@ -10,6 +10,7 @@ import { TtsProvider, TtsVoice, availableProviders, findVoice } from '../lib/voi
 import { VoicePicker } from '../components/VoicePicker';
 import { Modal, ModalCloseButton } from '../components/Modal';
 import { Button } from '../components/Button';
+import { Input } from '../components/Input';
 
 // ── 动画 ───────────────────────────────────────────────────────────────────────
 
@@ -19,46 +20,29 @@ const STYLES = `
   50%       { transform: scaleY(1);   }
 }
 @keyframes sub-in {
-  from { opacity: 0; transform: translateY(6px); }
-  to   { opacity: 1; transform: translateY(0);   }
+  0% { opacity: 0; transform: translateY(20px) scale(0.95); filter: blur(10px); }
+  100% { opacity: 1; transform: translateY(0) scale(1); filter: blur(0); }
+}
+@keyframes sub-float-up {
+  0% { transform: translateY(0) scale(1); opacity: 1; filter: blur(0); }
+  100% { transform: translateY(-40px) scale(0.9); opacity: 0; filter: blur(8px); }
 }
 @keyframes mic-ring {
   0%   { transform: scale(1);   opacity: 0.6; }
   100% { transform: scale(1.9); opacity: 0;   }
 }
-@keyframes dot-blink {
-  0%, 100% { opacity: 1; }
-  50%       { opacity: 0.3; }
+@keyframes aurora-mesh {
+  0% { background-position: 0% 50%; }
+  50% { background-position: 100% 50%; }
+  100% { background-position: 0% 50%; }
 }
-@keyframes ripple-expand {
-  0%   { transform: scale(0.5); opacity: 0.55; }
-  100% { transform: scale(3.2); opacity: 0;    }
-}
-@keyframes ripple-bg {
-  0%, 100% { opacity: 0.04; }
-  50%       { opacity: 0.10; }
-}
-@keyframes aurora-flow {
-  0%   { transform: translate3d(-6%, -4%, 0) scale(1); opacity: 0.28; }
-  50%  { transform: translate3d(5%, 3%, 0) scale(1.08); opacity: 0.48; }
-  100% { transform: translate3d(-4%, 6%, 0) scale(0.98); opacity: 0.24; }
+@keyframes bubble-glow {
+  0%, 100% { box-shadow: 0 0 20px rgba(59, 130, 246, 0.1); }
+  50% { box-shadow: 0 0 40px rgba(59, 130, 246, 0.25); }
 }
 @keyframes stage-spotlight {
   0%, 100% { transform: translateY(0) scale(1); opacity: 0.58; }
   50%      { transform: translateY(-10px) scale(1.06); opacity: 0.78; }
-}
-@keyframes caption-pop {
-  0%   { opacity: 0; transform: translateY(16px) scale(0.992); filter: blur(8px); }
-  100% { opacity: 1; transform: translateY(0) scale(1); filter: blur(0); }
-}
-@keyframes caption-glow {
-  0%, 100% { box-shadow: 0 0 0 rgba(59, 130, 246, 0); }
-  50%      { box-shadow: 0 0 32px rgba(59, 130, 246, 0.16); }
-}
-@keyframes caption-sweep {
-  0%   { transform: translateX(-120%); opacity: 0; }
-  22%  { opacity: 0.38; }
-  100% { transform: translateX(120%); opacity: 0; }
 }
 @keyframes mic-pulse-strong {
   0%   { transform: scale(1); opacity: 0.56; }
@@ -68,11 +52,32 @@ const STYLES = `
   0%, 100% { opacity: 0.35; }
   50%      { opacity: 0.52; }
 }
+@keyframes drift-up {
+  from { transform: translateY(0); opacity: 1; }
+  to { transform: translateY(-60px); opacity: 0; }
+}
+@keyframes voice-stage-scan {
+  0% { transform: translateX(-110%); opacity: 0; }
+  18% { opacity: 0.65; }
+  100% { transform: translateX(110%); opacity: 0; }
+}
+@keyframes voice-orbit {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+@keyframes voice-thinking-dot {
+  0%, 100% { transform: translateY(0); opacity: 0.35; }
+  50% { transform: translateY(-4px); opacity: 1; }
+}
+.voice-stage-scan { animation: voice-stage-scan 2.4s ease-in-out infinite; }
+.voice-orbit { animation: voice-orbit 10s linear infinite; }
+.voice-thinking-dot { animation: voice-thinking-dot 1.1s ease-in-out infinite; }
 `;
 
 // ── 类型 ───────────────────────────────────────────────────────────────────────
 
 type MicState = 'off' | 'listening' | 'speaking';
+type VoiceStage = 'idle' | 'listening' | 'speaking' | 'recognizing' | 'thinking' | 'replying' | 'error';
 
 interface SubLine {
   id: string;
@@ -83,6 +88,64 @@ interface SubLine {
 
 type LogMicState = 'idle' | 'speaking' | 'settled';
 type ReloadTarget = 'voice' | 'tts';
+
+const VOICE_STAGE_META: Record<VoiceStage, {
+  label: string;
+  caption: string;
+  accent: string;
+  soft: string;
+  wash: string;
+}> = {
+  idle: {
+    label: '待机',
+    caption: '等待语音链路',
+    accent: '#94a3b8',
+    soft: 'rgba(148, 163, 184, 0.16)',
+    wash: 'linear-gradient(-45deg, rgba(226,232,240,0.42), rgba(241,245,249,0.36))',
+  },
+  listening: {
+    label: '聆听',
+    caption: '等待说话',
+    accent: 'var(--primary-color)',
+    soft: 'rgba(var(--primary-rgb, 59, 130, 246), 0.16)',
+    wash: 'linear-gradient(-45deg, rgba(59,130,246,0.13), rgba(14,165,233,0.10), rgba(255,255,255,0.08))',
+  },
+  speaking: {
+    label: '收音',
+    caption: '正在接收人声',
+    accent: '#34c759',
+    soft: 'rgba(52, 199, 89, 0.18)',
+    wash: 'linear-gradient(-45deg, rgba(52,199,89,0.16), rgba(45,212,191,0.12), rgba(59,130,246,0.10))',
+  },
+  recognizing: {
+    label: '转写',
+    caption: '语音转文字',
+    accent: '#06b6d4',
+    soft: 'rgba(6, 182, 212, 0.18)',
+    wash: 'linear-gradient(-45deg, rgba(6,182,212,0.16), rgba(59,130,246,0.12), rgba(255,255,255,0.08))',
+  },
+  thinking: {
+    label: '思考',
+    caption: '组织回复',
+    accent: '#8b5cf6',
+    soft: 'rgba(139, 92, 246, 0.18)',
+    wash: 'linear-gradient(-45deg, rgba(139,92,246,0.16), rgba(59,130,246,0.11), rgba(236,72,153,0.08))',
+  },
+  replying: {
+    label: '回应',
+    caption: 'AI 正在输出',
+    accent: '#f59e0b',
+    soft: 'rgba(245, 158, 11, 0.18)',
+    wash: 'linear-gradient(-45deg, rgba(245,158,11,0.16), rgba(251,191,36,0.10), rgba(139,92,246,0.10))',
+  },
+  error: {
+    label: '异常',
+    caption: '查看链路日志',
+    accent: '#ef4444',
+    soft: 'rgba(239, 68, 68, 0.16)',
+    wash: 'linear-gradient(-45deg, rgba(239,68,68,0.14), rgba(245,158,11,0.10), rgba(255,255,255,0.08))',
+  },
+};
 
 // ── 工具 ───────────────────────────────────────────────────────────────────────
 
@@ -164,6 +227,31 @@ function parseMicPeak(text: string): number | null {
   return Math.max(0, Math.min(1, peak));
 }
 
+function classifyVoiceStageLog(text: string): { stage: VoiceStage; holdMs?: number } | null {
+  if (
+    text.includes('麦克风启动失败') ||
+    text.includes('VAD 初始化失败') ||
+    text.includes('[ASR] 识别失败:') ||
+    text.includes('[ASR→AI] LLM 未返回内容') ||
+    text.includes('[ASR→AI] 未配置启用的 AI 机器人')
+  ) {
+    return { stage: 'error', holdMs: 3200 };
+  }
+  if (text.includes('[VAD] 开始录音')) return { stage: 'speaking', holdMs: 1800 };
+  if (
+    text.includes('[VAD] 检测到语音段，正在识别') ||
+    text.includes('[VAD] 话轮结束') ||
+    text.includes('[ASR] 实时识别:')
+  ) {
+    return { stage: 'recognizing', holdMs: 5200 };
+  }
+  if (text.includes('[ASR] 识别结果:')) return { stage: 'thinking', holdMs: 7000 };
+  if (text.includes('[ASR→AI]')) return { stage: 'replying', holdMs: 3600 };
+  if (text.includes('麦克风已就绪') || text.includes('[麦克风] 音量 peak=')) return { stage: 'listening' };
+  if (text.includes('监听已停止')) return { stage: 'idle' };
+  return null;
+}
+
 // ── 字幕波浪 ───────────────────────────────────────────────────────────────────
 
 function SubWave({ role }: { role: 'user' | 'ai' }) {
@@ -185,8 +273,8 @@ function SubWave({ role }: { role: 'user' | 'ai' }) {
 
 // ── 麦克风波形（横跨全宽） ─────────────────────────────────────────────────────
 
-function FullWave({ active, color, barCount = 40 }: {
-  active: boolean; color: string; barCount?: number;
+function FullWave({ active, voiceLevel, color, barCount = 40 }: {
+  active: boolean; voiceLevel: number; color: string; barCount?: number;
 }) {
   return (
     <div className="flex items-end justify-center gap-[3px] w-full" style={{ height: 48 }}>
@@ -199,10 +287,10 @@ function FullWave({ active, color, barCount = 40 }: {
             style={{
               background: color,
               height: `${maxH}%`,
-              animation: active ? `wave-bar ${0.5 + (i % 7) * 0.065}s ease-in-out infinite` : 'none',
+              animation: (active || voiceLevel > 0.01) ? `wave-bar ${0.5 + (i % 7) * 0.065}s ease-in-out infinite` : 'none',
               animationDelay: `${i * 0.038}s`,
-              transform: active ? undefined : 'scaleY(0.1)',
-              opacity:   active ? 1 : 0.12,
+              transform: (active || voiceLevel > 0.01) ? undefined : 'scaleY(0.1)',
+              opacity:   (active || voiceLevel > 0.01) ? 1 : 0.12,
               transition: 'transform 0.4s, opacity 0.4s',
             }} />
         );
@@ -281,10 +369,18 @@ export function Voice() {
   const [voiceDetail, setVoiceDetail] = useState('等待语音链路事件');
   const [subtitles,   setSubtitles]   = useState<SubLine[]>([]);
   const [voiceLevel,  setVoiceLevel]  = useState(0);
+  const [visualStage, setVisualStage] = useState<VoiceStage>('idle');
   const [latency,     setLatency]     = useState(0);
   const [latencyBreakdown, setLatencyBreakdown] = useState<VoiceLatency | null>(null);
   const [settingsOpen, setSettingsOpen] = useState(false);
-  const [settingsDraft, setSettingsDraft] = useState({ gender: '女AI', prompt: '' });
+  const [settingsDraft, setSettingsDraft] = useState({
+    gender: '女AI',
+    prompt: '',
+    obsEnabled: false,
+    obsHost: '127.0.0.1',
+    obsPort: 4455,
+    obsPassword: '',
+  });
   const [proMode, setProMode] = useState(false);
 
   // 模型状态
@@ -293,8 +389,21 @@ export function Voice() {
   const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const pendingReloads = useRef<Set<ReloadTarget>>(new Set());
   const micVisualTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const stageTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const monitorRestarting = useRef(false);
   const vadEnabledRef = useRef(false);
+
+  const setStage = useCallback((stage: VoiceStage, holdMs?: number) => {
+    if (stageTimer.current) {
+      clearTimeout(stageTimer.current);
+      stageTimer.current = null;
+    }
+    setVisualStage(stage);
+    if (!holdMs) return;
+    stageTimer.current = setTimeout(() => {
+      setVisualStage(vadEnabledRef.current ? 'listening' : 'idle');
+    }, holdMs);
+  }, []);
 
   // ── 加载 ────────────────────────────────────────────────────────────────────
 
@@ -322,6 +431,7 @@ export function Voice() {
       if (cfg.TtsSpeed) setTtsSpeed(cfg.TtsSpeed);
       setTtsEnabled(Boolean(cfg.TtsEnabled));
       setMicState('off');
+      setStage('idle');
       setVoiceStatus('麦克风未开启');
       setVoiceDetail(cfg.VadEnabled ? '等待监听线程状态' : '麦克风关闭中');
     }).catch(console.error).finally(() => setLoading(false));
@@ -360,6 +470,10 @@ export function Voice() {
       setSettingsDraft({
         gender: config.VoiceGender ?? inferGenderFromVoice(ttsVoice),
         prompt: config.VoiceSystemPrompt ?? '',
+        obsEnabled: config.ObsEnabled ?? false,
+        obsHost: config.ObsHost || '127.0.0.1',
+        obsPort: config.ObsPort || 4455,
+        obsPassword: config.ObsPassword || '',
       });
     }
   }, [settingsOpen]);
@@ -428,10 +542,12 @@ export function Voice() {
     api.getMonitorStatus().then((running) => {
       if (running && config?.VadEnabled) {
         setMicState('listening');
+        setStage('listening');
         setVoiceStatus('麦克风已开启，等待说话');
         setVoiceDetail('等待语音链路事件');
       } else {
         setMicState('off');
+        setStage('idle');
         setVoiceStatus('麦克风未开启');
         setVoiceDetail(config?.VadEnabled ? '监听线程未运行' : '麦克风关闭中');
         setVoiceLevel(0);
@@ -442,6 +558,7 @@ export function Voice() {
         monitorRestarting.current = false;
         if (config?.VadEnabled) {
           setMicState('listening');
+          setStage('listening');
           setVoiceStatus('麦克风已开启，等待说话');
           setVoiceDetail('监听线程已运行，等待语音链路事件');
         }
@@ -449,6 +566,7 @@ export function Voice() {
       }
       if (!monitorRestarting.current) {
         setMicState('off');
+        setStage('idle');
         setVoiceStatus('麦克风未开启');
         setVoiceDetail('监听线程已停止');
         setVoiceLevel(0);
@@ -465,7 +583,10 @@ export function Voice() {
 
   useEffect(() => {
     const applyLog = (text: string) => {
-      if (!vadEnabledRef.current && (
+      // 允许播放器音量日志通过，无论 VAD 是否开启
+      const isPlayerLog = text.includes('[播放器]');
+
+      if (!isPlayerLog && !vadEnabledRef.current && (
         text.includes('[VAD]') ||
         text.includes('[ASR]') ||
         text.includes('[麦克风]') ||
@@ -476,6 +597,8 @@ export function Voice() {
       }
       setVoiceDetail(text);
       const micLogState = classifyMicLog(text);
+      const nextStage = classifyVoiceStageLog(text);
+      if (nextStage) setStage(nextStage.stage, nextStage.holdMs);
       const statusText = describeVoiceLog(text);
       if (statusText) setVoiceStatus(statusText);
       if (micLogState === 'speaking') {
@@ -495,7 +618,10 @@ export function Voice() {
 
       const sub = parseLog(text);
       if (!sub) return;
-      setSubtitles(prev => [...prev, sub].slice(-20));
+      setSubtitles(prev => {
+        const next = [...prev, sub].slice(-30);
+        return next;
+      });
       setTimeout(() => {
         setSubtitles(prev => prev.map(s => s.id === sub.id ? { ...s, fresh: false } : s));
       }, 2200);
@@ -529,6 +655,7 @@ export function Voice() {
       unl?.();
       unlBatch?.();
       if (micVisualTimer.current) clearTimeout(micVisualTimer.current);
+      if (stageTimer.current) clearTimeout(stageTimer.current);
     };
   }, []);
 
@@ -587,6 +714,7 @@ export function Voice() {
         await api.reloadMonitorVoice();
       }
       setMicState(nextVad && wasRunning ? 'listening' : 'off');
+      setStage(nextVad && wasRunning ? 'listening' : 'idle');
       if (!nextVad || !wasRunning) setVoiceLevel(0);
       monitorRestarting.current = false;
       toast.success(nextVad
@@ -596,6 +724,7 @@ export function Voice() {
       vadEnabledRef.current = config.VadEnabled;
       monitorRestarting.current = false;
       setMicState(config.VadEnabled ? 'listening' : 'off');
+      setStage(config.VadEnabled ? 'listening' : 'idle');
       toast.error(`操作失败: ${e}`);
     }
   };
@@ -603,17 +732,17 @@ export function Voice() {
   // ── 派生 ────────────────────────────────────────────────────────────────────
 
   const micActive = micState !== 'off';
-  const micColor  = micState === 'speaking' ? '#34c759' : 'var(--primary-color)';
+  const activeStage: VoiceStage = micActive || visualStage === 'error' ? visualStage : 'idle';
+  const stageMeta = VOICE_STAGE_META[activeStage];
+  const micColor  = stageMeta.accent;
 
   const llmOpts = llmList(config).map(p => ({ value: p.Id, label: p.Name }));
   const asrOpts = asrList(config).map(p => ({ value: p.Id, label: p.Name }));
   const ttsOpts = ttsList(config).map(p => ({ value: p.Id, label: p.Name }));
 
-  const latestFresh = subtitles.filter(s => s.fresh).at(-1);
-  const latestUserText = [...subtitles].reverse().find(s => s.role === 'user')?.text || '等待语音识别结果';
-  const latestAiText = [...subtitles].reverse().find(s => s.role === 'ai')?.text || '等待 LLM 回复';
   const micScale = 1 + voiceLevel * 0.18;
   const micGlow = 14 + Math.round(voiceLevel * 30);
+  const stageIntensity = micActive ? Math.min(1, 0.55 + voiceLevel * 0.45) : 0.32;
 
   if (loading) return <div className="h-full flex items-center justify-center text-gray-400 text-[12px]">加载中...</div>;
 
@@ -721,21 +850,22 @@ export function Voice() {
             <button onClick={() => setSettingsOpen(true)} className="w-9 h-9 rounded-full hover:bg-black/5 dark:hover:bg-white/5 flex items-center justify-center text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 transition-all"><SettingsIcon className="w-4 h-4" /></button>
 	            {/* Mic button with pulsing rings when active */}
 	            <div className="relative">
-              {micActive && (
-                <>
-                  <div className="absolute inset-0 rounded-full border-2 border-[var(--primary-color)]/50 animate-mic-ring" />
-                  <div className="absolute inset-0 rounded-full border-2 border-[var(--primary-color)]/30 animate-mic-ring" style={{ animationDelay: '0.7s' }} />
-                </>
-              )}
+                  {micActive && (
+                    <>
+                      <div className="absolute inset-0 rounded-full border-2" style={{ borderColor: stageMeta.accent, opacity: 0.42, animation: 'mic-pulse-strong 1.25s ease-out infinite', transform: `scale(${1 + voiceLevel * 0.2})` }} />
+                      <div className="absolute inset-0 rounded-full border-2" style={{ borderColor: stageMeta.accent, opacity: 0.25, animation: 'mic-pulse-strong 1.65s ease-out infinite', animationDelay: '0.25s', transform: `scale(${1 + voiceLevel * 0.25})` }} />
+                    </>
+                  )}
 	              <button
 	                onClick={handleMicClick}
                   title={hasAsrConfig ? (micActive ? '关闭麦克风' : '开启麦克风') : '请先配置语音识别服务'}
 	                className={cn(
-	                  "relative w-12 h-12 rounded-full flex items-center justify-center transition-all shadow-lg active:scale-95",
+	                  "relative w-11 h-11 rounded-full flex items-center justify-center transition-all shadow-lg active:scale-95",
 	                  micActive
-                    ? "bg-white text-[var(--primary-color)]"
+                    ? "bg-white"
                     : "bg-black/5 dark:bg-white/10 text-gray-400"
                 )}
+                style={{ color: micActive ? micColor : undefined, transform: `scale(${micScale})`, boxShadow: micActive ? `0 0 ${micGlow}px ${stageMeta.soft}` : 'none' }}
               >
                 {micActive ? <Mic className="w-6 h-6" /> : <MicOff className="w-6 h-6" />}
               </button>
@@ -749,30 +879,50 @@ export function Voice() {
 
           {/* 字幕卡片 */}
           <GlassCard className="relative flex-1 flex flex-col overflow-hidden border-white/60 dark:border-white/10 bg-[linear-gradient(180deg,rgba(255,255,255,0.86),rgba(238,242,247,0.94))] dark:bg-[linear-gradient(180deg,rgba(15,18,28,0.96),rgba(8,10,18,0.98))] shadow-2xl min-w-0">
+            {/* 动态流光背景 */}
             <div
-              className="absolute inset-0 pointer-events-none"
+              className="absolute inset-0 pointer-events-none transition-opacity duration-1000"
               style={{
-                background: 'radial-gradient(ellipse at 50% 18%, rgba(255,255,255,0.72), rgba(191,219,254,0.22) 34%, transparent 62%)',
-                opacity: micActive ? 0.78 + voiceLevel * 0.2 : 0.42,
-                animation: 'stage-spotlight 5.5s ease-in-out infinite',
+                background: stageMeta.wash,
+                backgroundSize: '400% 400%',
+                animation: 'aurora-mesh 15s ease infinite',
+                opacity: stageIntensity,
               }}
             />
             <div
               className="absolute inset-0 pointer-events-none"
               style={{
-                background: 'radial-gradient(ellipse at center, transparent 34%, rgba(15,23,42,0.08) 78%, rgba(15,23,42,0.18) 100%)',
-                animation: 'curtain-breathe 6s ease-in-out infinite',
+                background: `radial-gradient(circle at 50% 20%, ${stageMeta.soft} 0%, rgba(255,255,255,0.26) 34%, transparent 70%)`,
+                opacity: activeStage === 'idle' ? 0.45 : 0.78,
               }}
             />
-            <div className="absolute left-1/2 top-4 h-[52%] w-[52%] -translate-x-1/2 rounded-full bg-amber-200/18 blur-3xl pointer-events-none" style={{ opacity: micActive ? 0.42 + voiceLevel * 0.28 : 0.18 }} />
-            <div className="absolute bottom-0 left-0 right-0 h-28 bg-[linear-gradient(180deg,transparent,rgba(148,163,184,0.14))] dark:bg-[linear-gradient(180deg,transparent,rgba(0,0,0,0.28))] pointer-events-none" />
+            <div
+              className="absolute left-1/2 top-4 h-[60%] w-[80%] -translate-x-1/2 rounded-[100%] blur-[80px] pointer-events-none"
+              style={{ background: stageMeta.soft, animation: 'curtain-breathe 5.2s ease-in-out infinite' }}
+            />
+            {(activeStage === 'recognizing' || activeStage === 'thinking') && (
+              <div className="absolute inset-x-8 top-[46%] h-px overflow-hidden rounded-full bg-white/20 dark:bg-white/10 pointer-events-none">
+                <div className="voice-stage-scan h-full w-1/2 bg-gradient-to-r from-transparent via-white/80 to-transparent" />
+              </div>
+            )}
+            <div className="absolute bottom-0 left-0 right-0 h-40 bg-gradient-to-t from-white/40 dark:from-black/20 to-transparent pointer-events-none" />
             <div className="flex items-center justify-between px-5 py-3 border-b border-black/5 dark:border-white/8 bg-white/40 dark:bg-black/10 shrink-0">
-              <div className="flex items-center gap-2 min-w-0">
-                <div className={`w-2 h-2 rounded-full transition-colors ${micActive ? 'bg-[var(--primary-color)] animate-pulse' : 'bg-gray-300'}`} />
-                <span className="text-[12px] font-bold text-gray-600 dark:text-gray-300 shrink-0">实时字幕</span>
-                {micActive && latency > 0 && (
+              <div className="flex items-center gap-3 min-w-0">
+                <div className="flex items-center gap-2">
+                  <MessageSquareText className="w-4 h-4 text-gray-500" />
+                  <span className="text-[13px] font-black tracking-tight">实时字幕</span>
+                </div>
+                <span
+                  className="flex items-center gap-1.5 px-2.5 py-1 rounded-full border text-[10px] font-black tracking-[0.14em] shrink-0"
+                  style={{ color: stageMeta.accent, background: stageMeta.soft, borderColor: stageMeta.soft }}
+                >
+                  <span className="w-1.5 h-1.5 rounded-full" style={{ background: stageMeta.accent, boxShadow: `0 0 12px ${stageMeta.accent}` }} />
+                  {stageMeta.label}
+                </span>
+                <span className="truncate text-[11px] font-medium text-gray-500 dark:text-gray-300">{stageMeta.caption}</span>
+                {latency > 0 && micActive && (
                   <span
-                    className="text-[10px] text-gray-400 ml-2"
+                    className="hidden sm:inline text-[10px] font-mono text-gray-400"
                     title={latencyBreakdown
                       ? `ASR ${latencyBreakdown.asr_ms}ms · 首字 ${latencyBreakdown.ai_first_chunk_ms ?? '-'}ms · AI完成 ${latencyBreakdown.ai_total_ms}ms`
                       : undefined}
@@ -783,69 +933,101 @@ export function Voice() {
               </div>
               <button onClick={() => setSubtitles([])} className="h-7 px-3 rounded-full border border-gray-200 dark:border-white/15 text-[10px] font-bold text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 hover:bg-white/60 transition-all">清空</button>
             </div>
-            <div className="relative flex-1 min-h-0 p-6 flex flex-col justify-center gap-5">
-              {subtitles.length === 0 ? (
-                <div className="h-full flex flex-col items-center justify-center gap-4 opacity-40 select-none text-center relative z-10">
-                  <div className="w-24 h-24 rounded-full border border-white/50 dark:border-white/10 bg-white/55 dark:bg-white/5 flex items-center justify-center shadow-xl">
-                    <MessageSquareText className="w-11 h-11 text-gray-400" />
-                  </div>
-                  <p className="text-[15px] font-bold tracking-wide text-gray-400">开启麦克风后，字幕舞台将在这里点亮</p>
-                </div>
-              ) : (
-                <div className="relative z-10 grid grid-rows-2 gap-5 h-full min-h-0">
-                  <div className="relative overflow-hidden rounded-[18px] border border-white/70 dark:border-white/10 bg-white/76 dark:bg-white/7 px-6 py-5 shadow-xl" style={{ animation: 'caption-glow 4.5s ease-in-out infinite' }}>
-                    <div className="absolute inset-y-0 w-1/2 bg-[linear-gradient(90deg,transparent,rgba(255,255,255,0.55),transparent)] dark:bg-[linear-gradient(90deg,transparent,rgba(255,255,255,0.10),transparent)]" style={{ animation: 'caption-sweep 3.2s ease-in-out infinite' }} />
-                    <div className="relative flex items-center gap-2 text-[11px] font-black tracking-[0.24em] text-slate-400 uppercase">
-                      <span>语音识别</span>
-                      {latestFresh?.role === 'user' && <SubWave role="user" />}
+            <div className="relative flex-1 min-h-0 px-8 py-6 flex flex-col">
+              <div className="flex-1 overflow-hidden relative" id="subtitle-container">
+                {subtitles.length === 0 ? (
+                  <div className="h-full flex flex-col items-center justify-center gap-4 select-none text-center">
+                    <div className="relative w-28 h-28 rounded-full flex items-center justify-center">
+                      <div
+                        className="absolute inset-0 rounded-full border"
+                        style={{ borderColor: stageMeta.soft, background: stageMeta.soft, boxShadow: `0 0 54px ${stageMeta.soft}` }}
+                      />
+                      <div
+                        className={cn(
+                          'absolute inset-2 rounded-full border border-dashed opacity-60',
+                          (activeStage === 'thinking' || activeStage === 'replying') && 'voice-orbit'
+                        )}
+                        style={{ borderColor: stageMeta.accent }}
+                      />
+                      <MessageSquareText className="relative w-11 h-11" style={{ color: stageMeta.accent }} />
                     </div>
-                    <div key={`user-${latestUserText}`} className="relative mt-4 text-[clamp(26px,3.1vw,44px)] leading-[1.16] font-black text-slate-800 dark:text-slate-50 break-words" style={{ animation: 'caption-pop 420ms cubic-bezier(0.2, 0.8, 0.2, 1)' }}>
-                      {latestUserText}
+                    <div className="space-y-1">
+                      <p className="text-[15px] font-black tracking-[0.22em] uppercase" style={{ color: stageMeta.accent }}>{stageMeta.label}</p>
+                      <p className="text-[12px] font-semibold text-gray-400">{micActive ? voiceStatus : '等待舞台点亮'}</p>
                     </div>
                   </div>
+                ) : (
+                  <div className="absolute inset-0 flex flex-col justify-end items-center pb-8">
+                    {subtitles.slice(-3).map((sub, i, arr) => {
+                      const isLatest = i === arr.length - 1;
+                      const distance = arr.length - 1 - i;
 
-                  <div className="relative overflow-hidden rounded-[18px] border border-amber-200/70 dark:border-amber-300/15 bg-[linear-gradient(135deg,rgba(251,191,36,0.13),rgba(255,255,255,0.70))] dark:bg-[linear-gradient(135deg,rgba(69,42,10,0.56),rgba(15,23,42,0.92))] px-6 py-5 shadow-xl" style={{ animation: 'caption-glow 5.2s ease-in-out infinite' }}>
-                    <div className="absolute inset-y-0 w-1/2 bg-[linear-gradient(90deg,transparent,rgba(255,255,255,0.48),transparent)] dark:bg-[linear-gradient(90deg,transparent,rgba(251,191,36,0.10),transparent)]" style={{ animation: 'caption-sweep 3.8s ease-in-out infinite' }} />
-                    <div className="relative flex items-center gap-2 text-[11px] font-black tracking-[0.24em] text-amber-600/80 dark:text-amber-200/80 uppercase">
-                      <span>LLM 回复</span>
-                      {latestFresh?.role === 'ai' && <SubWave role="ai" />}
-                    </div>
-                    <div key={`ai-${latestAiText}`} className="relative mt-4 text-[clamp(22px,2.4vw,34px)] leading-[1.2] font-bold text-slate-800 dark:text-white break-words" style={{ animation: 'caption-pop 480ms cubic-bezier(0.2, 0.8, 0.2, 1)' }}>
-                      {latestAiText}
-                    </div>
+                      return (
+                        <div
+                          key={sub.id}
+                          className={cn(
+                            "flex flex-col gap-3 transition-all duration-1000 cubic-bezier(0.16, 1, 0.3, 1)",
+                            sub.role === 'ai' ? 'items-start self-start ml-4' : 'items-end self-end mr-4'
+                          )}
+                          style={{
+                            opacity: isLatest ? 1 : Math.max(0, 0.3 - distance * 0.1),
+                            transform: isLatest
+                              ? 'translateY(0) scale(1)'
+                              : `translateY(${-40 - distance * 30}px) scale(${0.9 - distance * 0.05})`,
+                            filter: isLatest ? 'none' : `blur(${2 + distance * 2}px)`,
+                            zIndex: 10 - distance,
+                            position: isLatest ? 'relative' : 'absolute',
+                            bottom: isLatest ? 0 : 'auto',
+                            transitionDelay: isLatest ? '0ms' : '50ms'
+                          }}
+                        >
+                          {isLatest && (
+                            <div className={cn(
+                              "flex items-center gap-2 px-3 py-1 rounded-full text-[10px] font-black tracking-[0.18em] border shadow-sm animate-sub-in",
+                              sub.role === 'ai'
+                                ? 'bg-amber-500/18 text-amber-600 dark:text-amber-300 border-amber-500/30'
+                                : 'bg-sky-500/20 text-sky-600 dark:text-sky-300 border-sky-500/30'
+                            )}>
+                              {sub.role === 'ai' ? 'AI 回应' : '我的语音'}
+                              {sub.fresh && <span className="w-1.5 h-1.5 rounded-full bg-current animate-ping" />}
+                              {sub.fresh && <SubWave role={sub.role} />}
+                            </div>
+                          )}
+
+                          <div className={cn(
+                            "relative overflow-hidden px-7 py-4 rounded-[28px] text-[16px] font-bold leading-relaxed shadow-2xl backdrop-blur-xl transition-all border",
+                            isLatest
+                              ? (sub.role === 'ai'
+                                  ? 'bg-white/95 dark:bg-white/10 text-slate-900 dark:text-white border-amber-200/80 dark:border-amber-300/20'
+                                  : 'bg-gradient-to-br from-blue-500 to-indigo-600 text-white border-blue-400/50')
+                              : 'bg-transparent text-gray-400 border-transparent shadow-none'
+                          )}
+                          style={{
+                            animation: isLatest ? 'bubble-glow 4s ease-in-out infinite' : 'none',
+                            maxWidth: isLatest ? '90%' : '70%',
+                            boxShadow: isLatest ? undefined : 'none',
+                            overflowWrap: 'anywhere',
+                          }}>
+                            {isLatest && sub.fresh && (
+                              <span className="absolute inset-y-0 -left-1/2 w-1/2 voice-stage-scan bg-gradient-to-r from-transparent via-white/50 to-transparent pointer-events-none" />
+                            )}
+                            {sub.text}
+                          </div>
+                        </div>
+                      );
+                    })}
                   </div>
-                </div>
-              )}
+                )}
+              </div>
             </div>
             <div className="px-6 pb-6 pt-2 shrink-0">
-              <div className="flex items-center gap-5">
-                <div className="relative shrink-0">
-                  {micActive && (
-                    <>
-                      <div className="absolute inset-0 rounded-full border-2 border-[var(--primary-color)]/45" style={{ animation: 'mic-pulse-strong 1.25s ease-out infinite', transform: `scale(${1 + voiceLevel * 0.12})` }} />
-                      <div className="absolute inset-0 rounded-full border-2 border-emerald-400/30" style={{ animation: 'mic-pulse-strong 1.65s ease-out infinite', animationDelay: '0.25s', transform: `scale(${1 + voiceLevel * 0.16})` }} />
-                    </>
-                  )}
-                  <div
-                    className={cn(
-                      'relative w-20 h-20 rounded-full flex items-center justify-center border transition-all duration-150',
-                      micActive
-                        ? 'bg-[radial-gradient(circle_at_30%_30%,rgba(255,255,255,0.96),rgba(191,219,254,0.75))] border-sky-200/80 dark:border-sky-400/20'
-                        : 'bg-white/70 dark:bg-white/5 border-white/60 dark:border-white/10'
-                    )}
-                    style={{ transform: `scale(${micScale})`, boxShadow: micActive ? `0 0 ${micGlow}px rgba(59,130,246,0.28)` : 'none' }}
-                  >
-                    {micActive ? <Mic className="w-9 h-9 text-[var(--primary-color)]" /> : <MicOff className="w-9 h-9 text-gray-400" />}
-                  </div>
-                </div>
                 <div className="flex-1 min-w-0">
-                  <div className="flex items-center justify-between mb-2">
-                    <span className="text-[11px] font-black tracking-[0.22em] text-gray-400 uppercase">人声输入强度</span>
-                    <span className="text-[11px] font-mono text-gray-500">{Math.round(voiceLevel * 100)}%</span>
+                  <div className="flex items-center justify-between mb-2 opacity-40">
+                    <span className="text-[9px] font-black tracking-[0.22em] text-gray-400 uppercase">实时波纹</span>
+                    <span className="text-[9px] font-mono" style={{ color: stageMeta.accent }}>{Math.round(voiceLevel * 100)}%</span>
                   </div>
-                  <FullWave active={micActive} color={micActive ? 'var(--primary-color)' : '#d1d5db'} barCount={72} />
+                  <FullWave active={micActive} voiceLevel={voiceLevel} color={(micActive || voiceLevel > 0.01) ? stageMeta.accent : '#d1d5db'} barCount={80} />
                 </div>
-              </div>
             </div>
           </GlassCard>
 
@@ -971,7 +1153,7 @@ export function Voice() {
           <div>
             <label className="text-[12px] text-gray-500 mb-2 block font-medium">系统提示词</label>
             <textarea
-              className="w-full h-40 px-4 py-3 rounded-xl bg-white/60 dark:bg-white/10 border border-gray-200 dark:border-white/20 text-[13px] leading-relaxed focus:outline-none focus:ring-2 focus:ring-[var(--primary-color)]/50 resize-none"
+              className="w-full h-32 px-4 py-3 rounded-xl bg-white/60 dark:bg-white/10 border border-gray-200 dark:border-white/20 text-[13px] leading-relaxed focus:outline-none focus:ring-2 focus:ring-[var(--primary-color)]/50 resize-none"
               value={settingsDraft.prompt}
               onChange={e => setSettingsDraft(d => ({ ...d, prompt: e.target.value }))}
               placeholder="语音交互模式下 AI 的系统提示词..."
@@ -979,6 +1161,54 @@ export function Voice() {
             <p className="text-[11px] text-gray-400 mt-1.5">
               可使用 <code className="bg-black/5 px-1 rounded">{'{gender}'}</code> 占位符，自动替换为所选 AI 性别
             </p>
+          </div>
+
+          <div className="h-px bg-white/10 my-2" />
+
+          <div className="space-y-4">
+            <div className="flex items-center justify-between">
+              <div>
+                <h4 className="text-[13px] font-bold">OBS 场景感知</h4>
+                <p className="text-[11px] text-gray-500">连接 OBS WebSocket 5.x 实现推流/场景同步</p>
+              </div>
+              <Toggle
+                checked={settingsDraft.obsEnabled}
+                onChange={v => setSettingsDraft(d => ({ ...d, obsEnabled: v }))}
+              />
+            </div>
+
+            <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-1.5">
+                <label className="text-[11px] text-gray-500 ml-1">Host</label>
+                <Input
+                  value={settingsDraft.obsHost}
+                  onChange={e => setSettingsDraft(d => ({ ...d, obsHost: e.target.value }))}
+                  placeholder="127.0.0.1"
+                  className="h-9 text-[12px]"
+                />
+              </div>
+              <div className="space-y-1.5">
+                <label className="text-[11px] text-gray-500 ml-1">Port</label>
+                <Input
+                  type="number"
+                  value={settingsDraft.obsPort}
+                  onChange={e => setSettingsDraft(d => ({ ...d, obsPort: parseInt(e.target.value) || 0 }))}
+                  placeholder="4455"
+                  className="h-9 text-[12px]"
+                />
+              </div>
+            </div>
+
+            <div className="space-y-1.5">
+              <label className="text-[11px] text-gray-500 ml-1">Password</label>
+              <Input
+                type="password"
+                value={settingsDraft.obsPassword}
+                onChange={e => setSettingsDraft(d => ({ ...d, obsPassword: e.target.value }))}
+                placeholder="OBS WebSocket 密码（可选）"
+                className="h-9 text-[12px]"
+              />
+            </div>
           </div>
         </div>
         <div className="flex gap-2 px-6 pb-6 shrink-0">
@@ -988,6 +1218,10 @@ export function Voice() {
               ...config,
               VoiceGender: settingsDraft.gender,
               VoiceSystemPrompt: settingsDraft.prompt,
+              ObsEnabled: settingsDraft.obsEnabled,
+              ObsHost: settingsDraft.obsHost,
+              ObsPort: settingsDraft.obsPort,
+              ObsPassword: settingsDraft.obsPassword,
             };
             try {
               await api.saveConfig(next);

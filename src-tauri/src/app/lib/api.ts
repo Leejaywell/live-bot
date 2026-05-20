@@ -220,6 +220,7 @@ export interface MusicInteractionSettings {
   StatsRange: string;
   Player: string;
   PlaybackMode: string;
+  UnlimitedRequests: boolean;
   Transparent: boolean;
   Width: number;
   Height: number;

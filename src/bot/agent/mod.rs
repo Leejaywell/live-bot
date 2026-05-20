@@ -122,6 +122,79 @@ pub async fn call_ai(
     reply
 }
 
+/// AI 流式调用入口：支持在生成过程中通过 channel 回传文本块（用于尽早启动 TTS）
+#[allow(dead_code)]
+pub async fn call_ai_streaming(
+    http: &BiliApi,
+    config: &AppConfig,
+    bot_id: &str,
+    prompt: &str,
+    uid: i64,
+    uname: &str,
+    memory: &Arc<std::sync::Mutex<SessionMemory>>,
+    chunk_tx: tokio::sync::mpsc::UnboundedSender<String>,
+) -> String {
+    let Some(bot) = config.ai_bots.iter().find(|b| b.id == bot_id) else {
+        return String::new();
+    };
+    let Some(provider) = config.ai_providers.iter().find(|p| p.id == bot.provider_id) else {
+        return String::new();
+    };
+
+    let (history, sys) = {
+        let mut mem = memory.lock().unwrap_or_else(|e| e.into_inner());
+        let _ = mem.note_speaker(uid, uname);
+        let sys = bot.system_prompt.replace("{{name}}", &bot.nickname);
+        (mem.history_pairs(bot_id), sys)
+    };
+
+    let mut messages = vec![serde_json::json!({"role": "system", "content": sys})];
+    for (role, content) in &history {
+        messages.push(serde_json::json!({"role": role, "content": content}));
+    }
+    messages.push(serde_json::json!({"role": "user", "content": prompt}));
+
+    let mut stream = match http
+        .chat_completions_stream_with_opts(provider, &messages, None)
+        .await
+    {
+        Ok(stream) => stream,
+        Err(e) => {
+            eprintln!("[AI stream] 调用失败: {e}");
+            return String::new();
+        }
+    };
+
+    let mut reply = String::new();
+    let mut speak_buf = String::new();
+    while let Some(item) = stream.recv().await {
+        let delta = match item {
+            Ok(delta) => delta,
+            Err(_) => break,
+        };
+        reply.push_str(&delta);
+        speak_buf.push_str(&delta);
+
+        // 如果检测到句子边界，尝试推送给 TTS
+        if should_flush_voice_chunk(&speak_buf, reply.chars().count()) {
+            let chunk = prepare_voice_tts_chunk(&mut speak_buf, false);
+            let _ = chunk_tx.send(chunk);
+        }
+    }
+
+    if !speak_buf.trim().is_empty() {
+        let chunk = prepare_voice_tts_chunk(&mut speak_buf, true);
+        let _ = chunk_tx.send(chunk);
+    }
+
+    {
+        let mut mem = memory.lock().unwrap_or_else(|e| e.into_inner());
+        mem.push_turn(bot_id, prompt.to_string(), reply.clone());
+    }
+
+    reply
+}
+
 /// 语音模式 AI 调用：使用 voice_system_prompt 替换 {{gender}}，而非 bot 的人设提示词。
 #[allow(dead_code)]
 pub async fn call_ai_voice(

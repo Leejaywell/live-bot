@@ -11,7 +11,7 @@
 use std::sync::Arc;
 
 use crossbeam_queue::SegQueue;
-use tracing::{error, info, warn};
+use tracing::{debug, error, info, warn};
 
 use super::latency::LatencyMonitor;
 use super::mixer::i16_to_f32_bulk;
@@ -184,6 +184,21 @@ fn push_to_buffer(
     for s in &resampled {
         buffer.push(*s);
     }
+
+    // 在非实时线程计算并记录 Peak
+    let mut peak = 0.0f32;
+    for s in &resampled {
+        let abs_s = s.abs();
+        if abs_s > peak {
+            peak = abs_s;
+        }
+    }
+    if peak > 0.95 {
+        warn!("[播放器] 音量接近削波 peak={:.4}", peak);
+    } else if peak > 0.001 {
+        debug!("[播放器] 音量 peak={:.4}", peak);
+    }
+
     monitor.on_push(resampled.len());
 }
 
