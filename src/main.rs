@@ -5,6 +5,7 @@ mod api;
 mod bot;
 mod config;
 mod danmaku_chat_server;
+mod live_platform;
 mod music;
 mod obs;
 mod plugin_settings;
