@@ -2,6 +2,7 @@ use anyhow::{Result, anyhow};
 use chrono::{Duration, Local};
 use std::sync::{Arc, Mutex};
 
+use crate::live_platform::types::{PlatformEvent, PlatformUserRef};
 use crate::music::command::{SongCommand, parse_song_command};
 use crate::music::provider::{MusicProvider, SearchOptions};
 use crate::music::queue::configured_priority_score;
@@ -54,6 +55,57 @@ pub struct MusicInteractionService {
     room_id: i64,
     session_id: Option<Arc<Mutex<Option<String>>>>,
     unlimited_requests_override: Option<bool>,
+}
+
+struct MusicEventInput<'a> {
+    uid: i64,
+    uname: &'a str,
+    text: Option<&'a str>,
+    gift_name: Option<&'a str>,
+    gift_count: i64,
+    gift_price: i64,
+    sc_price: Option<i64>,
+}
+
+fn platform_user_numeric_id(user: &PlatformUserRef) -> Option<i64> {
+    if user.platform_id.as_str() == "bilibili" {
+        user.numeric_id()
+    } else {
+        None
+    }
+}
+
+fn platform_music_input(event: &PlatformEvent) -> Option<MusicEventInput<'_>> {
+    match event {
+        PlatformEvent::Message(value) => Some(MusicEventInput {
+            uid: platform_user_numeric_id(&value.user)?,
+            uname: value.user.display_name.as_str(),
+            text: Some(value.text.as_str()),
+            gift_name: None,
+            gift_count: 0,
+            gift_price: 0,
+            sc_price: None,
+        }),
+        PlatformEvent::Gift(value) => Some(MusicEventInput {
+            uid: platform_user_numeric_id(&value.user)?,
+            uname: value.user.display_name.as_str(),
+            text: None,
+            gift_name: Some(value.gift.as_str()),
+            gift_count: value.count,
+            gift_price: value.price,
+            sc_price: None,
+        }),
+        PlatformEvent::PaidMessage(value) => Some(MusicEventInput {
+            uid: platform_user_numeric_id(&value.user)?,
+            uname: value.user.display_name.as_str(),
+            text: Some(value.text.as_str()),
+            gift_name: None,
+            gift_count: 0,
+            gift_price: 0,
+            sc_price: Some(value.price),
+        }),
+        _ => None,
+    }
 }
 
 #[allow(dead_code)]
@@ -194,7 +246,10 @@ impl MusicInteractionService {
                 user_id,
                 user,
                 text,
-            } => self.handle_danmu(*user_id, user, text).await,
+            } => {
+                self.handle_text_interaction(*user_id, user, text, None)
+                    .await
+            }
             bilibili_live_protocol::LiveEvent::Gift {
                 user_id,
                 user,
@@ -203,58 +258,109 @@ impl MusicInteractionService {
                 price,
                 ..
             } => {
-                let storage_ready = self.storage.is_some() && self.current_session_id().is_some();
-                let recorded = self.record_credit(
-                    *user_id,
-                    user,
-                    price.saturating_mul(*count as i64),
-                    "gift",
-                    None,
-                )?;
-                let credit_value = price.saturating_mul(*count as i64);
-                if recorded {
-                    let tier_name = music_tier_for_credit(credit_value)
-                        .map(|tier| tier.name)
-                        .unwrap_or_else(|| "点歌".to_string());
-                    Ok(SongServiceReply::Message(format!(
-                        "感谢 {user} 赠送 {gift} x{count}，已解锁「{tier_name}」权益"
-                    )))
-                } else if storage_ready {
-                    Ok(SongServiceReply::Message(format!(
-                        "感谢 {user} 赠送 {gift} x{count}"
-                    )))
-                } else {
-                    Ok(SongServiceReply::Message(format!(
-                        "感谢 {user} 赠送 {gift} x{count}，点歌积分将在接入存储后生效"
-                    )))
-                }
+                self.handle_gift_interaction(*user_id, user, gift, *count, *price)
+                    .await
             }
             bilibili_live_protocol::LiveEvent::SuperChat {
                 user_id,
                 user,
+                text,
                 price,
                 ..
             } => {
-                let storage_ready = self.storage.is_some() && self.current_session_id().is_some();
-                let recorded = self.record_credit(*user_id, user, *price, "super_chat", None)?;
-                if recorded {
-                    let tier_name = music_tier_for_credit(*price)
-                        .map(|tier| tier.name)
-                        .unwrap_or_else(|| "点歌".to_string());
-                    Ok(SongServiceReply::Message(format!(
-                        "感谢 {user} 的醒目留言，已解锁「{tier_name}」权益（{price}元）"
-                    )))
-                } else if storage_ready {
-                    Ok(SongServiceReply::Message(format!(
-                        "感谢 {user} 的醒目留言（{price}元）"
-                    )))
-                } else {
-                    Ok(SongServiceReply::Message(format!(
-                        "感谢 {user} 的醒目留言，点歌积分将在接入存储后生效（{price}元）"
-                    )))
-                }
+                self.handle_text_interaction(*user_id, user, text, Some(*price))
+                    .await
             }
             _ => Ok(SongServiceReply::Ignored),
+        }
+    }
+
+    pub async fn handle_platform_event(
+        &self,
+        event: &PlatformEvent,
+    ) -> anyhow::Result<SongServiceReply> {
+        let Some(input) = platform_music_input(event) else {
+            return Ok(SongServiceReply::Ignored);
+        };
+
+        if let Some(text) = input.text {
+            return self
+                .handle_text_interaction(input.uid, input.uname, text, input.sc_price)
+                .await;
+        }
+
+        if let Some(gift_name) = input.gift_name {
+            return self
+                .handle_gift_interaction(
+                    input.uid,
+                    input.uname,
+                    gift_name,
+                    input.gift_count,
+                    input.gift_price,
+                )
+                .await;
+        }
+
+        Ok(SongServiceReply::Ignored)
+    }
+
+    async fn handle_text_interaction(
+        &self,
+        uid: i64,
+        uname: &str,
+        text: &str,
+        sc_price: Option<i64>,
+    ) -> anyhow::Result<SongServiceReply> {
+        if let Some(price) = sc_price {
+            let storage_ready = self.storage.is_some() && self.current_session_id().is_some();
+            let recorded = self.record_credit(uid, uname, price, "super_chat", None)?;
+            if recorded {
+                let tier_name = music_tier_for_credit(price)
+                    .map(|tier| tier.name)
+                    .unwrap_or_else(|| "点歌".to_string());
+                Ok(SongServiceReply::Message(format!(
+                    "感谢 {uname} 的醒目留言，已解锁「{tier_name}」权益（{price}元）"
+                )))
+            } else if storage_ready {
+                Ok(SongServiceReply::Message(format!(
+                    "感谢 {uname} 的醒目留言（{price}元）"
+                )))
+            } else {
+                Ok(SongServiceReply::Message(format!(
+                    "感谢 {uname} 的醒目留言，点歌积分将在接入存储后生效（{price}元）"
+                )))
+            }
+        } else {
+            self.handle_danmu(uid, uname, text).await
+        }
+    }
+
+    async fn handle_gift_interaction(
+        &self,
+        uid: i64,
+        uname: &str,
+        gift_name: &str,
+        gift_count: i64,
+        gift_price: i64,
+    ) -> anyhow::Result<SongServiceReply> {
+        let storage_ready = self.storage.is_some() && self.current_session_id().is_some();
+        let credit_value = gift_price.saturating_mul(gift_count);
+        let recorded = self.record_credit(uid, uname, credit_value, "gift", None)?;
+        if recorded {
+            let tier_name = music_tier_for_credit(credit_value)
+                .map(|tier| tier.name)
+                .unwrap_or_else(|| "点歌".to_string());
+            Ok(SongServiceReply::Message(format!(
+                "感谢 {uname} 赠送 {gift_name} x{gift_count}，已解锁「{tier_name}」权益"
+            )))
+        } else if storage_ready {
+            Ok(SongServiceReply::Message(format!(
+                "感谢 {uname} 赠送 {gift_name} x{gift_count}"
+            )))
+        } else {
+            Ok(SongServiceReply::Message(format!(
+                "感谢 {uname} 赠送 {gift_name} x{gift_count}，点歌积分将在接入存储后生效"
+            )))
         }
     }
 
@@ -827,6 +933,28 @@ mod tests {
 
         assert!(matches!(reply, SongServiceReply::Candidates { .. }));
         assert!(reply.to_danmu_text().contains("晴天 - 周杰伦"));
+    }
+
+    #[tokio::test]
+    async fn platform_danmu_event_uses_text_interaction_path() {
+        let service = MusicInteractionService::new_for_tests(vec![Box::new(
+            FakeProvider::with_tracks(vec![track("青花瓷", &["周杰伦"], "185809")]),
+        )]);
+        let event = crate::live_platform::types::PlatformEvent::Message(
+            crate::live_platform::types::ChatMessageEvent {
+                user: crate::live_platform::types::PlatformUserRef::bilibili(42, "alice"),
+                text: "点歌 青花瓷".to_string(),
+            },
+        );
+
+        let reply = service.handle_platform_event(&event).await.unwrap();
+
+        assert!(matches!(
+            reply,
+            SongServiceReply::Candidates { .. }
+                | SongServiceReply::Message(_)
+                | SongServiceReply::Ignored
+        ));
     }
 
     #[tokio::test]
