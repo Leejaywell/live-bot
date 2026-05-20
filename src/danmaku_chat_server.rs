@@ -259,6 +259,12 @@ struct SongRankItem {
     tier: String,
 }
 
+enum CurrentBilibiliRoom {
+    Room(i64),
+    NoConnectedRoom,
+    NonBilibili,
+}
+
 async fn song_queue_handler() -> impl IntoResponse {
     Json(QueueResponse {
         items: observed_music_queue(),
@@ -279,15 +285,9 @@ async fn song_rank_handler() -> impl IntoResponse {
 }
 
 fn observed_music_queue() -> Vec<QueueItem> {
-    let room_id = match crate::token::read_connected_room() {
+    let room_id = match current_or_config_bilibili_room_id("音乐互动读取配置失败") {
         Some(room_id) => room_id,
-        None => match crate::config::AppConfig::load_or_default() {
-            Ok(app) => app.room_id,
-            Err(e) => {
-                eprintln!("音乐互动读取配置失败: {e}");
-                return Vec::new();
-            }
-        },
+        None => return Vec::new(),
     };
     let storage = match danmaku_chat_storage() {
         Ok(storage) => storage,
@@ -327,15 +327,9 @@ fn observed_music_queue() -> Vec<QueueItem> {
 }
 
 fn observed_song_rank() -> Vec<SongRankItem> {
-    let room_id = match crate::token::read_connected_room() {
+    let room_id = match current_or_config_bilibili_room_id("音乐互动排行读取配置失败") {
         Some(room_id) => room_id,
-        None => match crate::config::AppConfig::load_or_default() {
-            Ok(app) => app.room_id,
-            Err(e) => {
-                eprintln!("音乐互动排行读取配置失败: {e}");
-                return Vec::new();
-            }
-        },
+        None => return Vec::new(),
     };
     let storage = match danmaku_chat_storage() {
         Ok(storage) => storage,
@@ -421,15 +415,9 @@ fn observed_song_rank() -> Vec<SongRankItem> {
 }
 
 fn observed_recent_events(limit: usize) -> Vec<Value> {
-    let room_id = match crate::token::read_connected_room() {
+    let room_id = match current_or_config_bilibili_room_id("弹幕聊天读取房间配置失败") {
         Some(room_id) => room_id,
-        None => match crate::config::AppConfig::load_or_default() {
-            Ok(app) => app.room_id,
-            Err(e) => {
-                eprintln!("弹幕聊天读取房间配置失败: {e}");
-                return Vec::new();
-            }
-        },
+        None => return Vec::new(),
     };
     let storage = match danmaku_chat_storage() {
         Ok(storage) => storage,
@@ -586,6 +574,10 @@ fn observed_recent_events(limit: usize) -> Vec<Value> {
 }
 
 fn observed_gift_catalog() -> BTreeMap<String, String> {
+    if matches!(current_bilibili_room_id(), CurrentBilibiliRoom::NonBilibili) {
+        return BTreeMap::new();
+    }
+
     let storage = match danmaku_chat_storage() {
         Ok(storage) => storage,
         Err(e) => {
@@ -625,15 +617,9 @@ fn observed_gift_catalog() -> BTreeMap<String, String> {
 }
 
 fn observed_recent_gifts_data(limit: usize) -> Vec<Value> {
-    let room_id = match crate::token::read_connected_room() {
+    let room_id = match current_or_config_bilibili_room_id("最近礼物读取房间配置失败") {
         Some(room_id) => room_id,
-        None => match crate::config::AppConfig::load_or_default() {
-            Ok(app) => app.room_id,
-            Err(e) => {
-                eprintln!("最近礼物读取房间配置失败: {e}");
-                return Vec::new();
-            }
-        },
+        None => return Vec::new(),
     };
     let storage = match danmaku_chat_storage() {
         Ok(storage) => storage,
@@ -693,15 +679,9 @@ fn observed_recent_gifts_data(limit: usize) -> Vec<Value> {
 }
 
 fn observed_gift_rank_data(limit: usize) -> Vec<Value> {
-    let room_id = match crate::token::read_connected_room() {
+    let room_id = match current_or_config_bilibili_room_id("礼物排行读取房间配置失败") {
         Some(room_id) => room_id,
-        None => match crate::config::AppConfig::load_or_default() {
-            Ok(app) => app.room_id,
-            Err(e) => {
-                eprintln!("礼物排行读取房间配置失败: {e}");
-                return Vec::new();
-            }
-        },
+        None => return Vec::new(),
     };
     let storage = match danmaku_chat_storage() {
         Ok(storage) => storage,
@@ -780,6 +760,41 @@ fn danmaku_chat_storage() -> anyhow::Result<Arc<Storage>> {
         }
     }
     Ok(storage)
+}
+
+fn current_platform_room() -> Option<crate::live_platform::PlatformRoomRef> {
+    crate::token::read_connected_platform_room().map(|room| crate::live_platform::PlatformRoomRef {
+        platform_id: crate::live_platform::PlatformId::from(room.platform_id),
+        platform_room_id: room.platform_room_id,
+        display_id: room.display_id,
+    })
+}
+
+fn current_bilibili_room_id() -> CurrentBilibiliRoom {
+    let Some(room) = current_platform_room() else {
+        return CurrentBilibiliRoom::NoConnectedRoom;
+    };
+    if room.platform_id.as_str() != "bilibili" {
+        return CurrentBilibiliRoom::NonBilibili;
+    }
+    room.platform_room_id
+        .parse::<i64>()
+        .map(CurrentBilibiliRoom::Room)
+        .unwrap_or(CurrentBilibiliRoom::NonBilibili)
+}
+
+fn current_or_config_bilibili_room_id(error_context: &str) -> Option<i64> {
+    match current_bilibili_room_id() {
+        CurrentBilibiliRoom::Room(room_id) => Some(room_id),
+        CurrentBilibiliRoom::NonBilibili => None,
+        CurrentBilibiliRoom::NoConnectedRoom => match crate::config::AppConfig::load_or_default() {
+            Ok(app) => Some(app.room_id),
+            Err(e) => {
+                eprintln!("{error_context}: {e}");
+                None
+            }
+        },
+    }
 }
 
 async fn local_resource_handler(Query(q): Query<ProxyQuery>) -> Response<Body> {

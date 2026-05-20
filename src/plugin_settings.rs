@@ -586,6 +586,68 @@ impl Default for MusicInteractionSettings {
     }
 }
 
+fn live_event_payload(payload: &Value) -> &Value {
+    payload.get("event").unwrap_or(payload)
+}
+
+fn event_user_name(payload: &Value) -> &str {
+    event_user_name_or(payload, "观众")
+}
+
+fn event_user_name_or<'a>(payload: &'a Value, fallback: &'a str) -> &'a str {
+    payload
+        .get("uname")
+        .or_else(|| payload.get("user"))
+        .and_then(Value::as_str)
+        .or_else(|| {
+            payload
+                .pointer("/user/display_name")
+                .and_then(Value::as_str)
+        })
+        .or_else(|| payload.get("username").and_then(Value::as_str))
+        .unwrap_or(fallback)
+}
+
+fn event_user_avatar(payload: &Value) -> &str {
+    payload
+        .get("face")
+        .or_else(|| payload.get("avatar"))
+        .and_then(Value::as_str)
+        .unwrap_or_default()
+}
+
+fn event_gift_name(payload: &Value) -> &str {
+    payload
+        .get("gift")
+        .or_else(|| payload.get("gift_name"))
+        .and_then(Value::as_str)
+        .unwrap_or_default()
+}
+
+fn event_original_gift_name(payload: &Value) -> &str {
+    payload
+        .get("original_gift_name")
+        .and_then(Value::as_str)
+        .unwrap_or_default()
+}
+
+fn event_gift_count(payload: &Value) -> i64 {
+    payload
+        .get("count")
+        .or_else(|| payload.get("gift_count"))
+        .and_then(Value::as_i64)
+        .unwrap_or(1)
+}
+
+fn event_gift_price(payload: &Value) -> i64 {
+    payload
+        .get("price")
+        .or_else(|| payload.get("gift_price"))
+        .or_else(|| payload.get("original_gift_price"))
+        .and_then(Value::as_i64)
+        .unwrap_or(0)
+}
+
 impl PluginSettings {
     pub fn load_or_default() -> Result<Self> {
         let path = plugin_settings_path();
@@ -620,12 +682,13 @@ impl PluginSettings {
         Ok(())
     }
 
-    pub fn apply_wish_goal_event(&mut self, event: &Value) -> bool {
+    pub fn apply_wish_goal_event(&mut self, payload: &Value) -> bool {
+        let payload = live_event_payload(payload);
         if !self.wish_goal.enabled {
             return false;
         }
 
-        let Some(event_type) = event.get("type").and_then(Value::as_str) else {
+        let Some(event_type) = payload.get("type").and_then(Value::as_str) else {
             return false;
         };
 
@@ -633,19 +696,12 @@ impl PluginSettings {
         for goal in &mut self.wish_goal.goals {
             let delta = match goal.match_kind.as_str() {
                 "gift" if event_type == "Gift" || event_type == "GuardBuy" => {
-                    let gift = event
-                        .get("gift")
-                        .and_then(Value::as_str)
-                        .unwrap_or_default();
-                    let original = event
-                        .get("original_gift_name")
-                        .and_then(Value::as_str)
-                        .unwrap_or_default();
+                    let gift = event_gift_name(payload);
+                    let original = event_original_gift_name(payload);
                     if !goal.gift_name.is_empty()
                         && (goal.gift_name == gift || goal.gift_name == original)
                     {
-                        event.get("count").and_then(Value::as_i64).unwrap_or(1)
-                            * goal.increment.max(1)
+                        event_gift_count(payload) * goal.increment.max(1)
                     } else {
                         0
                     }
@@ -662,117 +718,76 @@ impl PluginSettings {
         changed
     }
 
-    pub fn apply_lottery_event(&mut self, event: &Value) -> bool {
+    pub fn apply_lottery_event(&mut self, payload: &Value) -> bool {
+        let payload = live_event_payload(payload);
         let lottery = &mut self.lottery_interaction;
         if !lottery.enabled || lottery.gift_name.is_empty() {
             return false;
         }
-        let Some(event_type) = event.get("type").and_then(Value::as_str) else {
+        let Some(event_type) = payload.get("type").and_then(Value::as_str) else {
             return false;
         };
         if event_type != "Gift" && event_type != "GuardBuy" {
             return false;
         }
-        let gift = event
-            .get("gift")
-            .and_then(Value::as_str)
-            .unwrap_or_default();
-        let original = event
-            .get("original_gift_name")
-            .and_then(Value::as_str)
-            .unwrap_or_default();
+        let gift = event_gift_name(payload);
+        let original = event_original_gift_name(payload);
         if lottery.gift_name != gift && lottery.gift_name != original {
             return false;
         }
-        let count = event.get("count").and_then(Value::as_i64).unwrap_or(1);
+        let count = event_gift_count(payload);
         if count < lottery.gift_count.max(1) {
             return false;
         }
-        let winner = event
-            .get("uname")
-            .or_else(|| event.get("user"))
-            .or_else(|| event.get("username"))
-            .and_then(Value::as_str)
-            .unwrap_or("幸运观众")
-            .to_string();
+        let winner = event_user_name_or(payload, "幸运观众").to_string();
         lottery.draw(winner)
     }
 
-    pub fn apply_gift_effect_event(&mut self, event: &Value) -> bool {
+    pub fn apply_gift_effect_event(&mut self, payload: &Value) -> bool {
+        let payload = live_event_payload(payload);
         let effect = &mut self.gift_effect;
         if !effect.enabled {
             return false;
         }
-        let Some(event_type) = event.get("type").and_then(Value::as_str) else {
+        let Some(event_type) = payload.get("type").and_then(Value::as_str) else {
             return false;
         };
         if event_type != "Gift" && event_type != "GuardBuy" {
             return false;
         }
-        let gift = event
-            .get("gift")
-            .and_then(Value::as_str)
-            .unwrap_or_default();
-        let original = event
-            .get("original_gift_name")
-            .and_then(Value::as_str)
-            .unwrap_or_default();
+        let gift = event_gift_name(payload);
+        let original = event_original_gift_name(payload);
         if !effect.gift_name.is_empty() && effect.gift_name != gift && effect.gift_name != original
         {
             return false;
         }
-        effect.last_user = event
-            .get("uname")
-            .or_else(|| event.get("user"))
-            .or_else(|| event.get("username"))
-            .and_then(Value::as_str)
-            .unwrap_or("观众")
-            .to_string();
+        effect.last_user = event_user_name(payload).to_string();
         effect.last_gift = if gift.is_empty() { original } else { gift }.to_string();
-        effect.last_count = event
-            .get("count")
-            .and_then(Value::as_i64)
-            .unwrap_or(1)
-            .max(1);
+        effect.last_count = event_gift_count(payload).max(1);
         effect.effect_nonce = effect.effect_nonce.saturating_add(1);
         true
     }
 
-    pub fn apply_recent_gifts_event(&mut self, event: &Value) -> bool {
+    pub fn apply_recent_gifts_event(&mut self, payload: &Value) -> bool {
+        let payload = live_event_payload(payload);
         let recent = &mut self.recent_gifts;
         if !recent.enabled {
             return false;
         }
-        let Some(event_type) = event.get("type").and_then(Value::as_str) else {
+        let Some(event_type) = payload.get("type").and_then(Value::as_str) else {
             return false;
         };
         if event_type != "Gift" && event_type != "GuardBuy" {
             return false;
         }
-        let gift = event
-            .get("gift")
-            .or_else(|| event.get("original_gift_name"))
-            .and_then(Value::as_str)
-            .unwrap_or("礼物")
-            .to_string();
-        let user = event
-            .get("uname")
-            .or_else(|| event.get("user"))
-            .or_else(|| event.get("username"))
-            .and_then(Value::as_str)
-            .unwrap_or("观众")
-            .to_string();
-        let avatar = event
-            .get("face")
-            .or_else(|| event.get("avatar"))
-            .and_then(Value::as_str)
-            .unwrap_or_default()
-            .to_string();
-        let count = event
-            .get("count")
-            .and_then(Value::as_i64)
-            .unwrap_or(1)
-            .max(1);
+        let gift = match event_gift_name(payload) {
+            "" => event_original_gift_name(payload),
+            gift => gift,
+        };
+        let gift = if gift.is_empty() { "礼物" } else { gift }.to_string();
+        let user = event_user_name(payload).to_string();
+        let avatar = event_user_avatar(payload).to_string();
+        let count = event_gift_count(payload).max(1);
         let id = format!("gift-{}", rand::random::<u64>());
         recent.items.insert(
             0,
@@ -788,12 +803,13 @@ impl PluginSettings {
         true
     }
 
-    pub fn apply_gift_rank_event(&mut self, event: &Value) -> bool {
+    pub fn apply_gift_rank_event(&mut self, payload: &Value) -> bool {
+        let payload = live_event_payload(payload);
         let rank = &mut self.gift_rank;
         if !rank.enabled {
             return false;
         }
-        let Some(event_type) = event.get("type").and_then(Value::as_str) else {
+        let Some(event_type) = payload.get("type").and_then(Value::as_str) else {
             return false;
         };
         if event_type != "Gift" && event_type != "GuardBuy" {
@@ -804,31 +820,10 @@ impl PluginSettings {
             rank.date = today;
             rank.items.clear();
         }
-        let user = event
-            .get("uname")
-            .or_else(|| event.get("user"))
-            .or_else(|| event.get("username"))
-            .and_then(Value::as_str)
-            .unwrap_or("观众")
-            .to_string();
-        let avatar = event
-            .get("face")
-            .or_else(|| event.get("avatar"))
-            .and_then(Value::as_str)
-            .unwrap_or_default()
-            .to_string();
-        let count = event
-            .get("count")
-            .and_then(Value::as_i64)
-            .unwrap_or(1)
-            .max(1);
-        let price = event
-            .get("price")
-            .or_else(|| event.get("gift_price"))
-            .or_else(|| event.get("original_gift_price"))
-            .and_then(Value::as_i64)
-            .unwrap_or(0)
-            .max(0);
+        let user = event_user_name(payload).to_string();
+        let avatar = event_user_avatar(payload).to_string();
+        let count = event_gift_count(payload).max(1);
+        let price = event_gift_price(payload).max(0);
         let value = if price > 0 { price * count } else { count };
         if let Some(item) = rank.items.iter_mut().find(|item| item.user == user) {
             item.value = item.value.saturating_add(value);
@@ -1330,6 +1325,7 @@ fn df_wish_goals() -> Vec<WishGoalItem> {
 #[cfg(test)]
 mod music_interaction_tests {
     use super::PluginSettings;
+    use serde_json::json;
 
     #[test]
     fn music_interaction_defaults_are_enabled_and_neon() {
@@ -1347,5 +1343,43 @@ mod music_interaction_tests {
         assert_eq!(settings.music_interaction.tiers[0].min_credit, 10);
         assert_eq!(settings.music_interaction.tiers[4].id, "playlist_takeover");
         assert_eq!(settings.music_interaction.tiers[4].min_credit, 1999);
+    }
+
+    #[test]
+    fn plugin_events_accept_nested_platform_gift_payload() {
+        let mut settings = PluginSettings::default();
+        settings.lottery_interaction.gift_name = "小花花".to_string();
+        settings.lottery_interaction.gift_count = 2;
+        settings.gift_effect.gift_name = "小花花".to_string();
+
+        let payload = json!({
+            "event": {
+                "type": "Gift",
+                "user": {
+                    "platform_id": "bilibili",
+                    "platform_user_id": "42",
+                    "display_name": "Alice"
+                },
+                "gift": "小花花",
+                "count": 2,
+                "price": 100,
+                "original_gift_name": null,
+                "original_gift_price": 0
+            }
+        });
+
+        assert!(settings.apply_lottery_event(&payload));
+        assert!(settings.apply_gift_effect_event(&payload));
+        assert!(settings.apply_recent_gifts_event(&payload));
+        assert!(settings.apply_gift_rank_event(&payload));
+
+        assert_eq!(settings.lottery_interaction.last_winner, "Alice");
+        assert_eq!(settings.gift_effect.last_user, "Alice");
+        assert_eq!(settings.gift_effect.last_gift, "小花花");
+        assert_eq!(settings.gift_effect.last_count, 2);
+        assert_eq!(settings.recent_gifts.items[0].user, "Alice");
+        assert_eq!(settings.recent_gifts.items[0].gift, "小花花");
+        assert_eq!(settings.gift_rank.items[0].user, "Alice");
+        assert_eq!(settings.gift_rank.items[0].value, 200);
     }
 }
