@@ -2216,14 +2216,27 @@ fn cleanup_polluted_tracked_users(conn: &Connection) -> Result<()> {
                 select t.uid
                   from tracked_users t
                  where t.auto_tracked = 1
+                   and t.status = 'active'
                    and coalesce(nullif(t.platform_id, ''), 'bilibili') = 'bilibili'
                    and nullif(t.platform_user_id, '') = cast(t.uid as text)
                    and t.platform_user_id not glob '*[^0-9]*'
+                   and coalesce(t.alias, '') = ''
+                   and coalesce(t.notes, '') = ''
+                   and coalesce(t.tts_provider_id, '') = ''
+                   and coalesce(t.tts_voice_id, '') = ''
+                   and t.created_at = t.updated_at
                    and not exists (
                         select 1
                           from interaction_records ir
                          where coalesce(nullif(ir.platform_id, ''), 'bilibili') = 'bilibili'
                            and coalesce(nullif(ir.platform_user_id, ''), cast(ir.uid as text)) = t.platform_user_id
+                   )
+                   and not exists (
+                        select 1
+                          from user_profiles up
+                         where up.uid = t.uid
+                           and coalesce(nullif(up.platform_id, ''), 'bilibili') = 'bilibili'
+                           and coalesce(nullif(up.platform_user_id, ''), cast(up.uid as text)) = t.platform_user_id
                    )
                    and exists (
                         select 1
@@ -2875,6 +2888,163 @@ mod tests {
                     |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
                 )?;
                 assert_eq!(row, ("bilibili".to_string(), "alice".to_string(), 1));
+                Ok(())
+            })
+            .unwrap();
+
+        std::fs::remove_file(path).unwrap();
+    }
+
+    #[test]
+    fn startup_cleanup_keeps_legit_bilibili_auto_tracked_user_after_history_pruning() {
+        let unique = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+        let path =
+            std::env::temp_dir().join(format!("live-bot-storage-retained-tracked-{unique}.sqlite"));
+        let path_str = path.to_string_lossy().to_string();
+        let seeded_at = Local
+            .with_ymd_and_hms(2026, 5, 4, 10, 0, 0)
+            .unwrap()
+            .to_rfc3339();
+
+        {
+            let conn = rusqlite::Connection::open(&path).unwrap();
+            conn.execute_batch(
+                "
+                create table interaction_records (
+                    id integer primary key autoincrement,
+                    session_id text not null,
+                    platform_id text,
+                    platform_room_id text,
+                    platform_user_id text,
+                    room_id integer not null,
+                    event_type text not null,
+                    uid integer,
+                    uname text,
+                    text text,
+                    gift_count integer,
+                    gift_price integer,
+                    raw_json text not null,
+                    occurred_at text not null
+                );
+                create table tracked_users (
+                    uid integer primary key,
+                    platform_id text not null default 'bilibili',
+                    platform_user_id text,
+                    nickname text not null default '',
+                    alias text not null default '',
+                    notes text not null default '',
+                    tts_provider_id text not null default '',
+                    tts_voice_id text not null default '',
+                    status text not null default 'active',
+                    auto_tracked integer not null default 0,
+                    created_at text not null,
+                    updated_at text not null
+                );
+                create table user_profiles (
+                    uid integer primary key,
+                    platform_id text not null default 'bilibili',
+                    platform_user_id text,
+                    first_seen_at text not null,
+                    last_seen_at text not null,
+                    total_danmu_count integer not null default 0,
+                    total_gift_value integer not null default 0,
+                    total_sc_value integer not null default 0,
+                    enter_count integer not null default 0,
+                    active_hours text not null default '',
+                    fan_level integer not null default 0,
+                    is_guard integer not null default 0,
+                    ai_summary text not null default '',
+                    ai_tags text not null default '',
+                    ai_topics text not null default '',
+                    ai_summary_updated_at text,
+                    ai_summary_version integer not null default 0
+                );
+                ",
+            )
+            .unwrap();
+
+            conn.execute(
+                "insert into tracked_users (
+                    uid,
+                    platform_id,
+                    platform_user_id,
+                    nickname,
+                    alias,
+                    notes,
+                    status,
+                    auto_tracked,
+                    created_at,
+                    updated_at
+                ) values (42, 'bilibili', '42', 'alice', '', '', 'active', 1, ?1, ?1)",
+                params![seeded_at.clone()],
+            )
+            .unwrap();
+            conn.execute(
+                "insert into user_profiles (
+                    uid,
+                    platform_id,
+                    platform_user_id,
+                    first_seen_at,
+                    last_seen_at,
+                    total_danmu_count,
+                    active_hours,
+                    fan_level,
+                    is_guard
+                ) values (42, 'bilibili', '42', ?1, ?2, 6, '{\"20\": 6}', 12, 0)",
+                params![
+                    Local
+                        .with_ymd_and_hms(2026, 4, 1, 20, 0, 0)
+                        .unwrap()
+                        .to_rfc3339(),
+                    Local
+                        .with_ymd_and_hms(2026, 4, 15, 20, 30, 0)
+                        .unwrap()
+                        .to_rfc3339()
+                ],
+            )
+            .unwrap();
+
+            for idx in 0..3 {
+                conn.execute(
+                    "insert into interaction_records (
+                        session_id,
+                        platform_id,
+                        platform_room_id,
+                        platform_user_id,
+                        room_id,
+                        event_type,
+                        uid,
+                        uname,
+                        text,
+                        raw_json,
+                        occurred_at
+                    ) values (?1, 'douyin', 'dy-room', '42', 200, 'danmu', 42, 'mallory', 'dy hello', '{}', ?2)",
+                    params![
+                        format!("legacy-douyin-session-{idx}"),
+                        Local
+                            .with_ymd_and_hms(2026, 5, 5, 10, idx as u32, 0)
+                            .unwrap()
+                            .to_rfc3339()
+                    ],
+                )
+                .unwrap();
+            }
+        }
+
+        let storage = Storage::open(&path_str).unwrap();
+        storage
+            .with_connection(|conn| {
+                let row: (i64, String, i64) = conn.query_row(
+                    "select uid, nickname, auto_tracked
+                     from tracked_users
+                     where uid = 42",
+                    [],
+                    |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
+                )?;
+                assert_eq!(row, (42, "alice".to_string(), 1));
                 Ok(())
             })
             .unwrap();
