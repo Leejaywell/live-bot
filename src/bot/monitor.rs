@@ -10,11 +10,11 @@ use tokio::sync::{OwnedSemaphorePermit, Semaphore, mpsc};
 use tokio::time::{Duration, sleep, timeout};
 use tokio_util::sync::CancellationToken;
 
-use crate::api::BiliApi as LegacyBiliApi;
 use crate::bot::EventEmitter;
 use crate::bot::engine::BotEngine;
 use crate::bot::{self, agent};
 use crate::config::AppConfig;
+use crate::live_platform::bilibili::api::BiliApi as LegacyBiliApi;
 use crate::live_platform::{
     PlatformEventEnvelope, PlatformRegistry, PlatformRoomRef, PlatformSession,
 };
@@ -1238,7 +1238,7 @@ async fn run_asr_loop<E: crate::bot::EventEmitter + Send + Sync + 'static>(
     mut events: tokio::sync::broadcast::Receiver<streamix_voice::TurnEvent>,
     asr_url: String,
     tts_router: SharedTtsRouter,
-    http: crate::api::BiliApi,
+    http: LegacyBiliApi,
     config: Arc<crate::config::AppConfig>,
     memory: Arc<std::sync::Mutex<crate::bot::memory::SessionMemory>>,
     _agent: Arc<crate::bot::agent::AgentRuntime>,
@@ -1449,7 +1449,7 @@ struct SpeculativeVoiceAi {
 }
 
 fn spawn_speculative_voice_ai(
-    http: crate::api::BiliApi,
+    http: LegacyBiliApi,
     config: Arc<crate::config::AppConfig>,
     memory: Arc<std::sync::Mutex<crate::bot::memory::SessionMemory>>,
     bot_id: String,
@@ -1586,7 +1586,7 @@ async fn run_sherpa_asr_event_loop<E: crate::bot::EventEmitter + Send + Sync + '
     mut events: tokio::sync::broadcast::Receiver<streamix_voice::TurnEvent>,
     has_asr: bool,
     tts_router: SharedTtsRouter,
-    http: crate::api::BiliApi,
+    http: LegacyBiliApi,
     config: Arc<crate::config::AppConfig>,
     memory: Arc<std::sync::Mutex<crate::bot::memory::SessionMemory>>,
     _agent: Arc<crate::bot::agent::AgentRuntime>,

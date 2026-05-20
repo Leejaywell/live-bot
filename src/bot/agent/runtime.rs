@@ -60,41 +60,6 @@ impl AiHttpClient for BiliApi {
     }
 }
 
-#[async_trait]
-impl AiHttpClient for crate::api::BiliApi {
-    async fn chat_completions_raw_with_opts(
-        &self,
-        provider: &AiProvider,
-        messages: &[Value],
-        tools: Option<&[Value]>,
-        temperature: Option<f32>,
-    ) -> Result<Value> {
-        crate::api::BiliApi::chat_completions_raw_with_opts(
-            self,
-            provider,
-            messages,
-            tools,
-            temperature,
-        )
-        .await
-    }
-
-    async fn chat_completions_stream_with_opts(
-        &self,
-        provider: &AiProvider,
-        messages: &[Value],
-        temperature: Option<f32>,
-    ) -> Result<mpsc::UnboundedReceiver<std::result::Result<String, String>>> {
-        crate::api::BiliApi::chat_completions_stream_with_opts(
-            self,
-            provider,
-            messages,
-            temperature,
-        )
-        .await
-    }
-}
-
 pub struct AgentRuntime {
     tools: Vec<Arc<dyn Tool>>,
 }

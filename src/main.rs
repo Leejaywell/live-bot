@@ -1,7 +1,6 @@
 #![cfg_attr(all(not(debug_assertions), target_os = "windows"), windows_subsystem = "windows")]
 
 mod ai_client;
-mod api;
 mod bot;
 mod config;
 mod danmaku_chat_server;
