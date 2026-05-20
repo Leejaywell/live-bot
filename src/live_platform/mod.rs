@@ -2,6 +2,7 @@
 
 pub mod adapter;
 pub mod auth;
+pub mod bilibili;
 pub mod error;
 pub mod registry;
 pub mod types;
