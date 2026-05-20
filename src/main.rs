@@ -469,7 +469,7 @@ async fn start_monitor(
             auto_download_models(&auto_dl_app, &models, &cfg, auto_dl_cancel).await;
         }
 
-        if let Err(e) = crate::bot::monitor::run_monitor_loop(
+        if let Err(e) = crate::bot::monitor::run_bilibili_monitor_loop(
             emitter,
             http,
             room_id,

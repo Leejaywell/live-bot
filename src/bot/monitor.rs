@@ -10,11 +10,14 @@ use tokio::sync::{OwnedSemaphorePermit, Semaphore, mpsc};
 use tokio::time::{Duration, sleep, timeout};
 use tokio_util::sync::CancellationToken;
 
-use crate::api::BiliApi;
+use crate::api::BiliApi as LegacyBiliApi;
 use crate::bot::EventEmitter;
 use crate::bot::engine::BotEngine;
 use crate::bot::{self, agent};
 use crate::config::AppConfig;
+use crate::live_platform::{
+    PlatformEventEnvelope, PlatformRegistry, PlatformRoomRef, PlatformSession,
+};
 use crate::music::providers::netease::NeteaseProvider;
 use crate::music::service::MusicInteractionService;
 use crate::plugin_settings::PluginSettings;
@@ -54,6 +57,11 @@ fn should_log_room_status_poll_error(failures: u32, last_log_at: Option<Instant>
         Some(last) => last.elapsed() >= ROOM_STATUS_POLL_ERROR_LOG_INTERVAL,
         None => true,
     }
+}
+
+#[allow(dead_code)]
+fn platform_event_display_line(event: &PlatformEventEnvelope) -> String {
+    format!("[{}] {:?}", event.room.log_label(), event.event)
 }
 
 pub fn spawn_tts_router(
@@ -254,9 +262,54 @@ fn spawn_music_event_handler<E: EventEmitter + Send + Sync + 'static>(
     });
 }
 
+#[allow(dead_code)]
 pub async fn run_monitor_loop<E: EventEmitter + Send + Sync + 'static>(
     app: E,
-    http: BiliApi,
+    platforms: PlatformRegistry,
+    room: PlatformRoomRef,
+    session: PlatformSession,
+    cancel: CancellationToken,
+    tts_router: SharedTtsRouter,
+    tts_cancel: Arc<Mutex<CancellationToken>>,
+    command_rx: mpsc::UnboundedReceiver<MonitorCommand>,
+    current_session_id: Arc<Mutex<Option<String>>>,
+    danmaku_buffer: Arc<Mutex<Vec<String>>>,
+    model_dir: std::path::PathBuf,
+    session_memory: Arc<Mutex<crate::bot::memory::SessionMemory>>,
+) -> Result<()> {
+    if room.platform_id.as_str() == "bilibili" {
+        // Temporary compatibility bridge: the legacy Bilibili monitor still reads
+        // auth from token storage, so the passed PlatformSession is ignored here.
+        // Task 3/full monitor migration must remove this fallback.
+        let http = LegacyBiliApi::new()?;
+        let room_id = room.platform_room_id.parse::<i64>()?;
+        return run_bilibili_monitor_loop(
+            app,
+            http,
+            room_id,
+            cancel,
+            tts_router,
+            tts_cancel,
+            command_rx,
+            current_session_id,
+            danmaku_buffer,
+            model_dir,
+            session_memory,
+        )
+        .await;
+    }
+
+    let platform = platforms
+        .get(&room.platform_id)
+        .ok_or_else(|| anyhow::anyhow!("平台未注册: {}", room.platform_id))?;
+    let _ = platform;
+    let _ = session;
+    Err(anyhow::anyhow!("平台监听尚未接入: {}", room.platform_id))
+}
+
+pub async fn run_bilibili_monitor_loop<E: EventEmitter + Send + Sync + 'static>(
+    app: E,
+    http: LegacyBiliApi,
     room_id: i64,
     cancel: CancellationToken,
     tts_router: SharedTtsRouter,
@@ -980,7 +1033,7 @@ struct VoiceRuntime {
 #[allow(clippy::too_many_arguments)]
 async fn start_vad_runtime<E: EventEmitter + Send + Sync + 'static>(
     app: Arc<E>,
-    http: BiliApi,
+    http: LegacyBiliApi,
     config: AppConfig,
     bot_config: Arc<AppConfig>,
     session_memory: Arc<Mutex<crate::bot::memory::SessionMemory>>,
