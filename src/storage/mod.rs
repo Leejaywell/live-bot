@@ -334,6 +334,24 @@ impl Storage {
             [],
         )?;
         conn.execute(
+            "update interaction_records
+                set uid = null
+              where uid is not null
+                and coalesce(nullif(platform_id, ''), 'bilibili') != 'bilibili'",
+            [],
+        )?;
+        conn.execute(
+            "update interaction_records
+                set uid = null
+              where uid is not null
+                and coalesce(nullif(platform_id, ''), 'bilibili') = 'bilibili'
+                and (
+                    (nullif(platform_room_id, '') is not null and platform_room_id != cast(room_id as text))
+                    or (nullif(platform_user_id, '') is not null and platform_user_id != cast(uid as text))
+                )",
+            [],
+        )?;
+        conn.execute(
             "update tracked_users
                 set platform_user_id = cast(uid as text)
               where platform_user_id is null and uid is not null",
@@ -2511,6 +2529,141 @@ mod tests {
                 Ok(())
             })
             .unwrap();
+
+        std::fs::remove_file(path).unwrap();
+    }
+
+    #[test]
+    fn startup_cleanup_clears_legacy_uid_on_non_bilibili_rows() {
+        let unique = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+        let path = std::env::temp_dir().join(format!("live-bot-storage-cleanup-{unique}.sqlite"));
+        let path_str = path.to_string_lossy().to_string();
+
+        {
+            let conn = rusqlite::Connection::open(&path).unwrap();
+            conn.execute_batch(
+                "
+                create table interaction_records (
+                    id integer primary key autoincrement,
+                    session_id text not null,
+                    platform_id text,
+                    platform_room_id text,
+                    platform_user_id text,
+                    room_id integer not null,
+                    event_type text not null,
+                    event_subtype text,
+                    uid integer,
+                    uname text,
+                    text text,
+                    gift_name text,
+                    gift_count integer,
+                    gift_price integer,
+                    medal_name text,
+                    medal_level integer,
+                    guard_level integer,
+                    wealth_level integer,
+                    raw_json text not null,
+                    occurred_at text not null
+                );
+                ",
+            )
+            .unwrap();
+
+            conn.execute(
+                "insert into interaction_records (
+                    session_id,
+                    platform_id,
+                    platform_room_id,
+                    platform_user_id,
+                    room_id,
+                    event_type,
+                    uid,
+                    uname,
+                    text,
+                    raw_json,
+                    occurred_at
+                ) values ('bili-session', 'bilibili', '100', '42', 100, 'danmu', 42, 'alice', 'bili hello', '{}', ?1)",
+                params![Local.with_ymd_and_hms(2026, 5, 1, 20, 0, 0).unwrap().to_rfc3339()],
+            )
+            .unwrap();
+            conn.execute(
+                "insert into interaction_records (
+                    session_id,
+                    platform_id,
+                    platform_room_id,
+                    platform_user_id,
+                    room_id,
+                    event_type,
+                    uid,
+                    uname,
+                    text,
+                    raw_json,
+                    occurred_at
+                ) values ('douyin-session', 'douyin', 'dy-room', '42', 200, 'danmu', 42, 'mallory', 'dy hello', '{}', ?1)",
+                params![Local.with_ymd_and_hms(2026, 5, 1, 21, 0, 0).unwrap().to_rfc3339()],
+            )
+            .unwrap();
+            conn.execute(
+                "insert into interaction_records (
+                    session_id,
+                    platform_id,
+                    platform_room_id,
+                    platform_user_id,
+                    room_id,
+                    event_type,
+                    uid,
+                    uname,
+                    text,
+                    raw_json,
+                    occurred_at
+                ) values ('legacy-douyin-session', null, 'dy-room', '42', 0, 'danmu', 42, 'mallory', 'legacy dy hello', '{}', ?1)",
+                params![Local.with_ymd_and_hms(2026, 5, 1, 22, 0, 0).unwrap().to_rfc3339()],
+            )
+            .unwrap();
+        }
+
+        let storage = Storage::open(&path_str).unwrap();
+        storage
+            .with_connection(|conn| {
+                let rows = conn
+                    .prepare(
+                        "select platform_id, platform_user_id, uid
+                         from interaction_records
+                         order by id",
+                    )?
+                    .query_map([], |row| {
+                        Ok((
+                            row.get::<_, Option<String>>(0)?,
+                            row.get::<_, Option<String>>(1)?,
+                            row.get::<_, Option<i64>>(2)?,
+                        ))
+                    })?
+                    .collect::<rusqlite::Result<Vec<_>>>()?;
+
+                assert_eq!(
+                    rows,
+                    vec![
+                        (
+                            Some("bilibili".to_string()),
+                            Some("42".to_string()),
+                            Some(42)
+                        ),
+                        (Some("douyin".to_string()), Some("42".to_string()), None),
+                        (None, Some("42".to_string()), None),
+                    ]
+                );
+                Ok(())
+            })
+            .unwrap();
+
+        assert_eq!(storage.user_interaction_danmu_count(42).unwrap(), 1);
+        let detail = storage.user_detail(42).unwrap();
+        assert_eq!(detail.uname.as_deref(), Some("alice"));
+        assert_eq!(detail.danmu_count, 1);
+        assert_eq!(detail.recent_danmu.as_deref(), Some("bili hello"));
 
         std::fs::remove_file(path).unwrap();
     }
