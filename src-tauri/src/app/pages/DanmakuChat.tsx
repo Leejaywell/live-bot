@@ -51,262 +51,150 @@ function applyStoredTheme() {
 
 // ─── Default config (mirrors Rust DanmakuChatConfig::default) ────────────────────
 
-const DEFAULT_CUSTOM_CSS = `*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
-html,body{background:var(--bg-color,transparent);height:100%;overflow:hidden;
-  font-family:var(--font-family,"PingFang SC","Microsoft YaHei","Noto Sans SC",sans-serif)}
-#app{height:100%;display:flex;flex-direction:column;
-  padding:4px 6px 8px;
-  gap:var(--msg-gap,3px);
-  overflow-y:auto;overflow-x:hidden;scrollbar-width:none;
-  transform-origin:top left;
-  transform:scale(var(--global-scale,1))}
-#app::-webkit-scrollbar{display:none}
-.spacer{flex:1 0 0}
-
-@keyframes msgIn{from{opacity:0;transform:translateY(var(--slide-from,5px))}to{opacity:1;transform:translateY(0)}}
-@keyframes msgOut{from{opacity:1}to{opacity:0;transform:translateY(-4px)}}
-@keyframes lbfxSweep{from{transform:translateX(-120%) skewX(-16deg)}to{transform:translateX(260%) skewX(-16deg)}}
-@keyframes lbfxGlow{0%,100%{filter:brightness(1)}50%{filter:brightness(1.16)}}
-@keyframes lbfxRise{0%{opacity:0;transform:translateY(8px) scale(.98)}65%{opacity:1;transform:translateY(-1px) scale(1)}100%{opacity:1;transform:translateY(0) scale(1)}}
-@keyframes lbfxTicker{from{background-position:0 0}to{background-position:42px 0}}
-
-.msg{display:flex;align-items:flex-start;gap:7px;
-  padding:5px 8px;border-radius:6px;flex-shrink:0;
-  word-break:break-all;line-height:1.5;
-  font-size:calc(var(--msg-font-size,13px) * var(--font-scale,1))}
-.msg.anim-in{animation:msgIn var(--fade-in,200ms) ease}
-.msg.anim-out{animation:msgOut var(--fade-out,400ms) ease forwards}
-
-body.lbfx-on .msg{position:relative;isolation:isolate;text-shadow:0 1px 2px rgba(0,0,0,.95)}
-body.lbfx-on .msg.anim-in{animation:lbfxRise var(--fade-in,200ms) ease-out}
-body.lbfx-on .msg-danmu,
-body.lbfx-on .msg-danmu[data-id="owner"],
-body.lbfx-on .msg-danmu[data-id="moderator"],
-body.lbfx-on .msg-danmu[data-id="member"]{background:transparent}
-body.lbfx-on .uname{color:#effee3}
-body.lbfx-on .msg[blc-guard-level="1"] .uname,
-body.lbfx-on .msg[data-id="member"] .uname{color:#96deff}
-body.lbfx-on .msg[blc-guard-level="2"] .uname,
-body.lbfx-on .msg[data-id="moderator"] .uname{color:#e7a9ff}
-body.lbfx-on .msg[blc-guard-level="3"] .uname,
-body.lbfx-on .msg[data-id="owner"] .uname{color:#ff96aa}
-body.lbfx-on .dtext,
-body.lbfx-on .sc-body,
-body.lbfx-on .msg-gift #message{color:#fff}
-body.lbfx-on .msg::after{content:"";position:absolute;inset:0;border-radius:inherit;pointer-events:none;z-index:-1;opacity:0}
-body.lbfx-on .msg-gift,
-body.lbfx-on .msg-guard,
-body.lbfx-on .msg-sc{overflow:hidden}
-body.lbfx-on .msg-gift::before,
-body.lbfx-on .msg-guard::before,
-body.lbfx-on .msg-sc::before{content:"";position:absolute;top:0;bottom:0;left:0;width:34%;pointer-events:none;z-index:2;
-  background:linear-gradient(90deg,transparent,rgba(255,255,255,calc(.16 * var(--lbfx-i,1))),transparent);
-  transform:translateX(-120%) skewX(-16deg);animation:lbfxSweep calc(2600ms / var(--lbfx-i,1)) ease-out 1}
-body.lbfx-on .msg-gift{background:rgba(233,30,99,.2);border-left-color:#e91e63}
-body.lbfx-on .msg-gift .gname,
-body.lbfx-on .msg-gift .gcnt{color:#ffc107}
-body.lbfx-on .msg-gift::after{opacity:1;box-shadow:inset 0 0 0 1px rgba(233,30,99,.14)}
-body.lbfx-on .msg-guard::after{opacity:1;box-shadow:inset 0 0 0 1px rgba(255,255,255,.12);animation:lbfxGlow 2600ms ease-in-out infinite}
-body.lbfx-on .msg-sc{background:rgba(255,152,0,.2);border-left:3px solid #ff9800;border-radius:6px}
-body.lbfx-on .msg-sc .sc-head{background:transparent!important;padding-bottom:0}
-body.lbfx-on .msg-sc .sc-body{background:transparent;border-radius:0;padding-top:2px}
-body.lbfx-on .msg-sc::after{opacity:1;box-shadow:inset 0 0 0 1px rgba(255,152,0,.12);animation:lbfxGlow 2200ms ease-in-out infinite}
-body.lbfx-on yt-live-chat-ticker-renderer #container{background-image:linear-gradient(90deg,rgba(255,255,255,.08) 0,transparent 22px,rgba(255,255,255,.08) 42px);background-size:42px 100%;animation:lbfxTicker 1800ms linear infinite}
-
-.av{width:var(--av-size,24px);height:var(--av-size,24px);border-radius:50%;
-  flex-shrink:0;object-fit:cover;
-  display:var(--av-display,flex);
-  align-items:center;justify-content:center;font-size:10px;font-weight:700;color:#fff}
-
-.tm{flex-shrink:0;
-  font-family:var(--time-font,inherit);
-  font-size:calc(var(--time-font-size,12px) * var(--font-scale,1));
-  font-weight:var(--time-weight,400);
-  color:var(--time-color,#999);
-  display:var(--time-display,none);
-  margin-right:2px;align-self:center}
-
-.uname{flex-shrink:0;
-  font-family:var(--username-font,inherit);
-  font-size:calc(var(--username-font-size,13px) * var(--font-scale,1));
-  font-weight:var(--username-weight,600);
-  display:var(--username-display,inline)}
-
-.idbadge{flex-shrink:0;font-size:10px;font-weight:700;padding:1px 5px;
-  border-radius:4px;align-self:center;
-  display:var(--badge-display,inline-flex);align-items:center;gap:2px}
-
-.msg-danmu{background:var(--msg-bg,rgba(0,0,0,.72))}
-.msg-danmu[data-id="owner"]{background:var(--owner-bg,rgba(255,214,0,.18))}
-.msg-danmu[data-id="moderator"]{background:var(--mod-bg,rgba(94,132,241,.18))}
-.msg-danmu[data-id="member"]{background:var(--member-bg,rgba(15,157,88,.18))}
-.dtext{font-family:var(--msg-font,inherit);
-  font-weight:var(--msg-weight,600);
-  color:var(--msg-color,#e8e8e8)}
-
-.outline-on .uname,.outline-on .dtext,.outline-on .tm,
-.outline-on .gname,.outline-on .gcnt,.outline-on .glabel,
-.outline-on .sc-uname,.outline-on .sc-price,.outline-on .sc-body{
-  text-shadow:
-    calc(var(--outline-w,2px) * -1) calc(var(--outline-w,2px) * -1) 0 var(--outline-c,#000),
-    var(--outline-w,2px) calc(var(--outline-w,2px) * -1) 0 var(--outline-c,#000),
-    calc(var(--outline-w,2px) * -1) var(--outline-w,2px) 0 var(--outline-c,#000),
-    var(--outline-w,2px) var(--outline-w,2px) 0 var(--outline-c,#000)}
-.outline-blur .uname,.outline-blur .dtext,.outline-blur .tm,
-.outline-blur .gname,.outline-blur .gcnt,.outline-blur .glabel,
-.outline-blur .sc-uname,.outline-blur .sc-price,.outline-blur .sc-body{
-  text-shadow:0 0 var(--outline-w,2px) var(--outline-c,#000),
-              0 0 calc(var(--outline-w,2px) * 2) var(--outline-c,#000)}
-
-.msg-gift{background:var(--msg-bg,rgba(0,0,0,.72));border-left:3px solid #ffa500;align-items:center;gap:5px}
-.gift-icon{width:calc(var(--av-size,24px) * .9);height:calc(var(--av-size,24px) * .9);object-fit:contain;flex-shrink:0;
-  display:var(--gift-icon-display,none);filter:drop-shadow(0 1px 2px rgba(0,0,0,.35))}
-.gname{color:#ffa500;font-weight:600;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.gcnt{color:#ffa500;font-weight:800;flex-shrink:0}
-
-.msg-guard{align-items:center;gap:5px}
-.gbadge{font-weight:700;flex-shrink:0}
-.glabel{font-weight:800;flex-shrink:0}
-
-.msg-sc{flex-direction:column;gap:0;padding:0;background:none;align-items:stretch}
-.sc-head{display:flex;align-items:center;justify-content:space-between;
-  padding:5px 8px;border-radius:6px 6px 0 0;gap:6px}
-.sc-uname{font-weight:700;color:#fff;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
-  font-size:calc(var(--sc-line1-size,15px) * var(--font-scale,1));
-  font-weight:var(--sc-line1-weight,700)}
-.sc-price{font-weight:800;flex-shrink:0;
-  font-size:calc(var(--sc-line2-size,13px) * var(--font-scale,1));
-  font-weight:var(--sc-line2-weight,700)}
-.sc-body{padding:6px 8px;background:rgba(0,0,0,.82);border-radius:0 0 6px 6px;color:#e8e8e8;
-  font-size:calc(var(--sc-content-size,13px) * var(--font-scale,1));
-  font-weight:var(--sc-content-weight,600)}`;
+const DEFAULT_CUSTOM_CSS = '';
 
 const DEFAULT_CFG: DanmakuChatConfig = {
-  Port: 12450, MaxMsgs: 50, MsgGap: 3, Theme: 'classic', CustomCss: DEFAULT_CUSTOM_CSS,
+  Port: 12450, MaxMsgs: 100, MsgGap: 8, Theme: 'classic', CustomCss: DEFAULT_CUSTOM_CSS,
   GlobalScale: 1, FontScale: 1,
-  ShowAvatar: true, AvatarSize: 24,
+  ShowAvatar: true, AvatarSize: 30,
   ShowUsername: true, UserNameFont: 'PingFang SC, Microsoft YaHei, Noto Sans SC, sans-serif',
-  UserNameFontSize: 13, UserNameWeight: 600,
+  UserNameFontSize: 20, UserNameWeight: 600,
   UserNameColor: '#effee3',
   OwnerUserNameColor: '#ff96aa', ModeratorUserNameColor: '#e7a9ff', MemberUserNameColor: '#96deff',
-  ShowBadges: true,
+  ShowBadges: false,
   MessageFont: 'PingFang SC, Microsoft YaHei, Noto Sans SC, sans-serif',
-  MessageFontSize: 13, MessageWeight: 600, MessageColor: '#ffffff',
-  ShowTime: false, TimeFont: 'inherit', TimeFontSize: 12, TimeWeight: 400, TimeColor: '#999999',
-  BgColor: 'rgba(0,0,0,0)', BgOpacity: 0.15,
+  MessageFontSize: 20, MessageWeight: 600, MessageColor: '#ffffff',
+  ShowTime: false, TimeFont: 'inherit', TimeFontSize: 16, TimeWeight: 400, TimeColor: '#999999',
+  BgColor: 'rgba(0,0,0,0)', BgOpacity: 0.8,
   MessageBgColor: 'transparent',
   OwnerMessageBgColor: 'rgba(255,214,0,0.18)',
   ModeratorMessageBgColor: 'rgba(94,132,241,0.18)',
   MemberMessageBgColor: 'rgba(15,157,88,0.18)',
-  ShowGift: true, GiftMinCost: 0, ShowGiftIcon: false, ShowGuard: true, ShowSc: true, ScMinCost: 0,
-  FirstLineFontSize: 15, FirstLineWeight: 700,
-  SecondLineFontSize: 13, SecondLineWeight: 700,
-  ScContentFontSize: 13, ScContentWeight: 600,
-  AnimateIn: true, FadeInTime: 200, AnimateOut: false, FadeOutTime: 400, AnimateOutWaitTime: 30,
-  Slide: true, ReverseSlide: false,
-  EffectsEnabled: true, EffectIntensity: 1,
+  ShowGift: true, GiftMinCost: 1, ShowGiftIcon: false, ShowGuard: true, ShowSc: true, ScMinCost: 0,
+  FirstLineFontSize: 20, FirstLineWeight: 700,
+  SecondLineFontSize: 20, SecondLineWeight: 700,
+  ScContentFontSize: 20, ScContentWeight: 600,
+  AnimateIn: false, FadeInTime: 200, AnimateOut: false, FadeOutTime: 400, AnimateOutWaitTime: 30,
+  Slide: false, ReverseSlide: false,
+  EffectsEnabled: false, EffectIntensity: 1,
   ShowOutlines: false, OutlineSize: 2, OutlineColor: '#000000', BlurryOutline: false,
 };
 
-type DanmakuChatThemeId = 'classic' | 'glass' | 'contrast' | 'compact' | 'gift' | 'minimal';
+type DanmakuChatThemeId = 'classic' | 'mist' | 'contrast' | 'frost' | 'focus' | 'clean';
 
 const DANMAKU_CHAT_THEMES: {
   id: DanmakuChatThemeId;
   name: string;
-  hint: string;
   patch: Partial<DanmakuChatConfig>;
 }[] = [
   {
     id: 'classic',
-    name: '经典流光',
-    hint: '均衡的头像、昵称和消息层级，接近当前默认效果。',
+    name: '默认主题',
     patch: {
-      MsgGap: 3, FontScale: 1, AvatarSize: 24, ShowAvatar: true, ShowUsername: true, ShowBadges: true,
-      MessageFontSize: 13, MessageWeight: 600, MessageColor: '#ffffff',
-      UserNameFontSize: 13, UserNameWeight: 600, UserNameColor: '#effee3',
+      ShowAvatar: true, ShowUsername: true, ShowBadges: false,
+      UserNameColor: '#effee3',
       OwnerUserNameColor: '#ff96aa', ModeratorUserNameColor: '#e7a9ff', MemberUserNameColor: '#96deff',
       MessageBgColor: 'transparent', OwnerMessageBgColor: 'rgba(255,214,0,0.18)',
       ModeratorMessageBgColor: 'rgba(94,132,241,0.18)', MemberMessageBgColor: 'rgba(15,157,88,0.18)',
-      ShowOutlines: false, BlurryOutline: false, EffectsEnabled: true, EffectIntensity: 1,
-      AnimateIn: true, FadeInTime: 200, Slide: true, ReverseSlide: false,
+      ShowGiftIcon: false, ShowOutlines: false, BlurryOutline: false, EffectsEnabled: false, EffectIntensity: 1,
+      AnimateIn: false, FadeInTime: 200, Slide: false, ReverseSlide: false,
     },
   },
   {
-    id: 'glass',
-    name: '清透玻璃',
-    hint: '减少背景遮挡，保留轻量阴影和透明质感。',
+    id: 'mist',
+    name: '薄雾透明',
     patch: {
-      MsgGap: 4, FontScale: 1, AvatarSize: 24, ShowAvatar: true, ShowUsername: true, ShowBadges: true,
-      MessageFontSize: 13, MessageWeight: 600, MessageColor: '#ffffff',
-      UserNameFontSize: 13, UserNameWeight: 600, UserNameColor: '#f3fff4',
-      OwnerUserNameColor: '#ffb3c1', ModeratorUserNameColor: '#d8b4fe', MemberUserNameColor: '#93c5fd',
-      MessageBgColor: 'rgba(12,18,28,0.18)', OwnerMessageBgColor: 'rgba(255,214,0,0.12)',
-      ModeratorMessageBgColor: 'rgba(94,132,241,0.12)', MemberMessageBgColor: 'rgba(15,157,88,0.10)',
-      ShowOutlines: false, BlurryOutline: false, EffectsEnabled: true, EffectIntensity: 0.8,
-      AnimateIn: true, FadeInTime: 220, Slide: true, ReverseSlide: false,
+      ShowAvatar: true, ShowUsername: true, ShowBadges: false,
+      BgOpacity: 0.72,
+      UserNameColor: '#f6fff5',
+      OwnerUserNameColor: '#ffb8c9', ModeratorUserNameColor: '#efc1ff', MemberUserNameColor: '#a3e2ff',
+      MessageBgColor: 'transparent', OwnerMessageBgColor: 'rgba(255,214,0,0.10)',
+      ModeratorMessageBgColor: 'rgba(94,132,241,0.10)', MemberMessageBgColor: 'rgba(15,157,88,0.08)',
+      ShowGiftIcon: false, ShowOutlines: false, BlurryOutline: false, EffectsEnabled: false, EffectIntensity: 1,
+      AnimateIn: false, FadeInTime: 220, Slide: false, ReverseSlide: false,
     },
   },
   {
     id: 'contrast',
-    name: '强光可读',
-    hint: '强化描边和投影，适合亮色、复杂画面。',
+    name: '高对比',
     patch: {
-      MsgGap: 4, FontScale: 1.04, AvatarSize: 25, ShowAvatar: true, ShowUsername: true, ShowBadges: true,
-      MessageFontSize: 14, MessageWeight: 700, MessageColor: '#ffffff',
-      UserNameFontSize: 13, UserNameWeight: 800, UserNameColor: '#ffffff',
+      ShowAvatar: true, ShowUsername: true, ShowBadges: false,
+      MessageWeight: 700, MessageColor: '#ffffff',
+      UserNameWeight: 800, UserNameColor: '#ffffff',
       OwnerUserNameColor: '#ffd166', ModeratorUserNameColor: '#f0abfc', MemberUserNameColor: '#93c5fd',
-      MessageBgColor: 'rgba(0,0,0,0.34)', OwnerMessageBgColor: 'rgba(90,60,0,0.36)',
-      ModeratorMessageBgColor: 'rgba(34,42,112,0.36)', MemberMessageBgColor: 'rgba(0,76,58,0.34)',
-      ShowOutlines: true, OutlineSize: 2, OutlineColor: '#000000', BlurryOutline: true,
-      EffectsEnabled: true, EffectIntensity: 1.05, AnimateIn: true, FadeInTime: 180, Slide: true, ReverseSlide: false,
+      MessageBgColor: 'rgba(0,0,0,0.40)', OwnerMessageBgColor: 'rgba(108,74,0,0.42)',
+      ModeratorMessageBgColor: 'rgba(44,54,134,0.42)', MemberMessageBgColor: 'rgba(0,88,68,0.40)',
+      ShowOutlines: true, OutlineSize: 3, OutlineColor: '#000000', BlurryOutline: true,
+      EffectsEnabled: false, EffectIntensity: 1, AnimateIn: false, FadeInTime: 160, Slide: false, ReverseSlide: false,
     },
   },
   {
-    id: 'compact',
-    name: '密集弹幕',
-    hint: '压缩间距和字号，适合高弹幕密度直播间。',
+    id: 'frost',
+    name: '霜蓝通透',
     patch: {
-      MsgGap: 1, FontScale: 0.92, AvatarSize: 20, ShowAvatar: true, ShowUsername: true, ShowBadges: false,
-      MessageFontSize: 12, MessageWeight: 600, MessageColor: '#ffffff',
-      UserNameFontSize: 12, UserNameWeight: 600, UserNameColor: '#effee3',
-      OwnerUserNameColor: '#ff96aa', ModeratorUserNameColor: '#e7a9ff', MemberUserNameColor: '#96deff',
-      MessageBgColor: 'transparent', OwnerMessageBgColor: 'rgba(255,214,0,0.12)',
-      ModeratorMessageBgColor: 'rgba(94,132,241,0.12)', MemberMessageBgColor: 'rgba(15,157,88,0.10)',
-      ShowOutlines: false, BlurryOutline: false, EffectsEnabled: true, EffectIntensity: 0.7,
-      AnimateIn: true, FadeInTime: 140, Slide: true, ReverseSlide: false,
-    },
-  },
-  {
-    id: 'gift',
-    name: '礼物高亮',
-    hint: '普通弹幕低调，礼物、舰长和醒目留言更突出。',
-    patch: {
-      MsgGap: 4, FontScale: 1, AvatarSize: 25, ShowAvatar: true, ShowUsername: true, ShowBadges: true,
-      MessageFontSize: 13, MessageWeight: 600, MessageColor: '#ffffff',
-      UserNameFontSize: 13, UserNameWeight: 700, UserNameColor: '#e7f8ef',
-      OwnerUserNameColor: '#ff96aa', ModeratorUserNameColor: '#e7a9ff', MemberUserNameColor: '#96deff',
-      MessageBgColor: 'transparent', OwnerMessageBgColor: 'rgba(255,214,0,0.16)',
-      ModeratorMessageBgColor: 'rgba(94,132,241,0.14)', MemberMessageBgColor: 'rgba(15,157,88,0.13)',
-      ShowGiftIcon: true, ShowOutlines: false, BlurryOutline: false, EffectsEnabled: true, EffectIntensity: 1.35,
+      ShowAvatar: true, ShowUsername: true, ShowBadges: false,
+      UserNameWeight: 700,
+      UserNameColor: '#eef7ff',
+      OwnerUserNameColor: '#ff9fb7', ModeratorUserNameColor: '#cab8ff', MemberUserNameColor: '#96deff',
+      MessageBgColor: 'rgba(80,114,196,0.14)',
+      OwnerMessageBgColor: 'rgba(255,214,0,0.12)',
+      ModeratorMessageBgColor: 'rgba(137,92,255,0.16)',
+      MemberMessageBgColor: 'rgba(33,179,255,0.14)',
+      ShowGiftIcon: false, ShowOutlines: false, BlurryOutline: false, EffectsEnabled: false, EffectIntensity: 1,
       AnimateIn: true, FadeInTime: 180, Slide: true, ReverseSlide: false,
     },
   },
   {
-    id: 'minimal',
-    name: '极简文字',
-    hint: '减少装饰和动画，更接近传统弹幕样式。',
+    id: 'focus',
+    name: '特效拉满',
     patch: {
-      MsgGap: 2, FontScale: 1, AvatarSize: 22, ShowAvatar: false, ShowUsername: true, ShowBadges: false,
-      MessageFontSize: 13, MessageWeight: 600, MessageColor: '#ffffff',
-      UserNameFontSize: 13, UserNameWeight: 600, UserNameColor: '#f2f2f2',
+      ShowAvatar: true, ShowUsername: true, ShowBadges: false,
+      UserNameWeight: 800, UserNameColor: '#ffffff',
+      OwnerUserNameColor: '#ffd166', ModeratorUserNameColor: '#f0abfc', MemberUserNameColor: '#7dd3fc',
+      MessageWeight: 700, MessageColor: '#ffffff',
+      MessageBgColor: 'rgba(255,255,255,0.06)', OwnerMessageBgColor: 'rgba(255,214,0,0.24)',
+      ModeratorMessageBgColor: 'rgba(94,132,241,0.24)', MemberMessageBgColor: 'rgba(15,157,88,0.22)',
+      ShowGiftIcon: true, ShowOutlines: true, OutlineSize: 3, OutlineColor: '#000000', BlurryOutline: true,
+      EffectsEnabled: true, EffectIntensity: 1.8,
+      AnimateIn: true, FadeInTime: 120, Slide: true, ReverseSlide: false,
+    },
+  },
+  {
+    id: 'clean',
+    name: '纯净文字',
+    patch: {
+      ShowAvatar: false, ShowUsername: true, ShowBadges: false,
+      UserNameWeight: 600, UserNameColor: '#f2f2f2',
       OwnerUserNameColor: '#ffd166', ModeratorUserNameColor: '#d8b4fe', MemberUserNameColor: '#93c5fd',
       MessageBgColor: 'transparent', OwnerMessageBgColor: 'transparent',
       ModeratorMessageBgColor: 'transparent', MemberMessageBgColor: 'transparent',
-      ShowOutlines: true, OutlineSize: 2, OutlineColor: '#000000', BlurryOutline: true,
-      EffectsEnabled: false, EffectIntensity: 1, AnimateIn: true, FadeInTime: 120, Slide: false, ReverseSlide: false,
+      ShowOutlines: true, OutlineSize: 2, OutlineColor: '#000000', BlurryOutline: false,
+      EffectsEnabled: false, EffectIntensity: 1, AnimateIn: false, FadeInTime: 120, Slide: false, ReverseSlide: false,
     },
   },
 ];
+
+function normalizeThemeId(themeId?: string): DanmakuChatThemeId {
+  if (themeId === 'glass') return 'mist';
+  if (themeId === 'wechat' || themeId === 'compact') return 'classic';
+  if (themeId === 'gift') return 'focus';
+  if (themeId === 'minimal') return 'clean';
+  return DANMAKU_CHAT_THEMES.some(theme => theme.id === themeId)
+    ? (themeId as DanmakuChatThemeId)
+    : 'classic';
+}
+
+function resolveThemeDefaults(themeId: string, port: number): DanmakuChatConfig {
+  const normalized = normalizeThemeId(themeId);
+  const theme = DANMAKU_CHAT_THEMES.find(item => item.id === normalized) ?? DANMAKU_CHAT_THEMES[0];
+  return {
+    ...DEFAULT_CFG,
+    ...theme.patch,
+    Port: port,
+    Theme: theme.id,
+    CustomCss: DEFAULT_CUSTOM_CSS,
+  };
+}
 
 // ─── Sample messages (with identity) ─────────────────────────────────────────
 
@@ -719,6 +607,10 @@ function Val({ children }: { children: React.ReactNode }) {
   return <span className="text-[10.5px] font-mono text-gray-400 dark:text-gray-500 w-12 text-right shrink-0">{children}</span>;
 }
 
+function fontSizeLabel(value: number) {
+  return `${value}号`;
+}
+
 function Slider({ min, max, step, value, onChange }:
   { min: number; max: number; step: number; value: number; onChange: (v: number) => void }) {
   return (
@@ -804,14 +696,14 @@ export function DanmakuChat() {
   const [loaded, setLoaded] = useState(false);
   const [chatUrl, setChatUrl] = useState('');
   const [urlCopied, setUrlCopied] = useState(false);
-  const [demoOpened, setDemoOpened] = useState(false);
-  const [previewLight, setPreviewLight] = useState(true);
-  const [previewRunning, setPreviewRunning] = useState(true);
-  const [previewCursor, setPreviewCursor] = useState(0);
+  const [previewReloadKey, setPreviewReloadKey] = useState(0);
   const [activeSettingsTab, setActiveSettingsTab] = useState<SettingsTab>('base');
-  const [animKey, setAnimKey] = useState(0);
+  const [saveState, setSaveState] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle');
 
   const saveTimer = useRef<number | null>(null);
+  const saveStateTimer = useRef<number | null>(null);
+  const saveSuccessTimer = useRef<number | null>(null);
+  const previewFrameRef = useRef<HTMLIFrameElement | null>(null);
 
   // ── Theme + keyframes ────────────────────────────────────────────────────
   useEffect(() => {
@@ -838,13 +730,20 @@ export function DanmakuChat() {
       document.documentElement.style.background = previousHtmlBackground;
       window.removeEventListener('storage', applyStoredTheme);
       window.removeEventListener('focus', applyStoredTheme);
+      if (saveStateTimer.current) {
+        window.clearTimeout(saveStateTimer.current);
+      }
+      if (saveSuccessTimer.current) {
+        window.clearTimeout(saveSuccessTimer.current);
+      }
     };
   }, []);
 
   // ── Initial load ─────────────────────────────────────────────────────────
   useEffect(() => {
     api.loadDanmakuChatConfig().then(c => {
-      setCfg({ ...c, Theme: c.Theme || DEFAULT_CFG.Theme, CustomCss: c.CustomCss || DEFAULT_CUSTOM_CSS });
+      const themeId = normalizeThemeId(c.Theme);
+      setCfg({ ...c, Theme: themeId, CustomCss: c.CustomCss ?? DEFAULT_CUSTOM_CSS });
       setLoaded(true);
     }).catch(() => setLoaded(true));
     api.getDanmakuChatUrl().then(setChatUrl).catch(() => {});
@@ -855,15 +754,26 @@ export function DanmakuChat() {
     if (!loaded) return;
     if (saveTimer.current) window.clearTimeout(saveTimer.current);
     saveTimer.current = window.setTimeout(() => {
-      api.saveDanmakuChatConfig(cfg).catch(() => {});
+      setSaveState('saving');
+      api.saveDanmakuChatConfig(cfg).then(() => {
+        if (saveSuccessTimer.current) window.clearTimeout(saveSuccessTimer.current);
+        saveSuccessTimer.current = window.setTimeout(() => {
+          setSaveState('saved');
+          if (saveStateTimer.current) window.clearTimeout(saveStateTimer.current);
+          saveStateTimer.current = window.setTimeout(() => setSaveState('idle'), 1400);
+        }, 1000);
+      }).catch(() => {
+        if (saveSuccessTimer.current) window.clearTimeout(saveSuccessTimer.current);
+        if (saveStateTimer.current) window.clearTimeout(saveStateTimer.current);
+        setSaveState('error');
+        if (saveStateTimer.current) window.clearTimeout(saveStateTimer.current);
+        saveStateTimer.current = window.setTimeout(() => setSaveState('idle'), 1800);
+      });
     }, 350);
-    return () => { if (saveTimer.current) window.clearTimeout(saveTimer.current); };
+    return () => {
+      if (saveTimer.current) window.clearTimeout(saveTimer.current);
+    };
   }, [cfg, loaded]);
-
-  // ── Replay preview animation when fade-in settings change ─────────────────
-  useEffect(() => {
-    setAnimKey(k => k + 1);
-  }, [cfg.AnimateIn, cfg.FadeInTime, cfg.Slide, cfg.ReverseSlide]);
 
   // ── Helpers ───────────────────────────────────────────────────────────────
   const u = <K extends keyof DanmakuChatConfig>(k: K, v: DanmakuChatConfig[K]) =>
@@ -873,11 +783,16 @@ export function DanmakuChat() {
   const applyDanmakuChatTheme = (themeId: DanmakuChatThemeId) => {
     const theme = DANMAKU_CHAT_THEMES.find(item => item.id === themeId);
     if (!theme) return;
-    setCfg(prev => ({ ...prev, ...theme.patch, Theme: theme.id }));
+    setCfg(prev => ({
+      ...resolveThemeDefaults(theme.id, prev.Port),
+      CustomCss: prev.CustomCss,
+    }));
   };
 
   const resetAll = () => {
-    if (confirm('确认重置所有弹幕聊天样式为默认值？')) setCfg({ ...DEFAULT_CFG, Port: cfg.Port });
+    if (confirm(`确认将当前主题“${activeTheme.name}”恢复为默认样式和面板设置？`)) {
+      setCfg(resolveThemeDefaults(cfg.Theme || activeTheme.id, cfg.Port));
+    }
   };
 
   const copyUrl = () => {
@@ -888,25 +803,22 @@ export function DanmakuChat() {
     }).catch(() => {});
   };
 
-  const openDemoPreview = () => {
-    if (!chatUrl) return;
-    const joiner = chatUrl.includes('?') ? '&' : '?';
-    api.openUrl(`${chatUrl}${joiner}demo=1&transparent=0`).then(() => {
-      setDemoOpened(true);
-      setTimeout(() => setDemoOpened(false), 1800);
-    }).catch(() => {});
-  };
-
-  const replayPreview = () => {
-    setPreviewCursor(0);
-    setAnimKey(k => k + 1);
-  };
-
-
   const renderSettingsTab = () => {
     switch (activeSettingsTab) {
       case 'base':
         return <div className="grid grid-cols-1 gap-3.5">
+          <Section title="基础元素" defaultOpen>
+            <ToggleRow label="显示头像" checked={cfg.ShowAvatar} onChange={v => u('ShowAvatar', v)} />
+            <ToggleRow label="显示用户名" checked={cfg.ShowUsername} onChange={v => u('ShowUsername', v)} />
+            <ToggleRow label="显示身份徽章" checked={cfg.ShowBadges} onChange={v => u('ShowBadges', v)} />
+            <ToggleRow label="显示时间" checked={cfg.ShowTime} onChange={v => u('ShowTime', v)} />
+          </Section>
+          <Section title="事件类型" defaultOpen>
+            <ToggleRow label="显示礼物" checked={cfg.ShowGift} onChange={v => u('ShowGift', v)} />
+            <ToggleRow label="显示礼物图标" checked={cfg.ShowGiftIcon} onChange={v => u('ShowGiftIcon', v)} />
+            <ToggleRow label="显示舰长" checked={cfg.ShowGuard} onChange={v => u('ShowGuard', v)} />
+            <ToggleRow label="显示醒目留言" checked={cfg.ShowSc} onChange={v => u('ShowSc', v)} />
+          </Section>
           <Section title="全局缩放" defaultOpen>
             <Row><Label>整体缩放</Label>
               <Slider min={0.5} max={2.0} step={0.05} value={cfg.GlobalScale} onChange={v => u('GlobalScale', v)} />
@@ -918,7 +830,6 @@ export function DanmakuChat() {
             </Row>
           </Section>
           <Section title="头像" defaultOpen>
-            <ToggleRow label="显示头像" checked={cfg.ShowAvatar} onChange={v => u('ShowAvatar', v)} />
             <Row><Label>头像大小</Label>
               <Slider min={16} max={48} step={1} value={cfg.AvatarSize} onChange={v => u('AvatarSize', v)} />
               <Val>{cfg.AvatarSize}px</Val>
@@ -938,11 +849,9 @@ export function DanmakuChat() {
       case 'text':
         return <div className="grid grid-cols-1 gap-3.5">
           <Section title="用户名" defaultOpen>
-            <ToggleRow label="显示用户名" checked={cfg.ShowUsername} onChange={v => u('ShowUsername', v)} />
-            <ToggleRow label="显示身份徽章" checked={cfg.ShowBadges} onChange={v => u('ShowBadges', v)} />
             <Row><Label>字号</Label>
               <Slider min={10} max={24} step={1} value={cfg.UserNameFontSize} onChange={v => u('UserNameFontSize', v)} />
-              <Val>{cfg.UserNameFontSize}px</Val>
+              <Val>{fontSizeLabel(cfg.UserNameFontSize)}</Val>
             </Row>
             <SelectRow label="粗细" value={cfg.UserNameWeight} options={FONT_WEIGHTS} onChange={v => u('UserNameWeight', v)} />
             <Row><Label>普通颜色</Label><ColorBox value={cfg.UserNameColor} onChange={v => u('UserNameColor', v)} /></Row>
@@ -953,16 +862,15 @@ export function DanmakuChat() {
           <Section title="消息文本" defaultOpen>
             <Row><Label>字号</Label>
               <Slider min={11} max={28} step={1} value={cfg.MessageFontSize} onChange={v => u('MessageFontSize', v)} />
-              <Val>{cfg.MessageFontSize}px</Val>
+              <Val>{fontSizeLabel(cfg.MessageFontSize)}</Val>
             </Row>
             <SelectRow label="粗细" value={cfg.MessageWeight} options={FONT_WEIGHTS} onChange={v => u('MessageWeight', v)} />
             <Row><Label>颜色</Label><ColorBox value={cfg.MessageColor} onChange={v => u('MessageColor', v)} /></Row>
           </Section>
           <Section title="时间" defaultOpen>
-            <ToggleRow label="显示时间" checked={cfg.ShowTime} onChange={v => u('ShowTime', v)} />
             <Row><Label>字号</Label>
               <Slider min={9} max={20} step={1} value={cfg.TimeFontSize} onChange={v => u('TimeFontSize', v)} />
-              <Val>{cfg.TimeFontSize}px</Val>
+              <Val>{fontSizeLabel(cfg.TimeFontSize)}</Val>
             </Row>
             <SelectRow label="粗细" value={cfg.TimeWeight} options={FONT_WEIGHTS} onChange={v => u('TimeWeight', v)} />
             <Row><Label>颜色</Label><ColorBox value={cfg.TimeColor} onChange={v => u('TimeColor', v)} /></Row>
@@ -993,34 +901,30 @@ export function DanmakuChat() {
         </div>;
       case 'events':
         return <div className="grid grid-cols-1 gap-3.5">
-          <Section title="消息过滤" defaultOpen>
-            <ToggleRow label="显示礼物" checked={cfg.ShowGift} onChange={v => u('ShowGift', v)} />
-            <ToggleRow label="读取礼物图标" checked={cfg.ShowGiftIcon} onChange={v => u('ShowGiftIcon', v)} />
+          <Section title="事件过滤" defaultOpen>
             <Row><Label>礼物起价</Label>
               <NumInput value={cfg.GiftMinCost} min={0} step={1} onChange={v => u('GiftMinCost', v)} />
               <span className="text-[10.5px] text-gray-400">元，0=不限</span>
             </Row>
-            <ToggleRow label="显示舰长" checked={cfg.ShowGuard} onChange={v => u('ShowGuard', v)} />
-            <ToggleRow label="显示 SC" checked={cfg.ShowSc} onChange={v => u('ShowSc', v)} />
             <Row><Label>SC 起价</Label>
               <NumInput value={cfg.ScMinCost} min={0} step={1} onChange={v => u('ScMinCost', v)} />
               <span className="text-[10.5px] text-gray-400">元，0=不限</span>
             </Row>
           </Section>
-          <Section title="SuperChat / 上舰" defaultOpen>
+          <Section title="醒目留言 / 舰长" defaultOpen>
             <Row><Label>第一行字号</Label>
               <Slider min={11} max={28} step={1} value={cfg.FirstLineFontSize} onChange={v => u('FirstLineFontSize', v)} />
-              <Val>{cfg.FirstLineFontSize}px</Val>
+              <Val>{fontSizeLabel(cfg.FirstLineFontSize)}</Val>
             </Row>
             <SelectRow label="第一行粗细" value={cfg.FirstLineWeight} options={FONT_WEIGHTS} onChange={v => u('FirstLineWeight', v)} />
             <Row><Label>第二行字号</Label>
               <Slider min={11} max={28} step={1} value={cfg.SecondLineFontSize} onChange={v => u('SecondLineFontSize', v)} />
-              <Val>{cfg.SecondLineFontSize}px</Val>
+              <Val>{fontSizeLabel(cfg.SecondLineFontSize)}</Val>
             </Row>
             <SelectRow label="第二行粗细" value={cfg.SecondLineWeight} options={FONT_WEIGHTS} onChange={v => u('SecondLineWeight', v)} />
             <Row><Label>正文字号</Label>
               <Slider min={11} max={28} step={1} value={cfg.ScContentFontSize} onChange={v => u('ScContentFontSize', v)} />
-              <Val>{cfg.ScContentFontSize}px</Val>
+              <Val>{fontSizeLabel(cfg.ScContentFontSize)}</Val>
             </Row>
             <SelectRow label="正文粗细" value={cfg.ScContentWeight} options={FONT_WEIGHTS} onChange={v => u('ScContentWeight', v)} />
           </Section>
@@ -1056,41 +960,46 @@ export function DanmakuChat() {
       case 'css':
         return <div className="grid grid-cols-1 gap-3.5">
           <Section title="自定义 CSS" wide defaultOpen>
-            <textarea value={cfg.CustomCss} onChange={e => u('CustomCss', e.target.value)}
+            <textarea value={cfg.CustomCss} onChange={e => u('CustomCss', e.target.value)} onFocus={e => e.currentTarget.select()}
               rows={24} placeholder="/* 任何 CSS 都会注入到弹幕聊天网页 */"
+              spellCheck={false}
               className="w-full px-3 py-2 text-[11px] font-mono rounded-2xl border border-[var(--control-border)] bg-[var(--control-bg)] text-[var(--control-text)] focus:outline-none focus:ring-1 focus:ring-[var(--primary-color)]/50 resize-none" />
           </Section>
         </div>;
     }
   };
 
-  // ── Filtered preview messages ────────────────────────────────────────────
-  const previewMsgs = useMemo(() => SAMPLES.filter(m => {
-    if (m.type === 'gift')  return cfg.ShowGift  && (cfg.GiftMinCost === 0 || (m as GiftMsg).price >= cfg.GiftMinCost);
-    if (m.type === 'guard') return cfg.ShowGuard;
-    if (m.type === 'sc')    return cfg.ShowSc    && (cfg.ScMinCost   === 0 || (m as ScMsg).price  >= cfg.ScMinCost);
-    return true;
-  }), [cfg]);
+  const previewUrl = useMemo(() => {
+    if (!chatUrl) {
+      return '';
+    }
+    const joiner = chatUrl.includes('?') ? '&' : '?';
+    return `${chatUrl}${joiner}demo=1&transparent=1&scale=0.96`;
+  }, [chatUrl]);
 
-  // ── Dynamic preview feed ─────────────────────────────────────────────────
+  const runningPort = useMemo(() => {
+    if (!chatUrl) {
+      return null;
+    }
+    try {
+      return Number(new URL(chatUrl).port || '80');
+    } catch {
+      return null;
+    }
+  }, [chatUrl]);
+
+  const portNeedsRestart = runningPort !== null && cfg.Port !== runningPort;
+
   useEffect(() => {
-    if (!previewRunning || previewMsgs.length === 0) return;
-    const timer = window.setInterval(() => {
-      setPreviewCursor(c => c + 1);
-    }, 1400);
-    return () => window.clearInterval(timer);
-  }, [previewRunning, previewMsgs.length]);
-
-  const previewEntries = useMemo<PreviewEntry[]>(() => {
-    if (previewMsgs.length === 0) return [];
-    const visible = Math.min(12, previewMsgs.length);
-    return Array.from({ length: visible }, (_, i) => {
-      const seq = previewCursor - visible + 1 + i;
-      const idx = ((seq % previewMsgs.length) + previewMsgs.length) % previewMsgs.length;
-      const msg = previewMsgs[idx];
-      return { msg, key: `${animKey}-${seq}-${msg.id}` };
-    });
-  }, [animKey, previewCursor, previewMsgs]);
+    const frame = previewFrameRef.current;
+    if (!frame?.contentWindow) {
+      return;
+    }
+    frame.contentWindow.postMessage({
+      type: 'streamix-preview-settings',
+      settings: cfg,
+    }, window.location.origin);
+  }, [cfg, previewReloadKey]);
 
   // ── Render ───────────────────────────────────────────────────────────────
   return (
@@ -1107,7 +1016,7 @@ export function DanmakuChat() {
             <div>
               <div>
                 <div className="text-[16px] font-bold text-[var(--foreground)]">弹幕样式控制台</div>
-                <div className="mt-1 text-[11px] text-[var(--muted-text)]">修改会自动保存，右侧只负责预览效果</div>
+                <div className="mt-1 text-[11px] text-[var(--muted-text)]">修改会自动保存，右侧直接嵌入真实弹幕页预览</div>
               </div>
               <div className="mt-3 flex flex-wrap items-center gap-2">
                 <input readOnly value={chatUrl}
@@ -1117,21 +1026,21 @@ export function DanmakuChat() {
                   className="h-8 px-4 text-[11px] font-semibold rounded-full bg-[var(--primary-color)] text-white shadow-[0_10px_28px_rgba(var(--primary-rgb),0.28)] hover:opacity-90 shrink-0">
                   {urlCopied ? '已复制 ✓' : '复制'}
                 </button>
-                <button onClick={openDemoPreview}
-                  className="h-8 px-4 text-[11px] font-semibold rounded-full border border-[var(--control-border)] bg-[var(--control-bg)] text-[var(--control-text)] hover:bg-[var(--button-ghost-hover)] shrink-0">
-                  {demoOpened ? '已打开' : '测试预览'}
-                </button>
               </div>
+              {portNeedsRestart && (
+                <div className="mt-3 rounded-2xl border border-amber-400/25 bg-amber-400/10 px-3 py-2 text-[11px] text-amber-700 dark:text-amber-200">
+                  当前实际预览仍运行在 {runningPort} 端口。你已把配置端口改成 {cfg.Port}，这个变更需要重启程序后才会生效。
+                </div>
+              )}
             </div>
             </div>
           </div>
 
           <div className="shrink-0 px-4 pb-3">
             <div className="glass-card rounded-[18px] px-4 py-3">
-              <div className="flex items-start justify-between gap-3">
+              <div className="flex items-center justify-between gap-3">
                 <div>
                   <div className="text-[12px] font-bold text-[var(--foreground)]">主题方案</div>
-                  <div className="mt-1 text-[11px] leading-relaxed text-[var(--muted-text)]">{activeTheme.hint}</div>
                 </div>
                 <span className="shrink-0 rounded-full bg-[var(--button-ghost-hover)] px-2.5 py-1 text-[10px] font-semibold text-[var(--primary-color)]">
                   CSS 叠加
@@ -1144,7 +1053,6 @@ export function DanmakuChat() {
                     <button
                       key={theme.id}
                       onClick={() => applyDanmakuChatTheme(theme.id)}
-                      title={theme.hint}
                       className={`h-8 rounded-xl px-2 text-[11px] font-semibold transition-colors ${
                         active
                           ? 'bg-[var(--primary-color)] text-white shadow-sm'
@@ -1186,7 +1094,28 @@ export function DanmakuChat() {
               className="flex-1 h-9 text-[11.5px] font-semibold rounded-full text-[var(--muted-text)] hover:bg-[var(--button-ghost-hover)]">
               重置默认
             </button>
-            <span className="rounded-full bg-emerald-500/10 px-3 py-1.5 text-[10px] font-semibold text-emerald-600 dark:text-emerald-300">自动保存</span>
+            {saveState !== 'idle' && (
+              <span
+                title={saveState === 'error' ? '保存失败' : saveState === 'saving' ? '保存中' : '保存成功'}
+                className={`inline-flex h-8 w-8 items-center justify-center rounded-full transition-colors ${
+                  saveState === 'error'
+                    ? 'bg-rose-500/12 text-rose-600 dark:text-rose-300'
+                    : saveState === 'saving'
+                      ? 'bg-sky-500/12 text-sky-600 dark:text-sky-300'
+                      : 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-300'
+                }`}
+              >
+                <span className={`inline-flex h-4 w-4 items-center justify-center rounded-full border-2 ${
+                  saveState === 'saving'
+                    ? 'animate-spin border-current border-t-transparent'
+                    : saveState === 'error'
+                      ? 'border-current text-[10px] leading-none'
+                      : 'border-current text-[10px] leading-none'
+                }`}>
+                  {saveState === 'saving' ? '' : saveState === 'error' ? '!' : '✓'}
+                </span>
+              </span>
+            )}
           </div>
         </div>
 
@@ -1194,28 +1123,34 @@ export function DanmakuChat() {
         <div
           className="flex-1 flex flex-col"
           style={{
-            background: previewLight
-              ? 'linear-gradient(135deg, rgba(255,255,255,0.72), rgba(232,238,246,0.52)), repeating-conic-gradient(#f0f3f7 0% 25%, #dfe5ec 0% 50%) 50% / 24px 24px'
-              : 'linear-gradient(135deg, rgba(20,24,32,0.72), rgba(10,12,18,0.56)), repeating-conic-gradient(#232833 0% 25%, #171b24 0% 50%) 50% / 24px 24px',
+            background:
+              'radial-gradient(circle at top, rgba(71,85,105,0.24), transparent 36%), linear-gradient(180deg, #1f2937 0%, #0f172a 100%)',
           }}
         >
           <div className="shrink-0 flex items-center gap-2 px-4 h-11 border-b border-white/10 bg-black/45 shadow-[0_8px_24px_rgba(0,0,0,0.18)]">
-            <PreviewToolbarButton active={previewRunning} onClick={() => setPreviewRunning(v => !v)}>
-              {previewRunning ? '暂停滚动' : '继续滚动'}
-            </PreviewToolbarButton>
-            <PreviewToolbarButton onClick={replayPreview}>重播动画</PreviewToolbarButton>
-            <span className="flex-1" />
-            <div className="flex rounded-lg border border-white/12 bg-white/8 p-0.5">
-              <PreviewToolbarButton active={!previewLight} onClick={() => setPreviewLight(false)}>暗色</PreviewToolbarButton>
-              <PreviewToolbarButton active={previewLight} onClick={() => setPreviewLight(true)}>亮色</PreviewToolbarButton>
-            </div>
+            <PreviewToolbarButton onClick={() => setPreviewReloadKey(key => key + 1)}>重播</PreviewToolbarButton>
           </div>
 
-          <div className="flex-1 overflow-hidden relative">
-            {previewLight && (
-              <div className="pointer-events-none absolute inset-0 bg-gradient-to-r from-black/42 via-black/18 to-transparent" />
+          <div className="flex-1 overflow-hidden">
+            {previewUrl ? (
+              <iframe
+                key={`${previewUrl}-${previewReloadKey}`}
+                ref={previewFrameRef}
+                src={previewUrl}
+                title="真实弹幕预览"
+                onLoad={() => {
+                  previewFrameRef.current?.contentWindow?.postMessage({
+                    type: 'streamix-preview-settings',
+                    settings: cfg,
+                  }, window.location.origin);
+                }}
+                className="block h-full w-full border-0 bg-transparent"
+              />
+            ) : (
+              <div className="flex h-full items-center justify-center text-[12px] text-white/60">
+                弹幕服务地址加载中...
+              </div>
             )}
-            <PreviewScene cfg={cfg} previewEntries={previewEntries} />
           </div>
         </div>
       </div>

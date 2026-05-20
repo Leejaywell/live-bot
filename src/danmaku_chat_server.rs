@@ -13,6 +13,9 @@
 //! GET /song-request/api/rank → 音乐互动排行（JSON）
 //! GET /plugin-settings → 插件配置（JSON）
 //! GET /recent-events → 最近事件（JSON）
+//! GET /gift-catalog → 礼物名到缓存图地址的映射（JSON）
+//! GET /recent-gifts-data → 最近礼物历史（JSON）
+//! GET /gift-rank-data → 今日礼物排行历史（JSON）
 //! GET /ws      → WebSocket，推送 live-event 事件流 + 配置变更通知
 //! GET /proxy   → 图片代理，绕过 B站 CDN CORS 限制
 
@@ -30,6 +33,7 @@ use axum::{
 use rusqlite::{OptionalExtension, params};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
+use std::collections::BTreeMap;
 use std::path::{Path as FsPath, PathBuf};
 use std::sync::{Arc, OnceLock};
 use tokio::sync::broadcast;
@@ -90,6 +94,9 @@ pub async fn start(port: u16, tx: DanmakuChatTx, resource_dir: Option<PathBuf>) 
         .route("/song-request/api/rank", get(song_rank_handler))
         .route("/plugin-settings", get(plugin_settings_handler))
         .route("/recent-events", get(recent_events_handler))
+        .route("/gift-catalog", get(gift_catalog_handler))
+        .route("/recent-gifts-data", get(recent_gifts_data_handler))
+        .route("/gift-rank-data", get(gift_rank_data_handler))
         .route("/local-resource", get(local_resource_handler))
         .route(
             "/danmaku-chat-assets/{*path}",
@@ -214,6 +221,18 @@ struct RecentEventsQuery {
 
 async fn recent_events_handler(Query(query): Query<RecentEventsQuery>) -> impl IntoResponse {
     Json(observed_recent_events(query.limit.unwrap_or(20)))
+}
+
+async fn gift_catalog_handler() -> impl IntoResponse {
+    Json(observed_gift_catalog())
+}
+
+async fn recent_gifts_data_handler(Query(query): Query<RecentEventsQuery>) -> impl IntoResponse {
+    Json(observed_recent_gifts_data(query.limit.unwrap_or(3)))
+}
+
+async fn gift_rank_data_handler(Query(query): Query<RecentEventsQuery>) -> impl IntoResponse {
+    Json(observed_gift_rank_data(query.limit.unwrap_or(3)))
 }
 
 #[derive(Serialize)]
@@ -422,44 +441,124 @@ fn observed_recent_events(limit: usize) -> Vec<Value> {
     let limit = limit.clamp(1, 80) as i64;
 
     let result = storage.with_connection(|conn| {
+        let active_session_id = conn
+            .query_row(
+                "select id
+                 from live_sessions
+                 where start_source = 'observed'
+                   and ended_at is null
+                   and room_id = ?1
+                 order by started_at desc
+                 limit 1",
+                params![room_id],
+                |row| row.get::<_, String>(0),
+            )
+            .optional()?;
+        let Some(active_session_id) = active_session_id else {
+            return Ok(Vec::new());
+        };
         let mut stmt = conn.prepare(
-            "select event_type, uname, text, gift_name, gift_count, gift_price
+            "select event_type, event_subtype, uid, uname, text, gift_name, gift_count, gift_price,
+                    medal_name, medal_level, guard_level, raw_json, occurred_at
              from interaction_records
-             where room_id = ?1
-               and event_type in ('danmu', 'gift', 'super_chat', 'guard_buy')
+             where session_id = ?1
+               and room_id = ?2
+               and event_type in ('danmu', 'gift', 'super_chat', 'guard_buy', 'entry_effect', 'interact')
              order by occurred_at desc
-             limit ?2",
+             limit ?3",
         )?;
-        let rows = stmt.query_map(params![room_id, limit], |row| {
+        let rows = stmt.query_map(params![active_session_id, room_id, limit], |row| {
             let event_type: String = row.get(0)?;
-            let uname: Option<String> = row.get(1)?;
-            let text: Option<String> = row.get(2)?;
-            let gift_name: Option<String> = row.get(3)?;
-            let gift_count: Option<i64> = row.get(4)?;
-            let gift_price: Option<i64> = row.get(5)?;
+            let event_subtype: Option<String> = row.get(1)?;
+            let uid: Option<i64> = row.get(2)?;
+            let uname: Option<String> = row.get(3)?;
+            let text: Option<String> = row.get(4)?;
+            let gift_name: Option<String> = row.get(5)?;
+            let gift_count: Option<i64> = row.get(6)?;
+            let gift_price: Option<i64> = row.get(7)?;
+            let medal_name: Option<String> = row.get(8)?;
+            let medal_level: Option<i64> = row.get(9)?;
+            let guard_level: Option<i64> = row.get(10)?;
+            let raw_json: String = row.get(11)?;
+            let occurred_at: String = row.get(12)?;
+            let raw = serde_json::from_str::<Value>(&raw_json).unwrap_or(Value::Null);
             let value = match event_type.as_str() {
                 "danmu" => serde_json::json!({
                     "type": "Danmu",
+                    "subtype": event_subtype,
+                    "uid": uid,
                     "user": uname.unwrap_or_else(|| "观众".to_string()),
                     "text": text.unwrap_or_default(),
+                    "medalName": medal_name,
+                    "medalLevel": medal_level,
+                    "guardLevel": guard_level.unwrap_or(0),
+                    "time": occurred_at,
+                    "raw": raw,
                 }),
                 "gift" => serde_json::json!({
                     "type": "Gift",
+                    "subtype": event_subtype,
+                    "uid": uid,
                     "user": uname.unwrap_or_else(|| "观众".to_string()),
                     "gift": gift_name.unwrap_or_else(|| "礼物".to_string()),
                     "count": gift_count.unwrap_or(1),
                     "price": gift_price.unwrap_or(0),
+                    "medalName": medal_name,
+                    "medalLevel": medal_level,
+                    "guardLevel": guard_level.unwrap_or(0),
+                    "time": occurred_at,
+                    "raw": raw,
                 }),
                 "super_chat" => serde_json::json!({
                     "type": "SuperChat",
+                    "subtype": event_subtype,
+                    "uid": uid,
                     "user": uname.unwrap_or_else(|| "观众".to_string()),
                     "text": text.unwrap_or_default(),
                     "price": gift_price.unwrap_or(0),
+                    "medalName": medal_name,
+                    "medalLevel": medal_level,
+                    "guardLevel": guard_level.unwrap_or(0),
+                    "time": occurred_at,
+                    "raw": raw,
                 }),
                 "guard_buy" => serde_json::json!({
                     "type": "GuardBuy",
+                    "subtype": event_subtype,
+                    "uid": uid,
                     "user": uname.unwrap_or_else(|| "观众".to_string()),
                     "gift": gift_name.unwrap_or_else(|| "大航海".to_string()),
+                    "count": gift_count.unwrap_or(1),
+                    "price": gift_price.unwrap_or(0),
+                    "medalName": medal_name,
+                    "medalLevel": medal_level,
+                    "guardLevel": guard_level.unwrap_or(0),
+                    "time": occurred_at,
+                    "raw": raw,
+                }),
+                "entry_effect" => serde_json::json!({
+                    "type": "EntryEffect",
+                    "subtype": event_subtype,
+                    "uid": uid,
+                    "user": uname.unwrap_or_else(|| "观众".to_string()),
+                    "text": text.unwrap_or_default(),
+                    "medalName": medal_name,
+                    "medalLevel": medal_level,
+                    "guardLevel": guard_level.unwrap_or(0),
+                    "time": occurred_at,
+                    "raw": raw,
+                }),
+                "interact" => serde_json::json!({
+                    "type": "Interact",
+                    "subtype": event_subtype,
+                    "uid": uid,
+                    "user": uname.unwrap_or_else(|| "观众".to_string()),
+                    "text": text.unwrap_or_default(),
+                    "medalName": medal_name,
+                    "medalLevel": medal_level,
+                    "guardLevel": guard_level.unwrap_or(0),
+                    "time": occurred_at,
+                    "raw": raw,
                 }),
                 _ => serde_json::json!(null),
             };
@@ -481,6 +580,187 @@ fn observed_recent_events(limit: usize) -> Vec<Value> {
         Ok(items) => items,
         Err(e) => {
             eprintln!("弹幕聊天读取最近事件失败: {e}");
+            Vec::new()
+        }
+    }
+}
+
+fn observed_gift_catalog() -> BTreeMap<String, String> {
+    let storage = match danmaku_chat_storage() {
+        Ok(storage) => storage,
+        Err(e) => {
+            eprintln!("弹幕聊天打开礼物目录失败: {e}");
+            return BTreeMap::new();
+        }
+    };
+
+    let result = storage.with_connection(|conn| {
+        let mut stmt = conn.prepare(
+            "select name, image
+             from live_gift_catalog
+             where name <> '' and image <> ''
+             order by updated_at desc, gift_id desc",
+        )?;
+        let rows = stmt.query_map([], |row| {
+            let name: String = row.get(0)?;
+            let image: String = row.get(1)?;
+            Ok((name, image))
+        })?;
+
+        let mut items = BTreeMap::new();
+        for row in rows {
+            let (name, image) = row?;
+            items.entry(name).or_insert(image);
+        }
+        Ok(items)
+    });
+
+    match result {
+        Ok(items) => items,
+        Err(e) => {
+            eprintln!("弹幕聊天读取礼物目录失败: {e}");
+            BTreeMap::new()
+        }
+    }
+}
+
+fn observed_recent_gifts_data(limit: usize) -> Vec<Value> {
+    let room_id = match crate::token::read_connected_room() {
+        Some(room_id) => room_id,
+        None => match crate::config::AppConfig::load_or_default() {
+            Ok(app) => app.room_id,
+            Err(e) => {
+                eprintln!("最近礼物读取房间配置失败: {e}");
+                return Vec::new();
+            }
+        },
+    };
+    let storage = match danmaku_chat_storage() {
+        Ok(storage) => storage,
+        Err(e) => {
+            eprintln!("最近礼物打开存储失败: {e}");
+            return Vec::new();
+        }
+    };
+    let limit = limit.clamp(1, 20) as i64;
+
+    let result = storage.with_connection(|conn| {
+        let mut stmt = conn.prepare(
+            "select uname, gift_name, gift_count, raw_json, occurred_at
+             from interaction_records
+             where room_id = ?1
+               and event_type in ('gift', 'guard_buy')
+             order by occurred_at desc
+             limit ?2",
+        )?;
+        let rows = stmt.query_map(params![room_id, limit], |row| {
+            let user: Option<String> = row.get(0)?;
+            let gift: Option<String> = row.get(1)?;
+            let count: Option<i64> = row.get(2)?;
+            let raw_json: String = row.get(3)?;
+            let occurred_at: String = row.get(4)?;
+            let raw = serde_json::from_str::<Value>(&raw_json).unwrap_or(Value::Null);
+            let avatar = raw
+                .pointer("/data/face")
+                .or_else(|| raw.pointer("/data/uface"))
+                .or_else(|| raw.pointer("/data/user_info/face"))
+                .and_then(Value::as_str)
+                .unwrap_or_default()
+                .to_string();
+            Ok(serde_json::json!({
+                "User": user.unwrap_or_else(|| "观众".to_string()),
+                "Gift": gift.unwrap_or_else(|| "礼物".to_string()),
+                "Count": count.unwrap_or(1).max(1),
+                "Avatar": avatar,
+                "OccurredAt": occurred_at,
+            }))
+        })?;
+
+        let mut items = Vec::new();
+        for row in rows {
+            items.push(row?);
+        }
+        Ok(items)
+    });
+
+    match result {
+        Ok(items) => items,
+        Err(e) => {
+            eprintln!("最近礼物读取失败: {e}");
+            Vec::new()
+        }
+    }
+}
+
+fn observed_gift_rank_data(limit: usize) -> Vec<Value> {
+    let room_id = match crate::token::read_connected_room() {
+        Some(room_id) => room_id,
+        None => match crate::config::AppConfig::load_or_default() {
+            Ok(app) => app.room_id,
+            Err(e) => {
+                eprintln!("礼物排行读取房间配置失败: {e}");
+                return Vec::new();
+            }
+        },
+    };
+    let storage = match danmaku_chat_storage() {
+        Ok(storage) => storage,
+        Err(e) => {
+            eprintln!("礼物排行打开存储失败: {e}");
+            return Vec::new();
+        }
+    };
+    let limit = limit.clamp(1, 20) as i64;
+
+    let result = storage.with_connection(|conn| {
+        let mut stmt = conn.prepare(
+            "select uname,
+                    coalesce(sum(case when gift_price > 0 then gift_count * gift_price else gift_count end), 0) as total_value,
+                    coalesce(sum(gift_count), 0) as total_count,
+                    max(raw_json) as raw_json
+             from interaction_records
+             where room_id = ?1
+               and event_type in ('gift', 'guard_buy')
+               and date(occurred_at, 'localtime') = date('now', 'localtime')
+             group by uname
+             order by total_value desc, total_count desc, max(occurred_at) desc
+             limit ?2",
+        )?;
+        let rows = stmt.query_map(params![room_id, limit], |row| {
+            let user: Option<String> = row.get(0)?;
+            let value: Option<i64> = row.get(1)?;
+            let count: Option<i64> = row.get(2)?;
+            let raw_json: Option<String> = row.get(3)?;
+            let raw = raw_json
+                .as_deref()
+                .and_then(|text| serde_json::from_str::<Value>(text).ok())
+                .unwrap_or(Value::Null);
+            let avatar = raw
+                .pointer("/data/face")
+                .or_else(|| raw.pointer("/data/uface"))
+                .or_else(|| raw.pointer("/data/user_info/face"))
+                .and_then(Value::as_str)
+                .unwrap_or_default()
+                .to_string();
+            Ok(serde_json::json!({
+                "User": user.unwrap_or_else(|| "观众".to_string()),
+                "Value": value.unwrap_or(0).max(0),
+                "Count": count.unwrap_or(0).max(0),
+                "Avatar": avatar,
+            }))
+        })?;
+
+        let mut items = Vec::new();
+        for row in rows {
+            items.push(row?);
+        }
+        Ok(items)
+    });
+
+    match result {
+        Ok(items) => items,
+        Err(e) => {
+            eprintln!("礼物排行读取失败: {e}");
             Vec::new()
         }
     }
@@ -586,7 +866,9 @@ struct ProxyQuery {
 }
 
 async fn proxy_handler(Query(q): Query<ProxyQuery>) -> Response<Body> {
-    if !q.url.starts_with("https://i") || !q.url.contains("hdslb.com") {
+    let allowed = q.url.starts_with("https://")
+        && (q.url.contains(".hdslb.com/") || q.url.contains(".bilibili.com/"));
+    if !allowed {
         return Response::builder()
             .status(StatusCode::FORBIDDEN)
             .body(Body::empty())

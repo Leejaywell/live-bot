@@ -427,7 +427,7 @@ impl Default for DanmakuChatSettings {
             owner_user_name_color: dc_owner_color(),
             moderator_user_name_color: dc_mod_color(),
             member_user_name_color: dc_member_color(),
-            show_badges: true,
+            show_badges: false,
             message_font: dc_font_family(),
             message_font_size: dc_msg_size(),
             message_weight: dc_weight_normal(),
@@ -444,7 +444,7 @@ impl Default for DanmakuChatSettings {
             moderator_message_bg_color: dc_mod_bg_color(),
             member_message_bg_color: dc_member_bg_color(),
             show_gift: true,
-            gift_min_cost: 0,
+            gift_min_cost: 1,
             show_gift_icon: false,
             show_guard: true,
             show_sc: true,
@@ -455,14 +455,14 @@ impl Default for DanmakuChatSettings {
             second_line_weight: dc_weight_bold(),
             sc_content_font_size: dc_msg_size(),
             sc_content_weight: dc_weight_normal(),
-            animate_in: true,
+            animate_in: false,
             fade_in_time: dc_fade_in(),
             animate_out: false,
             fade_out_time: dc_fade_out(),
             animate_out_wait_time: dc_out_wait(),
-            slide: true,
+            slide: false,
             reverse_slide: false,
-            effects_enabled: true,
+            effects_enabled: false,
             effect_intensity: dc_one(),
             show_outlines: false,
             outline_size: dc_outline_size(),
@@ -1127,31 +1127,31 @@ fn dc_port() -> u16 {
     12450
 }
 fn dc_max_msgs() -> u32 {
-    50
+    100
 }
 fn dc_msg_gap() -> u8 {
-    3
+    8
 }
 fn dc_theme() -> String {
     "classic".to_string()
 }
 fn dc_avatar_size() -> u8 {
-    24
+    30
 }
 fn dc_font_family() -> String {
     "PingFang SC, Microsoft YaHei, Noto Sans SC, sans-serif".to_string()
 }
 fn dc_username_size() -> u8 {
-    13
+    20
 }
 fn dc_msg_size() -> u8 {
-    13
+    20
 }
 fn dc_time_size() -> u8 {
-    12
+    16
 }
 fn dc_sc_line1_size() -> u8 {
-    15
+    20
 }
 fn dc_weight_normal() -> u16 {
     600
@@ -1181,7 +1181,7 @@ fn dc_bg_color() -> String {
     "rgba(0,0,0,0)".to_string()
 }
 fn dc_bg_opacity() -> f32 {
-    0.15
+    0.8
 }
 fn dc_msg_bg_color() -> String {
     "transparent".to_string()

@@ -1,5 +1,7 @@
+import { useEffect, useState } from 'react';
 import { EmptyState } from '../../components/EmptyState';
 import { MarqueeText } from '../../components/MarqueeText';
+import { fetchJson } from '../../runtime/fetch';
 import { proxyImage } from '../../runtime/fetch';
 import { PluginSettings } from '../../runtime/types';
 
@@ -21,10 +23,29 @@ function resolveRankSkin(skin: unknown) {
 
 export function GiftRankView({ settings }: { settings: PluginSettings }) {
   const cfg = settings.GiftRank;
-  const items = (Array.isArray(cfg?.Items) ? cfg.Items : [])
+  const fallbackItems = (Array.isArray(cfg?.Items) ? cfg.Items : [])
     .filter(isRecord)
     .slice(0, Math.max(1, Number(cfg?.MaxItems || 3)));
+  const [historyItems, setHistoryItems] = useState<Record<string, unknown>[]>([]);
+  const items = fallbackItems.length ? fallbackItems : historyItems;
   const skin = resolveRankSkin(cfg?.Skin);
+
+  useEffect(() => {
+    if (fallbackItems.length) {
+      setHistoryItems([]);
+      return;
+    }
+    let disposed = false;
+    fetchJson<Record<string, unknown>[]>(`/gift-rank-data?limit=${Math.max(1, Number(cfg?.MaxItems || 3))}`, [])
+      .then(next => {
+        if (!disposed) {
+          setHistoryItems(Array.isArray(next) ? next.filter(isRecord) : []);
+        }
+      });
+    return () => {
+      disposed = true;
+    };
+  }, [cfg?.MaxItems, fallbackItems.length]);
 
   if (!items.length) {
     return <EmptyState title={cfg?.Title || '礼物排行'} subtitle="等待排行数据" />;

@@ -1,8 +1,19 @@
 import { useEffect, useState } from 'react';
 import { fetchJson } from './fetch';
-import { PluginSettings } from './types';
+import { DanmakuChatSettings, PluginSettings } from './types';
 
 const EMPTY_SETTINGS: PluginSettings = {};
+const PREVIEW_SETTINGS_MESSAGE = 'streamix-preview-settings';
+
+function mergePreviewSettings(settings: PluginSettings, preview: DanmakuChatSettings): PluginSettings {
+  return {
+    ...settings,
+    DanmakuChat: {
+      ...(settings.DanmakuChat || {}),
+      ...preview,
+    },
+  };
+}
 
 export function usePluginSettings(): PluginSettings {
   const [settings, setSettings] = useState<PluginSettings>(EMPTY_SETTINGS);
@@ -64,11 +75,21 @@ export function usePluginSettings(): PluginSettings {
       });
     }
 
+    function handleMessage(event: MessageEvent) {
+      const data = event.data;
+      if (data?.type !== PREVIEW_SETTINGS_MESSAGE || !data?.settings) {
+        return;
+      }
+      setSettings((prev) => mergePreviewSettings(prev, data.settings as DanmakuChatSettings));
+    }
+
     load();
     connect();
+    window.addEventListener('message', handleMessage);
 
     return () => {
       disposed = true;
+      window.removeEventListener('message', handleMessage);
       if (retryTimeout) {
         clearTimeout(retryTimeout);
       }

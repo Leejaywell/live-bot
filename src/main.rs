@@ -15,7 +15,7 @@ use anyhow::Result;
 use chrono::Local;
 use config::AppConfig;
 #[cfg(feature = "tauri")]
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU16, Ordering};
 use std::sync::{Arc, Mutex};
 use tokio::runtime::Runtime;
 use tokio_util::sync::CancellationToken;
@@ -41,6 +41,8 @@ struct SharedState {
     storage: Arc<storage::Storage>,
     connected_room: Arc<Mutex<Option<i64>>>,
     monitor_log_buffer: Arc<Mutex<Vec<String>>>,
+    #[cfg(feature = "tauri")]
+    danmaku_chat_port: Arc<AtomicU16>,
     /// 预览 TTS（AI页播放按钮）：(router, 当前声音, 当前 provider, cancel)
     #[cfg(feature = "tauri")]
     preview_tts: Arc<
@@ -3809,6 +3811,9 @@ fn main() -> Result<()> {
     let storage = storage::Storage::open(&storage_path.to_string_lossy())?;
 
     let saved_room = token::read_connected_room();
+    let danmaku_chat_port = plugin_settings::PluginSettings::load_or_default()
+        .map(|settings| settings.danmaku_chat.port)
+        .unwrap_or(12450);
 
     let (danmaku_chat_tx, _) = danmaku_chat_server::new_channel();
 
@@ -3819,6 +3824,8 @@ fn main() -> Result<()> {
         storage: Arc::new(storage),
         connected_room: Arc::new(Mutex::new(saved_room)),
         monitor_log_buffer: Arc::new(Mutex::new(Vec::new())),
+        #[cfg(feature = "tauri")]
+        danmaku_chat_port: Arc::new(AtomicU16::new(danmaku_chat_port)),
         danmaku_chat_tx: danmaku_chat_tx.clone(),
         #[cfg(feature = "tauri")]
         preview_tts: Arc::new(Mutex::new(None)),
@@ -3888,9 +3895,7 @@ fn main() -> Result<()> {
         })
         .setup(move |app| {
             // 启动弹幕聊天 HTTP 服务（配置存放在 plugin-settings.toml）
-            let port = plugin_settings::PluginSettings::load_or_default()
-                .map(|settings| settings.danmaku_chat.port)
-                .unwrap_or(12450);
+            let port = danmaku_chat_port;
             let server_tx = danmaku_chat_tx.clone();
             let resource_dir = app.path().resource_dir().ok();
             tauri::async_runtime::spawn(async move {
@@ -4015,9 +4020,9 @@ fn main() -> Result<()> {
 
 #[cfg(feature = "tauri")]
 #[tauri::command]
-async fn get_danmaku_chat_url(_state: tauri::State<'_, SharedState>) -> Result<String, String> {
-    let cfg = load_danmaku_chat_settings()?;
-    Ok(format!("http://127.0.0.1:{}", cfg.port))
+async fn get_danmaku_chat_url(state: tauri::State<'_, SharedState>) -> Result<String, String> {
+    let port = state.danmaku_chat_port.load(Ordering::Relaxed);
+    Ok(format!("http://127.0.0.1:{port}"))
 }
 
 #[cfg(feature = "tauri")]
