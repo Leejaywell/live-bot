@@ -15,6 +15,8 @@ mod token;
 use anyhow::Result;
 use chrono::Local;
 use config::AppConfig;
+use live_platform::bilibili::api as bili_api;
+use live_platform::{PlatformId, PlatformRegistry, PlatformRoomRef, PlatformSession, RoomInput};
 #[cfg(feature = "tauri")]
 use std::sync::atomic::{AtomicBool, AtomicU16, Ordering};
 use std::sync::{Arc, Mutex};
@@ -37,10 +39,11 @@ const FALLBACK_GUARD_ICON: &str =
 struct SharedState {
     #[allow(dead_code)]
     runtime: Arc<Runtime>,
-    http: api::BiliApi,
+    platforms: PlatformRegistry,
+    http: bili_api::BiliApi,
     monitor: Arc<Mutex<Option<MonitorHandle>>>,
     storage: Arc<storage::Storage>,
-    connected_room: Arc<Mutex<Option<i64>>>,
+    connected_room: Arc<Mutex<Option<PlatformRoomRef>>>,
     monitor_log_buffer: Arc<Mutex<Vec<String>>>,
     #[cfg(feature = "tauri")]
     danmaku_chat_port: Arc<AtomicU16>,
@@ -172,7 +175,7 @@ async fn save_config(
     Ok(())
 }
 
-fn user_info_json(info: &api::UserInfo, saved_at: i64) -> serde_json::Value {
+fn user_info_json(info: &bili_api::UserInfo, saved_at: i64) -> serde_json::Value {
     serde_json::json!({
         "uid":               info.uid,
         "uname":             info.uname,
@@ -193,6 +196,71 @@ fn not_logged_in_json(saved_at: i64) -> serde_json::Value {
         "vip_status": 0, "vip_type": 0, "coins": 0.0, "vip_nickname_color": "",
         "is_login": false, "saved_at": saved_at,
     })
+}
+
+fn stored_session_to_platform(stored: token::StoredPlatformSession) -> PlatformSession {
+    PlatformSession {
+        platform_id: PlatformId::from(stored.platform_id),
+        payload: stored.payload,
+    }
+}
+
+fn platform_session_to_stored(session: &PlatformSession) -> token::StoredPlatformSession {
+    token::StoredPlatformSession {
+        platform_id: session.platform_id.as_str().to_string(),
+        payload: session.payload.clone(),
+    }
+}
+
+fn stored_room_to_platform(room: token::StoredPlatformRoom) -> PlatformRoomRef {
+    PlatformRoomRef {
+        platform_id: PlatformId::from(room.platform_id),
+        platform_room_id: room.platform_room_id,
+        display_id: room.display_id,
+    }
+}
+
+fn platform_room_to_stored(room: &PlatformRoomRef) -> token::StoredPlatformRoom {
+    token::StoredPlatformRoom {
+        platform_id: room.platform_id.as_str().to_string(),
+        platform_room_id: room.platform_room_id.clone(),
+        display_id: room.display_id.clone(),
+    }
+}
+
+fn default_platform_id() -> PlatformId {
+    PlatformId::from(PlatformId::BILIBILI)
+}
+
+#[cfg(feature = "tauri")]
+fn config_bilibili_room() -> Option<PlatformRoomRef> {
+    AppConfig::load_or_default()
+        .ok()
+        .map(|config| config.room_id)
+        .filter(|room_id| *room_id > 0)
+        .map(PlatformRoomRef::bilibili)
+}
+
+#[cfg(feature = "tauri")]
+fn resolve_legacy_room(
+    state: &tauri::State<'_, SharedState>,
+    room_id: Option<i64>,
+) -> Result<PlatformRoomRef, String> {
+    if let Some(room_id) = room_id {
+        return Ok(PlatformRoomRef::bilibili(room_id));
+    }
+
+    token::read_connected_platform_room()
+        .map(stored_room_to_platform)
+        .or_else(|| {
+            state
+                .connected_room
+                .lock()
+                .ok()
+                .and_then(|room| (*room).clone())
+        })
+        .or_else(config_bilibili_room)
+        .ok_or_else(|| "未连接直播间".to_string())
 }
 
 #[cfg(feature = "tauri")]
@@ -219,8 +287,77 @@ async fn get_user_info(state: tauri::State<'_, SharedState>) -> Result<serde_jso
 
 #[cfg(feature = "tauri")]
 #[tauri::command]
-async fn start_login(state: tauri::State<'_, SharedState>) -> Result<api::LoginUrl, String> {
-    state.http.login_url().await.map_err(|e| e.to_string())
+async fn list_live_platforms(
+    state: tauri::State<'_, SharedState>,
+) -> Result<Vec<String>, String> {
+    Ok(state
+        .platforms
+        .list()
+        .into_iter()
+        .map(|id| id.as_str().to_string())
+        .collect())
+}
+
+#[cfg(feature = "tauri")]
+#[tauri::command]
+async fn create_platform_login_challenge(
+    state: tauri::State<'_, SharedState>,
+    platform_id: String,
+) -> Result<live_platform::LoginChallenge, String> {
+    let platform_id = PlatformId::from(platform_id);
+    let platform = state
+        .platforms
+        .get(&platform_id)
+        .ok_or_else(|| format!("平台未注册: {platform_id}"))?;
+    platform.login_url().await.map_err(|err| err.to_string())
+}
+
+#[cfg(feature = "tauri")]
+#[tauri::command]
+async fn poll_platform_login(
+    state: tauri::State<'_, SharedState>,
+    platform_id: String,
+    challenge_id: String,
+) -> Result<serde_json::Value, String> {
+    let platform_id = PlatformId::from(platform_id);
+    let platform = state
+        .platforms
+        .get(&platform_id)
+        .ok_or_else(|| format!("平台未注册: {platform_id}"))?;
+    match platform
+        .poll_login(&challenge_id)
+        .await
+        .map_err(|err| err.to_string())?
+    {
+        live_platform::LoginPoll::Pending { message } => {
+            Ok(serde_json::json!({ "status": "Scanning", "message": message }))
+        }
+        live_platform::LoginPoll::Expired { message } => {
+            Ok(serde_json::json!({ "status": "Expired", "message": message }))
+        }
+        live_platform::LoginPoll::Success { session } => {
+            token::write_platform_session(&platform_session_to_stored(&session))
+                .map_err(|err| err.to_string())?;
+            Ok(serde_json::json!({ "status": "Success" }))
+        }
+    }
+}
+
+#[cfg(feature = "tauri")]
+#[tauri::command]
+async fn start_login(
+    state: tauri::State<'_, SharedState>,
+) -> Result<serde_json::Value, String> {
+    let challenge = create_platform_login_challenge(state, default_platform_id().to_string()).await?;
+    let platform_id = challenge.platform_id.as_str().to_string();
+    let url = challenge.url;
+    let challenge_id = challenge.challenge_id;
+    Ok(serde_json::json!({
+        "url": url,
+        "qrcode_key": challenge_id.clone(),
+        "challenge_id": challenge_id,
+        "platform_id": platform_id,
+    }))
 }
 
 #[cfg(feature = "tauri")]
@@ -229,31 +366,57 @@ async fn poll_login(
     state: tauri::State<'_, SharedState>,
     key: String,
 ) -> Result<serde_json::Value, String> {
-    match state.http.poll_login(&key).await {
-        Ok(api::LoginPoll::Success(cookie, refresh_token)) => {
-            let session = token::Session {
-                cookie,
-                refresh_token,
-            };
-            token::write_session(&session).map_err(|e| e.to_string())?;
+    let platform_id = default_platform_id();
+    let platform = state
+        .platforms
+        .get(&platform_id)
+        .ok_or_else(|| format!("平台未注册: {platform_id}"))?;
+    match platform
+        .poll_login(&key)
+        .await
+        .map_err(|err| err.to_string())?
+    {
+        live_platform::LoginPoll::Pending { message } => {
+            Ok(serde_json::json!({ "status": "Scanning", "message": message }))
+        }
+        live_platform::LoginPoll::Expired { message } => {
+            Ok(serde_json::json!({ "status": "Expired", "message": message }))
+        }
+        live_platform::LoginPoll::Success { session } => {
+            token::write_platform_session(&platform_session_to_stored(&session))
+                .map_err(|err| err.to_string())?;
             let saved_at = token::session_saved_at().unwrap_or(0);
-            match state.http.user_info(&session.cookie).await {
-                Ok(info) => {
-                    let mut v = user_info_json(&info, saved_at);
-                    v["status"] = serde_json::json!("Success");
-                    Ok(v)
+            if let Some(cookie) = session.payload.get("cookie").and_then(|value| value.as_str()) {
+                if let Ok(info) = state.http.user_info(cookie).await {
+                    let mut value = user_info_json(&info, saved_at);
+                    value["status"] = serde_json::json!("Success");
+                    return Ok(value);
                 }
-                Err(_) => Ok(serde_json::json!({ "status": "Success" })),
             }
+            Ok(serde_json::json!({ "status": "Success" }))
         }
-        Ok(api::LoginPoll::Expired(msg)) => {
-            Ok(serde_json::json!({ "status": "Expired",   "message": msg }))
-        }
-        Ok(api::LoginPoll::Pending(msg)) => {
-            Ok(serde_json::json!({ "status": "Scanning",  "message": msg }))
-        }
-        Err(e) => Err(e.to_string()),
     }
+}
+
+#[cfg(feature = "tauri")]
+#[tauri::command]
+async fn resolve_platform_room(
+    state: tauri::State<'_, SharedState>,
+    platform_id: String,
+    room_input: String,
+) -> Result<live_platform::LiveRoomInfo, String> {
+    let platform_id = PlatformId::from(platform_id);
+    let platform = state
+        .platforms
+        .get(&platform_id)
+        .ok_or_else(|| format!("平台未注册: {platform_id}"))?;
+    let session = token::read_platform_session(platform_id.as_str())
+        .ok()
+        .map(stored_session_to_platform);
+    platform
+        .resolve_room(RoomInput::RoomId(room_input), session.as_ref())
+        .await
+        .map_err(|err| err.to_string())
 }
 
 #[cfg(feature = "tauri")]
@@ -261,12 +424,33 @@ async fn poll_login(
 async fn check_room(
     state: tauri::State<'_, SharedState>,
     room_id: i64,
-) -> Result<api::RoomInfo, String> {
-    state
-        .http
-        .room_info(room_id)
-        .await
-        .map_err(|e| e.to_string())
+) -> Result<bili_api::RoomInfo, String> {
+    let info = resolve_platform_room(state, default_platform_id().to_string(), room_id.to_string())
+        .await?;
+    let canonical_room_id = info
+        .room
+        .platform_room_id
+        .parse::<i64>()
+        .map_err(|e| e.to_string())?;
+    Ok(bili_api::RoomInfo {
+        room_id: canonical_room_id,
+        short_id: info
+            .room
+            .display_id
+            .as_deref()
+            .and_then(|value| value.parse().ok())
+            .unwrap_or(0),
+        uid: info.owner.as_ref().and_then(|u| u.numeric_id()).unwrap_or(0),
+        live_status: info.live_status,
+        live_time: info.live_time,
+        title: info.title,
+        uname: info.owner.map(|u| u.display_name).unwrap_or_default(),
+        area_name: info.area_name,
+        parent_area_name: info.parent_area_name,
+        online: info.online,
+        keyframe: info.keyframe,
+        cover: info.cover,
+    })
 }
 
 #[cfg(feature = "tauri")]
@@ -274,7 +458,7 @@ async fn check_room(
 async fn get_room_by_uid(
     state: tauri::State<'_, SharedState>,
     uid: i64,
-) -> Result<api::RoomInfo, String> {
+) -> Result<bili_api::RoomInfo, String> {
     state
         .http
         .room_id_by_uid(uid)
@@ -396,15 +580,16 @@ async fn start_monitor(
         danmaku_buffer: danmaku_buf.clone(),
     };
 
-    let room_id = room_id
-        .or_else(|| state.connected_room.lock().ok().and_then(|r| *r))
-        .unwrap_or_else(|| {
-            AppConfig::load_or_default()
-                .ok()
-                .map(|c| c.room_id)
-                .unwrap_or(0)
-        });
-    let http = state.http.clone();
+    let room = resolve_legacy_room(&state, room_id)?;
+    let session = token::read_platform_session(room.platform_id.as_str())
+        .map(stored_session_to_platform)
+        .map_err(|err| err.to_string())?;
+    token::write_connected_platform_room(&platform_room_to_stored(&room))
+        .map_err(|err| err.to_string())?;
+    {
+        let mut connected_room = state.connected_room.lock().map_err(|e| e.to_string())?;
+        *connected_room = Some(room.clone());
+    }
 
     // Clear log buffer for new session
     if let Ok(mut buf) = state.monitor_log_buffer.lock() {
@@ -455,6 +640,7 @@ async fn start_monitor(
     let auto_dl_cancel = cancel.clone();
 
     let session_memory = state.session_memory.clone();
+    let platforms = state.platforms.clone();
     let error_app = app.clone();
 
     let _ = app.emit(
@@ -469,10 +655,11 @@ async fn start_monitor(
             auto_download_models(&auto_dl_app, &models, &cfg, auto_dl_cancel).await;
         }
 
-        if let Err(e) = crate::bot::monitor::run_bilibili_monitor_loop(
+        if let Err(e) = crate::bot::monitor::run_monitor_loop(
             emitter,
-            http,
-            room_id,
+            platforms,
+            room,
+            session,
             cancel,
             tts_router,
             tts_cancel,
@@ -770,26 +957,18 @@ async fn get_pk_history(
 #[cfg(feature = "tauri")]
 #[tauri::command]
 async fn send_danmu(state: tauri::State<'_, SharedState>, message: String) -> Result<(), String> {
-    let room_id = {
-        let room = state.connected_room.lock().map_err(|e| e.to_string())?;
-        match *room {
-            Some(id) => id,
-            None => {
-                AppConfig::load_or_default()
-                    .map_err(|e| e.to_string())?
-                    .room_id
-            }
-        }
-    };
-    if room_id == 0 {
-        return Err("未连接直播间".to_string());
-    }
-    let session = token::read_session().map_err(|e| e.to_string())?;
-    state
-        .http
-        .send_danmu(room_id, &message, &session.cookie)
+    let room = resolve_legacy_room(&state, None)?;
+    let session = token::read_platform_session(room.platform_id.as_str())
+        .map(stored_session_to_platform)
+        .map_err(|err| err.to_string())?;
+    let platform = state
+        .platforms
+        .get(&room.platform_id)
+        .ok_or_else(|| format!("平台未注册: {}", room.platform_id))?;
+    platform
+        .send_message(&room, &session, &message)
         .await
-        .map_err(|e| e.to_string())
+        .map_err(|err| err.to_string())
 }
 
 #[cfg(feature = "tauri")]
@@ -811,13 +990,15 @@ async fn query_user_detail(
 #[cfg(feature = "tauri")]
 fn current_my_room_id(state: &tauri::State<'_, SharedState>) -> Result<i64, String> {
     let room = state.connected_room.lock().map_err(|e| e.to_string())?;
-    let room_id = match *room {
-        Some(id) => id,
-        None => {
-            AppConfig::load_or_default()
-                .map_err(|e| e.to_string())?
-                .room_id
-        }
+    let room_id = match room.as_ref() {
+        Some(room) if room.platform_id.as_str() == PlatformId::BILIBILI => room
+            .platform_room_id
+            .parse::<i64>()
+            .map_err(|e| e.to_string())?,
+        Some(room) => return Err(format!("平台不支持直播管理: {}", room.platform_id)),
+        None => AppConfig::load_or_default()
+            .map_err(|e| e.to_string())?
+            .room_id,
     };
     if room_id == 0 {
         return Err("未连接直播间".to_string());
@@ -830,7 +1011,7 @@ fn current_my_room_id(state: &tauri::State<'_, SharedState>) -> Result<i64, Stri
 async fn start_live_cmd(
     state: tauri::State<'_, SharedState>,
     area_v2: i64,
-) -> Result<api::StartLiveData, String> {
+) -> Result<bili_api::StartLiveData, String> {
     let room_id = current_my_room_id(&state)?;
     let session = token::read_session().map_err(|e| e.to_string())?;
     state
@@ -879,7 +1060,7 @@ async fn update_room_info_cmd(
 #[tauri::command]
 async fn get_live_areas(
     state: tauri::State<'_, SharedState>,
-) -> Result<Vec<api::AreaCategory>, String> {
+) -> Result<Vec<bili_api::AreaCategory>, String> {
     state
         .http
         .get_web_area_list()
@@ -889,7 +1070,9 @@ async fn get_live_areas(
 
 #[cfg(feature = "tauri")]
 #[tauri::command]
-async fn get_stream_addr(state: tauri::State<'_, SharedState>) -> Result<api::StreamAddr, String> {
+async fn get_stream_addr(
+    state: tauri::State<'_, SharedState>,
+) -> Result<bili_api::StreamAddr, String> {
     let session = token::read_session().map_err(|e| e.to_string())?;
     state
         .http
@@ -1986,7 +2169,7 @@ async fn send_ai_message(
 async fn get_anchor_info(
     state: tauri::State<'_, SharedState>,
     uid: i64,
-) -> Result<api::AnchorInfo, String> {
+) -> Result<bili_api::AnchorInfo, String> {
     state.http.anchor_info(uid).await.map_err(|e| e.to_string())
 }
 
@@ -2018,10 +2201,11 @@ async fn set_connected_room(
     room_id: Option<i64>,
 ) -> Result<(), String> {
     let mut room = state.connected_room.lock().map_err(|e| e.to_string())?;
-    *room = room_id;
-    match room_id {
-        Some(id) => token::write_connected_room(id).map_err(|e| e.to_string())?,
-        None => token::delete_connected_room(),
+    *room = room_id.map(PlatformRoomRef::bilibili);
+    match room.as_ref() {
+        Some(room) => token::write_connected_platform_room(&platform_room_to_stored(room))
+            .map_err(|e| e.to_string())?,
+        None => token::delete_connected_platform_room(),
     }
     Ok(())
 }
@@ -2030,7 +2214,13 @@ async fn set_connected_room(
 #[tauri::command]
 async fn get_connected_room(state: tauri::State<'_, SharedState>) -> Result<Option<i64>, String> {
     let room = state.connected_room.lock().map_err(|e| e.to_string())?;
-    Ok(*room)
+    room.as_ref()
+        .map(|room| {
+            room.platform_room_id
+                .parse::<i64>()
+                .map_err(|e| e.to_string())
+        })
+        .transpose()
 }
 
 #[cfg(feature = "tauri")]
@@ -2644,7 +2834,7 @@ async fn force_quit(app: AppHandle) -> Result<(), String> {
 #[tauri::command]
 async fn check_update_cmd(
     state: tauri::State<'_, SharedState>,
-) -> Result<Option<api::UpdateInfo>, String> {
+) -> Result<Option<bili_api::UpdateInfo>, String> {
     let current = env!("CARGO_PKG_VERSION");
     state
         .http
@@ -3945,7 +4135,9 @@ fn main() -> Result<()> {
     println!("Opening storage at {}...", storage_path.display());
     let storage = storage::Storage::open(&storage_path.to_string_lossy())?;
 
-    let saved_room = token::read_connected_room();
+    let bilibili_platform = live_platform::bilibili::BilibiliPlatform::new()?;
+    let bilibili_http = bilibili_platform.api().clone();
+    let platforms = PlatformRegistry::new(vec![std::sync::Arc::new(bilibili_platform)]);
     let danmaku_chat_port = plugin_settings::PluginSettings::load_or_default()
         .map(|settings| settings.danmaku_chat.port)
         .unwrap_or(12450);
@@ -3954,10 +4146,13 @@ fn main() -> Result<()> {
 
     let state = SharedState {
         runtime: Arc::new(Runtime::new()?),
-        http: api::BiliApi::new()?,
+        platforms,
+        http: bilibili_http,
         monitor: Arc::new(Mutex::new(None)),
         storage: Arc::new(storage),
-        connected_room: Arc::new(Mutex::new(saved_room)),
+        connected_room: Arc::new(Mutex::new(
+            token::read_connected_platform_room().map(stored_room_to_platform),
+        )),
         monitor_log_buffer: Arc::new(Mutex::new(Vec::new())),
         #[cfg(feature = "tauri")]
         danmaku_chat_port: Arc::new(AtomicU16::new(danmaku_chat_port)),
@@ -4061,6 +4256,10 @@ fn main() -> Result<()> {
             load_config,
             save_config,
             get_user_info,
+            list_live_platforms,
+            create_platform_login_challenge,
+            poll_platform_login,
+            resolve_platform_room,
             start_login,
             poll_login,
             check_room,
@@ -4349,7 +4548,10 @@ async fn refresh_gift_catalog_inner(state: &tauri::State<'_, SharedState>) -> Re
         .connected_room
         .lock()
         .ok()
-        .and_then(|r| *r)
+        .and_then(|r| {
+            r.as_ref()
+                .and_then(|room| room.platform_room_id.parse::<i64>().ok())
+        })
         .or_else(|| AppConfig::load_or_default().ok().map(|c| c.room_id))
         .filter(|id| *id > 0)
         .unwrap_or(23174842);
@@ -4363,7 +4565,7 @@ async fn refresh_gift_catalog_inner(state: &tauri::State<'_, SharedState>) -> Re
 #[cfg(feature = "tauri")]
 async fn gift_catalog_refresh_loop(
     storage: Arc<storage::Storage>,
-    connected_room: Arc<Mutex<Option<i64>>>,
+    connected_room: Arc<Mutex<Option<PlatformRoomRef>>>,
 ) {
     loop {
         let stale = storage
@@ -4373,7 +4575,10 @@ async fn gift_catalog_refresh_loop(
             let room_id = connected_room
                 .lock()
                 .ok()
-                .and_then(|r| *r)
+                .and_then(|r| {
+                    r.as_ref()
+                        .and_then(|room| room.platform_room_id.parse::<i64>().ok())
+                })
                 .or_else(|| AppConfig::load_or_default().ok().map(|c| c.room_id))
                 .filter(|id| *id > 0)
                 .unwrap_or(23174842);

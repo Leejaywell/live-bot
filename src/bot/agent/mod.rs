@@ -2,16 +2,17 @@ pub mod runtime;
 pub mod tool;
 pub mod tools;
 
-pub use runtime::AgentRuntime;
+pub use runtime::{AgentRuntime, AiHttpClient};
 pub use tools::{GetSessionStatsTool, SendDanmuTool};
 
 // re-exported for external tooling
 #[allow(unused_imports)]
 pub use tool::{FunctionCallInfo, ToolCall};
 
-use crate::api::BiliApi;
 use crate::bot::memory::SessionMemory;
 use crate::config::{AiBot, AppConfig};
+#[allow(unused_imports)]
+use crate::live_platform::bilibili::api::BiliApi;
 use std::sync::Arc;
 
 /// 弹幕触发机器人解析结果
@@ -71,8 +72,8 @@ pub fn resolve_bot_danmu<'a>(config: &'a AppConfig, text: &str) -> Option<BotRes
 }
 
 /// AI 调用入口：通过 bot_id 隔离记忆，通过 bot.provider_id 找模型
-pub async fn call_ai(
-    http: &BiliApi,
+pub async fn call_ai<H: AiHttpClient + ?Sized>(
+    http: &H,
     config: &AppConfig,
     bot_id: &str,
     prompt: &str,
@@ -124,8 +125,8 @@ pub async fn call_ai(
 
 /// AI 流式调用入口：支持在生成过程中通过 channel 回传文本块（用于尽早启动 TTS）
 #[allow(dead_code)]
-pub async fn call_ai_streaming(
-    http: &BiliApi,
+pub async fn call_ai_streaming<H: AiHttpClient + ?Sized>(
+    http: &H,
     config: &AppConfig,
     bot_id: &str,
     prompt: &str,
@@ -197,8 +198,8 @@ pub async fn call_ai_streaming(
 
 /// 语音模式 AI 调用：使用 voice_system_prompt 替换 {{gender}}，而非 bot 的人设提示词。
 #[allow(dead_code)]
-pub async fn call_ai_voice(
-    http: &BiliApi,
+pub async fn call_ai_voice<H: AiHttpClient + ?Sized>(
+    http: &H,
     config: &AppConfig,
     bot_id: &str,
     prompt: &str,
@@ -254,8 +255,8 @@ pub async fn call_ai_voice(
     reply
 }
 
-pub async fn call_ai_voice_streaming(
-    http: &BiliApi,
+pub async fn call_ai_voice_streaming<H: AiHttpClient + ?Sized>(
+    http: &H,
     config: &AppConfig,
     bot_id: &str,
     prompt: &str,
@@ -265,8 +266,8 @@ pub async fn call_ai_voice_streaming(
     call_ai_voice_streaming_inner(http, config, bot_id, prompt, memory, Some(chunk_tx), true).await
 }
 
-pub async fn call_ai_voice_draft(
-    http: &BiliApi,
+pub async fn call_ai_voice_draft<H: AiHttpClient + ?Sized>(
+    http: &H,
     config: &AppConfig,
     bot_id: &str,
     prompt: &str,
@@ -285,8 +286,8 @@ pub fn remember_ai_voice_reply(
     mem.push_turn(bot_id, prompt.to_string(), reply.to_string());
 }
 
-async fn call_ai_voice_streaming_inner(
-    http: &BiliApi,
+async fn call_ai_voice_streaming_inner<H: AiHttpClient + ?Sized>(
+    http: &H,
     config: &AppConfig,
     bot_id: &str,
     prompt: &str,

@@ -10,13 +10,90 @@
 use std::sync::Arc;
 
 use anyhow::Result;
+use async_trait::async_trait;
 use serde_json::{Value, json};
+use tokio::sync::mpsc;
 
 use super::tool::{Tool, ToolCall, ToolDefinition};
-use crate::api::BiliApi;
 use crate::config::AiProvider;
+use crate::live_platform::bilibili::api::BiliApi;
 
 const MAX_TOOL_ROUNDS: usize = 3;
+
+#[async_trait]
+pub trait AiHttpClient: Send + Sync {
+    async fn chat_completions_raw_with_opts(
+        &self,
+        provider: &AiProvider,
+        messages: &[Value],
+        tools: Option<&[Value]>,
+        temperature: Option<f32>,
+    ) -> Result<Value>;
+
+    async fn chat_completions_stream_with_opts(
+        &self,
+        provider: &AiProvider,
+        messages: &[Value],
+        temperature: Option<f32>,
+    ) -> Result<mpsc::UnboundedReceiver<std::result::Result<String, String>>>;
+}
+
+#[async_trait]
+impl AiHttpClient for BiliApi {
+    async fn chat_completions_raw_with_opts(
+        &self,
+        provider: &AiProvider,
+        messages: &[Value],
+        tools: Option<&[Value]>,
+        temperature: Option<f32>,
+    ) -> Result<Value> {
+        BiliApi::chat_completions_raw_with_opts(self, provider, messages, tools, temperature).await
+    }
+
+    async fn chat_completions_stream_with_opts(
+        &self,
+        provider: &AiProvider,
+        messages: &[Value],
+        temperature: Option<f32>,
+    ) -> Result<mpsc::UnboundedReceiver<std::result::Result<String, String>>> {
+        BiliApi::chat_completions_stream_with_opts(self, provider, messages, temperature).await
+    }
+}
+
+#[async_trait]
+impl AiHttpClient for crate::api::BiliApi {
+    async fn chat_completions_raw_with_opts(
+        &self,
+        provider: &AiProvider,
+        messages: &[Value],
+        tools: Option<&[Value]>,
+        temperature: Option<f32>,
+    ) -> Result<Value> {
+        crate::api::BiliApi::chat_completions_raw_with_opts(
+            self,
+            provider,
+            messages,
+            tools,
+            temperature,
+        )
+        .await
+    }
+
+    async fn chat_completions_stream_with_opts(
+        &self,
+        provider: &AiProvider,
+        messages: &[Value],
+        temperature: Option<f32>,
+    ) -> Result<mpsc::UnboundedReceiver<std::result::Result<String, String>>> {
+        crate::api::BiliApi::chat_completions_stream_with_opts(
+            self,
+            provider,
+            messages,
+            temperature,
+        )
+        .await
+    }
+}
 
 pub struct AgentRuntime {
     tools: Vec<Arc<dyn Tool>>,
@@ -39,9 +116,9 @@ impl AgentRuntime {
     }
 
     /// 直接传入 provider 引用（新接口，用于 bot 路由）
-    pub async fn run_with_provider(
+    pub async fn run_with_provider<H: AiHttpClient + ?Sized>(
         &self,
-        http: &BiliApi,
+        http: &H,
         provider: &AiProvider,
         system_prompt: &str,
         history: &[(String, String)],
@@ -51,9 +128,9 @@ impl AgentRuntime {
             .await
     }
 
-    pub async fn run_with_provider_opts(
+    pub async fn run_with_provider_opts<H: AiHttpClient + ?Sized>(
         &self,
-        http: &BiliApi,
+        http: &H,
         provider: &AiProvider,
         system_prompt: &str,
         history: &[(String, String)],

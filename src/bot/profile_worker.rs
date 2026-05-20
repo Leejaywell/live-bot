@@ -12,8 +12,8 @@ use anyhow::{Context, Result, anyhow};
 use serde::Deserialize;
 use tokio::sync::mpsc;
 
-use crate::api::BiliApi;
 use crate::config::{AiProvider, AppConfig};
+use crate::live_platform::bilibili::api::BiliApi;
 use crate::storage::{Storage, UserProfile};
 
 /// 全局唯一的 worker handle。main 启动时 install，record_and_handle_event 调 try_enqueue。

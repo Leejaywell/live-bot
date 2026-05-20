@@ -58,7 +58,11 @@ impl BilibiliPlatform {
     }
 
     fn room_info_to_live(info: RoomInfo) -> LiveRoomInfo {
-        let room = PlatformRoomRef::bilibili(info.room_id);
+        let room = PlatformRoomRef {
+            platform_id: Self::platform_id(),
+            platform_room_id: info.room_id.to_string(),
+            display_id: (info.short_id > 0).then(|| info.short_id.to_string()),
+        };
         LiveRoomInfo {
             room,
             owner: Some(PlatformUserRef::bilibili(info.uid, info.uname.clone())),
@@ -257,5 +261,49 @@ impl LivePlatform for BilibiliPlatform {
             .send_danmu(room_id, text, &cookie)
             .await
             .map_err(|err| Self::map_err(PlatformOperation::SendMessage, err))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn room_info(room_id: i64, short_id: i64) -> RoomInfo {
+        RoomInfo {
+            room_id,
+            short_id,
+            uid: 42,
+            live_status: 1,
+            live_time: "2026-05-20 12:00:00".to_string(),
+            title: "test room".to_string(),
+            uname: "owner".to_string(),
+            area_name: "area".to_string(),
+            parent_area_name: "parent".to_string(),
+            online: 100,
+            keyframe: "keyframe".to_string(),
+            cover: "cover".to_string(),
+        }
+    }
+
+    #[test]
+    fn room_info_to_live_preserves_canonical_room_and_short_id() {
+        let info = BilibiliPlatform::room_info_to_live(room_info(23174842, 6));
+
+        assert_eq!(info.room.platform_id.as_str(), PlatformId::BILIBILI);
+        assert_eq!(info.room.platform_room_id, "23174842");
+        assert_eq!(info.room.display_id.as_deref(), Some("6"));
+        assert_eq!(info.owner.as_ref().and_then(|owner| owner.numeric_id()), Some(42));
+        assert_eq!(
+            info.owner.as_ref().map(|owner| owner.display_name.as_str()),
+            Some("owner")
+        );
+    }
+
+    #[test]
+    fn room_info_to_live_omits_zero_short_id() {
+        let info = BilibiliPlatform::room_info_to_live(room_info(23174842, 0));
+
+        assert_eq!(info.room.platform_room_id, "23174842");
+        assert_eq!(info.room.display_id, None);
     }
 }
