@@ -238,13 +238,19 @@ fn default_platform_id() -> PlatformId {
 #[derive(Clone, Copy, Debug, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "snake_case")]
 enum LogoutMode {
-    ClearRoom,
-    PreserveRoom,
+    #[serde(alias = "clear_room")]
+    Manual,
+    #[serde(alias = "preserve_room")]
+    Expired,
 }
 
 impl LogoutMode {
     fn should_clear_room(self) -> bool {
-        matches!(self, Self::ClearRoom)
+        matches!(self, Self::Manual)
+    }
+
+    fn should_clear_all_platform_sessions(self) -> bool {
+        matches!(self, Self::Manual)
     }
 }
 
@@ -497,7 +503,7 @@ async fn logout(
     state: tauri::State<'_, SharedState>,
     mode: Option<LogoutMode>,
 ) -> Result<(), String> {
-    let mode = mode.unwrap_or(LogoutMode::ClearRoom);
+    let mode = mode.unwrap_or(LogoutMode::Manual);
     let default_platform_id = default_platform_id();
     {
         let mut monitor = state.monitor.lock().map_err(|e| e.to_string())?;
@@ -522,7 +528,11 @@ async fn logout(
         }
         token::delete_connected_platform_room_for_platform(default_platform_id.as_str());
     }
-    token::delete_platform_session(default_platform_id.as_str()).map_err(|e| e.to_string())
+    if mode.should_clear_all_platform_sessions() {
+        token::delete_all_platform_sessions().map_err(|e| e.to_string())
+    } else {
+        token::delete_platform_session(default_platform_id.as_str()).map_err(|e| e.to_string())
+    }
 }
 
 #[cfg(feature = "tauri")]

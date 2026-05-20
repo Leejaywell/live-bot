@@ -290,8 +290,8 @@ async fn song_rank_handler() -> impl IntoResponse {
 }
 
 fn observed_music_queue() -> Vec<QueueItem> {
-    let room_id = match current_or_config_bilibili_room_id("音乐互动读取配置失败") {
-        Some(room_id) => room_id,
+    let scope = match current_or_config_bilibili_room_scope("音乐互动读取配置失败") {
+        Some(scope) => scope,
         None => return Vec::new(),
     };
     let storage = match danmaku_chat_storage() {
@@ -303,19 +303,7 @@ fn observed_music_queue() -> Vec<QueueItem> {
     };
 
     let result = storage.with_connection(|conn| {
-        let session = conn
-            .query_row(
-                "select id, room_id
-                 from live_sessions
-                 where start_source = 'observed'
-                   and ended_at is null
-                   and room_id = ?1
-                 order by started_at desc
-                 limit 1",
-                params![room_id],
-                |row| Ok((row.get::<_, String>(0)?, row.get::<_, i64>(1)?)),
-            )
-            .optional()?;
+        let session = load_active_observed_session(conn, &scope)?;
         let Some((session_id, room_id)) = session else {
             return Ok(Vec::new());
         };
@@ -332,8 +320,9 @@ fn observed_music_queue() -> Vec<QueueItem> {
 }
 
 fn observed_song_rank() -> Vec<SongRankItem> {
-    let room_id = match current_or_config_bilibili_room_id("音乐互动排行读取配置失败") {
-        Some(room_id) => room_id,
+    let scope = match current_or_config_bilibili_room_scope("音乐互动排行读取配置失败")
+    {
+        Some(scope) => scope,
         None => return Vec::new(),
     };
     let storage = match danmaku_chat_storage() {
@@ -345,19 +334,8 @@ fn observed_song_rank() -> Vec<SongRankItem> {
     };
 
     let result = storage.with_connection(|conn| {
-        let session_id = conn
-            .query_row(
-                "select id
-                 from live_sessions
-                 where start_source = 'observed'
-                   and ended_at is null
-                   and room_id = ?1
-                 order by started_at desc
-                 limit 1",
-                params![room_id],
-                |row| row.get::<_, String>(0),
-            )
-            .optional()?;
+        let session_id =
+            load_active_observed_session(conn, &scope)?.map(|(session_id, _)| session_id);
         let Some(session_id) = session_id else {
             return Ok(Vec::new());
         };
@@ -392,7 +370,7 @@ fn observed_song_rank() -> Vec<SongRankItem> {
              order by value desc, request_count desc, uid asc
              limit 20",
         )?;
-        let rows = stmt.query_map(params![session_id, room_id], |row| {
+        let rows = stmt.query_map(params![session_id, scope.room_id], |row| {
             Ok(SongRankItem {
                 uname: row.get::<_, Option<String>>(1)?.unwrap_or_default(),
                 value: row.get(2)?,
@@ -420,8 +398,9 @@ fn observed_song_rank() -> Vec<SongRankItem> {
 }
 
 fn observed_recent_events(limit: usize) -> Vec<Value> {
-    let room_id = match current_or_config_bilibili_room_id("弹幕聊天读取房间配置失败") {
-        Some(room_id) => room_id,
+    let scope = match current_or_config_bilibili_room_scope("弹幕聊天读取房间配置失败")
+    {
+        Some(scope) => scope,
         None => return Vec::new(),
     };
     let storage = match danmaku_chat_storage() {
@@ -434,19 +413,8 @@ fn observed_recent_events(limit: usize) -> Vec<Value> {
     let limit = limit.clamp(1, 80) as i64;
 
     let result = storage.with_connection(|conn| {
-        let active_session_id = conn
-            .query_row(
-                "select id
-                 from live_sessions
-                 where start_source = 'observed'
-                   and ended_at is null
-                   and room_id = ?1
-                 order by started_at desc
-                 limit 1",
-                params![room_id],
-                |row| row.get::<_, String>(0),
-            )
-            .optional()?;
+        let active_session_id =
+            load_active_observed_session(conn, &scope)?.map(|(session_id, _)| session_id);
         let Some(active_session_id) = active_session_id else {
             return Ok(Vec::new());
         };
@@ -460,7 +428,7 @@ fn observed_recent_events(limit: usize) -> Vec<Value> {
              order by occurred_at desc
              limit ?3",
         )?;
-        let rows = stmt.query_map(params![active_session_id, room_id, limit], |row| {
+        let rows = stmt.query_map(params![active_session_id, scope.room_id, limit], |row| {
             let event_type: String = row.get(0)?;
             let event_subtype: Option<String> = row.get(1)?;
             let uid: Option<i64> = row.get(2)?;
@@ -622,7 +590,8 @@ fn observed_gift_catalog() -> BTreeMap<String, String> {
 }
 
 fn observed_recent_gifts_data(limit: usize) -> Vec<Value> {
-    let scope = match current_or_config_bilibili_room_scope("最近礼物读取房间配置失败") {
+    let scope = match current_or_config_bilibili_room_scope("最近礼物读取房间配置失败")
+    {
         Some(scope) => scope,
         None => return Vec::new(),
     };
@@ -647,7 +616,8 @@ fn observed_recent_gifts_data(limit: usize) -> Vec<Value> {
 }
 
 fn observed_gift_rank_data(limit: usize) -> Vec<Value> {
-    let scope = match current_or_config_bilibili_room_scope("礼物排行读取房间配置失败") {
+    let scope = match current_or_config_bilibili_room_scope("礼物排行读取房间配置失败")
+    {
         Some(scope) => scope,
         None => return Vec::new(),
     };
@@ -729,6 +699,26 @@ fn current_or_config_bilibili_room_scope(error_context: &str) -> Option<Bilibili
     })
 }
 
+fn load_active_observed_session(
+    conn: &rusqlite::Connection,
+    scope: &BilibiliRoomScope,
+) -> rusqlite::Result<Option<(String, i64)>> {
+    conn.query_row(
+        "select id, room_id
+         from live_sessions
+         where start_source = 'observed'
+           and ended_at is null
+           and coalesce(nullif(platform_id, ''), 'bilibili') = 'bilibili'
+           and room_id = ?1
+           and coalesce(nullif(platform_room_id, ''), cast(room_id as text)) = ?2
+         order by started_at desc
+         limit 1",
+        params![scope.room_id, scope.platform_room_id],
+        |row| Ok((row.get::<_, String>(0)?, row.get::<_, i64>(1)?)),
+    )
+    .optional()
+}
+
 fn load_recent_gifts_data(
     conn: &rusqlite::Connection,
     scope: &BilibiliRoomScope,
@@ -744,28 +734,31 @@ fn load_recent_gifts_data(
          order by occurred_at desc
          limit ?3",
     )?;
-    let rows = stmt.query_map(params![scope.room_id, scope.platform_room_id, limit], |row| {
-        let user: Option<String> = row.get(0)?;
-        let gift: Option<String> = row.get(1)?;
-        let count: Option<i64> = row.get(2)?;
-        let raw_json: String = row.get(3)?;
-        let occurred_at: String = row.get(4)?;
-        let raw = serde_json::from_str::<Value>(&raw_json).unwrap_or(Value::Null);
-        let avatar = raw
-            .pointer("/data/face")
-            .or_else(|| raw.pointer("/data/uface"))
-            .or_else(|| raw.pointer("/data/user_info/face"))
-            .and_then(Value::as_str)
-            .unwrap_or_default()
-            .to_string();
-        Ok(serde_json::json!({
-            "User": user.unwrap_or_else(|| "观众".to_string()),
-            "Gift": gift.unwrap_or_else(|| "礼物".to_string()),
-            "Count": count.unwrap_or(1).max(1),
-            "Avatar": avatar,
-            "OccurredAt": occurred_at,
-        }))
-    })?;
+    let rows = stmt.query_map(
+        params![scope.room_id, scope.platform_room_id, limit],
+        |row| {
+            let user: Option<String> = row.get(0)?;
+            let gift: Option<String> = row.get(1)?;
+            let count: Option<i64> = row.get(2)?;
+            let raw_json: String = row.get(3)?;
+            let occurred_at: String = row.get(4)?;
+            let raw = serde_json::from_str::<Value>(&raw_json).unwrap_or(Value::Null);
+            let avatar = raw
+                .pointer("/data/face")
+                .or_else(|| raw.pointer("/data/uface"))
+                .or_else(|| raw.pointer("/data/user_info/face"))
+                .and_then(Value::as_str)
+                .unwrap_or_default()
+                .to_string();
+            Ok(serde_json::json!({
+                "User": user.unwrap_or_else(|| "观众".to_string()),
+                "Gift": gift.unwrap_or_else(|| "礼物".to_string()),
+                "Count": count.unwrap_or(1).max(1),
+                "Avatar": avatar,
+                "OccurredAt": occurred_at,
+            }))
+        },
+    )?;
 
     let mut items = Vec::new();
     for row in rows {
@@ -794,29 +787,32 @@ fn load_gift_rank_data(
          order by total_value desc, total_count desc, max(occurred_at) desc
          limit ?3",
     )?;
-    let rows = stmt.query_map(params![scope.room_id, scope.platform_room_id, limit], |row| {
-        let user: Option<String> = row.get(0)?;
-        let value: Option<i64> = row.get(1)?;
-        let count: Option<i64> = row.get(2)?;
-        let raw_json: Option<String> = row.get(3)?;
-        let raw = raw_json
-            .as_deref()
-            .and_then(|text| serde_json::from_str::<Value>(text).ok())
-            .unwrap_or(Value::Null);
-        let avatar = raw
-            .pointer("/data/face")
-            .or_else(|| raw.pointer("/data/uface"))
-            .or_else(|| raw.pointer("/data/user_info/face"))
-            .and_then(Value::as_str)
-            .unwrap_or_default()
-            .to_string();
-        Ok(serde_json::json!({
-            "User": user.unwrap_or_else(|| "观众".to_string()),
-            "Value": value.unwrap_or(0).max(0),
-            "Count": count.unwrap_or(0).max(0),
-            "Avatar": avatar,
-        }))
-    })?;
+    let rows = stmt.query_map(
+        params![scope.room_id, scope.platform_room_id, limit],
+        |row| {
+            let user: Option<String> = row.get(0)?;
+            let value: Option<i64> = row.get(1)?;
+            let count: Option<i64> = row.get(2)?;
+            let raw_json: Option<String> = row.get(3)?;
+            let raw = raw_json
+                .as_deref()
+                .and_then(|text| serde_json::from_str::<Value>(text).ok())
+                .unwrap_or(Value::Null);
+            let avatar = raw
+                .pointer("/data/face")
+                .or_else(|| raw.pointer("/data/uface"))
+                .or_else(|| raw.pointer("/data/user_info/face"))
+                .and_then(Value::as_str)
+                .unwrap_or_default()
+                .to_string();
+            Ok(serde_json::json!({
+                "User": user.unwrap_or_else(|| "观众".to_string()),
+                "Value": value.unwrap_or(0).max(0),
+                "Count": count.unwrap_or(0).max(0),
+                "Avatar": avatar,
+            }))
+        },
+    )?;
 
     let mut items = Vec::new();
     for row in rows {
@@ -961,11 +957,56 @@ async fn proxy_handler(Query(q): Query<ProxyQuery>) -> Response<Body> {
 
 #[cfg(test)]
 mod tests {
-    use super::{BilibiliRoomScope, load_gift_rank_data, load_recent_gifts_data};
+    use super::{
+        BilibiliRoomScope, load_active_observed_session, load_gift_rank_data,
+        load_recent_gifts_data,
+    };
     use crate::storage::Storage;
     use chrono::{Duration, Local};
     use rusqlite::params;
     use serde_json::json;
+
+    #[test]
+    fn active_observed_session_is_scoped_by_platform_room() {
+        let storage = Storage::open_in_memory().unwrap();
+        let scope = BilibiliRoomScope {
+            room_id: 123,
+            platform_room_id: "123".to_string(),
+        };
+
+        storage
+            .with_connection(|conn| {
+                conn.execute(
+                    "insert into live_sessions (
+                        id, platform_id, platform_room_id, room_id, started_at, ended_at,
+                        start_source, created_at, updated_at
+                    ) values ('wrong-platform', 'douyin', '123', 123, '2026-05-01T20:00:00+08:00', null, 'observed', '2026-05-01T20:00:00+08:00', '2026-05-01T20:00:00+08:00')",
+                    [],
+                )?;
+                conn.execute(
+                    "insert into live_sessions (
+                        id, platform_id, platform_room_id, room_id, started_at, ended_at,
+                        start_source, created_at, updated_at
+                    ) values ('wrong-room', 'bilibili', '456', 123, '2026-05-01T20:01:00+08:00', null, 'observed', '2026-05-01T20:01:00+08:00', '2026-05-01T20:01:00+08:00')",
+                    [],
+                )?;
+                conn.execute(
+                    "insert into live_sessions (
+                        id, platform_id, platform_room_id, room_id, started_at, ended_at,
+                        start_source, created_at, updated_at
+                    ) values ('expected', 'bilibili', '123', 123, '2026-05-01T20:02:00+08:00', null, 'observed', '2026-05-01T20:02:00+08:00', '2026-05-01T20:02:00+08:00')",
+                    [],
+                )?;
+                Ok(())
+            })
+            .unwrap();
+
+        let session = storage
+            .with_connection(|conn| load_active_observed_session(conn, &scope).map_err(Into::into))
+            .unwrap();
+
+        assert_eq!(session, Some(("expected".to_string(), 123)));
+    }
 
     #[test]
     fn recent_gifts_data_only_reads_bilibili_room_scope() {

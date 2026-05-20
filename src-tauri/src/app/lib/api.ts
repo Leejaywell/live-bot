@@ -1,5 +1,5 @@
-import { invoke } from '@tauri-apps/api/core';
-import { listen } from '@tauri-apps/api/event';
+import { invoke } from "@tauri-apps/api/core";
+import { listen } from "@tauri-apps/api/event";
 
 export interface AiProvider {
   Id: string;
@@ -246,7 +246,7 @@ export interface MusicTierSettings {
 }
 
 export interface MusicTrack {
-  source: 'netease' | 'tencent' | 'kugou' | 'baidu' | 'kuwo';
+  source: "netease" | "tencent" | "kugou" | "baidu" | "kuwo";
   song_id: string;
   name: string;
   artists: string[];
@@ -284,7 +284,7 @@ export interface WishGoalSettings {
   BackgroundColor: string;
   AccentColor: string;
   TextColor: string;
-  DisplaySize: 'small' | 'normal' | 'large' | string;
+  DisplaySize: "small" | "normal" | "large" | string;
   ShowIcons: boolean;
   FontFamily: string;
   StylePreset: string;
@@ -302,7 +302,7 @@ export interface WishGoalItem {
   Current: number;
   Target: number;
   Icon: string;
-  MatchKind: 'gift' | 'manual' | string;
+  MatchKind: "gift" | "manual" | string;
   GiftName: string;
   Increment: number;
 }
@@ -399,7 +399,7 @@ export interface LoginUrl {
   qrcode_key: string;
 }
 
-export type PlatformId = 'bilibili' | string;
+export type PlatformId = "bilibili" | string;
 
 export interface PlatformRoomRef {
   platform_id: PlatformId;
@@ -436,20 +436,23 @@ export interface StartLoginChallenge extends LoginUrl {
 }
 
 export interface LoginPollPending {
-  status: 'Scanning';
+  status: "Scanning";
   message: string;
 }
 
 export interface LoginPollExpired {
-  status: 'Expired';
+  status: "Expired";
   message: string;
 }
 
 export type LoginPollSuccess =
-  | ({ status: 'Success' } & UserInfo)
-  | { status: 'Success' };
+  | ({ status: "Success" } & UserInfo)
+  | { status: "Success" };
 
-export type LoginPollResult = LoginPollPending | LoginPollExpired | LoginPollSuccess;
+export type LoginPollResult =
+  | LoginPollPending
+  | LoginPollExpired
+  | LoginPollSuccess;
 
 export interface RoomInfo {
   room_id: number;
@@ -528,144 +531,247 @@ export interface VoiceLatency {
   total_ms: number;
 }
 
+export type LogoutMode = "manual" | "expired";
+
 export const api = {
   // Config
-  loadConfig: () => invoke<AppConfig>('load_config'),
-  saveConfig: (config: AppConfig) => invoke<void>('save_config', { config }),
+  loadConfig: () => invoke<AppConfig>("load_config"),
+  saveConfig: (config: AppConfig) => invoke<void>("save_config", { config }),
 
   // User/Login
-  getUserInfo: () => invoke<UserInfo>('get_user_info'),
-  startLogin: () => invoke<StartLoginChallenge>('start_login'),
-  pollLogin: (key: string) => invoke<LoginPollResult>('poll_login', { key }),
-  listLivePlatforms: () => invoke<PlatformId[]>('list_live_platforms'),
+  getUserInfo: () => invoke<UserInfo>("get_user_info"),
+  startLogin: () => invoke<StartLoginChallenge>("start_login"),
+  pollLogin: (key: string) => invoke<LoginPollResult>("poll_login", { key }),
+  listLivePlatforms: () => invoke<PlatformId[]>("list_live_platforms"),
   createPlatformLoginChallenge: (platformId: PlatformId) =>
-    invoke<LoginChallenge>('create_platform_login_challenge', { platformId }),
+    invoke<LoginChallenge>("create_platform_login_challenge", { platformId }),
   pollPlatformLogin: (platformId: PlatformId, challengeId: string) =>
-    invoke<LoginPollResult>('poll_platform_login', { platformId, challengeId }),
+    invoke<LoginPollResult>("poll_platform_login", { platformId, challengeId }),
   resolvePlatformRoom: (platformId: PlatformId, roomInput: string) =>
-    invoke<LiveRoomInfo>('resolve_platform_room', { platformId, roomInput }),
-  logout: () => invoke<void>('logout'),
-  onLoginStatus: (callback: (status: string) => void) => listen<string>('login-status', (event) => callback(event.payload)),
+    invoke<LiveRoomInfo>("resolve_platform_room", { platformId, roomInput }),
+  logout: (mode: LogoutMode = "manual") => invoke<void>("logout", { mode }),
+  onLoginStatus: (callback: (status: string) => void) =>
+    listen<string>("login-status", (event) => callback(event.payload)),
 
   // Room
-  checkRoom: (roomId: number) => invoke<RoomInfo>('check_room', { roomId }),
-  getRoomByUid: (uid: number) => invoke<RoomInfo>('get_room_by_uid', { uid }),
+  checkRoom: (roomId: number) => invoke<RoomInfo>("check_room", { roomId }),
+  getRoomByUid: (uid: number) => invoke<RoomInfo>("get_room_by_uid", { uid }),
 
   // Monitor
-  startMonitor: (roomId?: number) => invoke<void>('start_monitor', { roomId: roomId ?? null }),
-  stopMonitor: () => invoke<void>('stop_monitor'),
-  reloadMonitorTts: () => invoke<void>('reload_monitor_tts'),
-  reloadMonitorVoice: () => invoke<void>('reload_monitor_voice'),
-  getMonitorStatus: () => invoke<boolean>('get_monitor_status'),
-  getMonitorLogs: () => invoke<string[]>('get_monitor_logs'),
-  onMonitorStatus: (callback: (status: string) => void) => listen<string>('monitor-status', (event) => callback(event.payload)),
-  onMonitorLog: (callback: (log: string) => void) => listen<string>('monitor-log', (event) => callback(event.payload)),
-  onMonitorLogs: (callback: (logs: string[]) => void) => listen<string[]>('monitor-logs', (event) => callback(event.payload)),
+  startMonitor: (roomId?: number) =>
+    invoke<void>("start_monitor", { roomId: roomId ?? null }),
+  stopMonitor: () => invoke<void>("stop_monitor"),
+  reloadMonitorTts: () => invoke<void>("reload_monitor_tts"),
+  reloadMonitorVoice: () => invoke<void>("reload_monitor_voice"),
+  getMonitorStatus: () => invoke<boolean>("get_monitor_status"),
+  getMonitorLogs: () => invoke<string[]>("get_monitor_logs"),
+  onMonitorStatus: (callback: (status: string) => void) =>
+    listen<string>("monitor-status", (event) => callback(event.payload)),
+  onMonitorLog: (callback: (log: string) => void) =>
+    listen<string>("monitor-log", (event) => callback(event.payload)),
+  onMonitorLogs: (callback: (logs: string[]) => void) =>
+    listen<string[]>("monitor-logs", (event) => callback(event.payload)),
   onVoiceLatency: (callback: (data: VoiceLatency) => void) =>
-    listen<VoiceLatency>('voice-latency', (event) => callback(event.payload)),
-  getDanmakuChatUrl: () => invoke<string>('get_danmaku_chat_url'),
-  getWishGoalUrl: () => invoke<string>('get_wish_goal_url'),
-  getLotteryUrl: () => invoke<string>('get_lottery_url'),
-  getGiftEffectUrl: () => invoke<string>('get_gift_effect_url'),
-  getRecentGiftsUrl: () => invoke<string>('get_recent_gifts_url'),
-  getGiftRankUrl: () => invoke<string>('get_gift_rank_url'),
-  getMusicInteractionUrl: () => invoke<string>('get_music_interaction_url'),
+    listen<VoiceLatency>("voice-latency", (event) => callback(event.payload)),
+  getDanmakuChatUrl: () => invoke<string>("get_danmaku_chat_url"),
+  getWishGoalUrl: () => invoke<string>("get_wish_goal_url"),
+  getLotteryUrl: () => invoke<string>("get_lottery_url"),
+  getGiftEffectUrl: () => invoke<string>("get_gift_effect_url"),
+  getRecentGiftsUrl: () => invoke<string>("get_recent_gifts_url"),
+  getGiftRankUrl: () => invoke<string>("get_gift_rank_url"),
+  getMusicInteractionUrl: () => invoke<string>("get_music_interaction_url"),
   searchMusicCandidates: (query: string, uid?: number, uname?: string) =>
-    invoke<SearchCandidate[]>('search_music_candidates', { query, uid: uid ?? null, uname: uname ?? null }),
-  getMusicQueue: () => invoke<MusicQueueItem[]>('get_music_queue'),
-  openMusicRequest: (requestId: number) => invoke<void>('open_music_request', { requestId }),
-  finishMusicRequest: (requestId: number) => invoke<void>('finish_music_request', { requestId }),
-  skipMusicRequest: (requestId: number) => invoke<void>('skip_music_request', { requestId }),
-  failMusicRequest: (requestId: number) => invoke<void>('fail_music_request', { requestId }),
+    invoke<SearchCandidate[]>("search_music_candidates", {
+      query,
+      uid: uid ?? null,
+      uname: uname ?? null,
+    }),
+  getMusicQueue: () => invoke<MusicQueueItem[]>("get_music_queue"),
+  openMusicRequest: (requestId: number) =>
+    invoke<void>("open_music_request", { requestId }),
+  finishMusicRequest: (requestId: number) =>
+    invoke<void>("finish_music_request", { requestId }),
+  skipMusicRequest: (requestId: number) =>
+    invoke<void>("skip_music_request", { requestId }),
+  failMusicRequest: (requestId: number) =>
+    invoke<void>("fail_music_request", { requestId }),
   confirmMusicCandidate: (uid: number, uname: string, index: number) =>
-    invoke<string>('confirm_music_candidate', { uid, uname, index }),
-  pickPluginResource: (kind: 'sound') => invoke<string | null>('pick_plugin_resource', { kind }),
-  getGiftCatalog: () => invoke<GiftCatalogItem[]>('get_gift_catalog'),
-  refreshGiftCatalog: () => invoke<GiftCatalogItem[]>('refresh_gift_catalog'),
-  onLiveEvent: (callback: (event: any) => void) => listen<any>('live-event', (event) => callback(event.payload)),
-  onLiveEvents: (callback: (events: any[]) => void) => listen<any[]>('live-events', (event) => callback(event.payload)),
-  onRoomStatus: (callback: (data: { live_status: number; online: number; live_time: string }) => void) =>
-    listen<any>('room-status', (event) => callback(event.payload)),
+    invoke<string>("confirm_music_candidate", { uid, uname, index }),
+  pickPluginResource: (kind: "sound") =>
+    invoke<string | null>("pick_plugin_resource", { kind }),
+  getGiftCatalog: () => invoke<GiftCatalogItem[]>("get_gift_catalog"),
+  refreshGiftCatalog: () => invoke<GiftCatalogItem[]>("refresh_gift_catalog"),
+  onLiveEvent: (callback: (event: any) => void) =>
+    listen<any>("live-event", (event) => callback(event.payload)),
+  onLiveEvents: (callback: (events: any[]) => void) =>
+    listen<any[]>("live-events", (event) => callback(event.payload)),
+  onRoomStatus: (
+    callback: (data: {
+      live_status: number;
+      online: number;
+      live_time: string;
+    }) => void,
+  ) => listen<any>("room-status", (event) => callback(event.payload)),
   onRoomOnline: (callback: (data: { count: number }) => void) =>
-    listen<any>('room-online', (event) => callback(event.payload)),
+    listen<any>("room-online", (event) => callback(event.payload)),
 
   // Anchor
-  getAnchorInfo: (uid: number) => invoke<AnchorInfo>('get_anchor_info', { uid }),
+  getAnchorInfo: (uid: number) =>
+    invoke<AnchorInfo>("get_anchor_info", { uid }),
 
   // Stats
-  getStats: (days: number) => invoke<any>('get_stats', { days }),
-  getGiftStats: (days: number, n: number) => invoke<any[]>('get_gift_stats', { days, n }),
-  getUserGiftStats: (days: number, n: number) => invoke<UserGiftStat[]>('get_user_gift_stats', { days, n }),
+  getStats: (days: number) => invoke<any>("get_stats", { days }),
+  getGiftStats: (days: number, n: number) =>
+    invoke<any[]>("get_gift_stats", { days, n }),
+  getUserGiftStats: (days: number, n: number) =>
+    invoke<UserGiftStat[]>("get_user_gift_stats", { days, n }),
 
   // PK
-  getPkSummary: () => invoke<any>('get_pk_summary'),
-  getPkHistory: () => invoke<any[]>('get_pk_history'),
+  getPkSummary: () => invoke<any>("get_pk_summary"),
+  getPkHistory: () => invoke<any[]>("get_pk_history"),
 
   // Misc
-  getSystemInfo: () => invoke<SystemInfo>('get_system_info'),
-  checkUpdate: () => invoke<{ version: string; link: string; change_log: string } | null>('check_update_cmd'),
-  openConfigDir: () => invoke<void>('open_config_dir'),
-  sendDanmu: (message: string) => invoke<void>('send_danmu', { message }),
-  queryUserDetail: (uid: string) => invoke<UserDetailResult>('query_user_detail', { uid }),
-  openUrl: (url: string) => invoke<void>('open_url', { url }),
-  proxyImage: (url: string) => invoke<string>('proxy_image', { url }),
+  getSystemInfo: () => invoke<SystemInfo>("get_system_info"),
+  checkUpdate: () =>
+    invoke<{ version: string; link: string; change_log: string } | null>(
+      "check_update_cmd",
+    ),
+  openConfigDir: () => invoke<void>("open_config_dir"),
+  sendDanmu: (message: string) => invoke<void>("send_danmu", { message }),
+  queryUserDetail: (uid: string) =>
+    invoke<UserDetailResult>("query_user_detail", { uid }),
+  openUrl: (url: string) => invoke<void>("open_url", { url }),
+  proxyImage: (url: string) => invoke<string>("proxy_image", { url }),
 
   // Danmaku chat config (stored in plugin-settings.toml)
-  loadDanmakuChatConfig: () => invoke<DanmakuChatConfig>('load_danmaku_chat_config'),
-  saveDanmakuChatConfig: (config: DanmakuChatConfig) => invoke<void>('save_danmaku_chat_config', { config }),
-  loadPluginSettings: () => invoke<PluginSettings>('load_plugin_settings'),
-  savePluginSettings: (config: PluginSettings) => invoke<void>('save_plugin_settings', { config }),
-  resetWishGoal: () => invoke<PluginSettings>('reset_wish_goal'),
-  simulateWishGoal: () => invoke<PluginSettings>('simulate_wish_goal'),
-  simulateLottery: () => invoke<PluginSettings>('simulate_lottery'),
-  simulateGiftEffect: () => invoke<PluginSettings>('simulate_gift_effect'),
-  simulateRecentGift: () => invoke<PluginSettings>('simulate_recent_gift'),
-  simulateGiftRank: () => invoke<PluginSettings>('simulate_gift_rank'),
+  loadDanmakuChatConfig: () =>
+    invoke<DanmakuChatConfig>("load_danmaku_chat_config"),
+  saveDanmakuChatConfig: (config: DanmakuChatConfig) =>
+    invoke<void>("save_danmaku_chat_config", { config }),
+  loadPluginSettings: () => invoke<PluginSettings>("load_plugin_settings"),
+  savePluginSettings: (config: PluginSettings) =>
+    invoke<void>("save_plugin_settings", { config }),
+  resetWishGoal: () => invoke<PluginSettings>("reset_wish_goal"),
+  simulateWishGoal: () => invoke<PluginSettings>("simulate_wish_goal"),
+  simulateLottery: () => invoke<PluginSettings>("simulate_lottery"),
+  simulateGiftEffect: () => invoke<PluginSettings>("simulate_gift_effect"),
+  simulateRecentGift: () => invoke<PluginSettings>("simulate_recent_gift"),
+  simulateGiftRank: () => invoke<PluginSettings>("simulate_gift_rank"),
 
   // Persistent room connection
-  setConnectedRoom: (room: PlatformRoomRef | null) => invoke<void>('set_connected_room', { room }),
-  getConnectedRoom: () => invoke<PlatformRoomRef | null>('get_connected_room'),
+  setConnectedRoom: (room: PlatformRoomRef | null) =>
+    invoke<void>("set_connected_room", { room }),
+  getConnectedRoom: () => invoke<PlatformRoomRef | null>("get_connected_room"),
 
   // Auto update
-  installUpdate: () => invoke<void>('install_update'),
-  onUpdateProgress: (callback: (data: { downloaded: number; total: number | null }) => void) =>
-    listen<{ downloaded: number; total: number | null }>('update-download-progress', (e) => callback(e.payload)),
+  installUpdate: () => invoke<void>("install_update"),
+  onUpdateProgress: (
+    callback: (data: { downloaded: number; total: number | null }) => void,
+  ) =>
+    listen<{ downloaded: number; total: number | null }>(
+      "update-download-progress",
+      (e) => callback(e.payload),
+    ),
 
   // AI message (used by AI page and Voice page)
-  sendAiMessage: (prompt: string) => invoke<string>('send_ai_message', { prompt }),
+  sendAiMessage: (prompt: string) =>
+    invoke<string>("send_ai_message", { prompt }),
 
   // Session summary (emitted on every event)
   onSessionSummary: (callback: (data: any) => void) =>
-    listen<any>('session-summary', (e) => callback(e.payload)),
+    listen<any>("session-summary", (e) => callback(e.payload)),
 
   // Voice model status
-  checkModels: () => invoke<{ model_dir: string; models: Record<string, boolean> }>('check_models'),
-  downloadModel: (modelId: string) => invoke<string>('download_model', { modelId }),
-  cancelModelDownload: (modelId: string) => invoke<void>('cancel_model_download', { modelId }),
-  deleteModel: (modelId: string) => invoke<string>('delete_model', { modelId }),
-  onModelDlProgress: (callback: (data: { model_id: string; stage: string; pct: number; downloaded_mb?: string; total_mb?: string }) => void) =>
-    listen<{ model_id: string; stage: string; pct: number; downloaded_mb?: string; total_mb?: string }>('model-dl-progress', (e) => callback(e.payload)),
-  openFolder: (path: string) => invoke<void>('open_folder', { path }),
+  checkModels: () =>
+    invoke<{ model_dir: string; models: Record<string, boolean> }>(
+      "check_models",
+    ),
+  downloadModel: (modelId: string) =>
+    invoke<string>("download_model", { modelId }),
+  cancelModelDownload: (modelId: string) =>
+    invoke<void>("cancel_model_download", { modelId }),
+  deleteModel: (modelId: string) => invoke<string>("delete_model", { modelId }),
+  onModelDlProgress: (
+    callback: (data: {
+      model_id: string;
+      stage: string;
+      pct: number;
+      downloaded_mb?: string;
+      total_mb?: string;
+    }) => void,
+  ) =>
+    listen<{
+      model_id: string;
+      stage: string;
+      pct: number;
+      downloaded_mb?: string;
+      total_mb?: string;
+    }>("model-dl-progress", (e) => callback(e.payload)),
+  openFolder: (path: string) => invoke<void>("open_folder", { path }),
 
   // Danmaku polling (replaces Tauri event broadcast)
-  getRecentDanmaku: () => invoke<string[]>('get_recent_danmaku'),
-  speakText: (text: string, voice: string, providerId?: string, speed?: number) =>
-    invoke<void>('speak_text_cmd', { text, voice, providerId: providerId ?? null, speed: speed ?? null }),
+  getRecentDanmaku: () => invoke<string[]>("get_recent_danmaku"),
+  speakText: (
+    text: string,
+    voice: string,
+    providerId?: string,
+    speed?: number,
+  ) =>
+    invoke<void>("speak_text_cmd", {
+      text,
+      voice,
+      providerId: providerId ?? null,
+      speed: speed ?? null,
+    }),
 
   // Blind box stats
-  getBlindBoxStats: (days: number) => invoke<[string, number][]>('get_blind_box_stats', { days }),
+  getBlindBoxStats: (days: number) =>
+    invoke<[string, number][]>("get_blind_box_stats", { days }),
 
   // Daily breakdown for trend chart
-  getDailyStats: (days: number) => invoke<{ date: string; danmu_count: number; entry_count: number; gift_count: number; follow_count: number }[]>('get_daily_stats', { days }),
+  getDailyStats: (days: number) =>
+    invoke<
+      {
+        date: string;
+        danmu_count: number;
+        entry_count: number;
+        gift_count: number;
+        follow_count: number;
+      }[]
+    >("get_daily_stats", { days }),
 
   // Audience / tracked users
-  getTrackedUsers: (limit: number) => invoke<KnownUser[]>('get_tracked_users', { limit }),
-  checkTrackedUser: (uid: number) => invoke<{ status: string; nickname: string; alias: string; notes: string; tts_provider_id: string; tts_voice_id: string } | null>('check_tracked_user', { uid }),
-  addTrackedUser: (uid: number, nickname: string, alias: string, notes: string) => invoke<void>('add_tracked_user', { uid, nickname, alias, notes }),
-  restoreTrackedUser: (uid: number, alias: string, notes: string) => invoke<void>('restore_tracked_user', { uid, alias, notes }),
-  updateTrackedUser: (uid: number, alias: string, notes: string) => invoke<void>('update_tracked_user', { uid, alias, notes }),
-  updateTrackedUserTtsVoice: (uid: number, ttsProviderId: string, ttsVoiceId: string) =>
-    invoke<void>('update_tracked_user_tts_voice', { uid, ttsProviderId, ttsVoiceId }),
-  softDeleteTrackedUser: (uid: number) => invoke<void>('soft_delete_tracked_user', { uid }),
-
+  getTrackedUsers: (limit: number) =>
+    invoke<KnownUser[]>("get_tracked_users", { limit }),
+  checkTrackedUser: (uid: number) =>
+    invoke<{
+      status: string;
+      nickname: string;
+      alias: string;
+      notes: string;
+      tts_provider_id: string;
+      tts_voice_id: string;
+    } | null>("check_tracked_user", { uid }),
+  addTrackedUser: (
+    uid: number,
+    nickname: string,
+    alias: string,
+    notes: string,
+  ) => invoke<void>("add_tracked_user", { uid, nickname, alias, notes }),
+  restoreTrackedUser: (uid: number, alias: string, notes: string) =>
+    invoke<void>("restore_tracked_user", { uid, alias, notes }),
+  updateTrackedUser: (uid: number, alias: string, notes: string) =>
+    invoke<void>("update_tracked_user", { uid, alias, notes }),
+  updateTrackedUserTtsVoice: (
+    uid: number,
+    ttsProviderId: string,
+    ttsVoiceId: string,
+  ) =>
+    invoke<void>("update_tracked_user_tts_voice", {
+      uid,
+      ttsProviderId,
+      ttsVoiceId,
+    }),
+  softDeleteTrackedUser: (uid: number) =>
+    invoke<void>("soft_delete_tracked_user", { uid }),
 };

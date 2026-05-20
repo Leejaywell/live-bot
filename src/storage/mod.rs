@@ -670,20 +670,23 @@ impl Storage {
                 user_id,
                 user,
                 gift,
-            } => (
-                "guard_buy",
-                None,
-                Some(*user_id),
-                Some(user.as_str()),
-                None,
-                Some(gift.as_str()),
-                None,
-                None,
-                None,
-                None,
-                None,
-                None,
-            ),
+            } => {
+                let (guard_count, guard_price) = guard_purchase_fields(&parsed.raw, gift.as_str());
+                (
+                    "guard_buy",
+                    None,
+                    Some(*user_id),
+                    Some(user.as_str()),
+                    None,
+                    Some(gift.as_str()),
+                    Some(guard_count),
+                    Some(guard_price),
+                    None,
+                    None,
+                    None,
+                    None,
+                )
+            }
             LiveEvent::EntryEffect { user_id, user, .. } => (
                 "entry_effect",
                 None,
@@ -913,7 +916,15 @@ impl Storage {
                 None,
             ),
             PlatformEvent::GuardOrMember(value) => {
-                (None, Some(value.gift.clone()), Some(1), None, None)
+                let (guard_count, guard_price) =
+                    guard_purchase_fields(&envelope.raw, value.gift.as_str());
+                (
+                    None,
+                    Some(value.gift.clone()),
+                    Some(guard_count),
+                    Some(guard_price),
+                    None,
+                )
             }
             PlatformEvent::PaidMessage(value) => (
                 Some(value.text.clone()),
@@ -2152,6 +2163,41 @@ fn extract_pk_winner_room_id(raw: &serde_json::Value) -> Option<i64> {
         .and_then(serde_json::Value::as_i64)
 }
 
+fn guard_purchase_fields(raw: &serde_json::Value, gift_name: &str) -> (i64, i64) {
+    let count = raw
+        .pointer("/data/num")
+        .or_else(|| raw.pointer("/data/gift_num"))
+        .or_else(|| raw.pointer("/data/count"))
+        .and_then(serde_json::Value::as_i64)
+        .filter(|value| *value > 0)
+        .unwrap_or(1);
+
+    let total_price = raw
+        .pointer("/data/price")
+        .or_else(|| raw.pointer("/data/total_price"))
+        .or_else(|| raw.pointer("/data/gift_price"))
+        .or_else(|| raw.pointer("/data/discount_price"))
+        .and_then(serde_json::Value::as_i64)
+        .unwrap_or_else(|| guard_catalog_price(gift_name).saturating_mul(count))
+        .max(0);
+
+    let unit_price = if count > 0 {
+        total_price / count
+    } else {
+        total_price
+    }
+    .max(0);
+    (count, unit_price)
+}
+
+fn guard_catalog_price(gift_name: &str) -> i64 {
+    match gift_name {
+        "总督" => 19_998_000,
+        "提督" => 1_998_000,
+        _ => 198_000,
+    }
+}
+
 fn map_user_profile(row: &rusqlite::Row<'_>) -> rusqlite::Result<UserProfile> {
     Ok(UserProfile {
         uid: row.get(0)?,
@@ -2764,6 +2810,53 @@ mod tests {
             )
             .unwrap();
         assert_eq!(non_bili_count, 0);
+    }
+
+    #[test]
+    fn insert_platform_interaction_record_persists_guard_purchase_fields() {
+        let storage = Storage::open_in_memory().unwrap();
+        let session_id = storage
+            .start_observed_live_session(123, Local.with_ymd_and_hms(2026, 5, 1, 20, 0, 0).unwrap())
+            .unwrap();
+
+        let envelope = crate::live_platform::types::PlatformEventEnvelope {
+            platform_id: crate::live_platform::types::PlatformId::from("bilibili"),
+            room: crate::live_platform::types::PlatformRoomRef::bilibili(123),
+            event_id: None,
+            occurred_at: Local.with_ymd_and_hms(2026, 5, 1, 20, 30, 0).unwrap(),
+            event: crate::live_platform::types::PlatformEvent::GuardOrMember(
+                crate::live_platform::types::GuardOrMemberEvent {
+                    user: crate::live_platform::types::PlatformUserRef::bilibili(42, "alice"),
+                    gift: "舰长".to_string(),
+                },
+            ),
+            raw: json!({
+                "cmd": "GUARD_BUY",
+                "data": {
+                    "uid": 42,
+                    "username": "alice",
+                    "gift_name": "舰长",
+                    "num": 2,
+                    "price": 396000
+                }
+            }),
+        };
+
+        storage
+            .insert_platform_interaction_record(&session_id, &envelope)
+            .unwrap();
+
+        let conn = storage.conn.lock().unwrap();
+        let row: (i64, i64) = conn
+            .query_row(
+                "select gift_count, gift_price
+                 from interaction_records
+                 where session_id = ?1 and event_type = 'guard_buy'",
+                params![session_id],
+                |row| Ok((row.get(0)?, row.get(1)?)),
+            )
+            .unwrap();
+        assert_eq!(row, (2, 198000));
     }
 
     #[test]
@@ -4078,6 +4171,50 @@ mod tests {
 
         assert_eq!(storage.session_guard_buy_count(&session_id).unwrap(), 1);
         assert_eq!(storage.unknown_interaction_count(&session_id).unwrap(), 0);
+    }
+
+    #[test]
+    fn record_interaction_persists_guard_purchase_fields() {
+        let storage = Storage::open_in_memory().unwrap();
+        let session_id = storage
+            .start_observed_live_session(
+                8792912,
+                Local.with_ymd_and_hms(2026, 5, 1, 20, 0, 0).unwrap(),
+            )
+            .unwrap();
+        let event = ParsedLiveEvent {
+            event: LiveEvent::GuardBuy {
+                user_id: 42,
+                user: "alice".to_string(),
+                gift: "提督".to_string(),
+            },
+            raw: json!({
+                "cmd": "GUARD_BUY",
+                "data": {
+                    "uid": 42,
+                    "username": "alice",
+                    "gift_name": "提督",
+                    "num": 2,
+                    "price": 3996000
+                }
+            }),
+        };
+
+        storage
+            .record_interaction(&session_id, 8792912, &event)
+            .unwrap();
+
+        let conn = storage.conn.lock().unwrap();
+        let row: (i64, i64) = conn
+            .query_row(
+                "select gift_count, gift_price
+                 from interaction_records
+                 where session_id = ?1 and event_type = 'guard_buy'",
+                params![session_id],
+                |row| Ok((row.get(0)?, row.get(1)?)),
+            )
+            .unwrap();
+        assert_eq!(row, (2, 1_998_000));
     }
 
     #[test]
