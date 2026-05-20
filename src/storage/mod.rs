@@ -4,6 +4,8 @@ use chrono::{DateTime, Datelike, Local, Timelike};
 use rusqlite::{Connection, OptionalExtension, params};
 use std::sync::Mutex;
 
+use crate::live_platform::types::{PlatformEvent, PlatformEventEnvelope};
+
 #[derive(Debug)]
 pub struct Storage {
     conn: Mutex<Connection>,
@@ -169,6 +171,8 @@ impl Storage {
             );
             create table if not exists live_sessions (
                 id text primary key,
+                platform_id text not null default 'bilibili',
+                platform_room_id text,
                 room_id integer not null,
                 started_at text not null,
                 ended_at text,
@@ -180,6 +184,11 @@ impl Storage {
             create table if not exists interaction_records (
                 id integer primary key autoincrement,
                 session_id text not null,
+                platform_id text not null default 'bilibili',
+                platform_room_id text,
+                platform_user_id text,
+                event_kind text,
+                event_action text,
                 room_id integer not null,
                 event_type text not null,
                 event_subtype text,
@@ -203,6 +212,8 @@ impl Storage {
             create index if not exists idx_interaction_session on interaction_records(session_id);
             create index if not exists idx_interaction_uid on interaction_records(uid);
             create index if not exists idx_interaction_room on interaction_records(room_id);
+            create index if not exists idx_interaction_platform_room on interaction_records(platform_id, platform_room_id);
+            create index if not exists idx_interaction_platform_user on interaction_records(platform_id, platform_user_id);
             create index if not exists idx_interaction_time on interaction_records(occurred_at);
             create table if not exists tracked_users (
                 uid integer primary key,
@@ -261,6 +272,23 @@ impl Storage {
             ",
         )?;
         ensure_column(&conn, "interaction_records", "event_subtype", "text")?;
+        ensure_column(
+            &conn,
+            "live_sessions",
+            "platform_id",
+            "text not null default 'bilibili'",
+        )?;
+        ensure_column(&conn, "live_sessions", "platform_room_id", "text")?;
+        ensure_column(
+            &conn,
+            "interaction_records",
+            "platform_id",
+            "text not null default 'bilibili'",
+        )?;
+        ensure_column(&conn, "interaction_records", "platform_room_id", "text")?;
+        ensure_column(&conn, "interaction_records", "platform_user_id", "text")?;
+        ensure_column(&conn, "interaction_records", "event_kind", "text")?;
+        ensure_column(&conn, "interaction_records", "event_action", "text")?;
         ensure_column(&conn, "interaction_records", "medal_name", "text")?;
         ensure_column(&conn, "interaction_records", "medal_level", "integer")?;
         ensure_column(&conn, "interaction_records", "guard_level", "integer")?;
@@ -280,6 +308,32 @@ impl Storage {
             "tracked_users",
             "tts_voice_id",
             "text not null default ''",
+        )?;
+        conn.execute(
+            "update live_sessions
+                set platform_room_id = cast(room_id as text)
+              where platform_room_id is null",
+            [],
+        )?;
+        conn.execute(
+            "update interaction_records
+                set platform_room_id = cast(room_id as text)
+              where platform_room_id is null",
+            [],
+        )?;
+        conn.execute(
+            "update interaction_records
+                set platform_user_id = cast(uid as text)
+              where platform_user_id is null and uid is not null",
+            [],
+        )?;
+        conn.execute(
+            "create index if not exists idx_interaction_platform_room on interaction_records(platform_id, platform_room_id)",
+            [],
+        )?;
+        conn.execute(
+            "create index if not exists idx_interaction_platform_user on interaction_records(platform_id, platform_user_id)",
+            [],
         )?;
         crate::music::storage::ensure_schema(&conn)?;
         Ok(Self {
@@ -701,6 +755,88 @@ impl Storage {
                 )?;
             }
         }
+
+        Ok(())
+    }
+
+    #[allow(dead_code)]
+    pub fn insert_platform_interaction_record(
+        &self,
+        session_id: &str,
+        envelope: &PlatformEventEnvelope,
+    ) -> Result<()> {
+        let conn = self.conn.lock().expect("storage mutex poisoned");
+        let (event_kind, event_action, event_type, event_subtype) =
+            platform_event_classification(&envelope.event);
+        let (platform_user_id, uname, uid) = platform_event_user(&envelope.event);
+        let room_id = envelope.room.platform_room_id.parse::<i64>().unwrap_or(0);
+        let (text, gift_name, gift_count, gift_price, popularity_value) = match &envelope.event {
+            PlatformEvent::Message(value) => (Some(value.text.clone()), None, None, None, None),
+            PlatformEvent::Gift(value) => (
+                None,
+                Some(value.gift.clone()),
+                Some(value.count),
+                Some(value.price),
+                None,
+            ),
+            PlatformEvent::GuardOrMember(value) => {
+                (None, Some(value.gift.clone()), Some(1), None, None)
+            }
+            PlatformEvent::PaidMessage(value) => {
+                (Some(value.text.clone()), None, None, Some(value.price), None)
+            }
+            PlatformEvent::Popularity(value) => (None, None, None, None, Some(value.value)),
+            _ => (None, None, None, None, None),
+        };
+        let raw_json = envelope.raw.to_string();
+        let occurred_at = envelope.occurred_at.to_rfc3339();
+
+        conn.execute(
+            "
+            insert into interaction_records
+                (
+                    session_id,
+                    platform_id,
+                    platform_room_id,
+                    platform_user_id,
+                    event_kind,
+                    event_action,
+                    room_id,
+                    event_type,
+                    event_subtype,
+                    uid,
+                    uname,
+                    text,
+                    gift_name,
+                    gift_count,
+                    gift_price,
+                    popularity_value,
+                    raw_json,
+                    occurred_at
+                )
+            values (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17, ?18)
+            ",
+            params![
+                session_id,
+                envelope.platform_id.as_str(),
+                envelope.room.platform_room_id.as_str(),
+                platform_user_id,
+                event_kind,
+                event_action,
+                room_id,
+                event_type,
+                event_subtype,
+                uid,
+                uname,
+                text,
+                gift_name,
+                gift_count,
+                gift_price,
+                popularity_value,
+                raw_json,
+                occurred_at,
+            ],
+        )?;
 
         Ok(())
     }
@@ -1611,6 +1747,70 @@ fn interact_kind_name(kind: InteractKind) -> &'static str {
     }
 }
 
+fn platform_event_classification(
+    event: &PlatformEvent,
+) -> (
+    &'static str,
+    Option<&'static str>,
+    &'static str,
+    Option<&'static str>,
+) {
+    match event {
+        PlatformEvent::Message(_) => ("message", Some("chat"), "danmu", None),
+        PlatformEvent::Gift(_) => ("gift", None, "gift", None),
+        PlatformEvent::Follow(_) => ("interact", Some("follow"), "interact", Some("follow")),
+        PlatformEvent::Share(_) => ("interact", Some("share"), "interact", Some("share")),
+        PlatformEvent::Enter(_) => ("interact", Some("entry"), "interact", Some("entry")),
+        PlatformEvent::Like(_) => ("like", None, "unknown", None),
+        PlatformEvent::GuardOrMember(_) => ("guard_buy", None, "guard_buy", None),
+        PlatformEvent::PaidMessage(_) => ("super_chat", None, "super_chat", None),
+        PlatformEvent::Moderation(_) => ("block", None, "block", None),
+        PlatformEvent::Popularity(_) => ("popularity", None, "popularity", None),
+        PlatformEvent::Battle(_) => ("battle", None, "pk", None),
+        PlatformEvent::Lottery(_) => ("lottery", None, "unknown", None),
+        PlatformEvent::System(_) => ("system", None, "unknown", None),
+        PlatformEvent::Unknown(_) => ("unknown", None, "unknown", None),
+    }
+}
+
+fn platform_event_user(event: &PlatformEvent) -> (Option<String>, Option<String>, Option<i64>) {
+    match event {
+        PlatformEvent::Message(value) => (
+            Some(value.user.platform_user_id.clone()),
+            Some(value.user.display_name.clone()),
+            value.user.numeric_id(),
+        ),
+        PlatformEvent::Gift(value) => (
+            Some(value.user.platform_user_id.clone()),
+            Some(value.user.display_name.clone()),
+            value.user.numeric_id(),
+        ),
+        PlatformEvent::Follow(value)
+        | PlatformEvent::Share(value)
+        | PlatformEvent::Enter(value) => (
+            Some(value.user.platform_user_id.clone()),
+            Some(value.user.display_name.clone()),
+            value.user.numeric_id(),
+        ),
+        PlatformEvent::Like(value) => (
+            Some(value.user.platform_user_id.clone()),
+            Some(value.user.display_name.clone()),
+            value.user.numeric_id(),
+        ),
+        PlatformEvent::GuardOrMember(value) => (
+            Some(value.user.platform_user_id.clone()),
+            Some(value.user.display_name.clone()),
+            value.user.numeric_id(),
+        ),
+        PlatformEvent::PaidMessage(value) => (
+            Some(value.user.platform_user_id.clone()),
+            Some(value.user.display_name.clone()),
+            value.user.numeric_id(),
+        ),
+        _ => (None, None, None),
+    }
+}
+
 fn extract_medal_name(raw: &serde_json::Value) -> Option<String> {
     raw.pointer("/info/3/1")
         .and_then(serde_json::Value::as_str)
@@ -1819,6 +2019,66 @@ mod tests {
 
         assert_eq!(first, format!("8792912:{}", started_at.to_rfc3339()));
         assert_eq!(second, first);
+    }
+
+    #[test]
+    fn storage_creates_platform_columns() {
+        let storage = Storage::open_in_memory().unwrap();
+        let conn = storage.conn.lock().unwrap();
+        let mut stmt = conn
+            .prepare("pragma table_info(interaction_records)")
+            .unwrap();
+        let columns = stmt
+            .query_map([], |row| row.get::<_, String>(1))
+            .unwrap()
+            .collect::<std::result::Result<Vec<_>, _>>()
+            .unwrap();
+        assert!(columns.contains(&"platform_id".to_string()));
+        assert!(columns.contains(&"platform_room_id".to_string()));
+        assert!(columns.contains(&"platform_user_id".to_string()));
+    }
+
+    #[test]
+    fn insert_platform_interaction_record_writes_platform_keys() {
+        let storage = Storage::open_in_memory().unwrap();
+        let started_at = Local.with_ymd_and_hms(2026, 5, 1, 20, 0, 0).unwrap();
+        let session_id = storage
+            .start_observed_live_session(123, started_at)
+            .unwrap();
+        let envelope = crate::live_platform::types::PlatformEventEnvelope {
+            platform_id: crate::live_platform::types::PlatformId::from("bilibili"),
+            room: crate::live_platform::types::PlatformRoomRef::bilibili(123),
+            event_id: None,
+            occurred_at: Local::now(),
+            event: crate::live_platform::types::PlatformEvent::Message(
+                crate::live_platform::types::ChatMessageEvent {
+                    user: crate::live_platform::types::PlatformUserRef::bilibili(42, "alice"),
+                    text: "hello".to_string(),
+                },
+            ),
+            raw: serde_json::json!({"cmd": "DANMU_MSG"}),
+        };
+        storage
+            .insert_platform_interaction_record(&session_id, &envelope)
+            .unwrap();
+        let conn = storage.conn.lock().unwrap();
+        let row: (String, String, String, String, String) = conn
+            .query_row(
+                "select platform_id, platform_room_id, platform_user_id, event_kind, event_type from interaction_records limit 1",
+                [],
+                |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?, row.get(3)?, row.get(4)?)),
+            )
+            .unwrap();
+        assert_eq!(
+            row,
+            (
+                "bilibili".to_string(),
+                "123".to_string(),
+                "42".to_string(),
+                "message".to_string(),
+                "danmu".to_string()
+            )
+        );
     }
 
     #[test]
