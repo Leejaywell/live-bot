@@ -36,6 +36,7 @@ src-tauri/gen/
 
 # Agent and tool state
 .agents/
+.antigravitycli/
 .claude/
 .codebuddy/
 .golutra/
