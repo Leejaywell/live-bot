@@ -19,6 +19,7 @@ use chrono::Local;
 use config::AppConfig;
 use live_platform::bilibili::api as bili_api;
 use live_platform::{PlatformId, PlatformRegistry, PlatformRoomRef, PlatformSession, RoomInput};
+use serde::Deserialize;
 #[cfg(feature = "tauri")]
 use std::sync::atomic::{AtomicBool, AtomicU16, Ordering};
 use std::sync::{Arc, Mutex};
@@ -232,6 +233,19 @@ fn platform_room_to_stored(room: &PlatformRoomRef) -> token::StoredPlatformRoom 
 
 fn default_platform_id() -> PlatformId {
     PlatformId::from(PlatformId::BILIBILI)
+}
+
+#[derive(Clone, Copy, Debug, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+enum LogoutMode {
+    ClearRoom,
+    PreserveRoom,
+}
+
+impl LogoutMode {
+    fn should_clear_room(self) -> bool {
+        matches!(self, Self::ClearRoom)
+    }
 }
 
 #[cfg(feature = "tauri")]
@@ -479,7 +493,11 @@ async fn get_room_by_uid(
 
 #[cfg(feature = "tauri")]
 #[tauri::command]
-async fn logout(state: tauri::State<'_, SharedState>) -> Result<(), String> {
+async fn logout(
+    state: tauri::State<'_, SharedState>,
+    mode: Option<LogoutMode>,
+) -> Result<(), String> {
+    let mode = mode.unwrap_or(LogoutMode::ClearRoom);
     let default_platform_id = default_platform_id();
     {
         let mut monitor = state.monitor.lock().map_err(|e| e.to_string())?;
@@ -492,16 +510,18 @@ async fn logout(state: tauri::State<'_, SharedState>) -> Result<(), String> {
                 .cancel();
         }
     }
-    {
-        let mut connected_room = state.connected_room.lock().map_err(|e| e.to_string())?;
-        if connected_room
-            .as_ref()
-            .is_some_and(|room| room.platform_id == default_platform_id)
+    if mode.should_clear_room() {
         {
-            *connected_room = None;
+            let mut connected_room = state.connected_room.lock().map_err(|e| e.to_string())?;
+            if connected_room
+                .as_ref()
+                .is_some_and(|room| room.platform_id == default_platform_id)
+            {
+                *connected_room = None;
+            }
         }
+        token::delete_connected_platform_room_for_platform(default_platform_id.as_str());
     }
-    token::delete_connected_platform_room_for_platform(default_platform_id.as_str());
     token::delete_platform_session(default_platform_id.as_str()).map_err(|e| e.to_string())
 }
 

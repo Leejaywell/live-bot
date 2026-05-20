@@ -6,6 +6,9 @@ use std::sync::Mutex;
 
 use crate::live_platform::types::{PlatformEvent, PlatformEventEnvelope};
 
+const BILIBILI_PLATFORM_FILTER_SQL: &str =
+    "coalesce(nullif(platform_id, ''), 'bilibili') = 'bilibili'";
+
 #[derive(Debug)]
 pub struct Storage {
     conn: Mutex<Connection>,
@@ -1324,52 +1327,72 @@ impl Storage {
         let conn = self.conn.lock().expect("storage mutex poisoned");
 
         let danmu_count = conn.query_row(
-            "select count(*) from interaction_records where occurred_at >= ?1 and event_type = 'danmu'",
+            &format!(
+                "select count(*) from interaction_records where occurred_at >= ?1 and {BILIBILI_PLATFORM_FILTER_SQL} and event_type = 'danmu'"
+            ),
             params![start_date],
             |row| row.get(0),
         )?;
         let gift_value = conn.query_row(
-            "select coalesce(sum(gift_count * gift_price), 0) from interaction_records where occurred_at >= ?1 and event_type = 'gift'",
+            &format!(
+                "select coalesce(sum(gift_count * gift_price), 0) from interaction_records where occurred_at >= ?1 and {BILIBILI_PLATFORM_FILTER_SQL} and event_type = 'gift'"
+            ),
             params![start_date],
             |row| row.get(0),
         )?;
         let interact_count = conn.query_row(
-            "select count(*) from interaction_records where occurred_at >= ?1 and event_type = 'interact'",
+            &format!(
+                "select count(*) from interaction_records where occurred_at >= ?1 and {BILIBILI_PLATFORM_FILTER_SQL} and event_type = 'interact'"
+            ),
             params![start_date],
             |row| row.get(0),
         )?;
         let entry_count = conn.query_row(
-            "select count(*) from interaction_records where occurred_at >= ?1 and event_type = 'interact' and event_subtype = 'entry'",
+            &format!(
+                "select count(*) from interaction_records where occurred_at >= ?1 and {BILIBILI_PLATFORM_FILTER_SQL} and event_type = 'interact' and event_subtype = 'entry'"
+            ),
             params![start_date],
             |row| row.get(0),
         )?;
         let follow_count = conn.query_row(
-            "select count(*) from interaction_records where occurred_at >= ?1 and event_type = 'interact' and event_subtype = 'follow'",
+            &format!(
+                "select count(*) from interaction_records where occurred_at >= ?1 and {BILIBILI_PLATFORM_FILTER_SQL} and event_type = 'interact' and event_subtype = 'follow'"
+            ),
             params![start_date],
             |row| row.get(0),
         )?;
         let share_count = conn.query_row(
-            "select count(*) from interaction_records where occurred_at >= ?1 and event_type = 'interact' and event_subtype = 'share'",
+            &format!(
+                "select count(*) from interaction_records where occurred_at >= ?1 and {BILIBILI_PLATFORM_FILTER_SQL} and event_type = 'interact' and event_subtype = 'share'"
+            ),
             params![start_date],
             |row| row.get(0),
         )?;
         let guard_buy_count = conn.query_row(
-            "select count(*) from interaction_records where occurred_at >= ?1 and event_type = 'guard_buy'",
+            &format!(
+                "select count(*) from interaction_records where occurred_at >= ?1 and {BILIBILI_PLATFORM_FILTER_SQL} and event_type = 'guard_buy'"
+            ),
             params![start_date],
             |row| row.get(0),
         )?;
         let guard_buyer_count = conn.query_row(
-            "select count(distinct uid) from interaction_records where occurred_at >= ?1 and event_type = 'guard_buy' and uid is not null",
+            &format!(
+                "select count(distinct uid) from interaction_records where occurred_at >= ?1 and {BILIBILI_PLATFORM_FILTER_SQL} and event_type = 'guard_buy' and uid is not null"
+            ),
             params![start_date],
             |row| row.get(0),
         )?;
         let (peak_popularity, average_popularity) = conn.query_row(
-            "select coalesce(max(popularity_value), 0), coalesce(cast(avg(popularity_value) as integer), 0) from interaction_records where occurred_at >= ?1 and event_type = 'popularity'",
+            &format!(
+                "select coalesce(max(popularity_value), 0), coalesce(cast(avg(popularity_value) as integer), 0) from interaction_records where occurred_at >= ?1 and {BILIBILI_PLATFORM_FILTER_SQL} and event_type = 'popularity'"
+            ),
             params![start_date],
             |row| Ok((row.get(0)?, row.get(1)?)),
         )?;
         let unknown_count = conn.query_row(
-            "select count(*) from interaction_records where occurred_at >= ?1 and event_type = 'unknown'",
+            &format!(
+                "select count(*) from interaction_records where occurred_at >= ?1 and {BILIBILI_PLATFORM_FILTER_SQL} and event_type = 'unknown'"
+            ),
             params![start_date],
             |row| row.get(0),
         )?;
@@ -1402,7 +1425,7 @@ impl Storage {
             )
         };
         let conn = self.conn.lock().expect("storage mutex poisoned");
-        let mut stmt = conn.prepare(
+        let mut stmt = conn.prepare(&format!(
             "
             select
                 date(occurred_at) as day,
@@ -1411,11 +1434,11 @@ impl Storage {
                 count(case when event_type = 'gift' then 1 end) as gift_count,
                 count(case when event_type = 'interact' and event_subtype in ('follow','mutual_follow') then 1 end) as follow_count
             from interaction_records
-            where occurred_at >= ?1
+            where occurred_at >= ?1 and {BILIBILI_PLATFORM_FILTER_SQL}
             group by date(occurred_at)
             order by day asc
             ",
-        )?;
+        ))?;
         let rows = stmt.query_map(params![start_date], |row| {
             Ok(DailyStats {
                 date: row.get(0)?,
@@ -1446,16 +1469,16 @@ impl Storage {
         };
 
         let conn = self.conn.lock().expect("storage mutex poisoned");
-        let mut stmt = conn.prepare(
+        let mut stmt = conn.prepare(&format!(
             "
             select gift_name, sum(gift_count * gift_price) as total_value, sum(gift_count) as total_count
             from interaction_records
-            where occurred_at >= ?1 and event_type = 'gift' and gift_name is not null
+            where occurred_at >= ?1 and {BILIBILI_PLATFORM_FILTER_SQL} and event_type = 'gift' and gift_name is not null
             group by gift_name
             order by total_value desc
             limit ?2
             ",
-        )?;
+        ))?;
         let rows = stmt.query_map(params![start_date, n], |row| {
             Ok(GiftStat {
                 name: row.get(0)?,
@@ -1485,16 +1508,16 @@ impl Storage {
         };
 
         let conn = self.conn.lock().expect("storage mutex poisoned");
-        let mut stmt = conn.prepare(
+        let mut stmt = conn.prepare(&format!(
             "
             SELECT uid, uname, SUM(gift_count * gift_price) as gift_value, SUM(gift_count) as gift_count
             FROM interaction_records
-            WHERE occurred_at >= ?1 AND event_type = 'gift' AND uid IS NOT NULL AND uname IS NOT NULL
+            WHERE occurred_at >= ?1 AND {BILIBILI_PLATFORM_FILTER_SQL} AND event_type = 'gift' AND uid IS NOT NULL AND uname IS NOT NULL
             GROUP BY uid
             ORDER BY gift_value DESC
             LIMIT ?2
             ",
-        )?;
+        ))?;
         let rows = stmt.query_map(params![start_date, n], |row| {
             Ok(UserGiftStat {
                 uid: row.get(0)?,

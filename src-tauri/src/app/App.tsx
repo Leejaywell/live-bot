@@ -2,6 +2,7 @@ import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { HashRouter, Routes, Route, Navigate, useLocation } from 'react-router-dom';
 import { LogIn, Home, Radio } from 'lucide-react';
 import { Toaster } from 'sonner';
+import { invoke } from '@tauri-apps/api/core';
 import { ThemeProvider, useTheme } from './context/ThemeContext';
 import { ConfigProvider, useConfig } from './context/ConfigContext';
 import { LoginContext, useLogin } from './context/LoginContext';
@@ -179,7 +180,8 @@ function AppContent() {
     }
   }, [isLoggedIn, userInfo?.uid]);
 
-  const performLogoutCleanup = useCallback(async () => {
+  const performExpiryLogoutCleanup = useCallback(async () => {
+    await invoke<void>('logout', { mode: 'preserve_room' }).catch(() => {});
     setShowRoomModal(false);
     setIsLoggedIn(false);
     setUserInfo(null);
@@ -187,7 +189,6 @@ function AppContent() {
     setAutoRoom(null);
     setAnchorInfo(null);
     setConnected(false);
-    await api.logout().catch(() => {});
   }, [setConnected]);
 
   // 定期检查 cookie 有效性，失效直接提示重新登录
@@ -197,7 +198,7 @@ function AppContent() {
       try {
         const info = await api.getUserInfo();
         if (!info.is_login) {
-          await performLogoutCleanup();
+          await performExpiryLogoutCleanup();
           setShowLoginModal(true);
           fetchLoginQr();
         }
@@ -206,7 +207,7 @@ function AppContent() {
       }
     }, 60000);
     return () => clearInterval(timer);
-  }, [isLoggedIn, loginChecked, performLogoutCleanup]);
+  }, [isLoggedIn, loginChecked, performExpiryLogoutCleanup]);
 
   const fetchLoginQr = async () => {
     setLoadingQr(true);
@@ -261,9 +262,9 @@ function AppContent() {
 
   // 退出登录
   const handleLogout = useCallback(async () => {
-    await performLogoutCleanup();
+    await api.logout().catch(() => {});
     window.location.reload();
-  }, [performLogoutCleanup]);
+  }, []);
 
   // 连接房间成功（仅用户主动连接走此路径；启动恢复不进这里，因此自动恢复时不会有 toast）
   const handleRoomConnected = useCallback((roomId: string, liveStatus: number, liveTime: string, roomUid?: number) => {

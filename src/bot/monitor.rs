@@ -22,7 +22,6 @@ use crate::music::providers::netease::NeteaseProvider;
 use crate::music::service::MusicInteractionService;
 use crate::plugin_settings::PluginSettings;
 use crate::storage::Storage;
-use crate::token;
 
 // AsrBackend trait 用于 streaming_recognition 调用
 #[cfg(feature = "vad")]
@@ -229,6 +228,15 @@ fn music_interaction_enabled() -> bool {
         .unwrap_or(false)
 }
 
+fn bilibili_session_cookie(session: &PlatformSession) -> Option<String> {
+    session
+        .payload
+        .get("cookie")
+        .and_then(|value| value.as_str())
+        .map(str::to_owned)
+        .filter(|cookie| !cookie.is_empty())
+}
+
 fn spawn_music_event_handler<E: EventEmitter + Send + Sync + 'static>(
     music_service: Arc<MusicInteractionService>,
     event: bilibili_live_protocol::LiveEvent,
@@ -278,15 +286,13 @@ pub async fn run_monitor_loop<E: EventEmitter + Send + Sync + 'static>(
     session_memory: Arc<Mutex<crate::bot::memory::SessionMemory>>,
 ) -> Result<()> {
     if room.platform_id.as_str() == "bilibili" {
-        // Temporary compatibility bridge: the legacy Bilibili monitor still reads
-        // auth from token storage, so the passed PlatformSession is ignored here.
-        // Task 3/full monitor migration must remove this fallback.
         let http = LegacyBiliApi::new()?;
         let room_id = room.platform_room_id.parse::<i64>()?;
         return run_bilibili_monitor_loop(
             app,
             http,
             room_id,
+            session,
             cancel,
             tts_router,
             tts_cancel,
@@ -311,6 +317,7 @@ pub async fn run_bilibili_monitor_loop<E: EventEmitter + Send + Sync + 'static>(
     app: E,
     http: LegacyBiliApi,
     room_id: i64,
+    session: PlatformSession,
     cancel: CancellationToken,
     tts_router: SharedTtsRouter,
     tts_cancel: Arc<Mutex<CancellationToken>>,
@@ -337,10 +344,7 @@ pub async fn run_bilibili_monitor_loop<E: EventEmitter + Send + Sync + 'static>(
 
     let (send_tx, send_rx) = mpsc::channel::<String>(1000);
     let (gift_tx, gift_rx) = mpsc::channel::<bilibili_live_protocol::LiveEvent>(1000);
-    let send_cookie = token::read_session()
-        .ok()
-        .map(|s| s.cookie)
-        .filter(|c| !c.is_empty());
+    let send_cookie = bilibili_session_cookie(&session);
 
     // 读取机器人自身 UID，用于过滤弹幕回声（B站会将机器人发送的弹幕也推送回来）
     let self_uid: i64 = send_cookie
@@ -627,10 +631,7 @@ pub async fn run_bilibili_monitor_loop<E: EventEmitter + Send + Sync + 'static>(
     let ws_send_tx = send_tx.clone();
     let ws_tts_router = tts_router.clone();
     let ws_task = tokio::spawn(async move {
-        let original_cookie = token::read_session()
-            .ok()
-            .map(|s| s.cookie)
-            .unwrap_or_default();
+        let original_cookie = bilibili_session_cookie(&session).unwrap_or_default();
         let music_service = Arc::new(MusicInteractionService::new_with_storage(
             vec![Box::new(NeteaseProvider::new(reqwest::Client::new()))],
             storage.clone(),
