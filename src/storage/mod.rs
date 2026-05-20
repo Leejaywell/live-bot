@@ -1958,37 +1958,43 @@ fn platform_event_user(event: &PlatformEvent) -> (Option<String>, Option<String>
         PlatformEvent::Message(value) => (
             Some(value.user.platform_user_id.clone()),
             Some(value.user.display_name.clone()),
-            value.user.numeric_id(),
+            legacy_uid_for_platform_user(&value.user),
         ),
         PlatformEvent::Gift(value) => (
             Some(value.user.platform_user_id.clone()),
             Some(value.user.display_name.clone()),
-            value.user.numeric_id(),
+            legacy_uid_for_platform_user(&value.user),
         ),
         PlatformEvent::Follow(value)
         | PlatformEvent::Share(value)
         | PlatformEvent::Enter(value) => (
             Some(value.user.platform_user_id.clone()),
             Some(value.user.display_name.clone()),
-            value.user.numeric_id(),
+            legacy_uid_for_platform_user(&value.user),
         ),
         PlatformEvent::Like(value) => (
             Some(value.user.platform_user_id.clone()),
             Some(value.user.display_name.clone()),
-            value.user.numeric_id(),
+            legacy_uid_for_platform_user(&value.user),
         ),
         PlatformEvent::GuardOrMember(value) => (
             Some(value.user.platform_user_id.clone()),
             Some(value.user.display_name.clone()),
-            value.user.numeric_id(),
+            legacy_uid_for_platform_user(&value.user),
         ),
         PlatformEvent::PaidMessage(value) => (
             Some(value.user.platform_user_id.clone()),
             Some(value.user.display_name.clone()),
-            value.user.numeric_id(),
+            legacy_uid_for_platform_user(&value.user),
         ),
         _ => (None, None, None),
     }
+}
+
+fn legacy_uid_for_platform_user(user: &crate::live_platform::types::PlatformUserRef) -> Option<i64> {
+    (user.platform_id.as_str() == crate::live_platform::types::PlatformId::BILIBILI)
+        .then(|| user.numeric_id())
+        .flatten()
 }
 
 fn extract_medal_name(raw: &serde_json::Value) -> Option<String> {
@@ -2285,6 +2291,88 @@ mod tests {
                 "danmu".to_string()
             )
         );
+    }
+
+    #[test]
+    fn insert_platform_interaction_record_isolates_legacy_uid_to_bilibili() {
+        let storage = Storage::open_in_memory().unwrap();
+        let session_id = storage
+            .start_observed_live_session(
+                123,
+                Local.with_ymd_and_hms(2026, 5, 1, 20, 0, 0).unwrap(),
+            )
+            .unwrap();
+
+        let bili_event = crate::live_platform::types::PlatformEventEnvelope {
+            platform_id: crate::live_platform::types::PlatformId::from("bilibili"),
+            room: crate::live_platform::types::PlatformRoomRef::bilibili(123),
+            event_id: None,
+            occurred_at: Local::now(),
+            event: crate::live_platform::types::PlatformEvent::Message(
+                crate::live_platform::types::ChatMessageEvent {
+                    user: crate::live_platform::types::PlatformUserRef::bilibili(42, "alice"),
+                    text: "bili hello".to_string(),
+                },
+            ),
+            raw: json!({"cmd": "DANMU_MSG"}),
+        };
+        let douyin_event = crate::live_platform::types::PlatformEventEnvelope {
+            platform_id: crate::live_platform::types::PlatformId::from("douyin"),
+            room: crate::live_platform::types::PlatformRoomRef {
+                platform_id: crate::live_platform::types::PlatformId::from("douyin"),
+                platform_room_id: "dy-room".to_string(),
+                display_id: Some("dy-room".to_string()),
+            },
+            event_id: None,
+            occurred_at: Local::now(),
+            event: crate::live_platform::types::PlatformEvent::Message(
+                crate::live_platform::types::ChatMessageEvent {
+                    user: crate::live_platform::types::PlatformUserRef {
+                        platform_id: crate::live_platform::types::PlatformId::from("douyin"),
+                        platform_user_id: "42".to_string(),
+                        display_name: "mallory".to_string(),
+                    },
+                    text: "dy hello".to_string(),
+                },
+            ),
+            raw: json!({"type": "chat"}),
+        };
+
+        storage
+            .insert_platform_interaction_record(&session_id, &bili_event)
+            .unwrap();
+        storage
+            .insert_platform_interaction_record(&session_id, &douyin_event)
+            .unwrap();
+
+        let conn = storage.conn.lock().unwrap();
+        let rows: Vec<(String, String, Option<i64>)> = conn
+            .prepare(
+                "select platform_id, platform_user_id, uid
+                 from interaction_records
+                 where platform_user_id = '42'
+                 order by id",
+            )
+            .unwrap()
+            .query_map([], |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)))
+            .unwrap()
+            .collect::<rusqlite::Result<Vec<_>>>()
+            .unwrap();
+        drop(conn);
+
+        assert_eq!(
+            rows,
+            vec![
+                ("bilibili".to_string(), "42".to_string(), Some(42)),
+                ("douyin".to_string(), "42".to_string(), None),
+            ]
+        );
+
+        assert_eq!(storage.user_interaction_danmu_count(42).unwrap(), 1);
+        let detail = storage.user_detail(42).unwrap();
+        assert_eq!(detail.uname.as_deref(), Some("alice"));
+        assert_eq!(detail.danmu_count, 1);
+        assert_eq!(detail.recent_danmu.as_deref(), Some("bili hello"));
     }
 
     #[test]
