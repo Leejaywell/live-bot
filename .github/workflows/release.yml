@@ -25,6 +25,52 @@ jobs:
     steps:
       - uses: actions/checkout@v6
 
+      - name: Guard public release repository
+        uses: actions/github-script@v8
+        with:
+          github-token: ${{ secrets.PUBLIC_RELEASES_TOKEN }}
+          script: |
+            const owner = process.env.PUBLIC_RELEASE_OWNER;
+            const repo = process.env.PUBLIC_RELEASE_REPO;
+            const branch = process.env.PUBLIC_RELEASE_COMMITISH;
+
+            const { data: ref } = await github.rest.git.getRef({
+              owner,
+              repo,
+              ref: `heads/${branch}`
+            });
+            const { data: tree } = await github.rest.git.getTree({
+              owner,
+              repo,
+              tree_sha: ref.object.sha,
+              recursive: 'true'
+            });
+
+            const privateSourcePatterns = [
+              /^Cargo\.toml$/,
+              /^Cargo\.lock$/,
+              /^src\//,
+              /^src-tauri\//,
+              /^crates\//,
+              /^capabilities\//,
+              /^tauri\.conf\.json$/,
+              /^package\.json$/,
+              /^package-lock\.json$/,
+              /^pnpm-lock\.yaml$/,
+              /^vite\.config\./,
+              /^build\.rs$/
+            ];
+
+            const matches = tree.tree
+              .map(item => item.path)
+              .filter(path => privateSourcePatterns.some(pattern => pattern.test(path)));
+
+            if (matches.length > 0) {
+              core.setFailed(
+                `Public release repository ${owner}/${repo} contains source paths: ${matches.join(', ')}`
+              );
+            }
+
       - uses: actions/github-script@v8
         id: create
         env:
@@ -73,7 +119,7 @@ jobs:
               tag_name: tag,
               name: tag,
               target_commitish: process.env.PUBLIC_RELEASE_COMMITISH,
-              body: 'Public release assets for Streamix.',
+              body: 'Public release assets for Streamix. GitHub source archives are generated from this public release repository only.',
               draft: true,
               prerelease: false
             });
