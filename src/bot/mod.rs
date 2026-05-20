@@ -164,17 +164,19 @@ fn try_auto_track_platform(storage: &Storage, event: &PlatformEvent) {
         PlatformEvent::Share(value) => (&value.user, "share"),
         _ => return,
     };
-    if user.platform_id.as_str() != "bilibili" {
-        return;
-    }
-    let Some(uid) = user.numeric_id() else {
-        return;
-    };
-    if uid == 0 {
-        return;
-    }
-    if let Err(e) = storage.auto_track_user(uid, &user.display_name, event_type) {
-        eprintln!("[warn] auto_track_user uid={uid}: {e}");
+    let uid = user.numeric_id().filter(|uid| *uid > 0);
+    if let Err(e) = storage.auto_track_platform_user(
+        user.platform_id.as_str(),
+        &user.platform_user_id,
+        uid,
+        &user.display_name,
+        event_type,
+    ) {
+        eprintln!(
+            "[warn] auto_track_platform_user platform={} user={}: {e}",
+            user.platform_id.as_str(),
+            user.platform_user_id
+        );
     }
 }
 
@@ -206,6 +208,7 @@ pub fn update_observed_session_for_room_status(
 mod tests {
     use chrono::{Local, TimeZone};
 
+    use crate::live_platform::types::{ChatMessageEvent, PlatformEvent, PlatformUserRef};
     use crate::storage::Storage;
 
     #[test]
@@ -241,6 +244,57 @@ mod tests {
 
         assert_eq!(ended, super::SessionStatusChange::Ended(session_id));
         assert!(current_session_id.is_none());
+    }
+
+    #[test]
+    fn auto_track_platform_uses_platform_user_keys() {
+        let storage = Storage::open_in_memory().unwrap();
+        let event = PlatformEvent::Message(ChatMessageEvent {
+            user: PlatformUserRef::bilibili(42, "alice"),
+            text: "hello".to_string(),
+        });
+
+        storage
+            .with_connection(|conn| {
+                for _ in 0..3 {
+                    conn.execute(
+                        "insert into interaction_records (
+                            session_id,
+                            platform_id,
+                            platform_room_id,
+                            platform_user_id,
+                            event_kind,
+                            event_action,
+                            room_id,
+                            event_type,
+                            uid,
+                            uname,
+                            raw_json,
+                            occurred_at
+                        ) values (?1, 'bilibili', '123', '42', 'message', 'chat', 123, 'danmu', 42, 'alice', '{}', ?2)",
+                        rusqlite::params!["session", Local::now().to_rfc3339()],
+                    )?;
+                }
+                Ok(())
+            })
+            .unwrap();
+
+        super::try_auto_track_platform(&storage, &event);
+
+        let tracked = storage.check_tracked_user(42).unwrap().unwrap();
+        assert_eq!(tracked.status, "active");
+        assert_eq!(tracked.nickname, "alice");
+        storage
+            .with_connection(|conn| {
+                let row: (String, String) = conn.query_row(
+                    "select platform_id, platform_user_id from tracked_users where uid = 42",
+                    [],
+                    |row| Ok((row.get(0)?, row.get(1)?)),
+                )?;
+                assert_eq!(row, ("bilibili".to_string(), "42".to_string()));
+                Ok(())
+            })
+            .unwrap();
     }
 }
 

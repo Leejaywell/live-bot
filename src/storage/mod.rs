@@ -217,6 +217,8 @@ impl Storage {
             create index if not exists idx_interaction_time on interaction_records(occurred_at);
             create table if not exists tracked_users (
                 uid integer primary key,
+                platform_id text not null default 'bilibili',
+                platform_user_id text,
                 nickname text not null default '',
                 alias text not null default '',
                 notes text not null default '',
@@ -228,6 +230,7 @@ impl Storage {
                 updated_at text not null
             );
             create index if not exists idx_tracked_users_status on tracked_users(status);
+            create index if not exists idx_tracked_users_platform_user on tracked_users(platform_id, platform_user_id);
             create table if not exists live_gift_catalog (
                 gift_id integer primary key,
                 name text not null,
@@ -238,6 +241,8 @@ impl Storage {
             create index if not exists idx_live_gift_catalog_name on live_gift_catalog(name);
             create table if not exists user_profiles (
                 uid integer primary key,
+                platform_id text not null default 'bilibili',
+                platform_user_id text,
                 first_seen_at text not null,
                 last_seen_at text not null,
                 total_danmu_count integer not null default 0,
@@ -255,6 +260,7 @@ impl Storage {
             );
             create index if not exists idx_user_profiles_last_seen on user_profiles(last_seen_at);
             create index if not exists idx_user_profiles_ai_updated on user_profiles(ai_summary_updated_at);
+            create index if not exists idx_user_profiles_platform_user on user_profiles(platform_id, platform_user_id);
             ",
         )?;
         // 一次性迁移：将 interaction_records 里满足条件的历史用户播种到 tracked_users
@@ -300,6 +306,13 @@ impl Storage {
         ensure_column(
             &conn,
             "tracked_users",
+            "platform_id",
+            "text not null default 'bilibili'",
+        )?;
+        ensure_column(&conn, "tracked_users", "platform_user_id", "text")?;
+        ensure_column(
+            &conn,
+            "tracked_users",
             "tts_provider_id",
             "text not null default ''",
         )?;
@@ -309,6 +322,13 @@ impl Storage {
             "tts_voice_id",
             "text not null default ''",
         )?;
+        ensure_column(
+            &conn,
+            "user_profiles",
+            "platform_id",
+            "text not null default 'bilibili'",
+        )?;
+        ensure_column(&conn, "user_profiles", "platform_user_id", "text")?;
         conn.execute(
             "update live_sessions
                 set platform_room_id = cast(room_id as text)
@@ -328,11 +348,31 @@ impl Storage {
             [],
         )?;
         conn.execute(
+            "update tracked_users
+                set platform_user_id = cast(uid as text)
+              where platform_user_id is null and uid is not null",
+            [],
+        )?;
+        conn.execute(
+            "update user_profiles
+                set platform_user_id = cast(uid as text)
+              where platform_user_id is null and uid is not null",
+            [],
+        )?;
+        conn.execute(
             "create index if not exists idx_interaction_platform_room on interaction_records(platform_id, platform_room_id)",
             [],
         )?;
         conn.execute(
             "create index if not exists idx_interaction_platform_user on interaction_records(platform_id, platform_user_id)",
+            [],
+        )?;
+        conn.execute(
+            "create index if not exists idx_tracked_users_platform_user on tracked_users(platform_id, platform_user_id)",
+            [],
+        )?;
+        conn.execute(
+            "create index if not exists idx_user_profiles_platform_user on user_profiles(platform_id, platform_user_id)",
             [],
         )?;
         crate::music::storage::ensure_schema(&conn)?;
@@ -782,9 +822,13 @@ impl Storage {
             PlatformEvent::GuardOrMember(value) => {
                 (None, Some(value.gift.clone()), Some(1), None, None)
             }
-            PlatformEvent::PaidMessage(value) => {
-                (Some(value.text.clone()), None, None, Some(value.price), None)
-            }
+            PlatformEvent::PaidMessage(value) => (
+                Some(value.text.clone()),
+                None,
+                None,
+                Some(value.price),
+                None,
+            ),
             PlatformEvent::Popularity(value) => (None, None, None, None, Some(value.value)),
             _ => (None, None, None, None, None),
         };
@@ -1457,8 +1501,8 @@ impl Storage {
         let conn = self.conn.lock().expect("storage mutex poisoned");
         let now = Local::now().to_rfc3339();
         conn.execute(
-            "insert into tracked_users (uid, nickname, alias, notes, status, auto_tracked, created_at, updated_at)
-             values (?1, ?2, ?3, ?4, 'active', 0, ?5, ?5)",
+            "insert into tracked_users (uid, platform_user_id, nickname, alias, notes, status, auto_tracked, created_at, updated_at)
+             values (?1, cast(?1 as text), ?2, ?3, ?4, 'active', 0, ?5, ?5)",
             params![uid, nickname, alias, notes, now],
         )?;
         Ok(())
@@ -1523,7 +1567,11 @@ impl Storage {
         match existing.as_deref() {
             Some("active") => {
                 conn.execute(
-                    "update tracked_users set nickname = ?2, updated_at = ?3 where uid = ?1",
+                    "update tracked_users
+                        set nickname = ?2,
+                            platform_user_id = coalesce(platform_user_id, cast(?1 as text)),
+                            updated_at = ?3
+                      where uid = ?1",
                     params![uid, uname, now],
                 )?;
             }
@@ -1543,9 +1591,109 @@ impl Storage {
                 };
                 if qualifies {
                     conn.execute(
-                        "insert or ignore into tracked_users (uid, nickname, alias, notes, status, auto_tracked, created_at, updated_at)
-                         values (?1, ?2, '', '', 'active', 1, ?3, ?3)",
+                        "insert or ignore into tracked_users (uid, platform_user_id, nickname, alias, notes, status, auto_tracked, created_at, updated_at)
+                         values (?1, cast(?1 as text), ?2, '', '', 'active', 1, ?3, ?3)",
                         params![uid, uname, now],
+                    )?;
+                }
+            }
+        }
+        Ok(())
+    }
+
+    pub fn auto_track_platform_user(
+        &self,
+        platform_id: &str,
+        platform_user_id: &str,
+        fallback_uid: Option<i64>,
+        uname: &str,
+        event_type: &str,
+    ) -> Result<()> {
+        let conn = self.conn.lock().expect("storage mutex poisoned");
+        let existing: Option<(i64, String)> = conn
+            .query_row(
+                "select uid, status
+                   from tracked_users
+                  where platform_id = ?1 and platform_user_id = ?2",
+                params![platform_id, platform_user_id],
+                |row| Ok((row.get(0)?, row.get(1)?)),
+            )
+            .optional()?;
+        let now = Local::now().to_rfc3339();
+
+        match existing {
+            Some((uid, status)) if status == "active" => {
+                conn.execute(
+                    "update tracked_users
+                        set nickname = ?2,
+                            updated_at = ?3
+                      where uid = ?1",
+                    params![uid, uname, now],
+                )?;
+                return Ok(());
+            }
+            Some((_, status)) if status == "deleted" => return Ok(()),
+            Some(_) => return Ok(()),
+            None => {}
+        }
+
+        let Some(uid) = fallback_uid.filter(|uid| *uid > 0) else {
+            return Ok(());
+        };
+        let existing_by_uid: Option<String> = conn
+            .query_row(
+                "select status from tracked_users where uid = ?1",
+                params![uid],
+                |row| row.get(0),
+            )
+            .optional()?;
+
+        match existing_by_uid.as_deref() {
+            Some("active") => {
+                conn.execute(
+                    "update tracked_users
+                        set platform_id = ?2,
+                            platform_user_id = ?3,
+                            nickname = ?4,
+                            updated_at = ?5
+                      where uid = ?1",
+                    params![uid, platform_id, platform_user_id, uname, now],
+                )?;
+            }
+            Some("deleted") => {}
+            _ => {
+                let qualifies = match event_type {
+                    "gift" | "guard_buy" | "follow" | "share" | "super_chat" => true,
+                    "danmu" => {
+                        let count: i64 = conn.query_row(
+                            "select count(*)
+                               from interaction_records
+                              where platform_id = ?1
+                                and platform_user_id = ?2
+                                and event_type = 'danmu'",
+                            params![platform_id, platform_user_id],
+                            |row| row.get(0),
+                        )?;
+                        count >= 3
+                    }
+                    _ => false,
+                };
+                if qualifies {
+                    conn.execute(
+                        "insert or ignore into tracked_users (
+                            uid,
+                            platform_id,
+                            platform_user_id,
+                            nickname,
+                            alias,
+                            notes,
+                            status,
+                            auto_tracked,
+                            created_at,
+                            updated_at
+                        )
+                        values (?1, ?2, ?3, ?4, '', '', 'active', 1, ?5, ?5)",
+                        params![uid, platform_id, platform_user_id, uname, now],
                     )?;
                 }
             }
@@ -1910,12 +2058,13 @@ fn upsert_user_profile_stats(
     conn.execute(
         "
         insert into user_profiles (
-            uid, first_seen_at, last_seen_at,
+            uid, platform_user_id, first_seen_at, last_seen_at,
             total_danmu_count, total_gift_value, total_sc_value, enter_count,
             active_hours, fan_level, is_guard
         )
-        values (?1, ?2, ?2, ?3, ?4, ?5, ?6, json_set('{}', ?7, 1), ?8, ?9)
+        values (?1, cast(?1 as text), ?2, ?2, ?3, ?4, ?5, ?6, json_set('{}', ?7, 1), ?8, ?9)
         on conflict(uid) do update set
+            platform_user_id = coalesce(user_profiles.platform_user_id, excluded.platform_user_id),
             last_seen_at = excluded.last_seen_at,
             total_danmu_count = total_danmu_count + ?3,
             total_gift_value  = total_gift_value  + ?4,
@@ -2036,6 +2185,25 @@ mod tests {
         assert!(columns.contains(&"platform_id".to_string()));
         assert!(columns.contains(&"platform_room_id".to_string()));
         assert!(columns.contains(&"platform_user_id".to_string()));
+    }
+
+    #[test]
+    fn storage_creates_platform_user_columns() {
+        let storage = Storage::open_in_memory().unwrap();
+        let conn = storage.conn.lock().unwrap();
+
+        for table in ["tracked_users", "user_profiles"] {
+            let mut stmt = conn
+                .prepare(&format!("pragma table_info({table})"))
+                .unwrap();
+            let columns = stmt
+                .query_map([], |row| row.get::<_, String>(1))
+                .unwrap()
+                .collect::<std::result::Result<Vec<_>, _>>()
+                .unwrap();
+            assert!(columns.contains(&"platform_id".to_string()));
+            assert!(columns.contains(&"platform_user_id".to_string()));
+        }
     }
 
     #[test]
