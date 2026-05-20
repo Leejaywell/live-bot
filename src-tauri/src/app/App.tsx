@@ -32,7 +32,7 @@ import { LotteryInteraction } from './pages/LotteryInteraction';
 import { GiftEffect } from './pages/GiftEffect';
 import { RecentGifts } from './pages/RecentGifts';
 import { GiftRank } from './pages/GiftRank';
-import { api, UserInfo, RoomInfo, AnchorInfo, LoginUrl } from './lib/api';
+import { api, UserInfo, RoomInfo, AnchorInfo } from './lib/api';
 import QRCode from 'react-qr-code';
 import { toast } from 'sonner';
 import { RefreshCw, X, QrCode } from 'lucide-react';
@@ -201,7 +201,7 @@ function AppContent() {
     setLoginStatus('pending');
     try {
       const data = await api.startLogin();
-      const key = data.challenge_id ?? (data as Partial<LoginUrl>).qrcode_key;
+      const key = data.challenge_id ?? data.qrcode_key;
       setLoginUrl(data.url);
       setLoginKey(key ?? '');
     } catch (err) {

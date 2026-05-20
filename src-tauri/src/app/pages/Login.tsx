@@ -5,7 +5,7 @@ import { Button } from '../components/Button';
 import { Input } from '../components/Input';
 import { Chip } from '../components/Chip';
 import { X, RefreshCw } from 'lucide-react';
-import { api, UserInfo, RoomInfo, LoginUrl, LoginChallenge } from '../lib/api';
+import { api, UserInfo, RoomInfo, StartLoginChallenge } from '../lib/api';
 import { toast } from 'sonner';
 
 export function Login() {
@@ -13,7 +13,7 @@ export function Login() {
   const [userInfo, setUserInfo] = useState<UserInfo | null>(null);
   const [roomInfo, setRoomInfo] = useState<RoomInfo | null>(null);
   const [roomId, setRoomId] = useState<string>('');
-  const [loginUrl, setLoginUrl] = useState<(LoginUrl & Partial<LoginChallenge>) | null>(null);
+  const [loginUrl, setLoginUrl] = useState<StartLoginChallenge | null>(null);
   const [loginStatus, setLoginStatus] = useState<string>('等待扫码…');
   const [loading, setLoading] = useState(false);
   const pollingRef = useRef(false);

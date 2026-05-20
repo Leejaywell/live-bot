@@ -430,6 +430,11 @@ export interface LoginChallenge {
   url: string;
 }
 
+export interface StartLoginChallenge extends LoginUrl {
+  platform_id?: PlatformId;
+  challenge_id?: string;
+}
+
 export interface RoomInfo {
   room_id: number;
   short_id: number;
@@ -514,7 +519,7 @@ export const api = {
 
   // User/Login
   getUserInfo: () => invoke<UserInfo>('get_user_info'),
-  startLogin: () => invoke<LoginChallenge>('start_login'),
+  startLogin: () => invoke<StartLoginChallenge>('start_login'),
   pollLogin: (key: string) => invoke<any>('poll_login', { key }),
   listLivePlatforms: () => invoke<PlatformId[]>('list_live_platforms'),
   createPlatformLoginChallenge: (platformId: PlatformId) =>
