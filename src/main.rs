@@ -479,7 +479,23 @@ async fn get_room_by_uid(
 
 #[cfg(feature = "tauri")]
 #[tauri::command]
-async fn logout() -> Result<(), String> {
+async fn logout(state: tauri::State<'_, SharedState>) -> Result<(), String> {
+    {
+        let mut monitor = state.monitor.lock().map_err(|e| e.to_string())?;
+        if let Some(handle) = monitor.take() {
+            handle.cancel.cancel();
+            handle
+                .tts_cancel
+                .lock()
+                .map_err(|e| e.to_string())?
+                .cancel();
+        }
+    }
+    {
+        let mut connected_room = state.connected_room.lock().map_err(|e| e.to_string())?;
+        *connected_room = None;
+    }
+    token::delete_connected_platform_room();
     token::delete_platform_session(default_platform_id().as_str()).map_err(|e| e.to_string())
 }
 

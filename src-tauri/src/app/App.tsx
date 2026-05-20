@@ -252,11 +252,14 @@ function AppContent() {
 
   // 退出登录
   const handleLogout = useCallback(async () => {
-    await api.logout().catch(() => {});
+    setShowRoomModal(false);
     setIsLoggedIn(false);
     setUserInfo(null);
+    setUserRoom(null);
     setAutoRoom(null);
+    setAnchorInfo(null);
     setConnected(false);
+    await api.logout().catch(() => {});
     window.location.reload();
   }, []);
 
