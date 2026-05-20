@@ -1,12 +1,11 @@
 import { useState, useEffect, useRef } from 'react';
-import { invoke } from '@tauri-apps/api/core';
 import QRCode from 'react-qr-code';
 import { GlassCard } from '../components/GlassCard';
 import { Button } from '../components/Button';
 import { Input } from '../components/Input';
 import { Chip } from '../components/Chip';
 import { X, RefreshCw } from 'lucide-react';
-import { api, UserInfo, RoomInfo, LoginUrl } from '../lib/api';
+import { api, UserInfo, RoomInfo, LoginUrl, LoginChallenge } from '../lib/api';
 import { toast } from 'sonner';
 
 export function Login() {
@@ -14,7 +13,7 @@ export function Login() {
   const [userInfo, setUserInfo] = useState<UserInfo | null>(null);
   const [roomInfo, setRoomInfo] = useState<RoomInfo | null>(null);
   const [roomId, setRoomId] = useState<string>('');
-  const [loginUrl, setLoginUrl] = useState<LoginUrl | null>(null);
+  const [loginUrl, setLoginUrl] = useState<(LoginUrl & Partial<LoginChallenge>) | null>(null);
   const [loginStatus, setLoginStatus] = useState<string>('等待扫码…');
   const [loading, setLoading] = useState(false);
   const pollingRef = useRef(false);
@@ -99,7 +98,8 @@ export function Login() {
     const poll = async () => {
       while (pollingRef.current) {
         try {
-          const res = await invoke<any>('poll_login', { key: loginUrl.qrcode_key });
+          const key = loginUrl.challenge_id ?? loginUrl.qrcode_key;
+          const res = await api.pollLogin(key);
           if (!pollingRef.current) break;
           if (res.status === 'Success') {
             setLoginStatus('登录成功');

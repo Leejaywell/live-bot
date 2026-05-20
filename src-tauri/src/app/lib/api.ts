@@ -399,6 +399,37 @@ export interface LoginUrl {
   qrcode_key: string;
 }
 
+export type PlatformId = 'bilibili' | string;
+
+export interface PlatformRoomRef {
+  platform_id: PlatformId;
+  platform_room_id: string;
+  display_id?: string | null;
+}
+
+export interface LiveRoomInfo {
+  room: PlatformRoomRef;
+  owner?: {
+    platform_id: PlatformId;
+    platform_user_id: string;
+    display_name: string;
+  } | null;
+  live_status: number;
+  live_time: string;
+  title: string;
+  area_name: string;
+  parent_area_name: string;
+  online: number;
+  keyframe: string;
+  cover: string;
+}
+
+export interface LoginChallenge {
+  platform_id: PlatformId;
+  challenge_id: string;
+  url: string;
+}
+
 export interface RoomInfo {
   room_id: number;
   short_id: number;
@@ -483,7 +514,15 @@ export const api = {
 
   // User/Login
   getUserInfo: () => invoke<UserInfo>('get_user_info'),
-  startLogin: () => invoke<LoginUrl>('start_login'),
+  startLogin: () => invoke<LoginChallenge>('start_login'),
+  pollLogin: (key: string) => invoke<any>('poll_login', { key }),
+  listLivePlatforms: () => invoke<PlatformId[]>('list_live_platforms'),
+  createPlatformLoginChallenge: (platformId: PlatformId) =>
+    invoke<LoginChallenge>('create_platform_login_challenge', { platformId }),
+  pollPlatformLogin: (platformId: PlatformId, challengeId: string) =>
+    invoke<any>('poll_platform_login', { platformId, challengeId }),
+  resolvePlatformRoom: (platformId: PlatformId, roomInput: string) =>
+    invoke<LiveRoomInfo>('resolve_platform_room', { platformId, roomInput }),
   logout: () => invoke<void>('logout'),
   onLoginStatus: (callback: (status: string) => void) => listen<string>('login-status', (event) => callback(event.payload)),
 
