@@ -214,8 +214,6 @@ impl Storage {
             create index if not exists idx_interaction_session on interaction_records(session_id);
             create index if not exists idx_interaction_uid on interaction_records(uid);
             create index if not exists idx_interaction_room on interaction_records(room_id);
-            create index if not exists idx_interaction_platform_room on interaction_records(platform_id, platform_room_id);
-            create index if not exists idx_interaction_platform_user on interaction_records(platform_id, platform_user_id);
             create index if not exists idx_interaction_time on interaction_records(occurred_at);
             create table if not exists tracked_users (
                 uid integer primary key,
@@ -232,7 +230,6 @@ impl Storage {
                 updated_at text not null
             );
             create index if not exists idx_tracked_users_status on tracked_users(status);
-            create index if not exists idx_tracked_users_platform_user on tracked_users(platform_id, platform_user_id);
             create table if not exists live_gift_catalog (
                 gift_id integer primary key,
                 name text not null,
@@ -262,7 +259,6 @@ impl Storage {
             );
             create index if not exists idx_user_profiles_last_seen on user_profiles(last_seen_at);
             create index if not exists idx_user_profiles_ai_updated on user_profiles(ai_summary_updated_at);
-            create index if not exists idx_user_profiles_platform_user on user_profiles(platform_id, platform_user_id);
             ",
         )?;
         ensure_column(&conn, "interaction_records", "event_subtype", "text")?;

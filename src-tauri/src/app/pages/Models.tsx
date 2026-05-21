@@ -158,7 +158,7 @@ function LlmFields({ p, set, errors }: {
       </div>
       <div>
         <label className="text-[11px] text-gray-500 mb-1.5 block">API Key <span className="text-red-400">*</span></label>
-        <Input type="password" mono value={p.APIKey} onChange={e => set({ APIKey: e.target.value })} className={fCls('APIKey')} placeholder="sk-..." />
+        <Input type="password" mono value={p.APIKey} onChange={e => set({ APIKey: e.target.value })} className={fCls('APIKey')} placeholder="填写 API Key" />
         {errors['APIKey'] && <p className="text-[10px] text-red-400 mt-0.5">必填</p>}
       </div>
       <div className="flex items-center justify-between p-3 rounded-lg bg-black/5 dark:bg-white/5 border border-gray-200 dark:border-white/10">
@@ -406,7 +406,7 @@ function TtsFields({ p, set, usedProviders, errors, modelState }: {
           <label className="text-[11px] text-gray-500 mb-1.5 block">API Key <span className="text-red-400">*</span></label>
           <Input type="password" mono value={p.APIKey} onChange={e => set({ APIKey: e.target.value })}
             className={`w-full h-9${errors['APIKey'] ? ' ring-2 ring-red-400/60 border-red-400' : ''}`}
-            placeholder="sk-..." />
+            placeholder="填写 API Key" />
           {errors['APIKey'] && <p className="text-[10px] text-red-400 mt-0.5">必填</p>}
         </div>
       )}
@@ -541,7 +541,7 @@ function getProviderStatus(p: AiProvider, modelState: Record<string, boolean>): 
     }
   }
   if (type === 'llm' && !p.APIKey.trim()) {
-    return { label: '需密钥', tone: 'text-amber-500 bg-amber-500/10 border-amber-500/20' };
+    return { label: '未完成配置', tone: 'text-amber-500 bg-amber-500/10 border-amber-500/20' };
   }
   return { label: '已就绪', tone: 'text-emerald-500 bg-emerald-500/10 border-emerald-500/20' };
 }
@@ -721,7 +721,7 @@ function CollapsibleSection({
             <div className="min-w-0">
               <div className="text-[13px] font-semibold">{label}</div>
               <div className="text-[10px] text-gray-400 mt-0.5">
-                {providers.length} 个服务{defaultProvider && type !== 'tts' ? ` · 默认：${getProviderTitle(defaultProvider)}` : ''}
+                {providers.length} 个服务{defaultProvider && type !== 'tts' ? ` · 当前默认：${getProviderTitle(defaultProvider)}` : ''}
               </div>
             </div>
           </CollapsibleTrigger>
@@ -1060,7 +1060,7 @@ export function Models() {
           模型管理
         </h1>
         <p className="text-[11px] text-gray-400 mt-0.5">
-          已配置 {allProviders.length} 个服务，当前启用 {enabledLlm.length + enabledAsr.length + enabledTts.length} 个 · 语音陪伴数据流：听 → 想 → 说
+          已配置 {allProviders.length} 个服务模板，当前启用 {enabledLlm.length + enabledAsr.length + enabledTts.length} 个 · 本地模型按需下载
         </p>
       </div>
 

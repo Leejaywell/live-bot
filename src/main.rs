@@ -33,6 +33,38 @@ use tauri::{AppHandle, Emitter, Manager};
 static MAIN_CLOSE_PROMPT_OPEN: AtomicBool = AtomicBool::new(false);
 
 #[cfg(feature = "tauri")]
+fn show_main_close_prompt(window: &tauri::Window) {
+    if window.label() != "main" {
+        return;
+    }
+
+    if MAIN_CLOSE_PROMPT_OPEN.swap(true, Ordering::SeqCst) {
+        return;
+    }
+
+    use tauri_plugin_dialog::DialogExt;
+
+    let app = window.app_handle().clone();
+    let window = window.clone();
+    app.dialog()
+        .message("要退出程序，还是最小化到后台？")
+        .title("关闭流光")
+        .kind(tauri_plugin_dialog::MessageDialogKind::Info)
+        .buttons(tauri_plugin_dialog::MessageDialogButtons::OkCancelCustom(
+            "退出".to_string(),
+            "最小化".to_string(),
+        ))
+        .show(move |should_exit| {
+            MAIN_CLOSE_PROMPT_OPEN.store(false, Ordering::SeqCst);
+            if should_exit {
+                app.exit(0);
+            } else {
+                let _ = window.minimize();
+            }
+        });
+}
+
+#[cfg(feature = "tauri")]
 const GIFT_CATALOG_MAX_AGE_SECS: i64 = 60 * 60;
 #[cfg(feature = "tauri")]
 const FALLBACK_GUARD_ICON: &str =
@@ -593,73 +625,6 @@ async fn get_system_info() -> Result<serde_json::Value, String> {
 }
 
 /// 在 monitor 启动前自动补全缺失的本地模型文件。
-/// 通过 ModelHub 下载单文件（VAD），对需要解压的模型复用现有 dl_* 函数。
-#[cfg(all(feature = "tauri", feature = "model-hub"))]
-async fn auto_download_models(
-    app: &AppHandle,
-    model_dir: &std::path::Path,
-    config: &AppConfig,
-    cancel: CancellationToken,
-) {
-    // ── VAD (silero_vad.onnx，缺失或损坏时自动下载) ──────────────────────────
-    let vad_out = model_dir.join("silero_vad.onnx");
-    let vad_exists = vad_out.exists();
-    let vad_valid = onnx_file_valid(&vad_out);
-    let vad_size = std::fs::metadata(&vad_out).map(|m| m.len()).unwrap_or(0);
-    let _ = app.emit(
-        "monitor-log",
-        serde_json::json!(format!(
-            "[诊断] VAD 模型路径: {} | 存在: {} | 有效: {} | 大小: {} bytes",
-            vad_out.display(),
-            vad_exists,
-            vad_valid,
-            vad_size
-        )),
-    );
-    if !vad_valid && !cancel.is_cancelled() {
-        let _ = app.emit(
-            "monitor-log",
-            serde_json::json!("正在自动下载 VAD 模型（silero_vad.onnx）…"),
-        );
-        match dl_silero_vad(app.clone(), cancel.clone()).await {
-            Ok(msg) => {
-                let _ = app.emit("monitor-log", serde_json::json!(msg));
-            }
-            Err(e) => {
-                let _ = app.emit(
-                    "monitor-log",
-                    serde_json::json!(format!("VAD 模型下载失败: {e}")),
-                );
-            }
-        }
-    }
-
-    // ── SenseVoice ASR（仅当无外部 ASR URL 时使用本地模型）───────────────────
-    #[cfg(feature = "vad")]
-    {
-        let asr_url = crate::bot::monitor::resolve_asr_url(config);
-        let sv_dir = model_dir.join("sherpa-onnx-sense-voice-zh-en-ja-ko-yue-int8-2024-07-17");
-        if asr_url.is_empty() && !sv_dir.join("model.int8.onnx").exists() && !cancel.is_cancelled()
-        {
-            let _ = app.emit(
-                "monitor-log",
-                serde_json::json!("正在自动下载 SenseVoice 模型（约 300 MB）…"),
-            );
-            match dl_sensevoice(app.clone(), cancel.clone()).await {
-                Ok(_) => {
-                    let _ = app.emit("monitor-log", serde_json::json!("SenseVoice 模型就绪"));
-                }
-                Err(e) => {
-                    let _ = app.emit(
-                        "monitor-log",
-                        serde_json::json!(format!("SenseVoice 下载失败: {e}")),
-                    );
-                }
-            }
-        }
-    }
-}
-
 #[cfg(feature = "tauri")]
 #[tauri::command]
 async fn start_monitor(
@@ -747,10 +712,6 @@ async fn start_monitor(
     };
 
     let models = model_dir(&app);
-    #[cfg(feature = "model-hub")]
-    let auto_dl_app = app.clone();
-    #[cfg(feature = "model-hub")]
-    let auto_dl_cancel = cancel.clone();
 
     let session_memory = state.session_memory.clone();
     let platforms = state.platforms.clone();
@@ -762,12 +723,6 @@ async fn start_monitor(
     );
 
     tokio::spawn(async move {
-        // 自动补全缺失模型后再启动引擎
-        #[cfg(feature = "model-hub")]
-        if let Ok(cfg) = AppConfig::load_or_default() {
-            auto_download_models(&auto_dl_app, &models, &cfg, auto_dl_cancel).await;
-        }
-
         if let Err(e) = crate::bot::monitor::run_monitor_loop(
             emitter,
             platforms,
@@ -2952,6 +2907,13 @@ async fn force_quit(app: AppHandle) -> Result<(), String> {
 
 #[cfg(feature = "tauri")]
 #[tauri::command]
+async fn request_close_prompt(window: tauri::Window) -> Result<(), String> {
+    show_main_close_prompt(&window);
+    Ok(())
+}
+
+#[cfg(feature = "tauri")]
+#[tauri::command]
 async fn check_update_cmd(
     state: tauri::State<'_, SharedState>,
 ) -> Result<Option<bili_api::UpdateInfo>, String> {
@@ -4316,31 +4278,7 @@ fn main() -> Result<()> {
 
             if let tauri::WindowEvent::CloseRequested { api, .. } = event {
                 api.prevent_close();
-
-                if MAIN_CLOSE_PROMPT_OPEN.swap(true, Ordering::SeqCst) {
-                    return;
-                }
-
-                use tauri_plugin_dialog::DialogExt;
-
-                let app = window.app_handle().clone();
-                let window = window.clone();
-                app.dialog()
-                    .message("要退出程序，还是最小化到后台？")
-                    .title("关闭流光")
-                    .kind(tauri_plugin_dialog::MessageDialogKind::Info)
-                    .buttons(tauri_plugin_dialog::MessageDialogButtons::OkCancelCustom(
-                        "退出".to_string(),
-                        "最小化".to_string(),
-                    ))
-                    .show(move |should_exit| {
-                        MAIN_CLOSE_PROMPT_OPEN.store(false, Ordering::SeqCst);
-                        if should_exit {
-                            app.exit(0);
-                        } else {
-                            let _ = window.minimize();
-                        }
-                    });
+                show_main_close_prompt(window);
             }
         })
         .setup(move |app| {
@@ -4435,6 +4373,7 @@ fn main() -> Result<()> {
             delete_model,
             open_folder,
             force_quit,
+            request_close_prompt,
             get_gift_catalog,
             refresh_gift_catalog,
             get_danmaku_chat_url,

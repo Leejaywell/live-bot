@@ -646,7 +646,18 @@ function KeyboardShortcutHandler({
         return;
       }
 
-      // 2. Cmd/Ctrl + C: Copy logic
+      // 2. Cmd/Ctrl + Q: Show native exit / minimize prompt
+      if (isMod && e.key.toLowerCase() === "q") {
+        e.preventDefault();
+        try {
+          await api.requestClosePrompt();
+        } catch (err) {
+          console.error("Failed to open close prompt:", err);
+        }
+        return;
+      }
+
+      // 3. Cmd/Ctrl + C: Copy logic
       if (isMod && e.key === "c") {
         const selection = window.getSelection()?.toString();
 
@@ -698,7 +709,7 @@ function KeyboardShortcutHandler({
         }
       }
 
-      // 3. Cmd/Ctrl + A: Select All (Manual handling for inputs)
+      // 4. Cmd/Ctrl + A: Select All (Manual handling for inputs)
       if (isMod && e.key === "a" && isInput) {
         // Native behavior might work, but we can force it
         (target as HTMLInputElement).select?.();
@@ -716,8 +727,14 @@ function KeyboardShortcutHandler({
 function AnimatedRoutes() {
   const location = useLocation();
   const { themeFamily } = useTheme();
+  const isTauriWebKit =
+    typeof window !== "undefined" &&
+    "__TAURI_INTERNALS__" in window &&
+    /AppleWebKit/i.test(navigator.userAgent);
   const animClass =
-    themeFamily === "ink"
+    isTauriWebKit
+      ? "animate-page-in"
+      : themeFamily === "ink"
       ? "animate-page-in-ink"
       : themeFamily === "tech"
         ? "animate-page-in-tech"

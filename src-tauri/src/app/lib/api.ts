@@ -709,6 +709,7 @@ export const api = {
       total_mb?: string;
     }>("model-dl-progress", (e) => callback(e.payload)),
   openFolder: (path: string) => invoke<void>("open_folder", { path }),
+  requestClosePrompt: () => invoke<void>("request_close_prompt"),
 
   // Danmaku polling (replaces Tauri event broadcast)
   getRecentDanmaku: () => invoke<string[]>("get_recent_danmaku"),

@@ -437,6 +437,12 @@ export function Voice() {
     }).catch(console.error).finally(() => setLoading(false));
   }, []);
 
+  const refreshModelStatus = useCallback(async () => {
+    const models = await api.checkModels().catch(() => null);
+    setModelStatus(models);
+    return models;
+  }, []);
+
   const scheduleSave = useCallback((patch: Partial<AppConfig>, reloadTarget?: ReloadTarget) => {
     if (reloadTarget) pendingReloads.current.add(reloadTarget);
     setConfig(prev => {
@@ -689,13 +695,13 @@ export function Voice() {
   const hasAsrConfig  = usingBuiltInSenseVoice || usingExternalAsrService;
   const vadModelOk    = modelStatus?.models['silero-vad'] ?? false;
   const asrModelOk    = usingExternalAsrService || (modelStatus?.models['sensevoice'] ?? false);
-  // 模型缺失时仍允许启动（monitor 会自动下载），外部 ASR 服务不可用时才完全禁用
+  // 普通监听不再隐式下载模型；语音入口按需检查并提示下载
   const micEnabled    = hasAsrConfig;
 
   // 提示信息（不阻止启动，在日志区展示）
   const micBlockReasons: string[] = [];
-  if (!vadModelOk) micBlockReasons.push('VAD 模型未就绪，启动时将自动下载');
-  if (usingBuiltInSenseVoice && !asrModelOk) micBlockReasons.push('SenseVoice 模型未就绪，启动时将自动下载');
+  if (!vadModelOk) micBlockReasons.push('VAD 模型未就绪，启用前需要先下载');
+  if (usingBuiltInSenseVoice && !asrModelOk) micBlockReasons.push('SenseVoice 模型未就绪，启用前需要先下载');
   if (!usingBuiltInSenseVoice && hasAsrConfig) micBlockReasons.push('当前 ASR 依赖外部 WebSocket 服务，请确认服务已启动');
   if (!hasAsrConfig) micBlockReasons.push('请先在「设置」中配置语音识别服务');
 
@@ -703,6 +709,37 @@ export function Voice() {
     if (!config) return;
     if (!hasAsrConfig) { toast.error('请先配置语音识别服务'); return; }
     const nextVad = !config.VadEnabled;
+    if (nextVad) {
+      const missingModels: Array<{ id: string; name: string }> = [];
+      if (!vadModelOk) missingModels.push({ id: 'silero-vad', name: 'VAD 模型' });
+      if (usingBuiltInSenseVoice && !asrModelOk) {
+        missingModels.push({ id: 'sensevoice', name: 'SenseVoice 模型' });
+      }
+
+      if (missingModels.length > 0) {
+        const confirmed = window.confirm(
+          `启用麦克风前需要先下载：${missingModels.map((item) => item.name).join('、')}。\n现在开始下载吗？`,
+        );
+        if (!confirmed) return;
+        try {
+          for (const item of missingModels) {
+            toast.info(`开始下载${item.name}`);
+            await api.downloadModel(item.id);
+          }
+          const models = await refreshModelStatus();
+          const refreshedVadOk = models?.models['silero-vad'] ?? false;
+          const refreshedAsrOk = usingExternalAsrService || (models?.models['sensevoice'] ?? false);
+          if (!refreshedVadOk || (usingBuiltInSenseVoice && !refreshedAsrOk)) {
+            toast.error('模型仍未就绪，请检查下载结果');
+            return;
+          }
+        } catch (e) {
+          toast.error(`模型下载失败: ${e}`);
+          return;
+        }
+      }
+    }
+
     const wasRunning = await api.getMonitorStatus().catch(() => false);
     const updated = { ...config, VadEnabled: nextVad };
     vadEnabledRef.current = nextVad;

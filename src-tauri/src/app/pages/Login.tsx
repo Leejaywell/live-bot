@@ -37,7 +37,7 @@ export function Login() {
   const loadRoomId = async () => {
     try {
       const config = await api.loadConfig();
-      setRoomId(config.RoomId.toString());
+      setRoomId(config.RoomId > 0 ? config.RoomId.toString() : '');
       if (config.RoomId > 0) {
         checkRoom(config.RoomId);
       }
@@ -64,6 +64,19 @@ export function Login() {
   };
 
   const saveRoomId = async () => {
+    if (!roomId.trim()) {
+      try {
+        const config = await api.loadConfig();
+        config.RoomId = 0;
+        await api.saveConfig(config);
+        setRoomInfo(null);
+        toast.success('已清空房间号');
+      } catch (err) {
+        toast.error(`保存失败: ${err}`);
+      }
+      return;
+    }
+
     const rId = parseInt(roomId);
     if (isNaN(rId)) {
       toast.error('请输入正确的房间号');
@@ -144,6 +157,9 @@ export function Login() {
                 {userInfo ? "Cookie 有效" : "未登录 / Cookie 失效"}
               </Chip>
             </div>
+            <p className="text-[11px] text-gray-500">
+              登录用于读取账号信息，并在你配置默认房间后快速连接直播间。
+            </p>
           </div>
 
           <div className="flex gap-2">
@@ -155,7 +171,7 @@ export function Login() {
         </GlassCard>
 
         <GlassCard className="p-5">
-          <h2 className="text-[11px] font-bold text-gray-500 tracking-wider mb-4">当前直播间</h2>
+          <h2 className="text-[11px] font-bold text-gray-500 tracking-wider mb-4">默认房间配置</h2>
           <div className="space-y-3">
             <div className="flex items-center gap-2">
               <label className="text-[11px] text-gray-500 w-16">房号</label>
@@ -163,10 +179,16 @@ export function Login() {
                 mono 
                 value={roomId} 
                 onChange={(e) => setRoomId(e.target.value)} 
-                className="flex-1" 
+                className="flex-1"
+                placeholder="留空表示暂不设置"
               />
               <Button variant="primary" size="sm" onClick={saveRoomId}>保存</Button>
             </div>
+            {!roomInfo && !roomId.trim() && (
+              <div className="rounded-xl border border-dashed border-gray-200 dark:border-white/15 bg-white/30 dark:bg-white/5 px-3 py-3 text-[11px] text-gray-500">
+                未设置默认房间号。首次使用可以先登录，之后再填写房间号。
+              </div>
+            )}
             {roomInfo && (
               <>
                 <div className="flex items-center gap-2">
@@ -192,7 +214,7 @@ export function Login() {
             )}
           </div>
           <div className="flex gap-2 mt-4">
-            <Button onClick={() => checkRoom()} disabled={loading}>
+            <Button onClick={() => checkRoom()} disabled={loading || !roomId.trim()}>
               {loading ? '查询中...' : '刷新状态'}
             </Button>
           </div>

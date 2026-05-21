@@ -17,11 +17,11 @@ interface SplashProps {
 
 const LOAD_STAGES = [
   { to: 14,  zh: '初始化运行时',     en: 'Booting runtime',       sub: 'streamix · core' },
-  { to: 30,  zh: '连接哔哩哔哩',     en: 'Connecting Bilibili',   sub: 'websocket · long-poll' },
-  { to: 50,  zh: '加载本地模型',     en: 'Loading local models',  sub: 'VAD · ASR · TTS' },
+  { to: 30,  zh: '加载本地配置',     en: 'Loading local config',  sub: '账号 · 房间 · 偏好项' },
+  { to: 50,  zh: '检查可选组件',     en: 'Checking optional parts',  sub: '模型 · 插件 · 缓存' },
   { to: 68,  zh: '同步互动规则',     en: 'Syncing rules',         sub: '欢迎 · 感谢 · 关键词' },
-  { to: 86,  zh: '校准弹幕回复',     en: 'Calibrating reply bot', sub: '语速 · 节奏 · 边界词' },
-  { to: 100, zh: '准备就绪',         en: 'Ready · 开播！',         sub: '直播间已待命' },
+  { to: 86,  zh: '准备工作台',       en: 'Preparing workspace',   sub: '面板 · 数据 · 快捷操作' },
+  { to: 100, zh: '准备就绪',         en: 'Ready',                 sub: '可以开始配置和连接' },
 ] as const;
 
 const FOUNTAIN_CHIPS: Array<[string, string]> = [

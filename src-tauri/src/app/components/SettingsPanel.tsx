@@ -33,7 +33,7 @@ type SettingsTab = 'basic' | 'models' | 'system' | 'about';
 
 const TABS: { id: SettingsTab; label: string }[] = [
   { id: 'basic',  label: '基础' },
-  // { id: 'models', label: '模型' },  // 模型自动下载后隐藏，代码保留
+  // { id: 'models', label: '模型' },  // 首启默认走按需下载，入口暂隐藏
   { id: 'system', label: '系统' },
   { id: 'about',  label: '关于' },
 ];
