@@ -171,8 +171,6 @@ impl SherpaPipeline {
     }
 }
 
-
-
 /// VAD + 可选 ASR 主循环（在 spawn_blocking 线程里运行）
 ///
 /// sherpa-onnx VAD 内部已完成端点检测（end-pointing），`front()` 返回的是完整语音段，

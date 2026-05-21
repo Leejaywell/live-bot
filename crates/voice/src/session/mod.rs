@@ -309,7 +309,10 @@ impl SessionActor {
     fn handle_speak(&mut self, req: SpeakRequest) {
         // 优先级抢占：更高优先级直接打断当前及排队
         if req.priority > self.current_priority {
-            debug!("high priority {} preempting {}, clearing queue", req.priority, self.current_priority);
+            debug!(
+                "high priority {} preempting {}, clearing queue",
+                req.priority, self.current_priority
+            );
             self.handle_interrupt(); // 内部会清空 handle，但我们需要额外清空队列
             self.speak_queue.clear();
             self.start_generation(req);
@@ -330,7 +333,10 @@ impl SessionActor {
         if self.current_generation.is_none() {
             self.start_generation(req);
         } else {
-            debug!("low priority {} <= current {}, discarded", req.priority, self.current_priority);
+            debug!(
+                "low priority {} <= current {}, discarded",
+                req.priority, self.current_priority
+            );
         }
     }
 

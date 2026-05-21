@@ -1151,20 +1151,7 @@ async fn start_vad_runtime<E: EventEmitter + Send + Sync + 'static>(
         let tr = tts_router.clone();
         let rtts = Arc::clone(&recent_tts_text);
         tokio::spawn(async move {
-            run_sherpa_asr_event_loop(
-                ev,
-                has_asr,
-                tr,
-                http,
-                bc,
-                sm,
-                ar,
-                st,
-                ap,
-                c,
-                rtts,
-            )
-            .await;
+            run_sherpa_asr_event_loop(ev, has_asr, tr, http, bc, sm, ar, st, ap, c, rtts).await;
         });
         None
     };

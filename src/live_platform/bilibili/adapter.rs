@@ -128,7 +128,9 @@ impl LivePlatform for BilibiliPlatform {
                 display_name: info.uname,
                 saved_at: 0,
             }),
-            Err(err) if err.to_string().contains("登录状态无效") => Ok(SessionStatus::Expired),
+            Err(err) if err.to_string().contains("登录状态无效") => {
+                Ok(SessionStatus::Expired)
+            }
             Err(err) => Err(Self::map_err(PlatformOperation::ValidateSession, err)),
         }
     }
@@ -292,7 +294,10 @@ mod tests {
         assert_eq!(info.room.platform_id.as_str(), PlatformId::BILIBILI);
         assert_eq!(info.room.platform_room_id, "23174842");
         assert_eq!(info.room.display_id.as_deref(), Some("6"));
-        assert_eq!(info.owner.as_ref().and_then(|owner| owner.numeric_id()), Some(42));
+        assert_eq!(
+            info.owner.as_ref().and_then(|owner| owner.numeric_id()),
+            Some(42)
+        );
         assert_eq!(
             info.owner.as_ref().map(|owner| owner.display_name.as_str()),
             Some("owner")

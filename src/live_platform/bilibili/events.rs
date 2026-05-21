@@ -60,11 +60,11 @@ pub fn map_bilibili_event(
                 }
             }
         }
-        bilibili_live_protocol::LiveEvent::EntryEffect {
-            user_id, user, ..
-        } => PlatformEvent::Enter(UserEvent {
-            user: PlatformUserRef::bilibili(user_id, user),
-        }),
+        bilibili_live_protocol::LiveEvent::EntryEffect { user_id, user, .. } => {
+            PlatformEvent::Enter(UserEvent {
+                user: PlatformUserRef::bilibili(user_id, user),
+            })
+        }
         bilibili_live_protocol::LiveEvent::LikeClick {
             user_id,
             user,
