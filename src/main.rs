@@ -190,6 +190,7 @@ fn user_info_json(info: &bili_api::UserInfo, saved_at: i64) -> serde_json::Value
         "vip_nickname_color": info.vip_nickname_color,
         "is_login":          true,
         "saved_at":          saved_at,
+        "platform_id":       PlatformId::BILIBILI,
     })
 }
 
@@ -198,6 +199,7 @@ fn not_logged_in_json(saved_at: i64) -> serde_json::Value {
         "uid": 0, "uname": "", "face": "", "level": 0,
         "vip_status": 0, "vip_type": 0, "coins": 0.0, "vip_nickname_color": "",
         "is_login": false, "saved_at": saved_at,
+        "platform_id": PlatformId::BILIBILI,
     })
 }
 
@@ -233,6 +235,25 @@ fn platform_room_to_stored(room: &PlatformRoomRef) -> token::StoredPlatformRoom 
 
 fn default_platform_id() -> PlatformId {
     PlatformId::from(PlatformId::BILIBILI)
+}
+
+#[cfg(feature = "tauri")]
+fn current_auth_platform_id(state: &tauri::State<'_, SharedState>) -> Result<PlatformId, String> {
+    if let Some(room) = state
+        .connected_room
+        .lock()
+        .map_err(|e| e.to_string())?
+        .as_ref()
+        .cloned()
+    {
+        return Ok(room.platform_id);
+    }
+
+    if let Some(room) = token::read_connected_platform_room() {
+        return Ok(PlatformId::from(room.platform_id));
+    }
+
+    Ok(default_platform_id())
 }
 
 #[derive(Clone, Copy, Debug, Deserialize, PartialEq, Eq)]
@@ -288,20 +309,51 @@ fn resolve_legacy_room(
 #[cfg(feature = "tauri")]
 #[tauri::command]
 async fn get_user_info(state: tauri::State<'_, SharedState>) -> Result<serde_json::Value, String> {
-    let saved_at = token::session_saved_at().unwrap_or(0);
-    let session = match token::read_session() {
-        Ok(s) if !s.cookie.is_empty() => s,
+    let platform_id = current_auth_platform_id(&state)?;
+    let saved_at = token::platform_session_saved_at(platform_id.as_str()).unwrap_or(0);
+    let session = match token::read_platform_session(platform_id.as_str()) {
+        Ok(session) => stored_session_to_platform(session),
         _ => return Ok(not_logged_in_json(saved_at)),
     };
-    match state.http.user_info(&session.cookie).await {
-        Ok(info) => Ok(user_info_json(&info, saved_at)),
-        Err(e) => {
-            let msg = e.to_string();
-            if msg.contains("登录状态无效") {
-                Ok(not_logged_in_json(saved_at))
+
+    let platform = state
+        .platforms
+        .get(&platform_id)
+        .ok_or_else(|| format!("平台未注册: {platform_id}"))?;
+
+    match platform
+        .validate_session(&session)
+        .await
+        .map_err(|err| err.to_string())?
+    {
+        live_platform::SessionStatus::Missing | live_platform::SessionStatus::Expired => {
+            Ok(not_logged_in_json(saved_at))
+        }
+        live_platform::SessionStatus::Valid { display_name, .. } => {
+            if platform_id.as_str() == "bilibili" {
+                let cookie = session
+                    .payload
+                    .get("cookie")
+                    .and_then(|value| value.as_str())
+                    .unwrap_or_default();
+                match state.http.user_info(cookie).await {
+                    Ok(info) => Ok(user_info_json(&info, saved_at)),
+                    Err(err) => Err(format!("network_error: {err}")),
+                }
             } else {
-                // Network / HTTP error — return Err so the frontend can ignore gracefully
-                Err(format!("network_error: {msg}"))
+                Ok(serde_json::json!({
+                    "uid": 0,
+                    "uname": display_name,
+                    "face": "",
+                    "level": 0,
+                    "vip_status": 0,
+                    "vip_type": 0,
+                    "coins": 0.0,
+                    "vip_nickname_color": "",
+                    "is_login": true,
+                    "saved_at": saved_at,
+                    "platform_id": platform_id.as_str(),
+                }))
             }
         }
     }
@@ -522,11 +574,11 @@ async fn logout(
         }
         token::delete_connected_platform_room();
     }
-    let default_platform_id = default_platform_id();
+    let platform_id = current_auth_platform_id(&state)?;
     if mode.should_clear_all_platform_sessions() {
         token::delete_all_platform_sessions().map_err(|e| e.to_string())
     } else {
-        token::delete_platform_session(default_platform_id.as_str()).map_err(|e| e.to_string())
+        token::delete_platform_session(platform_id.as_str()).map_err(|e| e.to_string())
     }
 }
 
@@ -639,6 +691,9 @@ async fn start_monitor(
     };
 
     let room = resolve_legacy_room(&state, room_id)?;
+    if room.platform_id.as_str() != "bilibili" {
+        return Err(format!("平台监听尚未接入: {}", room.platform_id));
+    }
     let session = token::read_platform_session(room.platform_id.as_str())
         .map(stored_session_to_platform)
         .map_err(|err| err.to_string())?;
@@ -985,11 +1040,17 @@ async fn get_pk_summary(
     if let Some(handle) = monitor.as_ref() {
         let session_id = handle.session_id.lock().map_err(|e| e.to_string())?;
         if let Some(id) = session_id.as_ref() {
-            let config = AppConfig::load_or_default().map_err(|e| e.to_string())?;
+            let Some(room_id) = state
+                .storage
+                .live_session_room_id(id)
+                .map_err(|e| e.to_string())?
+            else {
+                return Ok(None);
+            };
             return Ok(Some(
                 state
                     .storage
-                    .session_pk_summary(id, config.room_id)
+                    .session_pk_summary(id, room_id)
                     .map_err(|e| e.to_string())?,
             ));
         }

@@ -88,6 +88,24 @@ pub fn session_saved_at() -> Option<i64> {
 }
 
 #[allow(dead_code)]
+pub fn platform_session_saved_at(platform_id: &str) -> Option<i64> {
+    let path = if platform_id == "bilibili" && !platform_session_path(platform_id).exists() {
+        session_path()
+    } else {
+        platform_session_path(platform_id)
+    };
+    std::fs::metadata(path)
+        .ok()?
+        .modified()
+        .ok()?
+        .duration_since(std::time::UNIX_EPOCH)
+        .ok()?
+        .as_secs()
+        .try_into()
+        .ok()
+}
+
+#[allow(dead_code)]
 pub fn read_platform_session(platform_id: &str) -> Result<StoredPlatformSession> {
     let path = platform_session_path(platform_id);
     if path.exists() {

@@ -5,7 +5,7 @@ import { Button } from '../components/Button';
 import { Input } from '../components/Input';
 import { Chip } from '../components/Chip';
 import { X, RefreshCw } from 'lucide-react';
-import { api, UserInfo, RoomInfo, StartLoginChallenge } from '../lib/api';
+import { api, UserInfo, RoomInfo, LoginChallenge, PlatformId } from '../lib/api';
 import { toast } from 'sonner';
 
 export function Login() {
@@ -13,7 +13,8 @@ export function Login() {
   const [userInfo, setUserInfo] = useState<UserInfo | null>(null);
   const [roomInfo, setRoomInfo] = useState<RoomInfo | null>(null);
   const [roomId, setRoomId] = useState<string>('');
-  const [loginUrl, setLoginUrl] = useState<StartLoginChallenge | null>(null);
+  const [loginUrl, setLoginUrl] = useState<LoginChallenge | null>(null);
+  const [loginPlatformId, setLoginPlatformId] = useState<PlatformId>('bilibili');
   const [loginStatus, setLoginStatus] = useState<string>('等待扫码…');
   const [loading, setLoading] = useState(false);
   const pollingRef = useRef(false);
@@ -81,8 +82,11 @@ export function Login() {
 
   const startLogin = async () => {
     try {
-      const url = await api.startLogin();
+      const room = await api.getConnectedRoom().catch(() => null);
+      const platformId = room?.platform_id ?? 'bilibili';
+      const url = await api.createPlatformLoginChallenge(platformId);
       setLoginUrl(url);
+      setLoginPlatformId(url.platform_id);
       setShowQRModal(true);
       setLoginStatus('等待扫码…');
     } catch (err) {
@@ -98,8 +102,7 @@ export function Login() {
     const poll = async () => {
       while (pollingRef.current) {
         try {
-          const key = loginUrl.challenge_id ?? loginUrl.qrcode_key;
-          const res = await api.pollLogin(key);
+          const res = await api.pollPlatformLogin(loginPlatformId, loginUrl.challenge_id);
           if (!pollingRef.current) break;
           if (res.status === 'Success') {
             setLoginStatus('登录成功');
@@ -117,7 +120,7 @@ export function Login() {
     };
     poll();
     return () => { pollingRef.current = false; };
-  }, [showQRModal, loginUrl]);
+  }, [showQRModal, loginPlatformId, loginUrl]);
 
   return (
     <div className="p-[18px]">

@@ -6,8 +6,7 @@ use std::sync::Mutex;
 
 use crate::live_platform::types::{PlatformEvent, PlatformEventEnvelope};
 
-const BILIBILI_PLATFORM_FILTER_SQL: &str =
-    "coalesce(nullif(platform_id, ''), 'bilibili') = 'bilibili'";
+const BILIBILI_PLATFORM_FILTER_SQL: &str = "platform_id = 'bilibili'";
 
 #[derive(Debug)]
 pub struct Storage {
@@ -320,8 +319,31 @@ impl Storage {
         ensure_column(&conn, "user_profiles", "platform_user_id", "text")?;
         conn.execute(
             "update live_sessions
+                set platform_id = 'bilibili'
+              where nullif(platform_id, '') is null",
+            [],
+        )?;
+        conn.execute(
+            "update live_sessions
                 set platform_room_id = cast(room_id as text)
               where platform_room_id is null",
+            [],
+        )?;
+        conn.execute(
+            "update interaction_records
+                set platform_id = 'bilibili'
+              where nullif(platform_id, '') is null
+                and event_kind is null
+                and event_action is null
+                and (
+                    nullif(platform_room_id, '') is null
+                    or platform_room_id = cast(room_id as text)
+                )
+                and (
+                    uid is null
+                    or nullif(platform_user_id, '') is null
+                    or platform_user_id = cast(uid as text)
+                )",
             [],
         )?;
         conn.execute(
@@ -340,14 +362,14 @@ impl Storage {
             "update interaction_records
                 set uid = null
               where uid is not null
-                and coalesce(nullif(platform_id, ''), 'bilibili') != 'bilibili'",
+                and coalesce(nullif(platform_id, ''), '') != 'bilibili'",
             [],
         )?;
         conn.execute(
             "update interaction_records
                 set uid = null
               where uid is not null
-                and coalesce(nullif(platform_id, ''), 'bilibili') = 'bilibili'
+                and platform_id = 'bilibili'
                 and (
                     (nullif(platform_room_id, '') is not null and platform_room_id != cast(room_id as text))
                     or (nullif(platform_user_id, '') is not null and platform_user_id != cast(uid as text))
@@ -2325,8 +2347,10 @@ fn repair_bilibili_numeric_identity_binding(
         return Ok(());
     }
 
-    let tracked_polluted = is_clearly_polluted_tracked_user(conn, uid, platform_user_id)?;
-    let profile_polluted = is_clearly_polluted_user_profile(conn, uid, platform_user_id)?;
+    let tracked_polluted = should_reset_bilibili_tracked_user_binding(conn, uid, platform_user_id)?
+        || is_clearly_polluted_tracked_user(conn, uid, platform_user_id)?;
+    let profile_polluted = should_reset_bilibili_user_profile_binding(conn, uid, platform_user_id)?
+        || is_clearly_polluted_user_profile(conn, uid, platform_user_id)?;
     let tracked_exists = tracked_user_exists(conn, uid)?;
     let profile_exists = user_profile_exists(conn, uid)?;
 
@@ -2338,6 +2362,102 @@ fn repair_bilibili_numeric_identity_binding(
     }
 
     Ok(())
+}
+
+fn has_bilibili_interaction_identity(conn: &Connection, platform_user_id: &str) -> Result<bool> {
+    conn.query_row(
+        "select exists(
+            select 1
+              from interaction_records ir
+             where ir.platform_id = 'bilibili'
+               and coalesce(nullif(ir.platform_user_id, ''), cast(ir.uid as text)) = ?1
+        )",
+        params![platform_user_id],
+        |row| row.get(0),
+    )
+    .map_err(Into::into)
+}
+
+fn has_non_bilibili_interaction_identity(
+    conn: &Connection,
+    platform_user_id: &str,
+) -> Result<bool> {
+    conn.query_row(
+        "select exists(
+            select 1
+              from interaction_records ir
+             where coalesce(nullif(ir.platform_id, ''), '') != ''
+               and ir.platform_id != 'bilibili'
+               and ir.platform_user_id = ?1
+        )",
+        params![platform_user_id],
+        |row| row.get(0),
+    )
+    .map_err(Into::into)
+}
+
+fn should_reset_bilibili_tracked_user_binding(
+    conn: &Connection,
+    uid: i64,
+    platform_user_id: &str,
+) -> Result<bool> {
+    let row: Option<(Option<String>, Option<String>)> = conn
+        .query_row(
+            "select nullif(platform_id, ''), nullif(platform_user_id, '')
+               from tracked_users
+              where uid = ?1",
+            params![uid],
+            |row| Ok((row.get(0)?, row.get(1)?)),
+        )
+        .optional()?;
+    let Some((platform_id, stored_platform_user_id)) = row else {
+        return Ok(false);
+    };
+    if stored_platform_user_id.as_deref() != Some(platform_user_id) {
+        return Ok(false);
+    }
+    if matches!(platform_id.as_deref(), Some("bilibili")) {
+        return Ok(false);
+    }
+    if platform_id.is_some() {
+        return Ok(true);
+    }
+    Ok(
+        has_non_bilibili_interaction_identity(conn, platform_user_id)?
+            && !has_bilibili_interaction_identity(conn, platform_user_id)?,
+    )
+}
+
+fn should_reset_bilibili_user_profile_binding(
+    conn: &Connection,
+    uid: i64,
+    platform_user_id: &str,
+) -> Result<bool> {
+    let row: Option<(Option<String>, Option<String>)> = conn
+        .query_row(
+            "select nullif(platform_id, ''), nullif(platform_user_id, '')
+               from user_profiles
+              where uid = ?1",
+            params![uid],
+            |row| Ok((row.get(0)?, row.get(1)?)),
+        )
+        .optional()?;
+    let Some((platform_id, stored_platform_user_id)) = row else {
+        return Ok(false);
+    };
+    if stored_platform_user_id.as_deref() != Some(platform_user_id) {
+        return Ok(false);
+    }
+    if matches!(platform_id.as_deref(), Some("bilibili")) {
+        return Ok(false);
+    }
+    if platform_id.is_some() {
+        return Ok(true);
+    }
+    Ok(
+        has_non_bilibili_interaction_identity(conn, platform_user_id)?
+            && !has_bilibili_interaction_identity(conn, platform_user_id)?,
+    )
 }
 
 fn tracked_user_exists(conn: &Connection, uid: i64) -> Result<bool> {
@@ -2366,11 +2486,11 @@ fn is_clearly_polluted_tracked_user(
     conn.query_row(
         "select exists(
             select 1
-              from tracked_users t
+             from tracked_users t
              where t.uid = ?1
                and t.auto_tracked = 1
                and t.status = 'active'
-               and coalesce(nullif(t.platform_id, ''), 'bilibili') = 'bilibili'
+               and t.platform_id = 'bilibili'
                and nullif(t.platform_user_id, '') = ?2
                and t.platform_user_id not glob '*[^0-9]*'
                and coalesce(t.alias, '') = ''
@@ -2381,13 +2501,14 @@ fn is_clearly_polluted_tracked_user(
                and not exists (
                     select 1
                       from interaction_records ir
-                     where coalesce(nullif(ir.platform_id, ''), 'bilibili') = 'bilibili'
+                     where ir.platform_id = 'bilibili'
                        and coalesce(nullif(ir.platform_user_id, ''), cast(ir.uid as text)) = ?2
                )
                and exists (
                     select 1
                       from interaction_records ir
-                     where coalesce(nullif(ir.platform_id, ''), 'bilibili') != 'bilibili'
+                     where coalesce(nullif(ir.platform_id, ''), '') != ''
+                       and ir.platform_id != 'bilibili'
                        and ir.platform_user_id = ?2
                )
         )",
@@ -2433,18 +2554,19 @@ fn is_clearly_polluted_user_profile(
                                end
                            ) as enter_count
                       from interaction_records ir
-                     where coalesce(nullif(ir.platform_id, ''), 'bilibili') != 'bilibili'
+                     where coalesce(nullif(ir.platform_id, ''), '') != ''
+                       and ir.platform_id != 'bilibili'
                        and ir.platform_user_id = ?2
                      group by ir.platform_user_id
               ) non_bili on non_bili.platform_user_id = ?2
              where up.uid = ?1
-               and coalesce(nullif(up.platform_id, ''), 'bilibili') = 'bilibili'
+               and up.platform_id = 'bilibili'
                and nullif(up.platform_user_id, '') = ?2
                and up.platform_user_id not glob '*[^0-9]*'
                and not exists (
                     select 1
                       from interaction_records ir
-                     where coalesce(nullif(ir.platform_id, ''), 'bilibili') = 'bilibili'
+                     where ir.platform_id = 'bilibili'
                        and coalesce(nullif(ir.platform_user_id, ''), cast(ir.uid as text)) = ?2
                )
                and up.first_seen_at = non_bili.first_seen_at
@@ -2518,10 +2640,10 @@ fn cleanup_polluted_tracked_users(conn: &Connection) -> Result<()> {
         "delete from tracked_users
           where uid in (
                 select t.uid
-                  from tracked_users t
+                 from tracked_users t
                  where t.auto_tracked = 1
                    and t.status = 'active'
-                   and coalesce(nullif(t.platform_id, ''), 'bilibili') = 'bilibili'
+                   and t.platform_id = 'bilibili'
                    and nullif(t.platform_user_id, '') = cast(t.uid as text)
                    and t.platform_user_id not glob '*[^0-9]*'
                    and coalesce(t.alias, '') = ''
@@ -2532,20 +2654,21 @@ fn cleanup_polluted_tracked_users(conn: &Connection) -> Result<()> {
                    and not exists (
                         select 1
                           from interaction_records ir
-                         where coalesce(nullif(ir.platform_id, ''), 'bilibili') = 'bilibili'
+                         where ir.platform_id = 'bilibili'
                            and coalesce(nullif(ir.platform_user_id, ''), cast(ir.uid as text)) = t.platform_user_id
                    )
                    and not exists (
                         select 1
                           from user_profiles up
                          where up.uid = t.uid
-                           and coalesce(nullif(up.platform_id, ''), 'bilibili') = 'bilibili'
+                           and up.platform_id = 'bilibili'
                            and coalesce(nullif(up.platform_user_id, ''), cast(up.uid as text)) = t.platform_user_id
                    )
                    and exists (
                         select 1
                           from interaction_records ir
-                         where coalesce(nullif(ir.platform_id, ''), 'bilibili') != 'bilibili'
+                         where coalesce(nullif(ir.platform_id, ''), '') != ''
+                           and ir.platform_id != 'bilibili'
                            and ir.platform_user_id = t.platform_user_id
                    )
             )",
@@ -2587,24 +2710,25 @@ fn cleanup_polluted_user_profiles(conn: &Connection) -> Result<()> {
                                    end
                                ) as enter_count
                           from interaction_records ir
-                         where coalesce(nullif(ir.platform_id, ''), 'bilibili') != 'bilibili'
+                         where coalesce(nullif(ir.platform_id, ''), '') != ''
+                           and ir.platform_id != 'bilibili'
                            and nullif(ir.platform_user_id, '') is not null
                          group by ir.platform_user_id
                   ) non_bili on non_bili.platform_user_id = cast(up.uid as text)
-                 where coalesce(nullif(up.platform_id, ''), 'bilibili') = 'bilibili'
+                 where up.platform_id = 'bilibili'
                    and nullif(up.platform_user_id, '') = cast(up.uid as text)
                    and up.platform_user_id not glob '*[^0-9]*'
                    and not exists (
                         select 1
                           from interaction_records ir
-                         where coalesce(nullif(ir.platform_id, ''), 'bilibili') = 'bilibili'
+                         where ir.platform_id = 'bilibili'
                            and coalesce(nullif(ir.platform_user_id, ''), cast(ir.uid as text)) = up.platform_user_id
                    )
                    and not exists (
                         select 1
                           from tracked_users tu
                          where tu.uid = up.uid
-                           and coalesce(nullif(tu.platform_id, ''), 'bilibili') = 'bilibili'
+                           and tu.platform_id = 'bilibili'
                            and coalesce(nullif(tu.platform_user_id, ''), cast(tu.uid as text)) = up.platform_user_id
                    )
                    and up.first_seen_at = non_bili.first_seen_at
@@ -3498,7 +3622,7 @@ mod tests {
                     "insert into tracked_users (
                         uid, platform_id, platform_user_id, nickname, alias, notes,
                         tts_provider_id, tts_voice_id, status, auto_tracked, created_at, updated_at
-                    ) values (42, 'bilibili', '42', 'mallory', '', '', '', '', 'active', 1, ?1, ?1)",
+                    ) values (42, 'douyin', '42', 'mallory', 'legacy', 'keep-me', '', '', 'active', 1, ?1, ?1)",
                     params![first_seen.clone()],
                 )?;
                 conn.execute(
@@ -3507,11 +3631,17 @@ mod tests {
                         total_danmu_count, total_gift_value, total_sc_value, enter_count,
                         active_hours, fan_level, is_guard, ai_summary, ai_tags, ai_topics,
                         ai_summary_updated_at, ai_summary_version
-                    ) values (42, 'bilibili', '42', ?1, ?2, 3, 0, 0, 0, '{\"9\":3}', 0, 0, '', '', '', null, 0)",
+                    ) values (42, 'douyin', '42', ?1, ?2, 3, 0, 0, 0, '{\"9\":3}', 0, 0, 'legacy summary', '', '', null, 1)",
                     params![first_seen.clone(), last_seen.clone()],
                 )?;
-                assert!(super::is_clearly_polluted_tracked_user(conn, 42, "42")?);
-                assert!(super::is_clearly_polluted_user_profile(conn, 42, "42")?);
+                assert!(!super::is_clearly_polluted_tracked_user(conn, 42, "42")?);
+                assert!(!super::is_clearly_polluted_user_profile(conn, 42, "42")?);
+                assert!(super::should_reset_bilibili_tracked_user_binding(
+                    conn, 42, "42"
+                )?);
+                assert!(super::should_reset_bilibili_user_profile_binding(
+                    conn, 42, "42"
+                )?);
                 Ok(())
             })
             .unwrap();
@@ -3552,17 +3682,27 @@ mod tests {
                 )?;
                 assert_eq!(tracked_row, ("bilibili".to_string(), "alice".to_string(), 1));
 
-                let profile_row: (String, String, i64, String, String) = conn.query_row(
-                    "select platform_id, platform_user_id, total_danmu_count, first_seen_at, last_seen_at
+                let profile_row: (String, String, i64, String, String, String, i64) = conn.query_row(
+                    "select platform_id, platform_user_id, total_danmu_count, first_seen_at, last_seen_at, ai_summary, ai_summary_version
                      from user_profiles
                      where uid = 42",
                     [],
-                    |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?, row.get(3)?, row.get(4)?)),
+                    |row| Ok((
+                        row.get(0)?,
+                        row.get(1)?,
+                        row.get(2)?,
+                        row.get(3)?,
+                        row.get(4)?,
+                        row.get(5)?,
+                        row.get(6)?,
+                    )),
                 )?;
                 assert_eq!(profile_row.0, "bilibili".to_string());
                 assert_eq!(profile_row.1, "42".to_string());
                 assert_eq!(profile_row.2, 1);
                 assert_eq!(profile_row.3, profile_row.4);
+                assert!(profile_row.5.is_empty());
+                assert_eq!(profile_row.6, 0);
                 Ok(())
             })
             .unwrap();

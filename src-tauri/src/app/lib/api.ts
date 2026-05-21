@@ -392,6 +392,7 @@ export interface UserInfo {
   vip_nickname_color: string;
   is_login: boolean;
   saved_at: number;
+  platform_id?: PlatformId;
 }
 
 export interface LoginUrl {

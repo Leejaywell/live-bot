@@ -38,7 +38,7 @@ import { LotteryInteraction } from "./pages/LotteryInteraction";
 import { GiftEffect } from "./pages/GiftEffect";
 import { RecentGifts } from "./pages/RecentGifts";
 import { GiftRank } from "./pages/GiftRank";
-import { api, UserInfo, RoomInfo, AnchorInfo } from "./lib/api";
+import { api, UserInfo, RoomInfo, AnchorInfo, PlatformId } from "./lib/api";
 import QRCode from "react-qr-code";
 import { toast } from "sonner";
 import { RefreshCw, X, QrCode } from "lucide-react";
@@ -137,6 +137,8 @@ function AppContent() {
 
   const [loginUrl, setLoginUrl] = useState("");
   const [loginKey, setLoginKey] = useState("");
+  const [loginPlatformId, setLoginPlatformId] =
+    useState<PlatformId>("bilibili");
   const [loginStatus, setLoginStatus] = useState<
     "pending" | "expired" | "success" | "idle"
   >("pending");
@@ -206,7 +208,10 @@ function AppContent() {
         .getConnectedRoom()
         .then(async (savedRoom) => {
           if (!savedRoom) return;
-          if (savedRoom.platform_id !== "bilibili") return;
+          if (savedRoom.platform_id !== "bilibili") {
+            await api.setConnectedRoom(null).catch(() => {});
+            return;
+          }
           const savedRoomId = Number(savedRoom.platform_room_id);
           if (!Number.isFinite(savedRoomId) || savedRoomId <= 0) return;
           try {
@@ -265,10 +270,12 @@ function AppContent() {
     setLoadingQr(true);
     setLoginStatus("pending");
     try {
-      const data = await api.startLogin();
-      const key = data.challenge_id ?? data.qrcode_key;
+      const room = await api.getConnectedRoom().catch(() => null);
+      const platformId = room?.platform_id ?? "bilibili";
+      const data = await api.createPlatformLoginChallenge(platformId);
       setLoginUrl(data.url);
-      setLoginKey(key ?? "");
+      setLoginKey(data.challenge_id);
+      setLoginPlatformId(data.platform_id);
     } catch (err) {
       console.error("获取二维码失败:", err);
     } finally {
@@ -287,7 +294,7 @@ function AppContent() {
     ) {
       timer = setInterval(async () => {
         try {
-          const res = await api.pollLogin(loginKey);
+          const res = await api.pollPlatformLogin(loginPlatformId, loginKey);
           if (res.status === "Success") {
             setLoginStatus("success");
             setShowLoginModal(false);
@@ -309,12 +316,13 @@ function AppContent() {
     return () => {
       if (timer) clearInterval(timer);
     };
-  }, [showLoginModal, loginKey, loginStatus]);
+  }, [showLoginModal, loginKey, loginPlatformId, loginStatus]);
 
   const openLoginModal = () => {
     setShowLoginModal(true);
     setLoginUrl("");
     setLoginKey("");
+    setLoginPlatformId("bilibili");
     setLoginStatus("pending");
     fetchLoginQr();
   };
